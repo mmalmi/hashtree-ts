@@ -1,0 +1,330 @@
+/**
+ * NostrRefResolver - Maps npub/treename keys to merkle root hashes (refs)
+ *
+ * Key format: "npub1.../treename"
+ *
+ * This resolver provides direct callback subscriptions that bypass React's
+ * render cycle. Components can subscribe to hash changes and update directly
+ * (e.g., MediaSource append) without triggering re-renders.
+ */
+import type { RefResolver, Hash } from '../types.js';
+import { fromHex, toHex } from '../types.js';
+
+// Nostr event structure (minimal)
+export interface NostrEvent {
+  id?: string;
+  pubkey: string;
+  kind: number;
+  content: string;
+  tags: string[][];
+  created_at: number;
+}
+
+// Type definitions for nip19
+export interface Nip19Like {
+  decode(str: string): { type: string; data: unknown };
+  npubEncode(pubkey: string): string;
+}
+
+// Filter for querying events
+export interface NostrFilter {
+  kinds?: number[];
+  authors?: string[];
+  '#d'?: string[];
+  '#l'?: string[];
+}
+
+// Subscription entry
+interface SubscriptionEntry {
+  unsubscribe: () => void;
+  callbacks: Set<(hash: Hash | null) => void>;
+  currentHash: string | null;
+  latestCreatedAt: number;
+}
+
+export interface NostrRefResolverConfig {
+  /** Subscribe to nostr events - returns unsubscribe function */
+  subscribe: (filter: NostrFilter, onEvent: (event: NostrEvent) => void) => () => void;
+  /** Publish a nostr event - returns true on success */
+  publish: (event: Omit<NostrEvent, 'id' | 'pubkey' | 'created_at'>) => Promise<boolean>;
+  /** Get current user's pubkey (for ownership checks) */
+  getPubkey: () => string | null;
+  /** nip19 encode/decode functions from nostr-tools */
+  nip19: Nip19Like;
+}
+
+/**
+ * Create a NostrRefResolver instance
+ */
+export function createNostrRefResolver(config: NostrRefResolverConfig): RefResolver {
+  const { subscribe: nostrSubscribe, publish: nostrPublish, getPubkey, nip19 } = config;
+
+  // Active subscriptions by key
+  const subscriptions = new Map<string, SubscriptionEntry>();
+
+  /**
+   * Parse a pointer key into pubkey and tree name
+   */
+  function parseKey(key: string): { pubkey: string; treeName: string } | null {
+    const parts = key.split('/');
+    if (parts.length !== 2) return null;
+
+    const [npubStr, treeName] = parts;
+    try {
+      const decoded = nip19.decode(npubStr);
+      if (decoded.type !== 'npub') return null;
+      return { pubkey: decoded.data as string, treeName };
+    } catch {
+      return null;
+    }
+  }
+
+  return {
+    /**
+     * Resolve a key to its current hash.
+     * Waits indefinitely until a hash is found - caller should apply timeout if needed.
+     */
+    async resolve(key: string): Promise<Hash | null> {
+      const parsed = parseKey(key);
+      if (!parsed) return null;
+
+      const { pubkey, treeName } = parsed;
+
+      return new Promise((resolve) => {
+        let latestHash: string | null = null;
+        let latestCreatedAt = 0;
+
+        const unsubscribe = nostrSubscribe(
+          {
+            kinds: [30078],
+            authors: [pubkey],
+            '#d': [treeName],
+            '#l': ['hashtree'],
+          },
+          (event) => {
+            const dTag = event.tags.find(t => t[0] === 'd')?.[1];
+            if (dTag !== treeName) return;
+
+            if ((event.created_at || 0) > latestCreatedAt) {
+              latestCreatedAt = event.created_at || 0;
+              latestHash = event.content;
+            }
+
+            // Got a hash, resolve immediately
+            if (latestHash) {
+              unsubscribe();
+              resolve(fromHex(latestHash));
+            }
+          }
+        );
+      });
+    },
+
+    /**
+     * Subscribe to hash changes for a key.
+     * Callback fires on each update (including initial value).
+     * This runs outside React render cycle.
+     */
+    subscribe(key: string, callback: (hash: Hash | null) => void): () => void {
+      const parsed = parseKey(key);
+      if (!parsed) {
+        callback(null);
+        return () => {};
+      }
+
+      const { pubkey, treeName } = parsed;
+
+      // Check if we already have a subscription for this key
+      let sub = subscriptions.get(key);
+
+      if (sub) {
+        // Add callback to existing subscription
+        sub.callbacks.add(callback);
+        // Fire immediately with current value
+        if (sub.currentHash) {
+          callback(fromHex(sub.currentHash));
+        }
+      } else {
+        // Create new subscription
+        const unsubscribe = nostrSubscribe(
+          {
+            kinds: [30078],
+            authors: [pubkey],
+            '#d': [treeName],
+            '#l': ['hashtree'],
+          },
+          (event) => {
+            const dTag = event.tags.find(t => t[0] === 'd')?.[1];
+            if (dTag !== treeName) return;
+
+            const subEntry = subscriptions.get(key);
+            if (!subEntry) return;
+
+            const eventCreatedAt = event.created_at || 0;
+            const newHash = event.content;
+
+            // Only update if this event is newer
+            if (eventCreatedAt >= subEntry.latestCreatedAt && newHash && newHash !== subEntry.currentHash) {
+              subEntry.currentHash = newHash;
+              subEntry.latestCreatedAt = eventCreatedAt;
+              const hashBytes = fromHex(newHash);
+              // Notify all callbacks
+              for (const cb of subEntry.callbacks) {
+                try {
+                  cb(hashBytes);
+                } catch (e) {
+                  console.error('Resolver callback error:', e);
+                }
+              }
+            }
+          }
+        );
+
+        sub = {
+          unsubscribe,
+          callbacks: new Set([callback]),
+          currentHash: null,
+          latestCreatedAt: 0,
+        };
+        subscriptions.set(key, sub);
+      }
+
+      // Return unsubscribe function
+      return () => {
+        const subEntry = subscriptions.get(key);
+        if (!subEntry) return;
+
+        subEntry.callbacks.delete(callback);
+
+        // If no more callbacks, close the subscription
+        if (subEntry.callbacks.size === 0) {
+          subEntry.unsubscribe();
+          subscriptions.delete(key);
+        }
+      };
+    },
+
+    /**
+     * Publish/update a pointer
+     */
+    async publish(key: string, hash: Hash): Promise<boolean> {
+      const parsed = parseKey(key);
+      if (!parsed) return false;
+
+      const { treeName } = parsed;
+      const pubkey = getPubkey();
+
+      if (!pubkey) return false;
+
+      try {
+        const hashHex = toHex(hash);
+
+        const success = await nostrPublish({
+          kind: 30078,
+          content: hashHex,
+          tags: [
+            ['d', treeName],
+            ['l', 'hashtree'],
+          ],
+        });
+
+        if (success) {
+          // Update local subscription state immediately
+          const sub = subscriptions.get(key);
+          if (sub) {
+            sub.currentHash = hashHex;
+            sub.latestCreatedAt = Math.floor(Date.now() / 1000);
+            // Notify callbacks
+            for (const cb of sub.callbacks) {
+              try {
+                cb(hash);
+              } catch (e) {
+                console.error('Resolver callback error:', e);
+              }
+            }
+          }
+        }
+
+        return success;
+      } catch (e) {
+        console.error('Failed to publish:', e);
+        return false;
+      }
+    },
+
+    /**
+     * List all trees for a user.
+     * Streams results as they arrive - returns unsubscribe function.
+     * Caller decides when to stop listening.
+     */
+    list(prefix: string, callback: (entries: Array<{ key: string; hash: Hash }>) => void): () => void {
+      const parts = prefix.split('/');
+      if (parts.length === 0) {
+        callback([]);
+        return () => {};
+      }
+
+      const npubStr = parts[0];
+      let pubkey: string;
+
+      try {
+        const decoded = nip19.decode(npubStr);
+        if (decoded.type !== 'npub') {
+          callback([]);
+          return () => {};
+        }
+        pubkey = decoded.data as string;
+      } catch {
+        callback([]);
+        return () => {};
+      }
+
+      // Track entries by d-tag
+      const entriesByDTag = new Map<string, { hash: string; created_at: number }>();
+
+      const emitCurrentState = () => {
+        const result: Array<{ key: string; hash: Hash }> = [];
+        for (const [dTag, entry] of entriesByDTag) {
+          result.push({
+            key: `${npubStr}/${dTag}`,
+            hash: fromHex(entry.hash),
+          });
+        }
+        callback(result);
+      };
+
+      const unsubscribe = nostrSubscribe(
+        {
+          kinds: [30078],
+          authors: [pubkey],
+          '#l': ['hashtree'],
+        },
+        (event) => {
+          const dTag = event.tags.find(t => t[0] === 'd')?.[1];
+          if (!dTag || !event.content) return;
+
+          const existing = entriesByDTag.get(dTag);
+          if (!existing || (event.created_at || 0) > existing.created_at) {
+            entriesByDTag.set(dTag, {
+              hash: event.content,
+              created_at: event.created_at || 0,
+            });
+            emitCurrentState();
+          }
+        }
+      );
+
+      return unsubscribe;
+    },
+
+    /**
+     * Stop all subscriptions
+     */
+    stop(): void {
+      for (const [, sub] of subscriptions) {
+        sub.unsubscribe();
+      }
+      subscriptions.clear();
+    },
+  };
+}

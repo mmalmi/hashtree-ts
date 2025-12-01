@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC Connection Test</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1a1a2e; color: #eee; }
+    #log { white-space: pre-wrap; background: #0f0f1a; padding: 10px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>WebRTC Connection Test</h1>
+  <div id="status">Initializing...</div>
+  <div id="log"></div>
+  <script type="module">
+    import { WebRTCStore } from 'hashtree/webrtc';
+    import { generateSecretKey, getPublicKey, finalizeEvent, nip04 } from 'nostr-tools';
+
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+
+    function log(msg) {
+      const ts = new Date().toISOString().slice(11, 19);
+      logEl.textContent += `[${ts}] ${msg}\n`;
+      console.log(msg);
+    }
+
+    window.runWebRTCTest = async function(nostaPubkey) {
+      try {
+        log('Starting WebRTC test...');
+
+        const secretKey = generateSecretKey();
+        const pubkey = getPublicKey(secretKey);
+        log(`Our pubkey: ${pubkey.slice(0, 16)}...`);
+
+        const signer = async (event) => finalizeEvent(event, secretKey);
+        const encrypt = async (pk, plaintext) => nip04.encrypt(secretKey, pk, plaintext);
+        const decrypt = async (pk, ciphertext) => nip04.decrypt(secretKey, pk, ciphertext);
+
+        const store = new WebRTCStore({
+          signer,
+          pubkey,
+          encrypt,
+          decrypt,
+          relays: ['wss://temp.iris.to'],
+          helloInterval: 2000,
+          satisfiedConnections: 1,
+          maxConnections: 10,
+          debug: true,
+        });
+
+        const results = {
+          pubkey,
+          connectedPeers: 0,
+          peers: [],
+          connectedToNosta: false,
+        };
+
+        store.on((event) => {
+          if (event.type === 'peer-connected') {
+            log(`CONNECTED to peer: ${event.peerId.slice(0, 20)}...`);
+            if (nostaPubkey && event.peerId.startsWith(nostaPubkey)) {
+              results.connectedToNosta = true;
+              log('*** CONNECTED TO NOSTA! ***');
+            }
+          } else if (event.type === 'peer-disconnected') {
+            log(`DISCONNECTED from peer: ${event.peerId.slice(0, 20)}...`);
+          }
+        });
+
+        log('Starting store...');
+        await store.start();
+        statusEl.textContent = 'Running - waiting for connections...';
+
+        // Wait for connections (up to 60 seconds)
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          const status = store.status();
+          log(`Check ${i + 1}: ${status.connectedPeers} connected peers`);
+
+          for (const peer of status.peers) {
+            if (peer.state === 'connected' && nostaPubkey && peer.pubkey === nostaPubkey) {
+              results.connectedToNosta = true;
+            }
+          }
+
+          if (results.connectedToNosta || status.connectedPeers > 0) {
+            break;
+          }
+        }
+
+        const finalStatus = store.status();
+        results.connectedPeers = finalStatus.connectedPeers;
+        results.peers = finalStatus.peers.map(p => ({
+          pubkey: p.pubkey.slice(0, 16),
+          state: p.state,
+        }));
+
+        log(`Final: ${results.connectedPeers} peers, connectedToNosta=${results.connectedToNosta}`);
+        statusEl.textContent = `Done: ${results.connectedPeers} connections`;
+
+        await store.stop();
+
+        window.testResults = results;
+        return results;
+      } catch (err) {
+        const error = String(err);
+        log(`Error: ${error}`);
+        statusEl.textContent = `Error: ${error}`;
+        window.testResults = { error };
+        return { error };
+      }
+    };
+
+    statusEl.textContent = 'Ready - call runWebRTCTest(nostaPubkey)';
+    log('Test page loaded. Call window.runWebRTCTest(nostaPubkey) to start.');
+  </script>
+</body>
+</html>

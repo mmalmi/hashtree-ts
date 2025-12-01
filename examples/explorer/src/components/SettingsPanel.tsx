@@ -1,0 +1,138 @@
+import { useEffect } from 'react';
+import { navigate } from '../utils/navigate';
+import { toHex } from 'hashtree';
+import { nip19 } from 'nostr-tools';
+import { useAppStore, formatBytes, updateStorageStats } from '../store';
+import { useNostrStore } from '../nostr';
+import { UserRow } from './user/UserRow';
+
+export function SettingsPage() {
+  const peerList = useAppStore(s => s.peers);
+  const peerCountVal = useAppStore(s => s.peerCount);
+  const statsVal = useAppStore(s => s.stats);
+  const rootHashVal = useAppStore(s => s.rootHash);
+  const myPeerId = useAppStore(s => s.myPeerId);
+  const relayList = useNostrStore(s => s.relays);
+  const loggedIn = useNostrStore(s => s.isLoggedIn);
+
+  // Fetch storage stats on mount
+  useEffect(() => {
+    updateStorageStats();
+  }, []);
+
+  // Extract uuid from peerId (format: "pubkey:uuid")
+  const getPeerUuid = (peerId: string) => peerId.split(':')[1] || peerId;
+
+  const stateColor = (state: string) => {
+    switch (state) {
+      case 'connected': return '#3fb950';
+      case 'connecting': return '#d29922';
+      case 'failed': return '#f85149';
+      default: return '#8b949e';
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
+      {/* Header */}
+      <div className="h-12 px-4 flex items-center gap-3 border-b border-surface-3 bg-surface-1 shrink-0">
+        <button
+          onClick={() => navigate('/')}
+          className="bg-transparent border-none text-text-2 cursor-pointer p-1 hover:bg-surface-2 rounded"
+        >
+          <span className="i-lucide-arrow-left text-lg" />
+        </button>
+        <span className="font-semibold text-text-1">Settings</span>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 w-full max-w-md mx-auto">
+        {/* Relays */}
+        <div>
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">
+            Relays ({relayList.length})
+          </h3>
+          <div className="bg-surface-2 rounded divide-y divide-surface-3">
+            {relayList.map((relay) => {
+              const url = new URL(relay);
+              return (
+                <div key={relay} className="flex items-center gap-2 p-3 text-sm">
+                  <span className="w-2 h-2 rounded-full bg-success shrink-0" />
+                  <span className="text-text-1 truncate">{url.hostname}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Peers */}
+        <div>
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">
+            Peers ({peerCountVal})
+          </h3>
+          {myPeerId && (
+            <div className="text-xs text-muted mb-2 font-mono">
+              Your ID: {myPeerId}
+            </div>
+          )}
+          {!loggedIn ? (
+            <div className="bg-surface-2 rounded p-3 text-sm text-muted">
+              Login to connect with peers
+            </div>
+          ) : peerList.length === 0 ? (
+            <div className="bg-surface-2 rounded p-3 text-sm text-muted">
+              No peers connected
+            </div>
+          ) : (
+            <div className="bg-surface-2 rounded divide-y divide-surface-3">
+              {peerList.map((peer) => (
+                <div
+                  key={peer.peerId}
+                  className="flex items-center gap-2 p-3 text-sm cursor-pointer hover:bg-surface-3"
+                  onClick={() => navigate(`/${nip19.npubEncode(peer.pubkey)}`)}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ background: stateColor(peer.state) }}
+                  />
+                  <UserRow
+                    pubkey={peer.pubkey}
+                    description={peer.isSelf ? 'You' : peer.state}
+                    avatarSize={32}
+                    className="flex-1 min-w-0"
+                  />
+                  <span className="text-xs text-muted font-mono shrink-0">
+                    {getPeerUuid(peer.peerId).slice(0, 8)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Current Tree Stats */}
+        <div>
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">Local Storage</h3>
+          <div className="bg-surface-2 rounded p-3 text-sm space-y-2">
+            <div className="flex justify-between">
+              <span className="text-muted">Items</span>
+              <span className="text-text-1">{statsVal.items.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Size</span>
+              <span className="text-text-1">{formatBytes(statsVal.bytes)}</span>
+            </div>
+            {rootHashVal && (
+              <div className="pt-2 border-t border-surface-3">
+                <span className="text-muted text-xs block mb-1">Root Hash</span>
+                <code className="text-xs text-text-3 font-mono break-all">
+                  {toHex(rootHashVal)}
+                </code>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
