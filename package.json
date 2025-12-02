@@ -1,80 +1,38 @@
 {
-  "name": "hashtree",
+  "name": "hashtree-monorepo",
   "version": "0.1.0",
-  "description": "Simple content-addressed merkle tree with KV storage",
+  "private": true,
+  "type": "module",
+  "description": "HashTree monorepo",
   "packageManager": "pnpm@10.23.0",
   "pnpm": {
     "onlyBuiltDependencies": [
       "wrtc"
     ]
   },
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
-  "sideEffects": false,
   "scripts": {
-    "build": "tsc",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "build": "pnpm -r build",
+    "build:hashtree": "pnpm --filter hashtree build",
+    "build:web": "pnpm --filter hashtree-web build",
+    "dev": "pnpm --filter hashtree-web dev",
+    "test": "pnpm --filter hashtree test",
+    "test:watch": "pnpm --filter hashtree test:watch",
     "test:e2e": "playwright test",
-    "dev:example": "vite --config examples/explorer/vite.config.ts",
-    "lint": "eslint src examples/explorer/src",
-    "lint:fix": "eslint src examples/explorer/src --fix"
-  },
-  "keywords": [
-    "merkle",
-    "content-addressed",
-    "hash",
-    "tree",
-    "storage",
-    "browser"
-  ],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "@noble/hashes": "^2.0.1",
-    "@nostr-dev-kit/ndk": "^2.18.1",
-    "@nostr-dev-kit/ndk-cache-dexie": "^2.6.44",
-    "@scure/base": "^2.0.0",
-    "@scure/bip39": "^2.0.0",
-    "@types/ws": "^8.18.1",
-    "cbor2": "^2.0.1",
-    "coco-cashu-core": "file:./vendor/coco-cashu-core",
-    "coco-cashu-indexeddb": "file:./vendor/coco-cashu-indexeddb",
-    "markdown-to-jsx": "^9.1.2",
-    "minidenticons": "^4.2.1",
-    "nostr-tools": "^2.18.2",
-    "react-router-dom": "^7.6.1",
-    "zustand": "^5.0.8"
+    "lint": "eslint packages/hashtree/src packages/hashtree-web/src",
+    "lint:fix": "eslint packages/hashtree/src packages/hashtree-web/src --fix"
   },
   "devDependencies": {
     "@esbuild/linux-arm64": "^0.27.0",
-    "@iconify-json/lucide": "^1.2.75",
+    "@nostr-dev-kit/ndk": "^2.18.1",
     "@playwright/test": "^1.57.0",
     "@rollup/rollup-linux-arm64-gnu": "^4.53.3",
     "@rollup/rollup-linux-x64-gnu": "^4.53.3",
-    "@types/react": "^19.1.6",
-    "@types/react-dom": "^19.1.5",
+    "@types/ws": "^8.18.1",
     "@typescript-eslint/eslint-plugin": "^8.48.0",
     "@typescript-eslint/parser": "^8.48.0",
-    "@unocss/preset-icons": "^66.5.9",
-    "@unocss/preset-typography": "^66.5.9",
-    "@vitejs/plugin-react": "^4.5.2",
     "eslint": "^9.39.1",
-    "happy-dom": "^15.0.0",
-    "open-props": "^1.7.16",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "nostr-tools": "^2.18.2",
     "typescript": "^5.3.0",
-    "unocss": "^66.5.9",
-    "vite": "^5.0.0",
-    "vitest": "^2.0.0",
     "ws": "^8.18.3"
   }
 }

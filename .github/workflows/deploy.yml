@@ -30,13 +30,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build explorer
-        run: pnpm vite build --config examples/explorer/vite.config.ts
+        run: pnpm --filter hashtree-web build
         env:
           GITHUB_PAGES: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: examples/explorer/dist
+          path: packages/hashtree-web/dist
 
   deploy:
     needs: build

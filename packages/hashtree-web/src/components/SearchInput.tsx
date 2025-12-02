@@ -95,7 +95,7 @@ export function SearchInput() {
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         placeholder="npub or hash..."
-        className="bg-transparent border-none outline-none text-sm text-text-1 placeholder:text-muted w-24 lg:w-36"
+        className="bg-transparent border-none outline-none text-sm text-text-1 placeholder:text-muted w-40 lg:w-64"
       />
     </div>
   );

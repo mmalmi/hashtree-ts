@@ -11,8 +11,8 @@ export default defineConfig({
   root: resolve(__dirname),
   resolve: {
     alias: {
-      'hashtree': resolve(__dirname, '../../src/index.ts'),
-      'hashtree/webrtc': resolve(__dirname, '../../src/webrtc/index.ts'),
+      'hashtree': resolve(__dirname, '../hashtree/src/index.ts'),
+      'hashtree/webrtc': resolve(__dirname, '../hashtree/src/webrtc/index.ts'),
     },
   },
   server: {

@@ -4,10 +4,8 @@
  * This module exposes the WebRTC test functionality to window for Playwright tests.
  */
 
-import { WebRTCStore } from '../../../src/webrtc/store.js';
-import { MemoryStore } from '../../../src/store/memory.js';
+import { WebRTCStore, MemoryStore, sha256 } from 'hashtree';
 import { generateSecretKey, getPublicKey, finalizeEvent, nip04 } from 'nostr-tools';
-import { sha256 } from '../../../src/hash.js';
 
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
