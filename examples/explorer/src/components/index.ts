@@ -1,6 +1,6 @@
 export { FileBrowser } from './FileBrowser';
 export { Preview, FilePreview } from './Preview';
-export { CreateModal, RenameModal } from './Modal';
+export { CreateModal, RenameModal, ForkModal } from './Modal';
 export { NostrLogin } from './NostrLogin';
 export { ConnectivityIndicator } from './ConnectivityIndicator';
 export { SearchInput } from './SearchInput';

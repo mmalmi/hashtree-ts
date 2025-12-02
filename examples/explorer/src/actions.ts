@@ -308,6 +308,35 @@ export function clearStore() {
   navigate('/');
 }
 
+// Fork a directory as a new top-level tree
+export async function forkTree(dirHash: Hash, name: string): Promise<boolean> {
+  if (!name) return false;
+
+  const { saveHashtree } = await import('./nostr');
+  const rootHex = toHex(dirHash);
+
+  const nostrState = useNostrStore.getState();
+  const appState = useAppStore.getState();
+
+  if (!nostrState.npub || !nostrState.pubkey) return false;
+
+  useNostrStore.getState().setSelectedTree({
+    id: '',
+    name,
+    pubkey: nostrState.pubkey,
+    rootHash: rootHex,
+    created_at: Math.floor(Date.now() / 1000),
+  });
+
+  appState.setRootHash(dirHash);
+
+  const success = await saveHashtree(name, rootHex);
+  if (success) {
+    navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}`);
+  }
+  return success;
+}
+
 // Create a new tree (top-level folder on nostr or local)
 export async function createTree(name: string): Promise<boolean> {
   if (!name) return false;

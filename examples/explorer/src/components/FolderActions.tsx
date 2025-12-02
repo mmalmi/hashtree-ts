@@ -2,10 +2,12 @@
  * Shared folder action buttons - used in FileBrowser and Preview
  */
 import { Link } from 'react-router-dom';
-import { openCreateModal, openRenameModal } from '../hooks/useModals';
+import { fromHex } from 'hashtree';
+import { openCreateModal, openRenameModal, openForkModal } from '../hooks/useModals';
 import { useUpload } from '../hooks/useUpload';
-import { useRoute } from '../hooks';
+import { useRoute, useTrees } from '../hooks';
 import { deleteCurrentFolder } from '../actions';
+import { useNostrStore } from '../nostr';
 
 interface FolderActionsProps {
   dirHash?: string | null;
@@ -13,13 +15,41 @@ interface FolderActionsProps {
   compact?: boolean;
 }
 
+// Suggest a fork name - use dirName unless it already exists as a top-level tree
+function suggestForkName(dirName: string, existingTreeNames: string[]): string {
+  if (!existingTreeNames.includes(dirName)) {
+    return dirName;
+  }
+  // Add suffix to find unique name
+  let i = 2;
+  while (existingTreeNames.includes(`${dirName}-${i}`)) {
+    i++;
+  }
+  return `${dirName}-${i}`;
+}
+
 export function FolderActions({ dirHash, canEdit, compact = false }: FolderActionsProps) {
   const { uploadFiles } = useUpload();
   const route = useRoute();
+  const userNpub = useNostrStore(s => s.npub);
+
+  // Get user's own trees for fork name suggestions
+  const ownTrees = useTrees(userNpub);
+  const ownTreeNames = ownTrees.map(t => t.name);
 
   // Check if we're in a subdirectory (not root)
   const isSubdir = route.path.length > 0;
   const currentDirName = isSubdir ? route.path[route.path.length - 1] : null;
+
+  // For fork, use current dir name or tree name as suggestion
+  const forkBaseName = currentDirName || route.treeName || 'folder';
+
+  // Handle fork button click
+  const handleFork = () => {
+    if (!dirHash) return;
+    const suggestedName = suggestForkName(forkBaseName, ownTreeNames);
+    openForkModal(fromHex(dirHash), suggestedName);
+  };
 
   if (!dirHash && !canEdit) return null;
 
@@ -35,14 +65,20 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
   return (
     <div className="flex flex-row flex-wrap items-center gap-2">
       {dirHash && (
-        <Link
-          to={`/h/${dirHash}`}
-          className={`btn-ghost no-underline ${btnClass}`}
-          title={dirHash}
-        >
-          <span className="i-lucide-link" />
-          Permalink
-        </Link>
+        <>
+          <Link
+            to={`/h/${dirHash}`}
+            className={`btn-ghost no-underline ${btnClass}`}
+            title={dirHash}
+          >
+            <span className="i-lucide-link" />
+            Permalink
+          </Link>
+          <button onClick={handleFork} className={`btn-ghost ${btnClass}`} title="Fork as new top-level folder">
+            <span className="i-lucide-git-fork" />
+            Fork
+          </button>
+        </>
       )}
       {canEdit && (
         <>

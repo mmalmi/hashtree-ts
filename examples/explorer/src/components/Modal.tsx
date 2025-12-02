@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
-import { useModals, closeCreateModal, closeRenameModal, setModalInput } from '../hooks/useModals';
-import { createFile, createFolder, createTree, renameEntry } from '../actions';
+import { useModals, closeCreateModal, closeRenameModal, closeForkModal, setModalInput } from '../hooks/useModals';
+import { createFile, createFolder, createTree, renameEntry, forkTree } from '../actions';
 
 export function CreateModal() {
   const { showCreateModal, createModalType, modalInput } = useModals();
@@ -96,6 +96,50 @@ export function RenameModal() {
         </button>
         <button onClick={handleSubmit} className="btn-success">
           Rename
+        </button>
+      </div>
+    </ModalBase>
+  );
+}
+
+export function ForkModal() {
+  const { showForkModal, forkTarget, modalInput } = useModals();
+
+  if (!showForkModal || !forkTarget) return null;
+
+  const handleSubmit = async () => {
+    const name = modalInput.trim();
+    if (!name) return;
+
+    await forkTree(forkTarget.dirHash, name);
+    closeForkModal();
+  };
+
+  return (
+    <ModalBase
+      title="Fork as New Folder"
+      onClose={closeForkModal}
+    >
+      <input
+        type="text"
+        placeholder="Folder name..."
+        value={modalInput}
+        onChange={(e) => setModalInput(e.target.value)}
+        className="w-full input"
+        autoFocus
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') handleSubmit();
+        }}
+      />
+      <div className="flex gap-2 mt-4">
+        <button
+          onClick={closeForkModal}
+          className="btn-ghost"
+        >
+          Cancel
+        </button>
+        <button onClick={handleSubmit} className="btn-success">
+          Fork
         </button>
       </div>
     </ModalBase>

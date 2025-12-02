@@ -72,9 +72,13 @@ export function Preview() {
     const tree = getTree();
     const fullPath = [...currentPath, urlFileName].join('/');
 
-    tree.resolvePath(rootHash, fullPath).then(hash => {
+    tree.resolvePath(rootHash, fullPath).then(async hash => {
       if (!cancelled && hash) {
-        setResolvedEntry({ name: urlFileName, hash });
+        // Check if it's a directory - don't set as file entry
+        const isDir = await tree.isDirectory(hash);
+        if (!cancelled && !isDir) {
+          setResolvedEntry({ name: urlFileName, hash });
+        }
       }
     });
 

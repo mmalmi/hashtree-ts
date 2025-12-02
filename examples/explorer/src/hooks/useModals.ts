@@ -5,11 +5,18 @@ import { useSyncExternalStore } from 'react';
 
 type ModalType = 'file' | 'folder' | 'tree';
 
+interface ForkTarget {
+  dirHash: Uint8Array;
+  suggestedName: string;
+}
+
 interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
   showRenameModal: boolean;
   renameTarget: string; // Original name of item being renamed
+  showForkModal: boolean;
+  forkTarget: ForkTarget | null;
   modalInput: string;
 }
 
@@ -19,6 +26,8 @@ let state: ModalState = {
   createModalType: 'file',
   showRenameModal: false,
   renameTarget: '',
+  showForkModal: false,
+  forkTarget: null,
   modalInput: '',
 };
 
@@ -58,6 +67,16 @@ export function closeRenameModal() {
   emit();
 }
 
+export function openForkModal(dirHash: Uint8Array, suggestedName: string) {
+  state = { ...state, showForkModal: true, forkTarget: { dirHash, suggestedName }, modalInput: suggestedName };
+  emit();
+}
+
+export function closeForkModal() {
+  state = { ...state, showForkModal: false, forkTarget: null, modalInput: '' };
+  emit();
+}
+
 export function setModalInput(input: string) {
   state = { ...state, modalInput: input };
   emit();
@@ -74,6 +93,8 @@ export function useModals() {
     closeCreateModal,
     openRenameModal,
     closeRenameModal,
+    openForkModal,
+    closeForkModal,
     setModalInput,
   };
 }
