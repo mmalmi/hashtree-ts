@@ -9,6 +9,7 @@ interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
   showRenameModal: boolean;
+  renameTarget: string; // Original name of item being renamed
   modalInput: string;
 }
 
@@ -17,6 +18,7 @@ let state: ModalState = {
   showCreateModal: false,
   createModalType: 'file',
   showRenameModal: false,
+  renameTarget: '',
   modalInput: '',
 };
 
@@ -47,12 +49,12 @@ export function closeCreateModal() {
 }
 
 export function openRenameModal(currentName: string) {
-  state = { ...state, showRenameModal: true, modalInput: currentName };
+  state = { ...state, showRenameModal: true, renameTarget: currentName, modalInput: currentName };
   emit();
 }
 
 export function closeRenameModal() {
-  state = { ...state, showRenameModal: false, modalInput: '' };
+  state = { ...state, showRenameModal: false, renameTarget: '', modalInput: '' };
   emit();
 }
 

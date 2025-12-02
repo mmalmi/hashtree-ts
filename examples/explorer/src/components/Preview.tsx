@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import Markdown from 'markdown-to-jsx';
-import { toHex } from 'hashtree';
+import { toHex, fromHex } from 'hashtree';
 import { LiveVideo, LiveVideoFromHash } from './LiveVideo';
 import { StreamView } from './stream';
 import { FolderActions } from './FolderActions';
@@ -233,11 +233,9 @@ export function Preview() {
                 }
                 navigate('/' + parts.map(encodeURIComponent).join('/'));
               }}
-              className="bg-transparent border-none text-accent cursor-pointer p-1 lg:hidden"
+              className="bg-transparent border-none text-text-1 cursor-pointer p-1 lg:hidden"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M19 12H5M12 19l-7-7 7-7" />
-              </svg>
+              <span className="i-lucide-chevron-left text-lg" />
             </button>
           )}
           {entry?.name || urlFileName || ''}
@@ -259,7 +257,7 @@ export function Preview() {
               Download
             </button>
             <Link
-              to={`/h/${toHex(entry.hash)}/${encodeURIComponent(entry.name)}`}
+              to={`/f/${toHex(entry.hash)}/${encodeURIComponent(entry.name)}`}
               className="btn-ghost no-underline"
               title={toHex(entry.hash)}
             >
@@ -356,14 +354,14 @@ export function Preview() {
             <LiveVideoFromHash hash={entry.hash} mimeType={mimeType} />
           )
         ) : content ? (
-          <ContentView data={content} filename={entry.name} />
+          <ContentView data={content} filename={entry.name} onDownload={handleDownload} />
         ) : null}
       </div>
     </div>
   );
 }
 
-function ContentView({ data, filename }: { data: Uint8Array; filename?: string }) {
+function ContentView({ data, filename, onDownload }: { data: Uint8Array; filename?: string; onDownload?: () => void }) {
   const text = decodeAsText(data);
   const mimeType = getMimeType(filename);
   const blobUrl = useMemo(() => {
@@ -447,18 +445,17 @@ function ContentView({ data, filename }: { data: Uint8Array; filename?: string }
     }
   }
 
-  // Binary fallback - hex dump
+  // Binary/unsupported format fallback - show download pane (matches upload zone size)
   return (
-    <div>
-      <p className="text-muted mb-4">
-        Binary file ({formatBytes(data.length)})
-      </p>
-      <code className="text-xs break-all">
-        {Array.from(data.slice(0, 256))
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join(' ')}
-        {data.length > 256 && '...'}
-      </code>
+    <div className="w-full h-full p-3">
+      <div
+        className="w-full h-full flex flex-col items-center justify-center text-accent cursor-pointer hover:bg-accent/10 transition-colors border border-accent/50 rounded-lg"
+        onClick={onDownload}
+      >
+        <span className="i-lucide-download text-4xl mb-2" />
+        <span className="text-sm mb-1">{filename || 'Download file'}</span>
+        <span className="text-xs text-text-2">{formatBytes(data.length)}</span>
+      </div>
     </div>
   );
 }
@@ -682,6 +679,100 @@ function DirectoryActions() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * FilePreview - displays a single file by hash (for /f/ permalink routes)
+ */
+export function FilePreview({ hash, filename }: { hash: string; filename: string }) {
+  const navigate = useNavigate();
+  const [content, setContent] = useState<Uint8Array | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [canGoBack] = useState(() => window.history.length > 1);
+
+  const mimeType = getMimeType(filename);
+  const isVideo = mimeType?.startsWith('video/');
+  const isImage = mimeType?.startsWith('image/');
+  const isHtml = mimeType === 'text/html';
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setContent(null);
+
+    // Skip loading for video - it will stream
+    if (isVideo) {
+      setLoading(false);
+      return;
+    }
+
+    const hashBytes = fromHex(hash);
+    getTree().readFile(hashBytes).then(data => {
+      if (!cancelled) {
+        setContent(data);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [hash, isVideo]);
+
+  const handleDownload = async () => {
+    let data = content;
+    if (!data && isVideo) {
+      data = await getTree().readFile(fromHex(hash));
+    }
+    if (!data) return;
+
+    const blob = new Blob([new Uint8Array(data)], { type: mimeType || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
+      {/* Header */}
+      <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center justify-between bg-surface-1">
+        <span className="font-medium flex items-center gap-2">
+          {canGoBack && (
+            <button
+              onClick={() => navigate(-1)}
+              className="bg-transparent border-none text-text-1 cursor-pointer p-1"
+            >
+              <span className="i-lucide-chevron-left text-lg" />
+            </button>
+          )}
+          {filename}
+        </span>
+        <button onClick={handleDownload} className="btn-ghost" disabled={loading && !isVideo}>
+          Download
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className={`flex-1 overflow-auto ${isVideo || isImage || isHtml ? '' : 'p-4'}`}>
+        {loading ? (
+          <div className="w-full h-full flex items-center justify-center text-muted">Loading...</div>
+        ) : isVideo && mimeType ? (
+          <LiveVideoFromHash hash={fromHex(hash)} mimeType={mimeType} />
+        ) : content ? (
+          <ContentView data={content} filename={filename} onDownload={handleDownload} />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-muted">File not found</div>
+        )}
+      </div>
     </div>
   );
 }

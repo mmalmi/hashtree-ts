@@ -1,5 +1,5 @@
 export { FileBrowser } from './FileBrowser';
-export { Preview } from './Preview';
+export { Preview, FilePreview } from './Preview';
 export { CreateModal, RenameModal } from './Modal';
 export { NostrLogin } from './NostrLogin';
 export { ConnectivityIndicator } from './ConnectivityIndicator';

@@ -1,6 +1,5 @@
 import { ReactNode } from 'react';
 import { useModals, closeCreateModal, closeRenameModal, setModalInput } from '../hooks/useModals';
-import { useSelectedFile, useCurrentDirHash, useDirectoryEntries } from '../hooks';
 import { createFile, createFolder, createTree, renameEntry } from '../actions';
 
 export function CreateModal() {
@@ -60,24 +59,21 @@ export function CreateModal() {
 }
 
 export function RenameModal() {
-  const { showRenameModal, modalInput } = useModals();
-  const currentDirHash = useCurrentDirHash();
-  const { entries } = useDirectoryEntries(currentDirHash);
-  const selectedEntry = useSelectedFile(entries);
+  const { showRenameModal, renameTarget, modalInput } = useModals();
 
-  if (!showRenameModal || !selectedEntry) return null;
+  if (!showRenameModal || !renameTarget) return null;
 
   const handleSubmit = () => {
     const newName = modalInput.trim();
-    if (!newName || !selectedEntry) return;
+    if (!newName || !renameTarget) return;
 
-    renameEntry(selectedEntry.name, newName);
+    renameEntry(renameTarget, newName);
     closeRenameModal();
   };
 
   return (
     <ModalBase
-      title={`Rename: ${selectedEntry.name}`}
+      title={`Rename: ${renameTarget}`}
       onClose={closeRenameModal}
     >
       <input

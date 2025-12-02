@@ -4,6 +4,7 @@ import { toHex, fromHex } from 'hashtree';
 import {
   FileBrowser,
   Preview,
+  FilePreview,
   CreateModal,
   RenameModal,
   NostrLogin,
@@ -240,6 +241,22 @@ function TreeRouteInner() {
   );
 }
 
+// Route: Direct file permalink (displays single file by hash)
+// URL format: #/f/<64-char-hex>/<filename>
+function FileRouteInner() {
+  const { hash, filename } = useParams<{ hash: string; filename: string }>();
+
+  useEffect(() => {
+    useNostrStore.getState().setSelectedTree(null);
+  }, [hash]);
+
+  if (!hash || !filename || !/^[a-f0-9]{64}$/i.test(hash)) {
+    return <div className="p-4 text-muted">Invalid file link</div>;
+  }
+
+  return <FilePreview hash={hash} filename={decodeURIComponent(filename)} />;
+}
+
 // Route: Direct hash navigation (no npub context)
 // URL format: #/h/<64-char-hex>/<optional-path>
 function HashRouteInner() {
@@ -362,6 +379,7 @@ export function App() {
             <Routes>
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/wallet" element={<WalletPage />} />
+              <Route path="/f/:hash/:filename" element={<FileRouteInner />} />
               <Route path="/h/:hash/*" element={<HashRouteInner />} />
               <Route path="/h/:hash" element={<HashRouteInner />} />
               <Route path="/:npub/follows" element={<FollowsRouteInner />} />

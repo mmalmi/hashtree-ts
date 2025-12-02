@@ -148,16 +148,33 @@ export async function renameEntry(oldName: string, newName: string) {
   if (!state.rootHash) return;
 
   const tree = getTree();
-  const currentPath = getCurrentPathFromUrl();
+  const route = parseRoute();
+  const urlPath = route.path;
 
-  const newRoot = await tree.renameEntry(state.rootHash, currentPath, oldName, newName);
+  // Check if we're renaming the current directory (we're inside it)
+  const lastSegment = urlPath.length > 0 ? urlPath[urlPath.length - 1] : null;
+  const isRenamingCurrentDir = lastSegment === oldName && !/\.[a-zA-Z0-9]+$/.test(oldName);
+
+  let parentPath: string[];
+  if (isRenamingCurrentDir) {
+    // Renaming current directory - parent is everything except last segment
+    parentPath = urlPath.slice(0, -1);
+  } else {
+    // Renaming item within current directory
+    parentPath = getCurrentPathFromUrl();
+  }
+
+  const newRoot = await tree.renameEntry(state.rootHash, parentPath, oldName, newName);
   state.setRootHash(newRoot);
   await autosaveIfOwn(toHex(newRoot));
 
-  // Update URL if renamed file was selected
-  const route = parseRoute();
-  const urlFileName = route.path.length > 0 ? route.path[route.path.length - 1] : null;
-  if (urlFileName === oldName) {
+  // Update URL if renamed file/dir was selected or we're inside it
+  if (isRenamingCurrentDir) {
+    // Navigate to the renamed directory
+    const newPath = [...parentPath, newName];
+    const url = buildRouteUrl(route.npub, route.treeName, newPath);
+    navigate(url);
+  } else if (lastSegment === oldName) {
     updateRoute(newName);
   }
 }
@@ -181,6 +198,27 @@ export async function deleteEntry(name: string) {
     const url = buildRouteUrl(route.npub, route.treeName, currentPath);
     navigate(url);
   }
+}
+
+// Delete current folder (must be in a subdirectory)
+export async function deleteCurrentFolder() {
+  const state = useAppStore.getState();
+  if (!state.rootHash) return;
+
+  const route = parseRoute();
+  if (route.path.length === 0) return; // Can't delete root
+
+  const folderName = route.path[route.path.length - 1];
+  const parentPath = route.path.slice(0, -1);
+
+  const tree = getTree();
+  const newRoot = await tree.removeEntry(state.rootHash, parentPath, folderName);
+  state.setRootHash(newRoot);
+  await autosaveIfOwn(toHex(newRoot));
+
+  // Navigate to parent directory
+  const url = buildRouteUrl(route.npub, route.treeName, parentPath);
+  navigate(url);
 }
 
 // Move entry into a directory

@@ -2,9 +2,10 @@
  * Shared folder action buttons - used in FileBrowser and Preview
  */
 import { Link } from 'react-router-dom';
-import { openCreateModal } from '../hooks/useModals';
+import { openCreateModal, openRenameModal } from '../hooks/useModals';
 import { useUpload } from '../hooks/useUpload';
 import { useRoute } from '../hooks';
+import { deleteCurrentFolder } from '../actions';
 
 interface FolderActionsProps {
   dirHash?: string | null;
@@ -15,6 +16,10 @@ interface FolderActionsProps {
 export function FolderActions({ dirHash, canEdit, compact = false }: FolderActionsProps) {
   const { uploadFiles } = useUpload();
   const route = useRoute();
+
+  // Check if we're in a subdirectory (not root)
+  const isSubdir = route.path.length > 0;
+  const currentDirName = isSubdir ? route.path[route.path.length - 1] : null;
 
   if (!dirHash && !canEdit) return null;
 
@@ -71,6 +76,24 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
               <span className="i-lucide-video" />
               Stream
             </Link>
+          )}
+
+          {isSubdir && currentDirName && (
+            <>
+              <button onClick={() => openRenameModal(currentDirName)} className={`btn-ghost ${btnClass}`}>
+                Rename
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm(`Delete folder "${currentDirName}" and all its contents?`)) {
+                    deleteCurrentFolder();
+                  }
+                }}
+                className={`btn-ghost text-danger ${btnClass}`}
+              >
+                Delete
+              </button>
+            </>
           )}
         </>
       )}
