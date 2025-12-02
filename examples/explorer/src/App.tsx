@@ -27,6 +27,25 @@ import { markFilesChanged } from './hooks/useRecentlyChanged';
 import { nip19 } from 'nostr-tools';
 import { useNostrStore } from './nostr';
 import { useSelectedFile, useRoute, addRecent } from './hooks';
+import { useWalletStore, initWallet } from './wallet';
+
+// Wallet link with balance
+function WalletLink() {
+  const balances = useWalletStore(s => s.balances);
+  const totalBalance = useMemo(() => Object.values(balances).reduce((sum, b) => sum + b, 0), [balances]);
+
+  // Initialize wallet on mount
+  useEffect(() => {
+    initWallet();
+  }, []);
+
+  return (
+    <Link to="/wallet" className="flex flex-col items-center text-text-2 hover:text-text-1 p-1 no-underline">
+      <span className="i-lucide-wallet text-base" />
+      <span className="text-[10px] leading-none">{totalBalance}</span>
+    </Link>
+  );
+}
 
 // Logo link that clears fullscreen mode when clicked
 function LogoLink() {
@@ -449,9 +468,7 @@ export function App() {
           <div className="flex items-center gap-2 md:gap-3">
             <div className="hidden md:block"><SearchInput /></div>
             <ConnectivityIndicator />
-            <Link to="/wallet" className="text-text-1 hover:text-text-2 p-1">
-              <span className="i-lucide-wallet text-xl" />
-            </Link>
+            <WalletLink />
             <NostrLogin />
           </div>
         </header>
