@@ -326,7 +326,7 @@ export function Preview() {
         ) : !entry ? (
           <DirectoryActions />
         ) : loading ? (
-          <div className="text-muted p-4">Loading...</div>
+          <div className="w-full h-full flex items-center justify-center text-muted">Loading...</div>
         ) : isVideo && mimeType ? (
           viewedNpub && currentTreeName ? (
             // Use resolver subscription for live updates
@@ -374,7 +374,7 @@ function ContentView({ data, filename }: { data: Uint8Array; filename?: string }
     return (
       <iframe
         src={htmlBlobUrl}
-        className="w-full h-full border-none bg-white"
+        className="block w-full h-full border-none bg-surface-0"
         title={filename}
         sandbox="allow-scripts"
       />
