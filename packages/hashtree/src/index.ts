@@ -27,6 +27,18 @@ export {
 // Hash utilities
 export { sha256 } from './hash.js';
 
+// Encryption utilities
+export {
+  encrypt,
+  decrypt,
+  generateKey,
+  keyToHex,
+  keyFromHex,
+  encryptedSize,
+  plaintextSize,
+  type EncryptionKey,
+} from './crypto.js';
+
 // CBOR codec
 export {
   encodeTreeNode,

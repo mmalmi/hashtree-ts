@@ -1,19 +1,5 @@
 import { test, expect } from '@playwright/test';
-
-// Helper to wait for new user redirect to complete
-async function waitForNewUserRedirect(page: any) {
-  await page.waitForURL(/\/#\/npub.*\/home/, { timeout: 10000 });
-  await expect(page.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
-}
-
-// Filter out rate-limit errors from relay
-function setupPageErrorHandler(page: any) {
-  page.on('pageerror', (err: Error) => {
-    if (!err.message.includes('rate-limited')) {
-      console.log('Page error:', err.message);
-    }
-  });
-}
+import { setupPageErrorHandler, waitForNewUserRedirect } from './test-utils.js';
 
 // Helper to navigate to accounts page
 async function navigateToAccountsPage(page: any) {

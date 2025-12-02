@@ -3,16 +3,9 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { setupPageErrorHandler, waitForNewUserRedirect } from './test-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Helper to wait for new user redirect to complete
-async function waitForNewUserRedirect(page: any) {
-  // New users get redirected to /{npub}/home automatically
-  await page.waitForURL(/\/#\/npub.*\/home/, { timeout: 10000 });
-  // Wait for folder actions to be visible (tree context established)
-  await expect(page.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
-}
 
 // Helper to create tree via modal and navigate into it
 // NOTE: Since new users start in /home, we navigate to root first to create a NEW tree
@@ -41,7 +34,7 @@ async function uploadTempFile(page: any, name: string, content: string | Buffer)
 
 test.describe('Hashtree Explorer', () => {
   test.beforeEach(async ({ page }) => {
-    page.on('pageerror', err => console.log('Page error:', err.message));
+    setupPageErrorHandler(page);
 
     // Go to page first to be able to clear storage
     await page.goto('/');
