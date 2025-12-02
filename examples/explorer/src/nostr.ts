@@ -47,12 +47,15 @@ interface NostrState {
   pubkey: string | null;
   npub: string | null;
   isLoggedIn: boolean;
+  /** True when user was just auto-generated (first visit) - cleared after redirect */
+  isNewUser: boolean;
   selectedTree: HashTreeEvent | null;
   relays: string[];
 
   setPubkey: (pk: string | null) => void;
   setNpub: (npub: string | null) => void;
   setIsLoggedIn: (loggedIn: boolean) => void;
+  setIsNewUser: (isNew: boolean) => void;
   setSelectedTree: (tree: HashTreeEvent | null) => void;
   setRelays: (relays: string[]) => void;
 }
@@ -61,12 +64,14 @@ export const useNostrStore = create<NostrState>((set) => ({
   pubkey: null,
   npub: null,
   isLoggedIn: false,
+  isNewUser: false,
   selectedTree: null,
   relays: DEFAULT_RELAYS,
 
   setPubkey: (pk) => set({ pubkey: pk }),
   setNpub: (npub) => set({ npub }),
   setIsLoggedIn: (loggedIn) => set({ isLoggedIn: loggedIn }),
+  setIsNewUser: (isNew) => set({ isNewUser: isNew }),
   setSelectedTree: (tree) => set({ selectedTree: tree }),
   setRelays: (relays) => set({ relays }),
 }));
@@ -234,6 +239,7 @@ export function generateNewKey(): { nsec: string; npub: string } {
   const npubStr = nip19.npubEncode(pk);
   store.setNpub(npubStr);
   store.setIsLoggedIn(true);
+  store.setIsNewUser(true); // Mark for home redirect
 
   // Save to localStorage
   localStorage.setItem(STORAGE_KEY_LOGIN_TYPE, 'nsec');

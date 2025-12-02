@@ -16,6 +16,7 @@ import {
   FollowsPage,
   StreamView,
   Logo,
+  RecentsView,
 } from './components';
 import { EditProfilePage } from './components/EditProfilePage';
 import {
@@ -25,7 +26,7 @@ import {
 import { markFilesChanged } from './hooks/useRecentlyChanged';
 import { nip19 } from 'nostr-tools';
 import { useNostrStore } from './nostr';
-import { useSelectedFile, useRoute } from './hooks';
+import { useSelectedFile, useRoute, addRecent } from './hooks';
 
 // Logo link that clears fullscreen mode when clicked
 function LogoLink() {
@@ -96,19 +97,37 @@ function ExplorerLayout({ children }: { children: React.ReactNode }) {
 }
 
 // Route: Home (no npub, no tree)
+// Redirects newly generated users to their home folder, shows recents for returning users
 function HomeRoute() {
+  const navigate = useNavigate();
+  const npub = useNostrStore(s => s.npub);
+  const isNewUser = useNostrStore(s => s.isNewUser);
+
   useEffect(() => {
+    // Redirect newly generated users to their home folder
+    if (npub && isNewUser) {
+      useNostrStore.getState().setIsNewUser(false);
+      navigate(`/${npub}/home`, { replace: true });
+      return;
+    }
+
     const appStore = useAppStore.getState();
     const nostrStore = useNostrStore.getState();
 
     appStore.setRootHash(null);
     nostrStore.setSelectedTree(null);
-  }, []);
+  }, [npub, isNewUser, navigate]);
 
+  // Show FileBrowser on left, RecentsView on right (desktop) or just FileBrowser (mobile)
   return (
-    <ExplorerLayout>
-      <FileBrowser />
-    </ExplorerLayout>
+    <>
+      <div className="flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col">
+        <FileBrowser />
+      </div>
+      <div className="hidden lg:flex flex-1 flex-col min-w-0 min-h-0 bg-surface-0">
+        <RecentsView />
+      </div>
+    </>
   );
 }
 
@@ -230,6 +249,15 @@ function TreeRouteInner() {
   useEffect(() => {
     if (!npub || !treeName) return;
     loadFromNostr(npub, treeName, pathParts);
+
+    // Track as recent
+    addRecent({
+      type: 'tree',
+      label: treeName,
+      path: `/${npub}/${treeName}`,
+      npub,
+      treeName,
+    });
   }, [npub, treeName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!npub || !treeName) return null;

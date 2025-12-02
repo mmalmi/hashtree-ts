@@ -560,7 +560,8 @@ function DirectoryActions() {
   const { uploadProgress, uploadFiles } = useUpload();
 
   const canEdit = !viewedNpub || viewedNpub === userNpub || !isLoggedIn;
-  const hasTree = rootHash !== null;
+  // Show actions if we have a tree OR we're in a tree context (empty tree that hasn't been created yet)
+  const hasTreeContext = rootHash !== null || (route.treeName !== null && canEdit);
   const [readmeContent, setReadmeContent] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dirHash = currentDirHash ? toHex(currentDirHash) : null;
@@ -638,14 +639,14 @@ function DirectoryActions() {
       onDrop={handleFileDrop}
     >
       {/* Action buttons */}
-      {hasTree && (
+      {hasTreeContext && (
         <div className="p-3 shrink-0">
           <FolderActions dirHash={dirHash} canEdit={canEdit} />
         </div>
       )}
 
       {/* Upload drop zone */}
-      {hasTree && canEdit && !readmeContent && (
+      {hasTreeContext && canEdit && !readmeContent && (
         <div
           className={`flex-1 mx-3 mb-3 flex items-center justify-center cursor-pointer transition-colors border border-surface-3 rounded-lg ${isDraggingOver ? 'bg-surface-1/50' : 'hover:bg-surface-1/50'}`}
           onClick={uploadProgress ? undefined : openFilePicker}
