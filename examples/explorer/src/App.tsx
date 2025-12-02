@@ -263,6 +263,17 @@ function TreeRouteInner() {
   const { npub, treeName, '*': path } = useParams<{ npub: string; treeName: string; '*': string }>();
   const pathParts = path ? path.split('/').filter(Boolean).map(decodeURIComponent) : [];
 
+  // If first segment is nhash or npath, delegate to that handler
+  // This prevents /nhash1.../filename from matching as /:npub/:treeName/*
+  if (npub && (isNHash(npub) || isNPath(npub))) {
+    // Reconstruct the full path for nhash/npath handling
+    const fullPath = treeName ? (path ? `${treeName}/${path}` : treeName) : '';
+    if (isNHash(npub)) {
+      return <NHashView nhash={npub} />;
+    }
+    return <NPathView npath={npub} />;
+  }
+
   // Load tree from Nostr only when npub or treeName changes (not path)
   // Path changes within tree are handled by FileBrowser reading from store
   useEffect(() => {
@@ -310,16 +321,31 @@ function NpubOrNHashOrNPathRoute() {
 
 // nhash view - displays directory/file by hash (path in URL segments: /nhash1.../path/to/file)
 function NHashView({ nhash }: { nhash: string }) {
+  const route = useRoute();
+
   useEffect(() => {
     useNostrStore.getState().setSelectedTree(null);
 
     try {
       const decoded = nhashDecode(nhash);
       loadFromHash(decoded.hash);
-    } catch {
-      // Invalid nhash
+
+      // Determine type from URL path using extension heuristic
+      const lastSegment = route.path.length > 0 ? route.path[route.path.length - 1] : null;
+      const looksLikeFile = lastSegment ? /\.[a-zA-Z0-9]+$/.test(lastSegment) : false;
+      const label = lastSegment || nhash.slice(0, 12) + '...';
+      const fullPath = route.path.length > 0 ? `/${nhash}/${route.path.join('/')}` : `/${nhash}`;
+
+      // Track as recent with file or dir icon (not hash/link icon)
+      addRecent({
+        type: looksLikeFile ? 'file' : 'dir',
+        label,
+        path: fullPath,
+      });
+    } catch (e) {
+      console.error('[NHashView] Error decoding nhash:', e);
     }
-  }, [nhash]);
+  }, [nhash, route.path]);
 
   try {
     nhashDecode(nhash); // Validate
@@ -564,6 +590,6 @@ function loadFromHash(rootHex: string) {
     const hash = fromHex(rootHex);
     useAppStore.getState().setRootHash(hash);
   } catch {
-    // Hash not in store
+    // Invalid hex format - silently ignore
   }
 }

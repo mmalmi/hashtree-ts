@@ -6,8 +6,21 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Helper to wait for new user redirect to complete
+async function waitForNewUserRedirect(page: any) {
+  // New users get redirected to /{npub}/home automatically
+  await page.waitForURL(/\/#\/npub.*\/home/, { timeout: 10000 });
+  // Wait for folder actions to be visible (tree context established)
+  await expect(page.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
+}
+
 // Helper to create tree via modal and navigate into it
+// NOTE: Since new users start in /home, we navigate to root first to create a NEW tree
 async function createAndEnterTree(page: any, name: string) {
+  // Go to user's tree list first
+  await page.locator('header button[title="My Trees"]').click();
+  await page.waitForTimeout(300);
+
   await page.getByRole('button', { name: 'New Folder' }).click();
   await page.locator('input[placeholder="Folder name..."]').fill(name);
   await page.getByRole('button', { name: 'Create' }).click();
@@ -49,13 +62,16 @@ test.describe('Hashtree Explorer', () => {
 
     // App auto-generates key on first visit, wait for header to appear
     await page.waitForSelector('header span:has-text("Hashtree")', { timeout: 5000 });
+
+    // New users get auto-redirected to their home folder - wait for that
+    await waitForNewUserRedirect(page);
   });
 
   test('should display header and initial state', async ({ page }) => {
     // Header shows app name "Hashtree"
     await expect(page.locator('header').getByText('Hashtree').first()).toBeVisible({ timeout: 5000 });
-    // Shows empty state message (auto-logged in, so shows "No folders yet")
-    await expect(page.getByText('No folders yet')).toBeVisible({ timeout: 5000 });
+    // New users are redirected to their home folder - shows "Empty directory" or folder actions
+    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
   });
 
   test('should create a local tree and upload files', async ({ page }) => {

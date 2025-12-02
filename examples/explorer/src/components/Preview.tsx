@@ -63,7 +63,25 @@ export function Preview() {
 
   // Resolve file hash from path when store entry is not available
   useEffect(() => {
-    if (entryFromStore || !urlFileName || !rootHash) {
+    if (entryFromStore) {
+      setResolvedEntry(null);
+      return;
+    }
+
+    // For permalinks without path, check if rootHash itself is a file
+    if (route.isPermalink && !urlFileName && rootHash) {
+      let cancelled = false;
+      const tree = getTree();
+      tree.isDirectory(rootHash).then(isDir => {
+        if (!cancelled && !isDir) {
+          // The rootHash is the file itself
+          setResolvedEntry({ name: 'file', hash: rootHash });
+        }
+      });
+      return () => { cancelled = true; };
+    }
+
+    if (!urlFileName || !rootHash) {
       setResolvedEntry(null);
       return;
     }
@@ -71,12 +89,12 @@ export function Preview() {
     let cancelled = false;
     const tree = getTree();
 
-    // For permalinks, check if rootHash itself is a file (not a directory)
+    // For permalinks with path, check if rootHash itself is a file (not a directory)
     // In that case, the path is just the filename for display purposes
     if (route.isPermalink) {
       tree.isDirectory(rootHash).then(isDir => {
         if (!cancelled && !isDir) {
-          // The rootHash is the file itself, use it directly
+          // The rootHash is the file itself, use urlFileName for display
           setResolvedEntry({ name: urlFileName, hash: rootHash });
         } else if (!cancelled && isDir) {
           // It's a directory, resolve the path within it

@@ -8,7 +8,7 @@ const STORAGE_KEY = 'hashtree:recents';
 const MAX_RECENTS = 20;
 
 export interface RecentItem {
-  type: 'tree' | 'file' | 'hash';
+  type: 'tree' | 'file' | 'dir' | 'hash';
   /** Display label */
   label: string;
   /** URL path to navigate to */
@@ -28,7 +28,23 @@ const listeners = new Set<() => void>();
 function loadRecents(): RecentItem[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : [];
+    if (!stored) return [];
+    const items: RecentItem[] = JSON.parse(stored);
+    // Clean up: hash type items shouldn't have npub
+    let cleaned = false;
+    const cleanedItems = items.map(item => {
+      if (item.type === 'hash' && item.npub) {
+        cleaned = true;
+        const { npub, ...rest } = item;
+        return rest;
+      }
+      return item;
+    });
+    // Persist cleaned data
+    if (cleaned) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanedItems));
+    }
+    return cleanedItems;
   } catch {
     return [];
   }

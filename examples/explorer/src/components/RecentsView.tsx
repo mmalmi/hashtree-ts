@@ -3,6 +3,8 @@
  */
 import { Link } from 'react-router-dom';
 import { useRecents, clearRecents } from '../hooks';
+import { npubToPubkey } from '../nostr';
+import { Avatar } from './user';
 
 export function RecentsView() {
   const recents = useRecents();
@@ -35,6 +37,13 @@ export function RecentsView() {
             to={item.path}
             className="p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-1"
           >
+            {item.npub ? (
+              <Avatar pubkey={npubToPubkey(item.npub) || item.npub} size={24} className="shrink-0" />
+            ) : (
+              <span className="shrink-0 w-6 h-6 flex items-center justify-center">
+                <span className="i-lucide-hash text-accent" />
+              </span>
+            )}
             <span className={`shrink-0 ${getIcon(item.type)}`} />
             <div className="flex-1 min-w-0">
               <div className="truncate">{item.label}</div>
@@ -57,11 +66,11 @@ export function RecentsView() {
 function getIcon(type: string): string {
   switch (type) {
     case 'tree':
+    case 'dir':
+    case 'hash': // Legacy: treat old hash items as directories
       return 'i-lucide-folder text-warning';
     case 'file':
       return 'i-lucide-file text-text-2';
-    case 'hash':
-      return 'i-lucide-link text-accent';
     default:
       return 'i-lucide-folder text-warning';
   }
