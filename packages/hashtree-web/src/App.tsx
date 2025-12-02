@@ -3,7 +3,7 @@ import { HashRouter, Routes, Route, useParams, Link, useLocation, useNavigate } 
 import { toHex, fromHex, nhashDecode, npathDecode, isNHash, isNPath } from 'hashtree';
 import {
   FileBrowser,
-  Preview,
+  Viewer,
   CreateModal,
   RenameModal,
   ForkModal,
@@ -17,6 +17,7 @@ import {
   StreamView,
   Logo,
   RecentsView,
+  FollowsTreesView,
   AccountsPage,
 } from './components';
 import { EditProfilePage } from './components/EditProfilePage';
@@ -89,7 +90,7 @@ function ExplorerLayout({ children }: { children: React.ReactNode }) {
   if (isFullscreen) {
     return (
       <div className="flex flex-1 flex-col min-w-0 min-h-0">
-        <Preview />
+        <Viewer />
       </div>
     );
   }
@@ -104,13 +105,13 @@ function ExplorerLayout({ children }: { children: React.ReactNode }) {
       }>
         {children}
       </div>
-      {/* Preview - shown on mobile when file selected */}
+      {/* Viewer - shown on mobile when file selected */}
       <div className={
         hasFileSelected
           ? 'flex flex-1 flex-col min-w-0 min-h-0'
           : 'hidden lg:flex flex-1 flex-col min-w-0 min-h-0'
       }>
-        <Preview />
+        <Viewer />
       </div>
     </>
   );
@@ -138,14 +139,21 @@ function HomeRoute() {
     nostrStore.setSelectedTree(null);
   }, [npub, isNewUser, navigate]);
 
-  // Show FileBrowser on left, RecentsView on right (desktop) or just FileBrowser (mobile)
+  // Show FileBrowser on left, Recents+Follows on right (desktop) or just FileBrowser (mobile)
   return (
     <>
       <div className="flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col">
         <FileBrowser />
       </div>
       <div className="hidden lg:flex flex-1 flex-col min-w-0 min-h-0 bg-surface-0">
-        <RecentsView />
+        <div className="flex flex-1 min-h-0">
+          <div className="flex-1 flex flex-col border-r border-surface-3 min-w-0">
+            <FollowsTreesView />
+          </div>
+          <div className="flex-1 flex flex-col min-w-0">
+            <RecentsView />
+          </div>
+        </div>
       </div>
     </>
   );
@@ -380,8 +388,8 @@ function NPathView({ npath }: { npath: string }) {
     }
   }, [npath, navigate]);
 
-  // Show loading while redirecting
-  return <div className="p-4 text-muted">Loading...</div>;
+  // Brief render while redirecting
+  return null;
 }
 
 // User view (from UserRouteInner)

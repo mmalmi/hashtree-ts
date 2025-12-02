@@ -59,7 +59,7 @@ export function NostrLogin() {
         className="bg-transparent border-none cursor-pointer p-0 hover:opacity-80"
         title="My Trees (double-click for accounts)"
       >
-        <Avatar pubkey={pubkey} size={32} />
+        <Avatar key={pubkey} pubkey={pubkey} size={32} />
       </button>
     );
   }

@@ -1,6 +1,7 @@
 import { navigate } from '../utils/navigate';
 import { useProfile } from '../hooks/useProfile';
 import { useFollows } from '../hooks/useFollows';
+import { useDelayedLoading } from '../hooks/useDelayedLoading';
 import { Avatar, Name } from './user';
 import { nip19 } from 'nostr-tools';
 
@@ -10,6 +11,7 @@ interface Props {
 
 export function FollowsPage({ npub }: Props) {
   const follows = useFollows(npub);
+  const showLoading = useDelayedLoading(!follows);
 
   const pubkeyHex = (() => {
     try {
@@ -35,7 +37,7 @@ export function FollowsPage({ npub }: Props) {
             <Name pubkey={pubkeyHex} />
           </div>
           <div className="text-xs text-text-2">
-            {follows ? `${follows.follows.length} following` : 'Loading...'}
+            {follows ? `${follows.follows.length} following` : showLoading ? 'Loading...' : ''}
           </div>
         </div>
       </div>
@@ -43,7 +45,7 @@ export function FollowsPage({ npub }: Props) {
       {/* List */}
       <div className="flex-1 overflow-y-auto">
         {!follows ? (
-          <div className="p-4 text-text-2">Loading...</div>
+          showLoading ? <div className="p-4 text-text-2">Loading...</div> : null
         ) : follows.follows.length === 0 ? (
           <div className="p-4 text-text-2">Not following anyone</div>
         ) : (

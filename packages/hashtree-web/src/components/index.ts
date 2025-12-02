@@ -1,5 +1,5 @@
 export { FileBrowser } from './FileBrowser';
-export { Preview } from './Preview';
+export { Viewer } from './Viewer';
 export { CreateModal, RenameModal, ForkModal } from './Modal';
 export { NostrLogin } from './NostrLogin';
 export { ConnectivityIndicator } from './ConnectivityIndicator';
@@ -13,4 +13,5 @@ export { Avatar, Name, UserRow, Minidenticon } from './user';
 export { StreamView } from './stream';
 export { Logo } from './Logo';
 export { RecentsView } from './RecentsView';
+export { FollowsTreesView } from './FollowsTreesView';
 export { AccountsPage } from './AccountsPage';

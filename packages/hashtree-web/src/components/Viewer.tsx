@@ -20,6 +20,7 @@ import { useSelectedFile, useRoute, useCurrentDirHash, useDirectoryEntries } fro
 import { useUpload } from '../hooks/useUpload';
 import { getResolverKey } from '../refResolver';
 import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
+import { useDelayedLoading } from '../hooks/useDelayedLoading';
 
 // Debounce hook
 function useDebounce<T extends (...args: unknown[]) => unknown>(fn: T, delay: number): T {
@@ -31,7 +32,7 @@ function useDebounce<T extends (...args: unknown[]) => unknown>(fn: T, delay: nu
   }, [fn, delay]) as T;
 }
 
-export function Preview() {
+export function Viewer() {
   const navigate = useNavigate();
   const location = useLocation();
   const rootHash = useAppStore(s => s.rootHash);
@@ -57,6 +58,7 @@ export function Preview() {
   // File state - content loaded from hash
   const [content, setContent] = useState<Uint8Array | null>(null);
   const [loading, setLoading] = useState(false);
+  const showLoading = useDelayedLoading(loading);
   const [fileHash, setFileHash] = useState<Uint8Array | null>(null);
   const [resolvedEntry, setResolvedEntry] = useState<{ name: string; hash: Uint8Array; size?: number } | null>(null);
 
@@ -395,7 +397,7 @@ export function Preview() {
         ) : !entry ? (
           <DirectoryActions />
         ) : loading ? (
-          <div className="w-full h-full flex items-center justify-center text-muted">Loading...</div>
+          showLoading ? <div className="w-full h-full flex items-center justify-center text-muted">Loading...</div> : null
         ) : isVideo && mimeType ? (
           viewedNpub && currentTreeName ? (
             // Use resolver subscription for live updates

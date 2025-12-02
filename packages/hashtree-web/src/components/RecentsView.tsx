@@ -1,10 +1,9 @@
 /**
  * RecentsView - shows recently visited locations on the home page
  */
-import { Link } from 'react-router-dom';
 import { useRecents, clearRecents } from '../hooks';
 import { npubToPubkey } from '../nostr';
-import { Avatar } from './user';
+import { TreeRow } from './TreeRow';
 
 export function RecentsView() {
   const recents = useRecents();
@@ -32,56 +31,31 @@ export function RecentsView() {
       </div>
       <div className="flex-1 overflow-auto">
         {recents.map((item, i) => (
-          <Link
+          <TreeRow
             key={`${item.path}-${i}`}
             to={item.path}
-            className="p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-1"
-          >
-            {item.npub ? (
-              <Avatar pubkey={npubToPubkey(item.npub) || item.npub} size={24} className="shrink-0" />
-            ) : (
-              <span className="shrink-0 w-6 h-6 flex items-center justify-center">
-                <span className="i-lucide-hash text-accent" />
-              </span>
-            )}
-            <span className={`shrink-0 ${getIcon(item.type)}`} />
-            <div className="flex-1 min-w-0">
-              <div className="truncate">{item.label}</div>
-              {item.treeName && (
-                <div className="text-xs text-text-3 truncate">
-                  {item.treeName}
-                </div>
-              )}
-            </div>
-            <span className="text-xs text-text-3 shrink-0">
-              {formatTimeAgo(item.timestamp)}
-            </span>
-          </Link>
+            pubkey={item.npub ? npubToPubkey(item.npub) || undefined : undefined}
+            npub={item.npub}
+            icon={getIcon(item.type)}
+            label={item.label}
+            subtitle={item.treeName}
+            timestamp={item.timestamp}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function getIcon(type: string): string {
+function getIcon(type: string): 'folder' | 'file' | 'hash' {
   switch (type) {
     case 'tree':
     case 'dir':
-    case 'hash': // Legacy: treat old hash items as directories
-      return 'i-lucide-folder text-warning';
+    case 'hash':
+      return 'folder';
     case 'file':
-      return 'i-lucide-file text-text-2';
+      return 'file';
     default:
-      return 'i-lucide-folder text-warning';
+      return 'folder';
   }
-}
-
-function formatTimeAgo(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-
-  if (seconds < 60) return 'now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
-  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d`;
-  return `${Math.floor(seconds / 604800)}w`;
 }
