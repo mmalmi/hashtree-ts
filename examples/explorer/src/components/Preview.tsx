@@ -138,6 +138,10 @@ export function Preview() {
         setContent(data);
         setLoading(false);
       }
+    }).catch(() => {
+      if (!cancelled) {
+        setLoading(false);
+      }
     });
 
     return () => { cancelled = true; };
@@ -207,10 +211,11 @@ export function Preview() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
-      {/* Header */}
-      <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center justify-between bg-surface-1">
-        <span className="font-medium flex items-center gap-2">
-          {(entry || urlFileName) && (
+      {/* Header - only show when file selected */}
+      {(entry || urlFileName) && (
+        <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center justify-between bg-surface-1">
+          <span className="font-medium flex items-center gap-2">
+            {(entry || urlFileName) && (
             <button
               onClick={() => {
                 // Navigate to directory (remove file from URL)
@@ -304,7 +309,8 @@ export function Preview() {
             </button>
           </div>
         )}
-      </div>
+        </div>
+      )}
 
       {/* Content */}
       <div className={`flex-1 overflow-auto ${isVideo || isHtml ? '' : 'p-4'}`}>

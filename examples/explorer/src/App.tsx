@@ -9,12 +9,12 @@ import {
   NostrLogin,
   ConnectivityIndicator,
   SearchInput,
-  AppMenu,
   SettingsPage,
   WalletPage,
   ProfileView,
   FollowsPage,
   StreamView,
+  Logo,
 } from './components';
 import { EditProfilePage } from './components/EditProfilePage';
 import {
@@ -23,10 +23,7 @@ import {
 } from './store';
 import { markFilesChanged } from './hooks/useRecentlyChanged';
 import { nip19 } from 'nostr-tools';
-import {
-  useNostrStore,
-  restoreSession,
-} from './nostr';
+import { useNostrStore } from './nostr';
 import { useSelectedFile, useRoute } from './hooks';
 
 // Shared layout wrapper - uses URL-derived selection to show/hide on mobile
@@ -230,11 +227,6 @@ export function App() {
   const selectedTree = useNostrStore(s => s.selectedTree);
   const lastRootHashRef = useRef<string | null>(null);
 
-  // Restore nostr session on mount
-  useEffect(() => {
-    restoreSession();
-  }, []);
-
   // React to selectedTree updates (from nostr subscription)
   useEffect(() => {
     const handleTreeUpdate = async () => {
@@ -312,12 +304,14 @@ export function App() {
         {/* Top bar */}
         <header className="h-12 shrink-0 bg-surface-1 border-b border-surface-3 flex items-center justify-between px-3 md:px-4">
           <div className="flex items-center gap-2 md:gap-3">
-            <AppMenu />
-            <Link to="/" className="font-semibold text-text-1 no-underline">Hashtree</Link>
+            <Link to="/" className="no-underline"><Logo /></Link>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
             <div className="hidden md:block"><SearchInput /></div>
             <ConnectivityIndicator />
+            <Link to="/wallet" className="text-text-1 hover:text-text-2 p-1">
+              <span className="i-lucide-wallet text-xl" />
+            </Link>
             <NostrLogin />
           </div>
         </header>

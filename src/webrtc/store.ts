@@ -34,6 +34,13 @@ const DEFAULT_RELAYS = [
 const WEBRTC_KIND = 30078; // KIND_APP_DATA - same as iris-client
 const WEBRTC_TAG = 'webrtc';
 
+// Pending request with callbacks
+interface WantedHash {
+  resolve: (data: Uint8Array | null) => void;
+  timeout: ReturnType<typeof setTimeout>;
+  triedPeers: Set<string>;
+}
+
 export class WebRTCStore implements Store {
   private config: {
     satisfiedConnections: number;
@@ -56,6 +63,7 @@ export class WebRTCStore implements Store {
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private eventHandlers = new Set<WebRTCStoreEventHandler>();
   private running = false;
+  private wantedHashes = new Map<Hash, WantedHash[]>();
 
   constructor(config: WebRTCStoreConfig) {
     this.signer = config.signer;
@@ -293,6 +301,7 @@ export class WebRTCStore implements Store {
       onConnected: () => {
         this.emit({ type: 'peer-connected', peerId: peerIdStr });
         this.emit({ type: 'update' });
+        this.fetchWantedHashes(peer);
       },
       requestTimeout: this.config.requestTimeout,
       debug: this.config.debug,
@@ -320,6 +329,7 @@ export class WebRTCStore implements Store {
       onConnected: () => {
         this.emit({ type: 'peer-connected', peerId: peerIdStr });
         this.emit({ type: 'update' });
+        this.fetchWantedHashes(peer);
       },
       requestTimeout: this.config.requestTimeout,
       debug: this.config.debug,
@@ -466,11 +476,13 @@ export class WebRTCStore implements Store {
       if (local) return local;
     }
 
-    // Try each connected peer
+    // Try currently connected peers
+    const triedPeers = new Set<string>();
     const connectedPeers = Array.from(this.peers.values())
       .filter(p => p.isConnected);
 
     for (const peer of connectedPeers) {
+      triedPeers.add(peer.peerId);
       const data = await peer.request(hash);
       if (data) {
         // Store locally for future requests
@@ -481,7 +493,90 @@ export class WebRTCStore implements Store {
       }
     }
 
+    // If running and not satisfied, add to wants list and wait for new peers
+    if (this.running && !this.isSatisfied()) {
+      return this.waitForHash(hash, triedPeers);
+    }
+
     return null;
+  }
+
+  /**
+   * Add hash to wants list and wait for it to be resolved by new peers
+   */
+  private waitForHash(hash: Hash, triedPeers: Set<string>): Promise<Uint8Array | null> {
+    return new Promise((resolve) => {
+      // Use longer timeout for wants list - we need to wait for peers to connect
+      const wantsTimeout = Math.max(this.config.requestTimeout * 6, 30000);
+      const timeout = setTimeout(() => {
+        this.removeWant(hash, want);
+        resolve(null);
+      }, wantsTimeout);
+
+      const want: WantedHash = { resolve, timeout, triedPeers };
+
+      const existing = this.wantedHashes.get(hash);
+      if (existing) {
+        existing.push(want);
+      } else {
+        this.wantedHashes.set(hash, [want]);
+      }
+
+      this.log('Added to wants list:', hash.slice(0, 16), 'tried', triedPeers.size, 'peers');
+    });
+  }
+
+  /**
+   * Remove a want from the list
+   */
+  private removeWant(hash: Hash, want: WantedHash): void {
+    const wants = this.wantedHashes.get(hash);
+    if (!wants) return;
+
+    const idx = wants.indexOf(want);
+    if (idx !== -1) {
+      wants.splice(idx, 1);
+      if (wants.length === 0) {
+        this.wantedHashes.delete(hash);
+      }
+    }
+  }
+
+  /**
+   * Try to fetch wanted hashes from a newly connected peer
+   */
+  private async fetchWantedHashes(peer: Peer): Promise<void> {
+    const peerIdStr = peer.peerId;
+
+    for (const [hash, wants] of this.wantedHashes.entries()) {
+      // Find wants that haven't tried this peer yet
+      const untried = wants.filter(w => !w.triedPeers.has(peerIdStr));
+      if (untried.length === 0) continue;
+
+      // Mark as tried
+      for (const w of untried) {
+        w.triedPeers.add(peerIdStr);
+      }
+
+      this.log('Trying wanted hash from new peer:', hash.slice(0, 16));
+
+      const data = await peer.request(hash);
+      if (data) {
+        // Store locally
+        if (this.config.localStore) {
+          await this.config.localStore.put(hash, data);
+        }
+
+        // Resolve all waiting requests
+        for (const w of wants) {
+          clearTimeout(w.timeout);
+          w.resolve(data);
+        }
+        this.wantedHashes.delete(hash);
+
+        this.log('Resolved wanted hash:', hash.slice(0, 16));
+      }
+    }
   }
 
   async has(hash: Hash): Promise<boolean> {

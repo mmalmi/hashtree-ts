@@ -125,7 +125,6 @@ export class Peer {
       this.log('Connection state:', this.pc.connectionState);
       if (this.pc.connectionState === 'connected') {
         this.connectedAt = Date.now();
-        this.onConnected?.();
       }
       if (this.pc.connectionState === 'failed' || this.pc.connectionState === 'closed') {
         this.close();
@@ -139,6 +138,8 @@ export class Peer {
 
     channel.onopen = () => {
       this.log('Data channel open');
+      // Only fire onConnected when data channel is actually ready for use
+      this.onConnected?.();
     };
 
     channel.onclose = () => {
