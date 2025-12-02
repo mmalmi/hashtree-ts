@@ -85,7 +85,7 @@ export function ProfileView({ npub }: Props) {
                   className="btn-ghost"
                   title="Switch account"
                 >
-                  <span className="i-lucide-users" />
+                  Accounts
                 </button>
                 <button
                   onClick={() => navigate(`/${npub}/edit`)}
@@ -154,56 +154,6 @@ export function ProfileView({ npub }: Props) {
           </a>
         )}
       </div>
-
-      {/* Follows list preview */}
-      <div className="border-t border-surface-3 px-4 py-3">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-text-1 m-0">Following</h2>
-          {follows && follows.follows.length > 5 && (
-            <button
-              onClick={() => navigate(`/${npub}/follows`)}
-              className="text-xs text-accent bg-transparent border-none cursor-pointer hover:underline"
-            >
-              View all
-            </button>
-          )}
-        </div>
-
-        {!follows ? (
-          <div className="text-sm text-text-2">Loading...</div>
-        ) : follows.follows.length === 0 ? (
-          <div className="text-sm text-text-2">Not following anyone</div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {follows.follows.slice(0, 5).map(pk => (
-              <FollowRow key={pk} pubkey={pk} />
-            ))}
-          </div>
-        )}
-      </div>
-
     </div>
-  );
-}
-
-function FollowRow({ pubkey }: { pubkey: string }) {
-  const profile = useProfile(pubkey);
-  const npubStr = nip19.npubEncode(pubkey);
-
-  return (
-    <button
-      onClick={() => navigate(`/${npubStr}`)}
-      className="flex items-center gap-3 p-2 rounded hover:bg-surface-2 bg-transparent border-none cursor-pointer text-left w-full"
-    >
-      <Avatar pubkey={pubkey} size={36} />
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-text-1 truncate">
-          <Name pubkey={pubkey} />
-        </div>
-        {profile?.nip05 && (
-          <div className="text-xs text-text-2 truncate">{profile.nip05}</div>
-        )}
-      </div>
-    </button>
   );
 }

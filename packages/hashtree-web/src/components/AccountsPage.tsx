@@ -152,29 +152,8 @@ export function AccountsPage() {
         <h1 className="text-xl font-bold text-text-1 m-0">Accounts</h1>
       </div>
 
-      {/* Current Account */}
-      {myPubkey && (
-        <div className="p-4 border-b border-surface-3">
-          <div className="text-sm text-text-2 mb-2">Current Account</div>
-          <div className="flex items-center gap-3 p-3 bg-surface-1 rounded-lg">
-            <Avatar pubkey={myPubkey} size={48} />
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-text-1 truncate">
-                <Name pubkey={myPubkey} />
-              </div>
-              <div className="text-sm text-text-2 font-mono truncate">
-                {myNpub?.slice(0, 12)}...{myNpub?.slice(-4)}
-              </div>
-            </div>
-            <span className="i-lucide-check-circle text-success text-xl" />
-          </div>
-        </div>
-      )}
-
       {/* Account List */}
       <div className="p-4">
-        <div className="text-sm text-text-2 mb-3">All Accounts ({accounts.length})</div>
-
         <div className="flex flex-col gap-2">
           {accounts.map(account => (
             <AccountRow
@@ -194,39 +173,31 @@ export function AccountsPage() {
             No accounts added yet
           </div>
         )}
-      </div>
 
-      {/* Add Account Section */}
-      <div className="p-4 border-t border-surface-3 mt-auto">
-        <div className="text-sm text-text-2 mb-3">Add Account</div>
-
+        {/* Add Account */}
         {error && (
-          <div className="text-danger text-sm mb-3">{error}</div>
+          <div className="text-danger text-sm mt-3">{error}</div>
         )}
 
-        <div className="flex flex-col gap-2">
-          {/* Extension option (only show if available and not already added) */}
+        <div className="flex gap-2 mt-4">
           {canShowExtensionOption && (
             <button
               onClick={handleAddExtension}
-              className="btn-success w-full flex items-center justify-center gap-2"
+              className="btn-ghost flex-1"
             >
-              <span className="i-lucide-puzzle" />
               Add from Extension
             </button>
           )}
 
-          {/* nsec option */}
           {!showAddNsec ? (
             <button
               onClick={() => setShowAddNsec(true)}
-              className="btn-ghost w-full flex items-center justify-center gap-2"
+              className="btn-ghost flex-1"
             >
-              <span className="i-lucide-key" />
               Add with nsec
             </button>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 flex-1">
               <input
                 type="password"
                 value={nsecInput}
@@ -285,9 +256,8 @@ function AccountRow({ account, isActive, isSwitching, canRemove, onSwitch, onRem
           <div className="font-medium text-text-1 truncate">
             <Name pubkey={account.pubkey} />
           </div>
-          <div className="flex items-center gap-2 text-xs text-text-2">
-            <span className={account.type === 'extension' ? 'i-lucide-puzzle' : 'i-lucide-key'} />
-            <span>{account.type === 'extension' ? 'Extension' : 'nsec'}</span>
+          <div className="text-xs text-text-2">
+            {account.type === 'extension' ? 'Extension' : 'nsec'}
           </div>
         </div>
       </button>
