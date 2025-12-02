@@ -139,7 +139,7 @@ export function FileBrowser() {
   // Use zustand hooks with selectors for reactive updates
   const rootHash = useAppStore(s => s.rootHash);
   const currentDirHash = useCurrentDirHash();
-  const { entries } = useDirectoryEntries(currentDirHash);
+  const { entries, isDirectory } = useDirectoryEntries(currentDirHash);
   const recentlyChangedFiles = useRecentlyChanged();
 
   // Derive from URL - source of truth
@@ -426,8 +426,8 @@ export function FileBrowser() {
   const buildParentHref = () => buildDirHref(currentPath.slice(0, -1));
   const buildCurrentDirHref = () => buildDirHref(currentPath);
 
-  // Display name for the root
-  const rootDisplayName = currentTreeName || (rootHash ? toHex(rootHash).slice(0, 8) + '...' : '');
+  // Display name for the root - use nhash format for hash-based permalinks
+  const rootDisplayName = currentTreeName || (rootHash ? nhashEncode(toHex(rootHash)).slice(0, 16) + '...' : '');
 
   // Get current directory name for display
   const currentDirName = currentPath.length > 0 ? currentPath[currentPath.length - 1] : rootDisplayName;
@@ -468,27 +468,30 @@ export function FileBrowser() {
         )}
 
         {/* Parent directory row - navigation and drop target */}
-        <Link
-          to={currentPath.length > 0 ? buildParentHref() : buildRootHref()}
-          onDragOver={currentPath.length > 0 && canEdit ? handleDragOverParent : undefined}
-          onDragLeave={currentPath.length > 0 && canEdit ? handleDragLeave : undefined}
-          onDrop={currentPath.length > 0 && canEdit ? handleDropOnParent : undefined}
-          className={`p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 ${
-            dropTarget === '__parent__' ? 'bg-accent/20 border-accent' : 'hover:bg-surface-2/50'
-          }`}
-        >
-          <span className="i-lucide-folder text-warning shrink-0" />
-          <span className="truncate">..</span>
-        </Link>
+        {/* Hide ".." for nhash routes at root level (no parent to go to) */}
+        {(currentNpub || currentPath.length > 0) && (
+          <Link
+            to={currentPath.length > 0 ? buildParentHref() : buildRootHref()}
+            onDragOver={currentPath.length > 0 && canEdit ? handleDragOverParent : undefined}
+            onDragLeave={currentPath.length > 0 && canEdit ? handleDragLeave : undefined}
+            onDrop={currentPath.length > 0 && canEdit ? handleDropOnParent : undefined}
+            className={`p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 ${
+              dropTarget === '__parent__' ? 'bg-accent/20 border-accent' : 'hover:bg-surface-2/50'
+            }`}
+          >
+            <span className="i-lucide-folder text-warning shrink-0" />
+            <span className="truncate">..</span>
+          </Link>
+        )}
 
-        {/* Current directory row */}
+        {/* Current directory/file row - shows file icon if hash is a file, otherwise folder */}
         <Link
           to={buildCurrentDirHref()}
           className={`p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 ${
             !selectedEntry && focusedIndex < 0 ? 'bg-surface-2' : ''
           }`}
         >
-          <span className="i-lucide-folder-open text-warning shrink-0" />
+          <span className={`shrink-0 ${isDirectory ? 'i-lucide-folder-open text-warning' : `${getFileIcon(currentDirName)} text-text-2`}`} />
           <span className="truncate">{currentDirName}</span>
         </Link>
 
