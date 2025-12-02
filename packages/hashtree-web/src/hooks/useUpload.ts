@@ -65,8 +65,25 @@ export function useUpload() {
     // Convert FileList to array immediately to prevent it from being cleared
     const filesArray = Array.from(files);
     const total = filesArray.length;
-    const newFiles: { name: string; hash: Hash; size: number }[] = [];
+    const uploadedFileNames: string[] = [];
     const tree = getTree();
+    const route = parseRoute();
+    const dirPath = getCurrentPathFromUrl();
+
+    // Check if we need to initialize a new tree (virtual directory case)
+    const appState = useAppStore.getState();
+    let needsTreeInit = !appState.rootHash && route.npub && route.treeName;
+    let isOwnTree = false;
+    let routePubkey: string | null = null;
+
+    if (needsTreeInit) {
+      const nostrStore = useNostrStore.getState();
+      try {
+        const decoded = nip19.decode(route.npub!);
+        if (decoded.type === 'npub') routePubkey = decoded.data as string;
+      } catch {}
+      isOwnTree = routePubkey === nostrStore.pubkey;
+    }
 
     for (let i = 0; i < filesArray.length; i++) {
       const file = filesArray[i];
@@ -109,77 +126,73 @@ export function useUpload() {
       }
 
       const { hash, size } = await tree.putFile(data);
-      newFiles.push({ name: file.name, hash, size });
-    }
+      uploadedFileNames.push(file.name);
 
-    // Add to current directory or create new root
-    const appState = useAppStore.getState();
-    const route = parseRoute();
+      // Add file to tree immediately after upload completes
+      const currentAppState = useAppStore.getState();
 
-    if (appState.rootHash) {
-      // Add each file using setEntry
-      let rootHash = appState.rootHash;
-      const dirPath = getCurrentPathFromUrl();
-      for (const file of newFiles) {
-        rootHash = await tree.setEntry(rootHash, dirPath, file.name, file.hash, file.size);
-      }
-      appState.setRootHash(rootHash);
-      await autosaveIfOwn(toHex(rootHash));
-    } else if (route.npub && route.treeName) {
-      // Creating new tree in a virtual directory (e.g., /npub/home that doesn't exist yet)
-      // Check if this is our own npub
-      const nostrStore = useNostrStore.getState();
-      let routePubkey: string | null = null;
-      try {
-        const decoded = nip19.decode(route.npub);
-        if (decoded.type === 'npub') routePubkey = decoded.data as string;
-      } catch {}
+      if (currentAppState.rootHash) {
+        // Add to existing tree
+        const newRootHash = await tree.setEntry(
+          currentAppState.rootHash,
+          dirPath,
+          file.name,
+          hash,
+          size
+        );
+        currentAppState.setRootHash(newRootHash);
+        // Mark this file as changed for pulse effect
+        markFilesChanged(new Set([file.name]));
+      } else if (needsTreeInit) {
+        // First file in a new virtual directory - create the tree
+        const newRootHash = await tree.putDirectory([{ name: file.name, hash, size }]);
+        currentAppState.setRootHash(newRootHash);
+        markFilesChanged(new Set([file.name]));
 
-      if (routePubkey && routePubkey === nostrStore.pubkey) {
-        // Create the tree and save it
-        const hash = await tree.putDirectory(newFiles);
-        appState.setRootHash(hash);
-        const hashHex = toHex(hash);
-        await saveHashtree(route.treeName, hashHex);
-
-        // Set selectedTree so future autosaves work
-        nostrStore.setSelectedTree({
-          id: '',
-          name: route.treeName,
-          pubkey: routePubkey,
-          rootHash: hashHex,
-          created_at: Math.floor(Date.now() / 1000),
-        });
+        if (isOwnTree && routePubkey) {
+          // Save to nostr and set up for autosave
+          const hashHex = toHex(newRootHash);
+          await saveHashtree(route.treeName!, hashHex);
+          useNostrStore.getState().setSelectedTree({
+            id: '',
+            name: route.treeName!,
+            pubkey: routePubkey,
+            rootHash: hashHex,
+            created_at: Math.floor(Date.now() / 1000),
+          });
+        }
+        needsTreeInit = false; // Tree is now initialized
       } else {
-        // Not our tree, just create local directory
-        const hash = await tree.putDirectory(newFiles);
-        appState.setRootHash(hash);
+        // No existing tree and not a virtual directory - create new root
+        const newRootHash = await tree.putDirectory([{ name: file.name, hash, size }]);
+        currentAppState.setRootHash(newRootHash);
+        markFilesChanged(new Set([file.name]));
+        if (i === 0) {
+          navigate('/');
+        }
       }
-    } else {
-      const hash = await tree.putDirectory(newFiles);
-      appState.setRootHash(hash);
-      navigate('/');
     }
 
-    // Add uploaded files to recentlyChangedFiles for pulse effect
-    const uploadedFileNames = new Set(newFiles.map(f => f.name));
-    markFilesChanged(uploadedFileNames);
+    // Autosave after all uploads complete (single save instead of per-file)
+    const finalAppState = useAppStore.getState();
+    if (finalAppState.rootHash) {
+      await autosaveIfOwn(toHex(finalAppState.rootHash));
+    }
 
     setUploadProgress(null);
 
     // If single file uploaded, navigate to it
-    if (newFiles.length === 1) {
-      const route = parseRoute();
-      const dirPath = getCurrentPathFromUrl();
-      const fileName = newFiles[0].name;
+    if (uploadedFileNames.length === 1) {
+      const currentRoute = parseRoute();
+      const fileName = uploadedFileNames[0];
 
-      if (route.npub && route.treeName) {
+      if (currentRoute.npub && currentRoute.treeName) {
         // Tree route: /npub/treeName/path/filename
-        const parts = [route.npub, route.treeName, ...dirPath, fileName];
+        const parts = [currentRoute.npub, currentRoute.treeName, ...dirPath, fileName];
         navigate('/' + parts.map(encodeURIComponent).join('/'));
-      } else if (route.hash) {
+      } else if (currentRoute.hash) {
         // Hash route: /nhash1.../path/filename
-        const nhash = nhashEncode(route.hash);
+        const nhash = nhashEncode(currentRoute.hash);
         const parts = [nhash, ...dirPath, fileName];
         navigate('/' + parts.map(encodeURIComponent).join('/'));
       }
