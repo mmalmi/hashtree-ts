@@ -10,7 +10,6 @@ import {
   idbStore,
   getTree,
   useAppStore,
-  refreshDirectory,
 } from './store';
 
 // Build route URL
@@ -33,14 +32,13 @@ function buildRouteUrl(npub: string | null, treeName: string | null, path: strin
 // Get current directory path from URL (excludes file if selected)
 function getCurrentPathFromUrl(): string[] {
   const route = parseRoute();
-  const entries = useAppStore.getState().entries;
   const urlPath = route.path;
   if (urlPath.length === 0) return [];
 
-  // Check if last segment is a file in current entries
+  // Check if last segment looks like a file (has extension)
   const lastSegment = urlPath[urlPath.length - 1];
-  const isFile = entries.some(e => e.name === lastSegment && !e.isTree);
-  return isFile ? urlPath.slice(0, -1) : urlPath;
+  const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(lastSegment);
+  return looksLikeFile ? urlPath.slice(0, -1) : urlPath;
 }
 
 // Update URL to reflect current state
@@ -60,52 +58,25 @@ export function clearFileSelection() {
 }
 
 // Navigate to directory
-export async function navigateTo(hash: Hash, name?: string) {
-  const tree = getTree();
-  try {
-    // Navigate to new URL first
-    if (name) {
-      const route = parseRoute();
-      const currentPath = getCurrentPathFromUrl();
-      const newPath = [...currentPath, name];
-      const url = buildRouteUrl(route.npub, route.treeName, newPath);
-      navigate(url);
-    }
-    // Then fetch entries for the new directory
-    const list = await tree.listDirectory(hash);
-    useAppStore.getState().setEntries(list);
-  } catch (e) {
-    console.error('Navigation error:', e);
+export function navigateTo(_hash: Hash, name?: string) {
+  if (name) {
+    const route = parseRoute();
+    const currentPath = getCurrentPathFromUrl();
+    const newPath = [...currentPath, name];
+    const url = buildRouteUrl(route.npub, route.treeName, newPath);
+    navigate(url);
   }
 }
 
 // Go back in path
-export async function goBack() {
-  const state = useAppStore.getState();
-  const tree = getTree();
+export function goBack() {
   const currentPath = getCurrentPathFromUrl();
   if (currentPath.length === 0) return;
 
   const newPath = currentPath.slice(0, -1);
-
-  // Navigate to parent URL first
   const route = parseRoute();
   const url = buildRouteUrl(route.npub, route.treeName, newPath);
   navigate(url);
-
-  // Then fetch entries
-  if (newPath.length === 0 && state.rootHash) {
-    const list = await tree.listDirectory(state.rootHash);
-    state.setEntries(list);
-  } else if (state.rootHash) {
-    let hash = state.rootHash;
-    for (const part of newPath) {
-      const resolved = await tree.resolvePath(hash, part);
-      if (resolved) hash = resolved;
-    }
-    const list = await tree.listDirectory(hash);
-    state.setEntries(list);
-  }
 }
 
 // Select file for viewing
@@ -128,7 +99,6 @@ export async function saveFile(entryName: string | undefined, content: string): 
 
   const newRoot = await tree.setEntry(state.rootHash, currentPath, entryName, hash, size);
   state.setRootHash(newRoot);
-  await refreshDirectory();
   await autosaveIfOwn(toHex(newRoot));
 
   return data;
@@ -148,7 +118,6 @@ export async function createFile(name: string, content: string = '') {
 
   const newRoot = await tree.setEntry(state.rootHash, currentPath, name, hash, size);
   state.setRootHash(newRoot);
-  await refreshDirectory();
   await autosaveIfOwn(toHex(newRoot));
 
   // Navigate to the newly created file with edit mode
@@ -168,7 +137,6 @@ export async function createFolder(name: string) {
 
   const newRoot = await tree.setEntry(state.rootHash, currentPath, name, emptyDirHash, 0, true);
   state.setRootHash(newRoot);
-  await refreshDirectory();
   await autosaveIfOwn(toHex(newRoot));
 }
 
@@ -184,7 +152,6 @@ export async function renameEntry(oldName: string, newName: string) {
 
   const newRoot = await tree.renameEntry(state.rootHash, currentPath, oldName, newName);
   state.setRootHash(newRoot);
-  await refreshDirectory();
   await autosaveIfOwn(toHex(newRoot));
 
   // Update URL if renamed file was selected
@@ -205,7 +172,6 @@ export async function deleteEntry(name: string) {
 
   const newRoot = await tree.removeEntry(state.rootHash, currentPath, name);
   state.setRootHash(newRoot);
-  await refreshDirectory();
   await autosaveIfOwn(toHex(newRoot));
 
   // Navigate to directory if deleted file was active
@@ -226,12 +192,16 @@ export async function moveEntry(sourceName: string, targetDirName: string) {
   const tree = getTree();
   const currentPath = getCurrentPathFromUrl();
 
+  // Resolve target directory hash from tree
+  const targetPath = [...currentPath, targetDirName].join('/');
+  const targetHash = await tree.resolvePath(state.rootHash, targetPath);
+  if (!targetHash) return;
+
   // Check target is a directory
-  const targetEntry = state.entries.find(e => e.name === targetDirName);
-  if (!targetEntry || !targetEntry.isTree) return;
+  if (!await tree.isDirectory(targetHash)) return;
 
   // Check for name collision
-  const targetContents = await tree.listDirectory(targetEntry.hash);
+  const targetContents = await tree.listDirectory(targetHash);
   if (targetContents.some(e => e.name === sourceName)) {
     alert(`A file named "${sourceName}" already exists in "${targetDirName}"`);
     return;
@@ -239,7 +209,6 @@ export async function moveEntry(sourceName: string, targetDirName: string) {
 
   const newRoot = await tree.moveEntry(state.rootHash, currentPath, sourceName, [...currentPath, targetDirName]);
   state.setRootHash(newRoot);
-  await refreshDirectory();
   await autosaveIfOwn(toHex(newRoot));
 
   // Clear selection if moved file was active
@@ -274,7 +243,6 @@ export async function moveToParent(sourceName: string) {
 
   const newRoot = await tree.moveEntry(state.rootHash, currentPath, sourceName, parentPath);
   state.setRootHash(newRoot);
-  await refreshDirectory();
   await autosaveIfOwn(toHex(newRoot));
 
   // Clear selection if moved file was active
@@ -298,9 +266,7 @@ export async function verifyCurrentTree(): Promise<{ valid: boolean; missing: nu
 // Clear store
 export function clearStore() {
   idbStore.clear();
-  const state = useAppStore.getState();
-  state.setRootHash(null);
-  state.setEntries([]);
+  useAppStore.getState().setRootHash(null);
   navigate('/');
 }
 
@@ -321,6 +287,7 @@ export async function createTree(name: string): Promise<boolean> {
   if (nostrState.isLoggedIn && nostrState.npub && nostrState.pubkey) {
     // Set selectedTree BEFORE saving so updates work
     useNostrStore.getState().setSelectedTree({
+      id: '', // Will be set by actual nostr event
       name,
       pubkey: nostrState.pubkey,
       rootHash: rootHex,
@@ -329,7 +296,6 @@ export async function createTree(name: string): Promise<boolean> {
 
     // Also set app state immediately so UI shows the tree
     appState.setRootHash(hash);
-    appState.setEntries([]);
 
     const success = await saveHashtree(name, rootHex);
     if (success) {
@@ -340,7 +306,6 @@ export async function createTree(name: string): Promise<boolean> {
 
   // Not logged in - work locally
   appState.setRootHash(hash);
-  appState.setEntries([]);
   navigate('/');
   return true;
 }

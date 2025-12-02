@@ -65,7 +65,6 @@ function HomeRoute() {
     const nostrStore = useNostrStore.getState();
 
     appStore.setRootHash(null);
-    appStore.setEntries([]);
     nostrStore.setSelectedTree(null);
   }, []);
 
@@ -86,7 +85,6 @@ function UserRouteInner() {
     const nostrStore = useNostrStore.getState();
 
     appStore.setRootHash(null);
-    appStore.setEntries([]);
     nostrStore.setSelectedTree(null);
   }, [npub]);
 
@@ -117,7 +115,6 @@ function FollowsRouteInner() {
     const nostrStore = useNostrStore.getState();
 
     appStore.setRootHash(null);
-    appStore.setEntries([]);
     nostrStore.setSelectedTree(null);
   }, [npub]);
 
@@ -135,7 +132,6 @@ function ProfileRouteInner() {
     const nostrStore = useNostrStore.getState();
 
     appStore.setRootHash(null);
-    appStore.setEntries([]);
     nostrStore.setSelectedTree(null);
   }, [npub]);
 
@@ -219,7 +215,7 @@ function HashRouteInner() {
     useNostrStore.getState().setSelectedTree(null);
 
     if (hash && /^[a-f0-9]{64}$/i.test(hash)) {
-      loadFromHash(hash, pathParts);
+      loadFromHash(hash);
     }
   }, [hash, path]);
 
@@ -243,37 +239,51 @@ export function App() {
   useEffect(() => {
     const handleTreeUpdate = async () => {
       if (selectedTree && selectedTree.rootHash) {
-        if (lastRootHashRef.current !== null && lastRootHashRef.current !== selectedTree.rootHash) {
-          const appState = useAppStore.getState();
+        const isNewRootHash = lastRootHashRef.current !== null && lastRootHashRef.current !== selectedTree.rootHash;
 
-          // Derive viewed file from URL + entries (selection is now URL-based)
+        if (isNewRootHash) {
+          // Derive viewed file from URL (selection is now URL-based)
           const hashPath = window.location.hash.slice(2); // Remove #/
           const pathParts = hashPath.split('/').filter(Boolean).map(decodeURIComponent);
           // Skip npub/treeName or h/hash prefix (2 segments), rest is file path
           const filePath = pathParts.length >= 2 ? pathParts.slice(2) : [];
 
-          // Derive current directory path from URL (exclude file if last segment is a file)
+          // Derive current directory path from URL (exclude file if last segment looks like a file)
           const lastSegment = filePath[filePath.length - 1];
-          const isLastSegmentFile = lastSegment && appState.entries.some(e => e.name === lastSegment && !e.isTree);
-          const currentDirPath = isLastSegmentFile ? filePath.slice(0, -1) : filePath;
-          const isViewingVideo = lastSegment && /\.(mp4|webm|ogg|mov)$/i.test(lastSegment);
+          const looksLikeFile = lastSegment && /\.[a-zA-Z0-9]+$/.test(lastSegment);
+          const currentDirPath = looksLikeFile ? filePath.slice(0, -1) : filePath;
 
-          // Build map of old entry hashes before updating
+          // Fetch old entries before update for LIVE indicator comparison
+          const tree = getTree();
+          const oldRootHash = fromHex(lastRootHashRef.current!);
+          let oldDirHash = oldRootHash;
+          for (const part of currentDirPath) {
+            const resolved = await tree.resolvePath(oldDirHash, part);
+            if (resolved) oldDirHash = resolved;
+            else break;
+          }
+          const oldEntries = await tree.listDirectory(oldDirHash).catch(() => []);
+
+          // Build map of old entry hashes
           const oldHashes = new Map<string, string>();
-          for (const e of appState.entries) {
+          for (const e of oldEntries) {
             oldHashes.set(e.name, toHex(e.hash));
           }
 
-          // If streaming or watching video, do a light update - just refresh entries without reloading content
-          const isOnStreamRoute = pathParts[2] === 'stream';
-          if (isOnStreamRoute || isViewingVideo) {
-            await refreshTreeState(selectedTree.rootHash, currentDirPath);
-          } else {
-            await loadFromHash(selectedTree.rootHash, currentDirPath);
+          // Update rootHash
+          loadFromHash(selectedTree.rootHash);
+
+          // Fetch new entries to compare
+          const newRootHash = fromHex(selectedTree.rootHash);
+          let newDirHash = newRootHash;
+          for (const part of currentDirPath) {
+            const resolved = await tree.resolvePath(newDirHash, part);
+            if (resolved) newDirHash = resolved;
+            else break;
           }
+          const newEntries = await tree.listDirectory(newDirHash).catch(() => []);
 
           // Find all changed or new files and update recentlyChangedFiles
-          const newEntries = useAppStore.getState().entries;
           const changedFiles = new Set<string>();
           for (const e of newEntries) {
             const oldHash = oldHashes.get(e.name);
@@ -356,6 +366,7 @@ async function loadFromNostr(npubStr: string, treeName: string, pathParts: strin
         const pubkey = npubToPubkey(npubStr);
         if (pubkey) {
           useNostrStore.getState().setSelectedTree({
+            id: '', // Will be set by actual nostr event
             name: treeName,
             pubkey,
             rootHash: rootHashHex,
@@ -363,7 +374,7 @@ async function loadFromNostr(npubStr: string, treeName: string, pathParts: strin
           });
         }
 
-        await loadFromHash(rootHashHex, pathParts);
+        loadFromHash(rootHashHex);
 
         // Subscribe to live updates via resolver
         resolver.subscribe(key, (hash) => {
@@ -394,66 +405,11 @@ function npubToPubkey(npubStr: string): string | null {
   return null;
 }
 
-// Light refresh - updates rootHash and entries without triggering content reload
-async function refreshTreeState(rootHex: string, pathParts: string[]) {
+// Set rootHash - hooks will re-fetch entries automatically
+function loadFromHash(rootHex: string) {
   try {
     const hash = fromHex(rootHex);
-    const tree = getTree();
-    const appStore = useAppStore.getState();
-
-    appStore.setRootHash(hash);
-
-    // Navigate to current directory
-    let dirHash = hash;
-    for (const part of pathParts) {
-      const resolved = await tree.resolvePath(dirHash, part);
-      if (resolved && await tree.isDirectory(resolved)) {
-        dirHash = resolved;
-      } else {
-        break;
-      }
-    }
-
-    // Update entries list
-    const list = await tree.listDirectory(dirHash);
-    appStore.setEntries(list);
-  } catch {
-    // Hash not in store
-  }
-}
-
-async function loadFromHash(rootHex: string, pathParts: string[]) {
-  try {
-    const hash = fromHex(rootHex);
-    const tree = getTree();
-    const appStore = useAppStore.getState();
-
-    // Check if the root hash is a file (not a directory)
-    const isDir = await tree.isDirectory(hash);
-    if (!isDir) {
-      // Direct file hash - display the file directly
-      appStore.setRootHash(hash);
-      appStore.setEntries([]);
-      return;
-    }
-
-    appStore.setRootHash(hash);
-
-    // Navigate to the directory specified by pathParts
-    let dirHash = hash;
-    for (const part of pathParts) {
-      const resolved = await tree.resolvePath(dirHash, part);
-      if (!resolved) break;
-      if (await tree.isDirectory(resolved)) {
-        dirHash = resolved;
-      } else {
-        // Reached a file - stop at parent directory
-        break;
-      }
-    }
-
-    const list = await tree.listDirectory(dirHash);
-    appStore.setEntries(list);
+    useAppStore.getState().setRootHash(hash);
   } catch {
     // Hash not in store
   }

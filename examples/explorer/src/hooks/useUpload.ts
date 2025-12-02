@@ -5,7 +5,7 @@
 import { useSyncExternalStore, useCallback } from 'react';
 import { toHex } from 'hashtree';
 import type { Hash } from 'hashtree';
-import { useAppStore, getTree, refreshDirectory } from '../store';
+import { useAppStore, getTree } from '../store';
 import { autosaveIfOwn } from '../nostr';
 import { navigate } from '../utils/navigate';
 import { getCurrentPathFromUrl } from '../utils/route';
@@ -116,17 +116,15 @@ export function useUpload() {
     if (appState.rootHash) {
       // Add each file using setEntry
       let rootHash = appState.rootHash;
-      const dirPath = getCurrentPathFromUrl(appState.entries);
+      const dirPath = getCurrentPathFromUrl();
       for (const file of newFiles) {
         rootHash = await tree.setEntry(rootHash, dirPath, file.name, file.hash, file.size);
       }
       appState.setRootHash(rootHash);
-      await refreshDirectory();
       await autosaveIfOwn(toHex(rootHash));
     } else {
       const hash = await tree.putDirectory(newFiles);
       appState.setRootHash(hash);
-      appState.setEntries(newFiles.map(f => ({ name: f.name, hash: f.hash, size: f.size, isTree: false })));
       navigate('/');
     }
 

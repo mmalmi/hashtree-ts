@@ -3,9 +3,9 @@
  */
 import { useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAppStore, formatBytes } from '../../store';
+import { formatBytes } from '../../store';
 import { useNostrStore } from '../../nostr';
-import { useRoute } from '../../hooks';
+import { useRoute, useCurrentDirHash, useDirectoryEntries } from '../../hooks';
 import {
   startPreview,
   stopPreview,
@@ -88,7 +88,8 @@ export function StreamView() {
 
 function StreamControls({ videoRef, onCancel }: { videoRef: { current: HTMLVideoElement | null }; onCancel: () => void }) {
   const { isRecording, isPreviewing, streamFilename, persistStream } = useStreamState();
-  const entries = useAppStore(s => s.entries);
+  const currentDirHash = useCurrentDirHash();
+  const { entries } = useDirectoryEntries(currentDirHash);
 
   const filenameExists = entries.some(e => e.name === `${streamFilename}.webm`);
 

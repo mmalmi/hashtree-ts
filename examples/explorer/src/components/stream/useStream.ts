@@ -5,8 +5,6 @@ import {
   idbStore,
   getTree,
   useAppStore,
-  refreshDirectory,
-  getCurrentDirHash,
 } from '../../store';
 import { autosaveIfOwn, useNostrStore } from '../../nostr';
 import { navigate } from '../../utils/navigate';
@@ -232,15 +230,13 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
 
     let newRootHash: Hash | undefined;
     if (appState.rootHash) {
-      const currentPath = getCurrentPathFromUrl(appState.entries);
+      const currentPath = getCurrentPathFromUrl();
       newRootHash = await tree.setEntry(appState.rootHash, currentPath, filename, fileHash, fileSize);
       appState.setRootHash(newRootHash);
-      await refreshDirectory();
       await autosaveIfOwn(toHex(newRootHash));
     } else {
       newRootHash = await tree.putDirectory([{ name: filename, hash: fileHash, size: fileSize }]);
       appState.setRootHash(newRootHash);
-      appState.setEntries([{ name: filename, hash: fileHash, size: fileSize, isTree: false }]);
     }
   }, 3000);
 
@@ -291,15 +287,13 @@ export async function stopRecording(): Promise<void> {
     const appState = useAppStore.getState();
     let newRootHash: Hash | undefined;
     if (appState.rootHash) {
-      const currentPath = getCurrentPathFromUrl(appState.entries);
+      const currentPath = getCurrentPathFromUrl();
       newRootHash = await tree.setEntry(appState.rootHash, currentPath, filename, fileHash, fileSize);
       appState.setRootHash(newRootHash);
-      await refreshDirectory();
       await autosaveIfOwn(toHex(newRootHash));
     } else {
       newRootHash = await tree.putDirectory([{ name: filename, hash: fileHash, size: fileSize }]);
       appState.setRootHash(newRootHash);
-      appState.setEntries([{ name: filename, hash: fileHash, size: fileSize, isTree: false }]);
       navigate('/');
     }
   }

@@ -14,7 +14,7 @@ import {
 import { saveFile, deleteEntry, selectFile } from '../actions';
 import { openRenameModal } from '../hooks/useModals';
 import { useNostrStore } from '../nostr';
-import { useSelectedFile, useRoute, useCurrentDirHash } from '../hooks';
+import { useSelectedFile, useRoute, useCurrentDirHash, useDirectoryEntries } from '../hooks';
 import { useUpload } from '../hooks/useUpload';
 import { getResolverKey } from '../refResolver';
 import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
@@ -33,7 +33,8 @@ export function Preview() {
   const navigate = useNavigate();
   const location = useLocation();
   const rootHash = useAppStore(s => s.rootHash);
-  const entries = useAppStore(s => s.entries);
+  const currentDirHash = useCurrentDirHash();
+  const { entries } = useDirectoryEntries(currentDirHash);
 
   const route = useRoute();
   const viewedNpub = route.npub;
@@ -505,8 +506,8 @@ function isLikelyTextFile(filename?: string): boolean {
 
 function DirectoryActions() {
   const rootHash = useAppStore(s => s.rootHash);
-  const entries = useAppStore(s => s.entries);
   const currentDirHash = useCurrentDirHash();
+  const { entries } = useDirectoryEntries(currentDirHash);
   const route = useRoute();
   const viewedNpub = route.npub;
   const userNpub = useNostrStore(s => s.npub);

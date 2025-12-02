@@ -1,6 +1,7 @@
 import { useRef, useEffect } from 'react';
-import { useAppStore, formatBytes } from '../../store';
+import { formatBytes } from '../../store';
 import { useNostrStore } from '../../nostr';
+import { useCurrentDirHash, useDirectoryEntries } from '../../hooks';
 import {
   startPreview,
   stopPreview,
@@ -119,10 +120,11 @@ function PreviewControls({ videoRef, onClose }: {
   videoRef: { current: HTMLVideoElement | null };
   onClose: () => void;
 }) {
-  const entriesVal = useAppStore(s => s.entries);
+  const currentDirHash = useCurrentDirHash();
+  const { entries } = useDirectoryEntries(currentDirHash);
   const { streamFilename, persistStream } = useStreamState();
 
-  const filenameExists = entriesVal.some(e => e.name === `${streamFilename}.webm`);
+  const filenameExists = entries.some(e => e.name === `${streamFilename}.webm`);
 
   return (
     <div className="flex flex-col gap-2 w-full">

@@ -440,4 +440,35 @@ test.describe('Hashtree Explorer', () => {
     expect(page.url()).not.toContain('/edit');
     await expect(page.getByRole('button', { name: 'Edit Profile' })).toBeVisible();
   });
+
+  test('should display file content when directly navigating to file URL', async ({ page, browser }) => {
+    const fileList = page.getByTestId('file-list');
+
+    // Browser 1: Create tree and upload an HTML file
+    await createAndEnterTree(page, 'direct-nav-test');
+    await uploadTempFile(page, 'index.html', '<html><body>Hello Direct Nav</body></html>');
+    await expect(fileList.locator('span:text-is("index.html")')).toBeVisible({ timeout: 15000 });
+
+    // Get current URL to extract npub and treeName
+    const currentUrl = page.url();
+    const match = currentUrl.match(/#\/(npub[^/]+)\/([^/]+)/);
+    expect(match).toBeTruthy();
+    const [, npub, treeName] = match!;
+
+    // Browser 2: Fresh context navigates directly to file URL
+    const context2 = await browser.newContext();
+    const page2 = await context2.newPage();
+
+    const directFileUrl = `http://localhost:5173/#/${npub}/${treeName}/index.html`;
+    await page2.goto(directFileUrl);
+    await page2.waitForTimeout(3000); // Wait for nostr resolution
+
+    // The file should be displayed in preview (rendered as iframe for HTML)
+    await expect(page2.locator('.font-medium:has-text("index.html")')).toBeVisible({ timeout: 15000 });
+
+    // For HTML files, should render in iframe
+    await expect(page2.locator('iframe')).toBeVisible({ timeout: 10000 });
+
+    await context2.close();
+  });
 });

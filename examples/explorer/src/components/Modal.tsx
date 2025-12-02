@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { useModals, closeCreateModal, closeRenameModal, setModalInput } from '../hooks/useModals';
-import { useSelectedFile } from '../hooks';
+import { useSelectedFile, useCurrentDirHash, useDirectoryEntries } from '../hooks';
 import { createFile, createFolder, createTree, renameEntry } from '../actions';
 
 export function CreateModal() {
@@ -61,7 +61,9 @@ export function CreateModal() {
 
 export function RenameModal() {
   const { showRenameModal, modalInput } = useModals();
-  const selectedEntry = useSelectedFile();
+  const currentDirHash = useCurrentDirHash();
+  const { entries } = useDirectoryEntries(currentDirHash);
+  const selectedEntry = useSelectedFile(entries);
 
   if (!showRenameModal || !selectedEntry) return null;
 

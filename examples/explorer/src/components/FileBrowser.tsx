@@ -9,7 +9,7 @@ import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
 import { useNostrStore, pubkeyToNpub, npubToPubkey } from '../nostr';
 import { UserRow } from './user';
 import { FolderActions } from './FolderActions';
-import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirHash, useTrees } from '../hooks';
+import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirHash, useTrees, useDirectoryEntries } from '../hooks';
 
 // Get icon class based on file extension
 function getFileIcon(filename: string): string {
@@ -137,12 +137,12 @@ function buildTreeHref(ownerNpub: string, treeName: string): string {
 export function FileBrowser() {
   // Use zustand hooks with selectors for reactive updates
   const rootHash = useAppStore(s => s.rootHash);
-  const entries = useAppStore(s => s.entries);
   const currentDirHash = useCurrentDirHash();
+  const { entries } = useDirectoryEntries(currentDirHash);
   const recentlyChangedFiles = useRecentlyChanged();
 
   // Derive from URL - source of truth
-  const selectedEntry = useSelectedFile();
+  const selectedEntry = useSelectedFile(entries);
   const currentPath = useCurrentPath();
 
   const isLoggedIn = useNostrStore(s => s.isLoggedIn);

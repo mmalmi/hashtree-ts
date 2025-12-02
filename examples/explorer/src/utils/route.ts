@@ -70,15 +70,15 @@ export function parseRoute(): RouteInfo {
 
 /**
  * Get current directory path from URL (excludes file if selected)
- * This needs access to entries to determine if last segment is a file
+ * Uses file extension heuristic - no entries needed
  */
-export function getCurrentPathFromUrl(entries: { name: string; isTree: boolean }[]): string[] {
+export function getCurrentPathFromUrl(): string[] {
   const route = parseRoute();
   const urlPath = route.path;
   if (urlPath.length === 0) return [];
 
-  // Check if last segment is a file in current entries
+  // Check if last segment looks like a file (has extension)
   const lastSegment = urlPath[urlPath.length - 1];
-  const isFile = entries.some(e => e.name === lastSegment && !e.isTree);
-  return isFile ? urlPath.slice(0, -1) : urlPath;
+  const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(lastSegment);
+  return looksLikeFile ? urlPath.slice(0, -1) : urlPath;
 }

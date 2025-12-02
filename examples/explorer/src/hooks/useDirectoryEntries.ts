@@ -1,45 +1,53 @@
 /**
- * Hook to fetch directory entries using TreeReader directly
- * Replaces global entries state with local component state
+ * Hook to fetch directory entries from tree
+ * Simple - just reads from tree, no caching or global state
  */
 import { useState, useEffect } from 'react';
-import { type Hash, type TreeEntry } from 'hashtree';
+import { type Hash, type TreeEntry, toHex, fromHex } from 'hashtree';
 import { getTree } from '../store';
+
+// Sort entries: directories first, then alphabetically
+function sortEntries(entries: TreeEntry[]): TreeEntry[] {
+  return [...entries].sort((a, b) => {
+    if (a.isTree !== b.isTree) return a.isTree ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
 
 /**
  * Fetch directory entries for a given hash
- * Returns entries and loading state
+ * Returns entries (sorted: dirs first, then files)
  */
 export function useDirectoryEntries(dirHash: Hash | null) {
   const [entries, setEntries] = useState<TreeEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
+
+  // Convert to hex string for stable comparison (Uint8Array reference changes on each render)
+  const hashKey = dirHash ? toHex(dirHash) : null;
 
   useEffect(() => {
-    if (!dirHash) {
+    if (!hashKey) {
       setEntries([]);
-      setLoading(false);
       return;
     }
 
     let cancelled = false;
     setLoading(true);
-    setError(null);
 
-    getTree().listDirectory(dirHash).then(list => {
+    getTree().listDirectory(fromHex(hashKey)).then(list => {
       if (!cancelled) {
-        setEntries(list);
+        setEntries(sortEntries(list));
         setLoading(false);
       }
-    }).catch(err => {
+    }).catch(() => {
       if (!cancelled) {
-        setError(err);
+        setEntries([]);
         setLoading(false);
       }
     });
 
     return () => { cancelled = true; };
-  }, [dirHash]);
+  }, [hashKey]); // Use string key for stable comparison
 
-  return { entries, loading, error, setEntries };
+  return { entries, loading };
 }
