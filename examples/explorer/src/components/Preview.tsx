@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import Markdown from 'markdown-to-jsx';
-import { toHex, fromHex } from 'hashtree';
+import { toHex, fromHex, nhashEncode } from 'hashtree';
 import { LiveVideo, LiveVideoFromHash } from './LiveVideo';
 import { StreamView } from './stream';
 import { FolderActions } from './FolderActions';
@@ -70,20 +70,42 @@ export function Preview() {
 
     let cancelled = false;
     const tree = getTree();
-    const fullPath = [...currentPath, urlFileName].join('/');
 
-    tree.resolvePath(rootHash, fullPath).then(async hash => {
-      if (!cancelled && hash) {
-        // Check if it's a directory - don't set as file entry
-        const isDir = await tree.isDirectory(hash);
+    // For permalinks, check if rootHash itself is a file (not a directory)
+    // In that case, the path is just the filename for display purposes
+    if (route.isPermalink) {
+      tree.isDirectory(rootHash).then(isDir => {
         if (!cancelled && !isDir) {
-          setResolvedEntry({ name: urlFileName, hash });
+          // The rootHash is the file itself, use it directly
+          setResolvedEntry({ name: urlFileName, hash: rootHash });
+        } else if (!cancelled && isDir) {
+          // It's a directory, resolve the path within it
+          const fullPath = [...currentPath, urlFileName].join('/');
+          tree.resolvePath(rootHash, fullPath).then(async hash => {
+            if (!cancelled && hash) {
+              const isFileDir = await tree.isDirectory(hash);
+              if (!cancelled && !isFileDir) {
+                setResolvedEntry({ name: urlFileName, hash });
+              }
+            }
+          });
         }
-      }
-    });
+      });
+    } else {
+      // Non-permalink: resolve path normally
+      const fullPath = [...currentPath, urlFileName].join('/');
+      tree.resolvePath(rootHash, fullPath).then(async hash => {
+        if (!cancelled && hash) {
+          const isDir = await tree.isDirectory(hash);
+          if (!cancelled && !isDir) {
+            setResolvedEntry({ name: urlFileName, hash });
+          }
+        }
+      });
+    }
 
     return () => { cancelled = true; };
-  }, [entryFromStore, urlFileName, rootHash, currentPath.join('/')]);
+  }, [entryFromStore, urlFileName, rootHash, currentPath.join('/'), route.isPermalink]);
 
   // Parse query params from location.search (works with hash routing)
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -260,8 +282,9 @@ export function Preview() {
             >
               Download
             </button>
+            {/* Permalink to this specific file's hash */}
             <Link
-              to={`/f/${toHex(entry.hash)}/${encodeURIComponent(entry.name)}`}
+              to={`/${nhashEncode(toHex(entry.hash))}/${encodeURIComponent(entry.name)}`}
               className="btn-ghost no-underline"
               title={toHex(entry.hash)}
             >
@@ -687,96 +710,3 @@ function DirectoryActions() {
   );
 }
 
-/**
- * FilePreview - displays a single file by hash (for /f/ permalink routes)
- */
-export function FilePreview({ hash, filename }: { hash: string; filename: string }) {
-  const navigate = useNavigate();
-  const [content, setContent] = useState<Uint8Array | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [canGoBack] = useState(() => window.history.length > 1);
-
-  const mimeType = getMimeType(filename);
-  const isVideo = mimeType?.startsWith('video/');
-  const isImage = mimeType?.startsWith('image/');
-  const isHtml = mimeType === 'text/html';
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setContent(null);
-
-    // Skip loading for video - it will stream
-    if (isVideo) {
-      setLoading(false);
-      return;
-    }
-
-    const hashBytes = fromHex(hash);
-    getTree().readFile(hashBytes).then(data => {
-      if (!cancelled) {
-        setContent(data);
-        setLoading(false);
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        setLoading(false);
-      }
-    });
-
-    return () => { cancelled = true; };
-  }, [hash, isVideo]);
-
-  const handleDownload = async () => {
-    let data = content;
-    if (!data && isVideo) {
-      data = await getTree().readFile(fromHex(hash));
-    }
-    if (!data) return;
-
-    const blob = new Blob([new Uint8Array(data)], { type: mimeType || 'application/octet-stream' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
-      {/* Header */}
-      <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center justify-between bg-surface-1">
-        <span className="font-medium flex items-center gap-2">
-          {canGoBack && (
-            <button
-              onClick={() => navigate(-1)}
-              className="bg-transparent border-none text-text-1 cursor-pointer p-1"
-            >
-              <span className="i-lucide-chevron-left text-lg" />
-            </button>
-          )}
-          {filename}
-        </span>
-        <button onClick={handleDownload} className="btn-ghost" disabled={loading && !isVideo}>
-          Download
-        </button>
-      </div>
-
-      {/* Content */}
-      <div className={`flex-1 overflow-auto ${isVideo || isImage || isHtml ? '' : 'p-4'}`}>
-        {loading ? (
-          <div className="w-full h-full flex items-center justify-center text-muted">Loading...</div>
-        ) : isVideo && mimeType ? (
-          <LiveVideoFromHash hash={fromHex(hash)} mimeType={mimeType} />
-        ) : content ? (
-          <ContentView data={content} filename={filename} onDownload={handleDownload} />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-muted">File not found</div>
-        )}
-      </div>
-    </div>
-  );
-}

@@ -3,7 +3,7 @@
  * Uses module-level state pattern for lightweight state management
  */
 import { useSyncExternalStore, useCallback } from 'react';
-import { toHex } from 'hashtree';
+import { toHex, nhashEncode } from 'hashtree';
 import type { Hash } from 'hashtree';
 import { useAppStore, getTree } from '../store';
 import { autosaveIfOwn } from '../nostr';
@@ -145,8 +145,9 @@ export function useUpload() {
         const parts = [route.npub, route.treeName, ...dirPath, fileName];
         navigate('/' + parts.map(encodeURIComponent).join('/'));
       } else if (route.hash) {
-        // Hash route: /h/hash/path/filename
-        const parts = ['h', route.hash, ...dirPath, fileName];
+        // Hash route: /nhash1.../path/filename
+        const nhash = nhashEncode(route.hash);
+        const parts = [nhash, ...dirPath, fileName];
         navigate('/' + parts.map(encodeURIComponent).join('/'));
       }
     }

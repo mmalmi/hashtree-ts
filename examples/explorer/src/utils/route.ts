@@ -8,13 +8,15 @@ export interface RouteInfo {
   treeName: string | null;
   hash: string | null;
   path: string[];
+  /** True when viewing a permalink (nhash route) */
+  isPermalink: boolean;
 }
 
 /**
  * Parse route info from window.location.hash
  * Handles:
  * - #/npub/treeName/path/to/file
- * - #/h/hash/path/to/file
+ * - #/nhash1.../path/to/file
  * - #/npub (user view)
  * - #/npub/profile
  */
@@ -24,19 +26,20 @@ export function parseRoute(): RouteInfo {
   const hashPath = fullHash.split('?')[0]; // Strip query params
   const parts = hashPath.split('/').filter(Boolean).map(decodeURIComponent);
 
-  // Hash route: #/h/hash/path...
-  if (parts[0] === 'h' && parts[1]) {
+  // nhash route: #/nhash1.../path...
+  if (parts[0]?.startsWith('nhash1')) {
     return {
       npub: null,
       treeName: null,
-      hash: parts[1],
-      path: parts.slice(2),
+      hash: parts[0], // Keep the nhash string, caller can decode
+      path: parts.slice(1),
+      isPermalink: true,
     };
   }
 
   // Special routes (no tree context)
   if (['settings', 'wallet'].includes(parts[0])) {
-    return { npub: null, treeName: null, hash: null, path: [] };
+    return { npub: null, treeName: null, hash: null, path: [], isPermalink: false };
   }
 
   // User routes
@@ -45,7 +48,7 @@ export function parseRoute(): RouteInfo {
 
     // Special user routes (profile, follows, edit)
     if (['profile', 'follows', 'edit'].includes(parts[1])) {
-      return { npub, treeName: null, hash: null, path: [] };
+      return { npub, treeName: null, hash: null, path: [], isPermalink: false };
     }
 
     // Tree route: #/npub/treeName/path...
@@ -57,15 +60,16 @@ export function parseRoute(): RouteInfo {
         treeName: parts[1],
         hash: null,
         path: isStreamRoute ? [] : parts.slice(2),
+        isPermalink: false,
       };
     }
 
     // User view: #/npub
-    return { npub, treeName: null, hash: null, path: [] };
+    return { npub, treeName: null, hash: null, path: [], isPermalink: false };
   }
 
   // Home route
-  return { npub: null, treeName: null, hash: null, path: [] };
+  return { npub: null, treeName: null, hash: null, path: [], isPermalink: false };
 }
 
 /**

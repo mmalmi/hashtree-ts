@@ -2,7 +2,7 @@
  * Shared folder action buttons - used in FileBrowser and Preview
  */
 import { Link } from 'react-router-dom';
-import { fromHex } from 'hashtree';
+import { fromHex, nhashEncode } from 'hashtree';
 import { openCreateModal, openRenameModal, openForkModal } from '../hooks/useModals';
 import { useUpload } from '../hooks/useUpload';
 import { useRoute, useTrees } from '../hooks';
@@ -66,8 +66,9 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
     <div className="flex flex-row flex-wrap items-center gap-2">
       {dirHash && (
         <>
+          {/* Permalink to this directory's hash */}
           <Link
-            to={`/h/${dirHash}`}
+            to={`/${nhashEncode(dirHash)}`}
             className={`btn-ghost no-underline ${btnClass}`}
             title={dirHash}
           >

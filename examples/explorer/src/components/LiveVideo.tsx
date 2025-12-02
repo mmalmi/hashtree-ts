@@ -4,12 +4,6 @@ import { getRefResolver } from '../refResolver';
 import type { Hash } from 'hashtree';
 import { toHex } from 'hashtree';
 
-// Persist video settings in memory
-const videoSettings = {
-  muted: false,
-  volume: 1,
-};
-
 interface LiveVideoProps {
   /** Resolver key (npub/treename) for subscribing to root hash updates */
   resolverKey: string | null;
@@ -280,43 +274,17 @@ export const LiveVideo = memo(function LiveVideo({
     }
   }, [fallbackUrl, useFallback]);
 
-  // Video event handlers: ended + volume persistence
+  // Video event handlers
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
-    // Apply saved settings
-    video.muted = videoSettings.muted;
-    video.volume = videoSettings.volume;
 
     const handleEnded = () => video.pause();
-    const handleVolumeChange = () => {
-      videoSettings.muted = video.muted;
-      videoSettings.volume = video.volume;
-    };
-
     video.addEventListener('ended', handleEnded);
-    video.addEventListener('volumechange', handleVolumeChange);
+
     return () => {
       video.removeEventListener('ended', handleEnded);
-      video.removeEventListener('volumechange', handleVolumeChange);
     };
-  }, []);
-
-  // Autoplay when video is ready
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleCanPlay = () => {
-      video.play().catch(() => {
-        video.muted = true;
-        video.play().catch(() => {});
-      });
-    };
-
-    video.addEventListener('canplay', handleCanPlay, { once: true });
-    return () => video.removeEventListener('canplay', handleCanPlay);
   }, []);
 
   const src = useFallback ? fallbackUrl : undefined;
@@ -329,7 +297,6 @@ export const LiveVideo = memo(function LiveVideo({
         src={src ?? undefined}
         controls
         autoPlay
-        muted={videoSettings.muted}
         className="max-w-full max-h-full object-contain"
       />
     </div>

@@ -109,3 +109,19 @@ export {
   type NostrFilter,
   type Nip19Like,
 } from './resolver/index.js';
+
+// Bech32 identifiers (nhash, npath)
+export {
+  nhashEncode,
+  nhashDecode,
+  npathEncode,
+  npathDecode,
+  decode,
+  isNHash,
+  isNPath,
+  NHashTypeGuard,
+  BECH32_REGEX,
+  type NHashData,
+  type NPathData,
+  type DecodeResult,
+} from './nhash.js';

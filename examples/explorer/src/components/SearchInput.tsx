@@ -1,4 +1,5 @@
 import { useState, ChangeEvent, KeyboardEvent } from 'react';
+import { nhashEncode, isNHash, isNPath } from 'hashtree';
 
 // Match 64 hex chars optionally followed by /filename
 const HASH_PATTERN = /^([a-f0-9]{64})(\/.*)?$/i;
@@ -28,18 +29,26 @@ export function SearchInput() {
       return true;
     }
 
-    // Hex hash with optional path
-    const hashMatch = trimmed.match(HASH_PATTERN);
-    if (hashMatch) {
-      const hash = hashMatch[1];
-      const path = hashMatch[2] || '';
-      window.location.hash = `#/h/${hash}${path}`;
+    // nhash or npath - navigate directly
+    if (isNHash(trimmed) || isNPath(trimmed)) {
+      window.location.hash = `#/${trimmed}`;
       setValue('');
       return true;
     }
 
-    // Route path (e.g. npub1.../treename or h/abc123...)
-    if (trimmed.startsWith('npub1') || trimmed.startsWith('h/')) {
+    // Hex hash with optional path - convert to nhash format
+    const hashMatch = trimmed.match(HASH_PATTERN);
+    if (hashMatch) {
+      const hash = hashMatch[1];
+      const path = hashMatch[2] || '';
+      const nhash = nhashEncode(hash);
+      window.location.hash = `#/${nhash}${path}`;
+      setValue('');
+      return true;
+    }
+
+    // Route path (e.g. npub1.../treename)
+    if (trimmed.startsWith('npub1')) {
       window.location.hash = `#/${trimmed}`;
       setValue('');
       return true;

@@ -1,6 +1,6 @@
 import { useState, useCallback, DragEvent, KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { toHex } from 'hashtree';
+import { toHex, nhashEncode } from 'hashtree';
 import { useAppStore, formatBytes } from '../store';
 import { deleteEntry, moveEntry, moveToParent } from '../actions';
 import { openCreateModal } from '../hooks/useModals';
@@ -101,7 +101,7 @@ function getFileIcon(filename: string): string {
   }
 }
 
-// Build href for an entry
+// Build href for an entry using URL path segments
 function buildEntryHref(
   entry: { name: string; isTree: boolean },
   currentNpubVal: string | null,
@@ -117,8 +117,9 @@ function buildEntryHref(
     parts.push(entry.name);
     return '/' + parts.map(encodeURIComponent).join('/');
   } else if (rootHashVal) {
-    const hashHex = toHex(rootHashVal);
-    parts.push('h', hashHex);
+    // Use nhash format: /nhash1.../path/to/file
+    const nhash = nhashEncode(toHex(rootHashVal));
+    parts.push(nhash);
     parts.push(...currentPathVal);
     parts.push(entry.name);
     return '/' + parts.map(encodeURIComponent).join('/');
@@ -129,7 +130,7 @@ function buildEntryHref(
   return '/' + parts.map(encodeURIComponent).join('/');
 }
 
-// Build href for a tree
+// Build href for a tree (root of tree, no path)
 function buildTreeHref(ownerNpub: string, treeName: string): string {
   return `/${encodeURIComponent(ownerNpub)}/${encodeURIComponent(treeName)}`;
 }
@@ -363,36 +364,46 @@ export function FileBrowser() {
 
         {/* Tree list */}
         <div data-testid="file-list" className="flex-1 overflow-auto pb-4">
+          {/* Default "home" folder - always shown for own trees */}
+          {isOwnTrees && (
+            <Link
+              to={buildTreeHref(targetNpub!, 'home')}
+              className={`p-3 border-b border-surface-2 flex items-center gap-3 cursor-pointer no-underline text-text-1 min-w-0 ${
+                currentTreeName === 'home' ? 'bg-surface-2' : 'hover:bg-surface-1'
+              }`}
+            >
+              <span className="shrink-0 i-lucide-folder text-warning" />
+              <span className="truncate" title="home">home</span>
+            </Link>
+          )}
           {trees.length === 0 && !isOwnTrees ? (
             <div className="p-8 text-center text-muted">
               Upload files to begin
             </div>
-          ) : trees.length > 0 ? (
-            trees.map((tree) => (
-              <Link
-                key={tree.key}
-                to={buildTreeHref(targetNpub!, tree.name)}
-                className={`p-3 border-b border-surface-2 flex items-center gap-3 cursor-pointer no-underline text-text-1 min-w-0 ${
-                  currentTreeName === tree.name ? 'bg-surface-2' : 'hover:bg-surface-1'
-                }`}
-              >
-                <span className="shrink-0 i-lucide-folder text-warning" />
-                <span className="truncate" title={tree.name}>{tree.name}</span>
-              </Link>
-            ))
-          ) : null}
+          ) : trees.filter(t => t.name !== 'home').map((tree) => (
+            <Link
+              key={tree.key}
+              to={buildTreeHref(targetNpub!, tree.name)}
+              className={`p-3 border-b border-surface-2 flex items-center gap-3 cursor-pointer no-underline text-text-1 min-w-0 ${
+                currentTreeName === tree.name ? 'bg-surface-2' : 'hover:bg-surface-1'
+              }`}
+            >
+              <span className="shrink-0 i-lucide-folder text-warning" />
+              <span className="truncate" title={tree.name}>{tree.name}</span>
+            </Link>
+          ))}
         </div>
       </div>
     );
   }
 
-  // Build the root href for ".." when at top level
+  // Build the root href for ".." when at top level (goes to user's tree list)
   const buildRootHref = () => {
     if (viewedNpub) return `/${viewedNpub}`;
     return '/';
   };
 
-  // Build href for a directory path
+  // Build href for a directory path using URL segments
   const buildDirHref = (path: string[]): string => {
     const parts: string[] = [];
 
@@ -401,8 +412,9 @@ export function FileBrowser() {
       parts.push(...path);
       return '/' + parts.map(encodeURIComponent).join('/');
     } else if (rootHash) {
-      const hashHex = toHex(rootHash);
-      parts.push('h', hashHex);
+      // Use nhash format: /nhash1.../path
+      const nhash = nhashEncode(toHex(rootHash));
+      parts.push(nhash);
       parts.push(...path);
       return '/' + parts.map(encodeURIComponent).join('/');
     }

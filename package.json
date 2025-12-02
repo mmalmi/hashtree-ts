@@ -41,6 +41,7 @@
     "@noble/hashes": "^2.0.1",
     "@nostr-dev-kit/ndk": "^2.18.1",
     "@nostr-dev-kit/ndk-cache-dexie": "^2.6.44",
+    "@scure/base": "^2.0.0",
     "@scure/bip39": "^2.0.0",
     "@types/ws": "^8.18.1",
     "cbor2": "^2.0.1",

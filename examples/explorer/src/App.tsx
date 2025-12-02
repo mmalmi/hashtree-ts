@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { HashRouter, Routes, Route, useParams, Link, useLocation } from 'react-router-dom';
-import { toHex, fromHex } from 'hashtree';
+import { HashRouter, Routes, Route, useParams, Link, useLocation, useNavigate } from 'react-router-dom';
+import { toHex, fromHex, nhashDecode, npathDecode, isNHash, isNPath } from 'hashtree';
 import {
   FileBrowser,
   Preview,
-  FilePreview,
   CreateModal,
   RenameModal,
   ForkModal,
@@ -242,41 +241,97 @@ function TreeRouteInner() {
   );
 }
 
-// Route: Direct file permalink (displays single file by hash)
-// URL format: #/f/<64-char-hex>/<filename>
-function FileRouteInner() {
-  const { hash, filename } = useParams<{ hash: string; filename: string }>();
+// Route: Handles npub (user view), nhash (permalink), or npath (live reference)
+// Distinguishes by prefix: npub1... vs nhash1... vs npath1...
+// For nhash, path comes from URL segments: /nhash1.../path/to/file
+function NpubOrNHashOrNPathRoute() {
+  const { id, '*': path } = useParams<{ id: string; '*': string }>();
 
-  useEffect(() => {
-    useNostrStore.getState().setSelectedTree(null);
-  }, [hash]);
-
-  if (!hash || !filename || !/^[a-f0-9]{64}$/i.test(hash)) {
-    return <div className="p-4 text-muted">Invalid file link</div>;
+  // Check if it's an nhash (permalink) - path comes from URL segments
+  if (id && isNHash(id)) {
+    return <NHashView nhash={id} />;
   }
 
-  return <FilePreview hash={hash} filename={decodeURIComponent(filename)} />;
+  // Check if it's an npath (live reference)
+  if (id && isNPath(id)) {
+    return <NPathView npath={id} />;
+  }
+
+  // Otherwise treat as npub (UserRouteInner behavior)
+  return <UserView npub={id} />;
 }
 
-// Route: Direct hash navigation (no npub context)
-// URL format: #/h/<64-char-hex>/<optional-path>
-function HashRouteInner() {
-  const { hash, '*': path } = useParams<{ hash: string; '*': string }>();
-  const pathParts = path ? path.split('/').filter(Boolean).map(decodeURIComponent) : [];
-
+// nhash view - displays directory/file by hash (path in URL segments: /nhash1.../path/to/file)
+function NHashView({ nhash }: { nhash: string }) {
   useEffect(() => {
-    // Clear selectedTree - this is direct hash access
     useNostrStore.getState().setSelectedTree(null);
 
-    if (hash && /^[a-f0-9]{64}$/i.test(hash)) {
-      loadFromHash(hash);
+    try {
+      const decoded = nhashDecode(nhash);
+      loadFromHash(decoded.hash);
+    } catch {
+      // Invalid nhash
     }
-  }, [hash, path]);
+  }, [nhash]);
+
+  try {
+    nhashDecode(nhash); // Validate
+    return (
+      <ExplorerLayout>
+        <FileBrowser key={nhash} />
+      </ExplorerLayout>
+    );
+  } catch {
+    return <div className="p-4 text-muted">Invalid nhash format</div>;
+  }
+}
+
+// npath view - redirects to npub/tree/path URL format
+function NPathView({ npath }: { npath: string }) {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    try {
+      const decoded = npathDecode(npath);
+      // Convert pubkey to npub
+      const npub = nip19.npubEncode(decoded.pubkey);
+      // Build URL path: /npub/treeName/path...
+      const parts = [npub, decoded.treeName, ...decoded.path];
+      const url = '/' + parts.map(encodeURIComponent).join('/');
+      // Replace current history entry (don't add npath to history)
+      navigate(url, { replace: true });
+    } catch {
+      // Invalid npath - navigate home
+      navigate('/', { replace: true });
+    }
+  }, [npath, navigate]);
+
+  // Show loading while redirecting
+  return <div className="p-4 text-muted">Loading...</div>;
+}
+
+// User view (from UserRouteInner)
+function UserView({ npub }: { npub: string | undefined }) {
+  useEffect(() => {
+    if (!npub) return;
+    const appStore = useAppStore.getState();
+    const nostrStore = useNostrStore.getState();
+
+    appStore.setRootHash(null);
+    nostrStore.setSelectedTree(null);
+  }, [npub]);
+
+  if (!npub) return null;
 
   return (
-    <ExplorerLayout>
-      <FileBrowser key={path || ''} />
-    </ExplorerLayout>
+    <>
+      <div className="flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col">
+        <FileBrowser />
+      </div>
+      <div className="hidden lg:flex flex-1 flex-col min-w-0 min-h-0">
+        <ProfileView npub={npub} />
+      </div>
+    </>
   );
 }
 
@@ -380,15 +435,15 @@ export function App() {
             <Routes>
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/wallet" element={<WalletPage />} />
-              <Route path="/f/:hash/:filename" element={<FileRouteInner />} />
-              <Route path="/h/:hash/*" element={<HashRouteInner />} />
-              <Route path="/h/:hash" element={<HashRouteInner />} />
+              {/* User/profile routes (npub) */}
               <Route path="/:npub/follows" element={<FollowsRouteInner />} />
               <Route path="/:npub/edit" element={<EditProfilePage />} />
               <Route path="/:npub/profile" element={<ProfileRouteInner />} />
               <Route path="/:npub/:treeName/stream" element={<StreamRouteInner />} />
               <Route path="/:npub/:treeName/*" element={<TreeRouteInner />} />
-              <Route path="/:npub" element={<UserRouteInner />} />
+              {/* Catch-all for npub user view, nhash permalink (with optional path), or npath live reference */}
+              <Route path="/:id/*" element={<NpubOrNHashOrNPathRoute />} />
+              <Route path="/:id" element={<NpubOrNHashOrNPathRoute />} />
               <Route path="/" element={<HomeRoute />} />
             </Routes>
           </div>
