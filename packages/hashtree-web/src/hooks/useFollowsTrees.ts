@@ -13,10 +13,11 @@ export interface FollowedTree extends HashTreeEvent {
 /**
  * Subscribe to trees from all followed users
  */
-export function useFollowsTrees(): { trees: FollowedTree[]; loading: boolean } {
+export function useFollowsTrees(): { trees: FollowedTree[]; loading: boolean; followsCount: number } {
   const myPubkey = useNostrStore(s => s.pubkey);
   const [trees, setTrees] = useState<FollowedTree[]>([]);
   const [loading, setLoading] = useState(false);
+  const [followsCount, setFollowsCount] = useState(0);
   const followedPubkeysRef = useRef<string[]>([]);
   const treesSubRef = useRef<NDKSubscription | null>(null);
 
@@ -110,6 +111,7 @@ export function useFollowsTrees(): { trees: FollowedTree[]; loading: boolean } {
 
       if (changed) {
         followedPubkeysRef.current = pubkeys;
+        setFollowsCount(pubkeys.length);
         startTreesSub(pubkeys);
       }
     });
@@ -130,5 +132,5 @@ export function useFollowsTrees(): { trees: FollowedTree[]; loading: boolean } {
     };
   }, [myPubkey]);
 
-  return { trees, loading };
+  return { trees, loading, followsCount };
 }

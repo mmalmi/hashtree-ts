@@ -26,11 +26,11 @@ export function TreeRow({
   showAuthorName,
   timestamp,
 }: TreeRowProps) {
-  const iconClass = icon === 'folder'
+  const typeIconClass = icon === 'folder'
     ? 'i-lucide-folder text-warning'
     : icon === 'file'
       ? 'i-lucide-file text-text-2'
-      : 'i-lucide-hash text-accent';
+      : 'i-lucide-folder text-warning'; // hash items show folder icon
 
   return (
     <Link
@@ -46,10 +46,10 @@ export function TreeRow({
         </button>
       ) : (
         <span className="shrink-0 w-6 h-6 flex items-center justify-center">
-          <span className={iconClass} />
+          <span className="i-lucide-hash text-accent" />
         </span>
       )}
-      {pubkey && <span className={`shrink-0 ${iconClass}`} />}
+      <span className={`shrink-0 ${typeIconClass}`} />
       <div className="flex-1 min-w-0">
         <div className="truncate">{label}</div>
         {(subtitle || showAuthorName) && (
