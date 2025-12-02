@@ -46,7 +46,7 @@ function LogoLink() {
 
   return (
     <Link to="/" onClick={handleClick} className="no-underline">
-      <Logo showBack={isFullscreen} />
+      <Logo />
     </Link>
   );
 }

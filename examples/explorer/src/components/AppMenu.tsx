@@ -1,6 +1,8 @@
+import React from 'react';
 import { create } from 'zustand';
 import { navigate } from '../utils/navigate';
 import { useNostrStore, logout } from '../nostr';
+import { Logo } from './Logo';
 
 // Drawer state store
 interface DrawerState {
@@ -25,6 +27,16 @@ export function AppMenu() {
   const isLoggedIn = useNostrStore(s => s.isLoggedIn);
 
   const close = () => { setDrawerOpen(false); };
+
+  // Close on Escape key
+  React.useEffect(() => {
+    if (!isDrawerOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isDrawerOpen]);
 
   const handleLogout = () => {
     logout();
@@ -68,7 +80,7 @@ export function AppMenu() {
       `}>
         {/* Header */}
         <div className="h-12 px-4 flex items-center border-b border-surface-3">
-          <span className="font-semibold text-text-1">Hashtree</span>
+          <Logo />
         </div>
 
         {/* Menu items */}

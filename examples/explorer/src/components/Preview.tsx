@@ -608,17 +608,11 @@ function DirectoryActions() {
 
   return (
     <div
-      className={`flex flex-col h-full relative ${isDraggingOver ? 'bg-accent/10' : ''}`}
+      className="flex flex-col h-full"
       onDragOver={handleFileDragOver}
       onDragLeave={handleFileDragLeave}
       onDrop={handleFileDrop}
     >
-      {isDraggingOver && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 border-2 border-dashed border-accent rounded m-2">
-          <span className="text-accent font-medium">Drop files to upload</span>
-        </div>
-      )}
-
       {/* Action buttons */}
       {hasTree && (
         <div className="p-3 shrink-0">
@@ -626,8 +620,44 @@ function DirectoryActions() {
         </div>
       )}
 
+      {/* Upload drop zone */}
+      {hasTree && canEdit && !readmeContent && (
+        <div
+          className={`flex-1 mx-3 mb-3 flex items-center justify-center cursor-pointer transition-colors border border-surface-3 rounded-lg ${isDraggingOver ? 'bg-surface-1/50' : 'hover:bg-surface-1/50'}`}
+          onClick={uploadProgress ? undefined : openFilePicker}
+        >
+          {uploadProgress ? (
+            <div className="flex flex-col items-center text-text-2 w-64">
+              <span className="i-lucide-loader-2 text-4xl mb-3 animate-spin text-accent" />
+              <span className="text-sm mb-2 truncate max-w-full">{uploadProgress.fileName}</span>
+              <div className="w-full h-2 bg-surface-2 rounded overflow-hidden">
+                <div
+                  className="h-full bg-accent transition-all"
+                  style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                />
+              </div>
+              <span className="text-xs mt-1 text-text-3">
+                {uploadProgress.current} / {uploadProgress.total}
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center text-text-3">
+              <span className="i-lucide-upload text-4xl mb-2" />
+              <span className="text-sm">Drop or click to upload</span>
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handleFileInputChange}
+          />
+        </div>
+      )}
+
       {/* README.md content */}
-      {readmeContent ? (
+      {readmeContent && (
         <div className="flex-1 overflow-auto px-4 pb-4 lg:px-8 lg:pb-8">
           <div className="flex items-center justify-between mb-3">
             <span className="text-text-2 text-sm font-medium">README.md</span>
@@ -650,41 +680,6 @@ function DirectoryActions() {
           <div className="prose prose-sm max-w-none text-text-1">
             <Markdown>{readmeContent}</Markdown>
           </div>
-        </div>
-      ) : hasTree && canEdit && (
-        <div
-          className="flex-1 flex items-center justify-center cursor-pointer hover:bg-surface-1 transition-colors m-4 border border-surface-3 rounded-lg"
-          onClick={uploadProgress ? undefined : openFilePicker}
-        >
-          <div className="flex flex-col items-center justify-center">
-            {uploadProgress ? (
-              <div className="flex flex-col items-center text-text-2 w-64">
-                <span className="i-lucide-loader-2 text-4xl mb-3 animate-spin text-accent" />
-                <span className="text-sm mb-2 truncate max-w-full">{uploadProgress.fileName}</span>
-                <div className="w-full h-2 bg-surface-2 rounded overflow-hidden">
-                  <div
-                    className="h-full bg-accent transition-all"
-                    style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-                  />
-                </div>
-                <span className="text-xs mt-1 text-text-3">
-                  {uploadProgress.current} / {uploadProgress.total}
-                </span>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center text-text-3">
-                <span className="i-lucide-upload text-4xl mb-2" />
-                <span className="text-sm">Drop or click to upload</span>
-              </div>
-            )}
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={handleFileInputChange}
-          />
         </div>
       )}
     </div>

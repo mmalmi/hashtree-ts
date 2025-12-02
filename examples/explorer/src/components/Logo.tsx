@@ -1,5 +1,5 @@
-export function Logo({ className = '', showBack = false }: { className?: string; showBack?: boolean }) {
+export function Logo({ className = '' }: { className?: string }) {
   return (
-    <span className={`logo-cyber ${className}`}>{showBack ? '<' : '#'} hashtree</span>
+    <span className={`logo-cyber ${className}`}># hashtree</span>
   );
 }
