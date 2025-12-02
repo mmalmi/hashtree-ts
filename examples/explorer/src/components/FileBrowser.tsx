@@ -331,20 +331,24 @@ export function FileBrowser() {
 
   // Show tree list when at root (no tree selected)
   if (!inTreeView) {
+    // Determine which user to show in header
+    const headerNpub = viewedNpub || (isLoggedIn ? userNpub : null);
+    const headerPubkey = headerNpub ? (npubToPubkey(headerNpub) || headerNpub) : null;
+    // Hide header on mobile when viewing another user (ProfileView shown above)
+    const hideOnMobile = viewedNpub && viewedNpub !== userNpub;
+
     return (
       <div className="flex-1 flex flex-col min-h-0 bg-surface-1">
-        {/* Header - hide when viewedNpub since ProfileView already shows user info */}
-        {!viewedNpub && (
-          <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center gap-2 bg-surface-1">
-            {isLoggedIn && userNpub ? (
-              <Link to={`/${userNpub}/profile`} className="no-underline min-w-0">
-                <UserRow pubkey={npubToPubkey(userNpub) || userNpub} avatarSize={24} className="min-w-0" />
-              </Link>
-            ) : (
-              <span className="text-sm text-text-2">Folders</span>
-            )}
-          </div>
-        )}
+        {/* Header with user info - hidden on mobile when viewing other user's profile */}
+        <div className={`h-10 shrink-0 px-3 border-b border-surface-3 flex items-center gap-2 bg-surface-1 ${hideOnMobile ? 'hidden lg:flex' : ''}`}>
+          {headerPubkey ? (
+            <Link to={`/${headerNpub}/profile`} className="no-underline min-w-0">
+              <UserRow pubkey={headerPubkey} avatarSize={24} className="min-w-0" />
+            </Link>
+          ) : (
+            <span className="text-sm text-text-2">Folders</span>
+          )}
+        </div>
 
         {/* New folder button */}
         {isOwnTrees && (
@@ -359,11 +363,11 @@ export function FileBrowser() {
 
         {/* Tree list */}
         <div data-testid="file-list" className="flex-1 overflow-auto">
-          {trees.length === 0 ? (
+          {trees.length === 0 && !isOwnTrees ? (
             <div className="p-8 text-center text-muted">
-              {isLoggedIn ? 'No folders yet' : 'Upload files to begin'}
+              Upload files to begin
             </div>
-          ) : (
+          ) : trees.length > 0 ? (
             trees.map((tree) => (
               <Link
                 key={tree.key}
@@ -376,7 +380,7 @@ export function FileBrowser() {
                 <span className="truncate" title={tree.name}>{tree.name}</span>
               </Link>
             ))
-          )}
+          ) : null}
         </div>
       </div>
     );

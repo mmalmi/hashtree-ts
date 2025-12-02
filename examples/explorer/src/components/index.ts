@@ -11,3 +11,4 @@ export { ProfileView } from './ProfileView';
 export { FollowsPage } from './FollowsPage';
 export { Avatar, Name, UserRow, Minidenticon } from './user';
 export { StreamView } from './stream';
+export { Logo } from './Logo';

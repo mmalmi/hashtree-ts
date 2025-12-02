@@ -86,18 +86,25 @@ export function Preview() {
 
   // Edit mode is driven by URL query param
   const isEditing = searchParams.get('edit') === '1';
+  const isFullscreen = searchParams.get('fullscreen') === '1';
   const [editContent, setEditContent] = useState('');
   const [autoSave, setAutoSave] = useState(false);
 
-  // Helper to update edit mode via URL
-  const setIsEditing = useCallback((editing: boolean) => {
-    const hash = window.location.hash.split('?')[0]; // Get path without query
-    if (editing) {
-      window.location.hash = hash + '?edit=1';
+  // Helper to update URL query params
+  const setUrlParam = useCallback((param: string, value: boolean) => {
+    const hash = window.location.hash.split('?')[0];
+    const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+    if (value) {
+      params.set(param, '1');
     } else {
-      window.location.hash = hash;
+      params.delete(param);
     }
+    const queryString = params.toString();
+    window.location.hash = queryString ? `${hash}?${queryString}` : hash;
   }, []);
+
+  const setIsEditing = useCallback((editing: boolean) => setUrlParam('edit', editing), [setUrlParam]);
+  const setIsFullscreen = useCallback((fullscreen: boolean) => setUrlParam('fullscreen', fullscreen), [setUrlParam]);
 
   const mimeType = urlFileName ? getMimeType(urlFileName) : null;
   const isVideo = mimeType?.startsWith('video/');
@@ -212,8 +219,8 @@ export function Preview() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
-      {/* Header - only show when file selected */}
-      {(entry || urlFileName) && (
+      {/* Header - only show when file selected and not fullscreen */}
+      {(entry || urlFileName) && !isFullscreen && (
         <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center justify-between bg-surface-1">
           <span className="font-medium flex items-center gap-2">
             {(entry || urlFileName) && (
@@ -258,6 +265,13 @@ export function Preview() {
             >
               Permalink
             </Link>
+            <button
+              onClick={() => setIsFullscreen(true)}
+              className="btn-ghost"
+              title="Fullscreen"
+            >
+              <span className="i-lucide-maximize text-base" />
+            </button>
             {canEdit && (
               <>
                 <button onClick={() => openRenameModal(entry?.name)} className="btn-ghost">Rename</button>

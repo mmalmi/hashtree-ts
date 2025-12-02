@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { HashRouter, Routes, Route, useParams, Link } from 'react-router-dom';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { HashRouter, Routes, Route, useParams, Link, useLocation } from 'react-router-dom';
 import { toHex, fromHex } from 'hashtree';
 import {
   FileBrowser,
@@ -26,12 +26,51 @@ import { nip19 } from 'nostr-tools';
 import { useNostrStore } from './nostr';
 import { useSelectedFile, useRoute } from './hooks';
 
+// Logo link that clears fullscreen mode when clicked
+function LogoLink() {
+  const location = useLocation();
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const isFullscreen = searchParams.get('fullscreen') === '1';
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (isFullscreen) {
+      e.preventDefault();
+      // Clear fullscreen param, keep the rest of the URL
+      const hash = window.location.hash.split('?')[0];
+      const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+      params.delete('fullscreen');
+      const queryString = params.toString();
+      window.location.hash = queryString ? `${hash}?${queryString}` : hash;
+    }
+  };
+
+  return (
+    <Link to="/" onClick={handleClick} className="no-underline">
+      <Logo showBack={isFullscreen} />
+    </Link>
+  );
+}
+
 // Shared layout wrapper - uses URL-derived selection to show/hide on mobile
 function ExplorerLayout({ children }: { children: React.ReactNode }) {
   // Use URL path to determine if file is selected - more stable than entries-based detection
   // This prevents layout shifts during merkle root updates when entries change
   const route = useRoute();
+  const location = useLocation();
   const hasFileSelected = route.path.length > 0;
+
+  // Check for fullscreen mode from URL query param
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const isFullscreen = searchParams.get('fullscreen') === '1';
+
+  // In fullscreen mode, hide file browser entirely
+  if (isFullscreen) {
+    return (
+      <div className="flex flex-1 flex-col min-w-0 min-h-0">
+        <Preview />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -304,7 +343,7 @@ export function App() {
         {/* Top bar */}
         <header className="h-12 shrink-0 bg-surface-1 border-b border-surface-3 flex items-center justify-between px-3 md:px-4">
           <div className="flex items-center gap-2 md:gap-3">
-            <Link to="/" className="no-underline"><Logo /></Link>
+            <LogoLink />
           </div>
           <div className="flex items-center gap-2 md:gap-3">
             <div className="hidden md:block"><SearchInput /></div>
