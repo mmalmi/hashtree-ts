@@ -79,12 +79,21 @@ export function ProfileView({ npub }: Props) {
           </h1>
           <div className="flex items-center gap-2">
             {isLoggedInVal && isOwnProfile && (
-              <button
-                onClick={() => navigate(`/${npub}/edit`)}
-                className="btn-ghost"
-              >
-                Edit Profile
-              </button>
+              <>
+                <button
+                  onClick={() => navigate('/accounts')}
+                  className="btn-ghost"
+                  title="Switch account"
+                >
+                  <span className="i-lucide-users" />
+                </button>
+                <button
+                  onClick={() => navigate(`/${npub}/edit`)}
+                  className="btn-ghost"
+                >
+                  Edit Profile
+                </button>
+              </>
             )}
             {isLoggedInVal && !isOwnProfile && (
               <button

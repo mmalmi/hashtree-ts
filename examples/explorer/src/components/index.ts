@@ -13,3 +13,4 @@ export { Avatar, Name, UserRow, Minidenticon } from './user';
 export { StreamView } from './stream';
 export { Logo } from './Logo';
 export { RecentsView } from './RecentsView';
+export { AccountsPage } from './AccountsPage';

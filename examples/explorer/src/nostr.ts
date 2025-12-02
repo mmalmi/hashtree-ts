@@ -18,6 +18,14 @@ import NDK, {
 import NDKCacheAdapterDexie from '@nostr-dev-kit/ndk-cache-dexie';
 import { initWebRTC, stopWebRTC } from './store';
 import type { EventSigner } from 'hashtree';
+import {
+  useAccountsStore,
+  initAccountsStore,
+  createAccountFromNsec,
+  createExtensionAccount,
+  saveActiveAccountToStorage,
+  loadAccountsFromStorage,
+} from './accounts';
 
 // Using global Window.nostr interface from NDK types
 
@@ -116,12 +124,30 @@ export async function signEvent(event: NostrEvent): Promise<NostrEvent> {
  * Try to restore session from localStorage, or generate a new key if none exists
  */
 export async function restoreSession(): Promise<boolean> {
+  // Initialize accounts store first
+  initAccountsStore();
+
+  // Migrate legacy single account to multi-account storage if needed
+  const accounts = loadAccountsFromStorage();
   const loginType = localStorage.getItem(STORAGE_KEY_LOGIN_TYPE);
+  const storedNsec = localStorage.getItem(STORAGE_KEY_NSEC);
+
+  if (accounts.length === 0 && (loginType || storedNsec)) {
+    // Migrate existing login to accounts store
+    if (loginType === 'nsec' && storedNsec) {
+      const account = createAccountFromNsec(storedNsec);
+      if (account) {
+        useAccountsStore.getState().addAccount(account);
+        useAccountsStore.getState().setActiveAccount(account.pubkey);
+        saveActiveAccountToStorage(account.pubkey);
+      }
+    }
+    // Extension accounts are added when they successfully log in
+  }
 
   if (loginType === 'extension') {
     return loginWithExtension();
   } else if (loginType === 'nsec') {
-    const storedNsec = localStorage.getItem(STORAGE_KEY_NSEC);
     if (storedNsec) {
       return loginWithNsec(storedNsec);
     }
@@ -156,6 +182,15 @@ export async function loginWithExtension(): Promise<boolean> {
     // Save login type (extension handles its own key storage)
     localStorage.setItem(STORAGE_KEY_LOGIN_TYPE, 'extension');
     localStorage.removeItem(STORAGE_KEY_NSEC);
+
+    // Add to accounts store if not already present
+    const accountsStore = useAccountsStore.getState();
+    if (!accountsStore.accounts.some(a => a.pubkey === pk)) {
+      const account = createExtensionAccount(pk);
+      accountsStore.addAccount(account);
+    }
+    accountsStore.setActiveAccount(pk);
+    saveActiveAccountToStorage(pk);
 
     // Use window.nostr.nip04 for encryption (NIP-07 compatible)
     const encrypt = async (pubkey: string, plaintext: string) => {
@@ -201,6 +236,17 @@ export function loginWithNsec(nsec: string, save = true): boolean {
     if (save) {
       localStorage.setItem(STORAGE_KEY_LOGIN_TYPE, 'nsec');
       localStorage.setItem(STORAGE_KEY_NSEC, nsec);
+
+      // Add to accounts store if not already present
+      const accountsStore = useAccountsStore.getState();
+      if (!accountsStore.accounts.some(a => a.pubkey === pk)) {
+        const account = createAccountFromNsec(nsec);
+        if (account) {
+          accountsStore.addAccount(account);
+        }
+      }
+      accountsStore.setActiveAccount(pk);
+      saveActiveAccountToStorage(pk);
     }
 
     // Create encrypt/decrypt using nostr-tools nip04
@@ -244,6 +290,15 @@ export function generateNewKey(): { nsec: string; npub: string } {
   // Save to localStorage
   localStorage.setItem(STORAGE_KEY_LOGIN_TYPE, 'nsec');
   localStorage.setItem(STORAGE_KEY_NSEC, nsec);
+
+  // Add to accounts store
+  const accountsStore = useAccountsStore.getState();
+  const account = createAccountFromNsec(nsec);
+  if (account) {
+    accountsStore.addAccount(account);
+    accountsStore.setActiveAccount(pk);
+    saveActiveAccountToStorage(pk);
+  }
 
   // Create encrypt/decrypt using nostr-tools nip04
   const sk = secretKey;
