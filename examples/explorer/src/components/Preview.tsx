@@ -101,6 +101,7 @@ export function Preview() {
 
   const mimeType = urlFileName ? getMimeType(urlFileName) : null;
   const isVideo = mimeType?.startsWith('video/');
+  const isImage = mimeType?.startsWith('image/');
   const isHtml = mimeType === 'text/html';
   const canEdit = !viewedNpub || viewedNpub === userNpub || !isLoggedIn;
 
@@ -313,7 +314,7 @@ export function Preview() {
       )}
 
       {/* Content */}
-      <div className={`flex-1 overflow-auto ${isVideo || isHtml ? '' : 'p-4'}`}>
+      <div className={`flex-1 overflow-auto ${isVideo || isImage || isHtml ? '' : 'p-4'}`}>
         {/* Show textarea immediately if in edit mode with a filename (even before entry loads) */}
         {isEditing && urlFileName ? (
           <textarea

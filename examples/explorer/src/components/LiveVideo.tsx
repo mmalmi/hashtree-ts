@@ -323,14 +323,16 @@ export const LiveVideo = memo(function LiveVideo({
   if (useFallback && !fallbackUrl) return null;
 
   return (
-    <video
-      ref={videoRef}
-      src={src ?? undefined}
-      controls
-      autoPlay
-      muted={videoSettings.muted}
-      className="w-full"
-    />
+    <div className="w-full h-full flex items-center justify-center">
+      <video
+        ref={videoRef}
+        src={src ?? undefined}
+        controls
+        autoPlay
+        muted={videoSettings.muted}
+        className="max-w-full max-h-full object-contain"
+      />
+    </div>
   );
 }, (prevProps, nextProps) => {
   // Only re-render if resolverKey, filePath, or mimeType change
