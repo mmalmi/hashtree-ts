@@ -6,11 +6,12 @@ import { useSyncExternalStore, useCallback } from 'react';
 import { toHex, nhashEncode } from 'hashtree';
 import type { Hash } from 'hashtree';
 import { useAppStore, getTree } from '../store';
-import { autosaveIfOwn } from '../nostr';
+import { autosaveIfOwn, saveHashtree, useNostrStore } from '../nostr';
 import { navigate } from '../utils/navigate';
 import { getCurrentPathFromUrl, parseRoute } from '../utils/route';
 import { clearFileSelection } from '../actions';
 import { markFilesChanged } from './useRecentlyChanged';
+import { nip19 } from 'nostr-tools';
 
 // Upload progress type
 export interface UploadProgress {
@@ -113,6 +114,8 @@ export function useUpload() {
 
     // Add to current directory or create new root
     const appState = useAppStore.getState();
+    const route = parseRoute();
+
     if (appState.rootHash) {
       // Add each file using setEntry
       let rootHash = appState.rootHash;
@@ -122,6 +125,36 @@ export function useUpload() {
       }
       appState.setRootHash(rootHash);
       await autosaveIfOwn(toHex(rootHash));
+    } else if (route.npub && route.treeName) {
+      // Creating new tree in a virtual directory (e.g., /npub/home that doesn't exist yet)
+      // Check if this is our own npub
+      const nostrStore = useNostrStore.getState();
+      let routePubkey: string | null = null;
+      try {
+        const decoded = nip19.decode(route.npub);
+        if (decoded.type === 'npub') routePubkey = decoded.data as string;
+      } catch {}
+
+      if (routePubkey && routePubkey === nostrStore.pubkey) {
+        // Create the tree and save it
+        const hash = await tree.putDirectory(newFiles);
+        appState.setRootHash(hash);
+        const hashHex = toHex(hash);
+        await saveHashtree(route.treeName, hashHex);
+
+        // Set selectedTree so future autosaves work
+        nostrStore.setSelectedTree({
+          id: '',
+          name: route.treeName,
+          pubkey: routePubkey,
+          rootHash: hashHex,
+          created_at: Math.floor(Date.now() / 1000),
+        });
+      } else {
+        // Not our tree, just create local directory
+        const hash = await tree.putDirectory(newFiles);
+        appState.setRootHash(hash);
+      }
     } else {
       const hash = await tree.putDirectory(newFiles);
       appState.setRootHash(hash);

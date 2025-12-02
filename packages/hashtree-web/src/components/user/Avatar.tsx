@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useProfile, getProfileName } from '../../hooks/useProfile';
 import { animalName } from '../../utils/animalName';
 import { Minidenticon } from './Minidenticon';
@@ -17,6 +17,11 @@ export function Avatar({ pubkey, size = 40, class: classProp, className }: Props
   const cssClass = classProp || className;
   const profile = useProfile(pubkey);
   const [imgError, setImgError] = useState(false);
+
+  // Reset error state when pubkey changes
+  useEffect(() => {
+    setImgError(false);
+  }, [pubkey]);
 
   const name = getProfileName(profile, pubkey) || animalName(pubkey);
 

@@ -50,13 +50,14 @@ export function NostrLogin() {
     generateNewKey();
   };
 
-  // Logged in: just show avatar that links to user's trees
+  // Logged in: just show avatar that links to user's trees (double-click for accounts)
   if (isLoggedIn && pubkey) {
     return (
       <button
         onClick={goToMyTrees}
+        onDoubleClick={() => navigate('/accounts')}
         className="bg-transparent border-none cursor-pointer p-0 hover:opacity-80"
-        title="My Trees"
+        title="My Trees (double-click for accounts)"
       >
         <Avatar pubkey={pubkey} size={32} />
       </button>

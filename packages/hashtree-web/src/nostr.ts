@@ -128,29 +128,41 @@ export async function restoreSession(): Promise<boolean> {
   initAccountsStore();
 
   // Migrate legacy single account to multi-account storage if needed
-  const accounts = loadAccountsFromStorage();
-  const loginType = localStorage.getItem(STORAGE_KEY_LOGIN_TYPE);
-  const storedNsec = localStorage.getItem(STORAGE_KEY_NSEC);
+  const legacyLoginType = localStorage.getItem(STORAGE_KEY_LOGIN_TYPE);
+  const legacyNsec = localStorage.getItem(STORAGE_KEY_NSEC);
+  const accountsState = useAccountsStore.getState();
 
-  if (accounts.length === 0 && (loginType || storedNsec)) {
+  if (accountsState.accounts.length === 0 && (legacyLoginType || legacyNsec)) {
     // Migrate existing login to accounts store
-    if (loginType === 'nsec' && storedNsec) {
-      const account = createAccountFromNsec(storedNsec);
+    if (legacyLoginType === 'nsec' && legacyNsec) {
+      const account = createAccountFromNsec(legacyNsec);
       if (account) {
-        useAccountsStore.getState().addAccount(account);
-        useAccountsStore.getState().setActiveAccount(account.pubkey);
+        accountsState.addAccount(account);
+        accountsState.setActiveAccount(account.pubkey);
         saveActiveAccountToStorage(account.pubkey);
       }
     }
     // Extension accounts are added when they successfully log in
   }
 
-  if (loginType === 'extension') {
-    return loginWithExtension();
-  } else if (loginType === 'nsec') {
-    if (storedNsec) {
-      return loginWithNsec(storedNsec);
+  // Use accounts store to restore session (not legacy storage)
+  const activeAccount = accountsState.accounts.find(
+    a => a.pubkey === accountsState.activeAccountPubkey
+  );
+
+  if (activeAccount) {
+    if (activeAccount.type === 'extension') {
+      return loginWithExtension();
+    } else if (activeAccount.type === 'nsec' && activeAccount.nsec) {
+      return loginWithNsec(activeAccount.nsec, false);
     }
+  }
+
+  // Fallback to legacy storage if no active account in store
+  if (legacyLoginType === 'extension') {
+    return loginWithExtension();
+  } else if (legacyLoginType === 'nsec' && legacyNsec) {
+    return loginWithNsec(legacyNsec);
   }
 
   // No existing session - auto-generate a new key
@@ -159,12 +171,34 @@ export async function restoreSession(): Promise<boolean> {
 }
 
 /**
+ * Wait for window.nostr to be available (extensions inject asynchronously)
+ */
+async function waitForNostrExtension(timeoutMs = 2000): Promise<boolean> {
+  if (window.nostr) return true;
+
+  return new Promise((resolve) => {
+    const startTime = Date.now();
+    const checkInterval = setInterval(() => {
+      if (window.nostr) {
+        clearInterval(checkInterval);
+        resolve(true);
+      } else if (Date.now() - startTime > timeoutMs) {
+        clearInterval(checkInterval);
+        resolve(false);
+      }
+    }, 100);
+  });
+}
+
+/**
  * Login with NIP-07 browser extension (window.nostr)
  */
 export async function loginWithExtension(): Promise<boolean> {
   const store = useNostrStore.getState();
   try {
-    if (!window.nostr) {
+    // Wait for extension to be injected (may take a moment on page load)
+    const extensionAvailable = await waitForNostrExtension();
+    if (!extensionAvailable) {
       throw new Error('No nostr extension found');
     }
 
