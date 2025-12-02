@@ -362,7 +362,7 @@ export function FileBrowser() {
         )}
 
         {/* Tree list */}
-        <div data-testid="file-list" className="flex-1 overflow-auto">
+        <div data-testid="file-list" className="flex-1 overflow-auto pb-4">
           {trees.length === 0 && !isOwnTrees ? (
             <div className="p-8 text-center text-muted">
               Upload files to begin
@@ -442,7 +442,7 @@ export function FileBrowser() {
       {/* File list */}
       <div
         data-testid="file-list"
-        className={`flex-1 overflow-auto relative outline-none ${isDraggingOver ? 'bg-accent/10' : ''}`}
+        className={`flex-1 overflow-auto relative outline-none pb-4 ${isDraggingOver ? 'bg-accent/10' : ''}`}
         tabIndex={0}
         onKeyDown={handleKeyDown}
         onDragOver={handleFileDragOver}

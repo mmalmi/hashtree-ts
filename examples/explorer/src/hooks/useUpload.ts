@@ -8,7 +8,7 @@ import type { Hash } from 'hashtree';
 import { useAppStore, getTree } from '../store';
 import { autosaveIfOwn } from '../nostr';
 import { navigate } from '../utils/navigate';
-import { getCurrentPathFromUrl } from '../utils/route';
+import { getCurrentPathFromUrl, parseRoute } from '../utils/route';
 import { clearFileSelection } from '../actions';
 import { markFilesChanged } from './useRecentlyChanged';
 
@@ -133,6 +133,23 @@ export function useUpload() {
     markFilesChanged(uploadedFileNames);
 
     setUploadProgress(null);
+
+    // If single file uploaded, navigate to it
+    if (newFiles.length === 1) {
+      const route = parseRoute();
+      const dirPath = getCurrentPathFromUrl();
+      const fileName = newFiles[0].name;
+
+      if (route.npub && route.treeName) {
+        // Tree route: /npub/treeName/path/filename
+        const parts = [route.npub, route.treeName, ...dirPath, fileName];
+        navigate('/' + parts.map(encodeURIComponent).join('/'));
+      } else if (route.hash) {
+        // Hash route: /h/hash/path/filename
+        const parts = ['h', route.hash, ...dirPath, fileName];
+        navigate('/' + parts.map(encodeURIComponent).join('/'));
+      }
+    }
   }, []);
 
   return { uploadProgress: progress, uploadFiles };

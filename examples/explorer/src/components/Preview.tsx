@@ -653,29 +653,31 @@ function DirectoryActions() {
         </div>
       ) : hasTree && canEdit && (
         <div
-          className="flex-1 flex items-center justify-center cursor-pointer hover:bg-surface-1 transition-colors"
+          className="flex-1 flex items-center justify-center cursor-pointer hover:bg-surface-1 transition-colors m-4 border border-surface-3 rounded-lg"
           onClick={uploadProgress ? undefined : openFilePicker}
         >
-          {uploadProgress ? (
-            <div className="flex flex-col items-center text-text-2 w-64">
-              <span className="i-lucide-loader-2 text-4xl mb-3 animate-spin text-accent" />
-              <span className="text-sm mb-2 truncate max-w-full">{uploadProgress.fileName}</span>
-              <div className="w-full h-2 bg-surface-2 rounded overflow-hidden">
-                <div
-                  className="h-full bg-accent transition-all"
-                  style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-                />
+          <div className="flex flex-col items-center justify-center">
+            {uploadProgress ? (
+              <div className="flex flex-col items-center text-text-2 w-64">
+                <span className="i-lucide-loader-2 text-4xl mb-3 animate-spin text-accent" />
+                <span className="text-sm mb-2 truncate max-w-full">{uploadProgress.fileName}</span>
+                <div className="w-full h-2 bg-surface-2 rounded overflow-hidden">
+                  <div
+                    className="h-full bg-accent transition-all"
+                    style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs mt-1 text-text-3">
+                  {uploadProgress.current} / {uploadProgress.total}
+                </span>
               </div>
-              <span className="text-xs mt-1 text-text-3">
-                {uploadProgress.current} / {uploadProgress.total}
-              </span>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center text-text-3">
-              <span className="i-lucide-upload text-4xl mb-2" />
-              <span className="text-sm">Drop or click to upload</span>
-            </div>
-          )}
+            ) : (
+              <div className="flex flex-col items-center text-text-3">
+                <span className="i-lucide-upload text-4xl mb-2" />
+                <span className="text-sm">Drop or click to upload</span>
+              </div>
+            )}
+          </div>
           <input
             ref={fileInputRef}
             type="file"
