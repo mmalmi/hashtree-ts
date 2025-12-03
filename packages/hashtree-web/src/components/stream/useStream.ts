@@ -221,7 +221,7 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       fileSize = result.size;
     } else if (!currentState.persistStream && recentChunks.length > 0) {
       const combined = concatChunks(recentChunks);
-      const result = await tree.putFile(combined);
+      const result = await tree.putFile(combined, { public: true });
       fileHash = result.hash;
       fileSize = result.size;
     } else {
@@ -235,7 +235,7 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       appState.setRootHash(newRootHash);
       await autosaveIfOwn(toHex(newRootHash));
     } else {
-      newRootHash = await tree.putDirectory([{ name: filename, hash: fileHash, size: fileSize }]);
+      newRootHash = (await tree.putDirectory([{ name: filename, hash: fileHash, size: fileSize }], { public: true })).hash;
       appState.setRootHash(newRootHash);
     }
   }, 3000);
@@ -278,7 +278,7 @@ export async function stopRecording(): Promise<void> {
     fileSize = result.size;
   } else if (!currentState.persistStream && recentChunks.length > 0) {
     const combined = concatChunks(recentChunks);
-    const result = await tree.putFile(combined);
+    const result = await tree.putFile(combined, { public: true });
     fileHash = result.hash;
     fileSize = result.size;
   }
@@ -292,7 +292,7 @@ export async function stopRecording(): Promise<void> {
       appState.setRootHash(newRootHash);
       await autosaveIfOwn(toHex(newRootHash));
     } else {
-      newRootHash = await tree.putDirectory([{ name: filename, hash: fileHash, size: fileSize }]);
+      newRootHash = (await tree.putDirectory([{ name: filename, hash: fileHash, size: fileSize }], { public: true })).hash;
       appState.setRootHash(newRootHash);
       navigate('/');
     }

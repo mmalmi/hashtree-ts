@@ -95,7 +95,7 @@ export async function saveFile(entryName: string | undefined, content: string): 
 
   const tree = getTree();
   const data = new TextEncoder().encode(content);
-  const { hash, size } = await tree.putFile(data);
+  const { hash, size } = await tree.putFile(data, { public: true });
   const currentPath = getCurrentPathFromUrl();
 
   const newRoot = await tree.setEntry(state.rootHash, currentPath, entryName, hash, size);
@@ -125,7 +125,7 @@ async function initVirtualTree(entries: { name: string; hash: Uint8Array; size: 
   if (!isOwnTree) return null; // Can only create in own trees
 
   // Create new tree with the entries
-  const newRootHash = await tree.putDirectory(entries);
+  const { hash: newRootHash } = await tree.putDirectory(entries, { public: true });
   useAppStore.getState().setRootHash(newRootHash);
 
   // Save to nostr
@@ -149,7 +149,7 @@ export async function createFile(name: string, content: string = '') {
   const state = useAppStore.getState();
   const tree = getTree();
   const data = new TextEncoder().encode(content);
-  const { hash, size } = await tree.putFile(data);
+  const { hash, size } = await tree.putFile(data, { public: true });
   const currentPath = getCurrentPathFromUrl();
 
   let newRoot: Uint8Array;
@@ -176,7 +176,7 @@ export async function createFolder(name: string) {
 
   const state = useAppStore.getState();
   const tree = getTree();
-  const emptyDirHash = await tree.putDirectory([]);
+  const emptyDirHash = (await tree.putDirectory([], { public: true })).hash;
   const currentPath = getCurrentPathFromUrl();
 
   if (state.rootHash) {
@@ -400,7 +400,7 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
   const dirEntries = new Map<string, { name: string; hash: Uint8Array; size: number; isTree?: boolean }[]>();
 
   for (const file of files) {
-    const { hash, size } = await tree.putFile(file.data);
+    const { hash, size } = await tree.putFile(file.data, { public: true });
     const pathParts = file.name.split('/');
     const fileName = pathParts.pop()!;
     const dirPath = pathParts.join('/');
@@ -426,7 +426,7 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
         rootHash = await tree.setEntry(rootHash, targetPath, entry.name, entry.hash, entry.size, entry.isTree ?? false);
       } else {
         // First file - create the tree
-        rootHash = await tree.putDirectory([{ name: entry.name, hash: entry.hash, size: entry.size }]);
+        rootHash = (await tree.putDirectory([{ name: entry.name, hash: entry.hash, size: entry.size }], { public: true })).hash;
       }
     }
   }
@@ -444,7 +444,7 @@ export async function createTree(name: string): Promise<boolean> {
   const { saveHashtree } = await import('./nostr');
 
   const tree = getTree();
-  const hash = await tree.putDirectory([]);
+  const hash = (await tree.putDirectory([], { public: true })).hash;
   const rootHex = toHex(hash);
 
   const nostrState = useNostrStore.getState();

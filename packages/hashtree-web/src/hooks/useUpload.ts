@@ -176,7 +176,7 @@ export function useUpload() {
         }
       }
 
-      const { hash, size } = await tree.putFile(data);
+      const { hash, size } = await tree.putFile(data, { public: true });
       uploadedFileNames.push(file.name);
 
       // Add file to tree immediately after upload completes
@@ -196,7 +196,7 @@ export function useUpload() {
         markFilesChanged(new Set([file.name]));
       } else if (needsTreeInit) {
         // First file in a new virtual directory - create the tree
-        const newRootHash = await tree.putDirectory([{ name: file.name, hash, size }]);
+        const newRootHash = (await tree.putDirectory([{ name: file.name, hash, size }], { public: true })).hash;
         currentAppState.setRootHash(newRootHash);
         markFilesChanged(new Set([file.name]));
 
@@ -215,7 +215,7 @@ export function useUpload() {
         needsTreeInit = false; // Tree is now initialized
       } else {
         // No existing tree and not a virtual directory - create new root
-        const newRootHash = await tree.putDirectory([{ name: file.name, hash, size }]);
+        const newRootHash = (await tree.putDirectory([{ name: file.name, hash, size }], { public: true })).hash;
         currentAppState.setRootHash(newRootHash);
         markFilesChanged(new Set([file.name]));
         if (i === 0) {
@@ -328,7 +328,7 @@ export function useUpload() {
       }
 
       // Store the file
-      const { hash, size } = await tree.putFile(data);
+      const { hash, size } = await tree.putFile(data, { public: true });
 
       // Parse the relative path to get directory components and filename
       const pathParts = relativePath.split('/');
@@ -355,7 +355,7 @@ export function useUpload() {
               // Directory doesn't exist, create it
               const partialPath = fullDirPath.slice(0, j);
               const dirName = fullDirPath[j];
-              const emptyDir = await tree.putDirectory([]);
+              const emptyDir = (await tree.putDirectory([], { public: true })).hash;
               workingRoot = await tree.setEntry(workingRoot, partialPath, dirName, emptyDir, 0, true);
             }
           }
@@ -374,13 +374,13 @@ export function useUpload() {
           }
         } else if (needsTreeInit) {
           // First file in a new virtual directory - create a directory entry
-          let rootHash = await tree.putDirectory([]);
+          let rootHash = (await tree.putDirectory([], { public: true })).hash;
 
           // Create intermediate directories (new tree, so all need creating)
           for (let j = 0; j < fullDirPath.length; j++) {
             const partialPath = fullDirPath.slice(0, j);
             const dirName = fullDirPath[j];
-            const emptyDir = await tree.putDirectory([]);
+            const emptyDir = (await tree.putDirectory([], { public: true })).hash;
             rootHash = await tree.setEntry(rootHash, partialPath, dirName, emptyDir, 0, true);
           }
 
@@ -408,13 +408,13 @@ export function useUpload() {
           needsTreeInit = false;
         } else {
           // No existing tree - create new root with this file
-          let rootHash = await tree.putDirectory([]);
+          let rootHash = (await tree.putDirectory([], { public: true })).hash;
 
           // Create intermediate directories (new tree, so all need creating)
           for (let j = 0; j < fullDirPath.length; j++) {
             const partialPath = fullDirPath.slice(0, j);
             const dirName = fullDirPath[j];
-            const emptyDir = await tree.putDirectory([]);
+            const emptyDir = (await tree.putDirectory([], { public: true })).hash;
             rootHash = await tree.setEntry(rootHash, partialPath, dirName, emptyDir, 0, true);
           }
 
