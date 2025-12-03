@@ -8,7 +8,7 @@ async function navigateToAccountsPage(page: any) {
   await page.waitForTimeout(300);
 
   // Should be on accounts page
-  await expect(page.getByRole('heading', { name: 'Accounts' })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible({ timeout: 5000 });
 }
 
 // Generate a test nsec for adding accounts
@@ -35,7 +35,7 @@ test.describe('Multi-Account Management', () => {
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("Hashtree")', { timeout: 5000 });
+    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
     await waitForNewUserRedirect(page);
   });
 
@@ -43,7 +43,7 @@ test.describe('Multi-Account Management', () => {
     await navigateToAccountsPage(page);
 
     // Verify accounts page elements
-    await expect(page.getByRole('heading', { name: 'Accounts' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Users' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add with nsec' })).toBeVisible();
   });
 

@@ -441,10 +441,13 @@ export function App() {
           const looksLikeFile = lastSegment && /\.[a-zA-Z0-9]+$/.test(lastSegment);
           const currentDirPath = looksLikeFile ? filePath.slice(0, -1) : filePath;
 
+          // Get encryption key from selectedTree
+          const encKey = selectedTree.rootKey ? fromHex(selectedTree.rootKey) : undefined;
+
           // Fetch old entries before update for LIVE indicator comparison
           const tree = getTree();
           const oldRootHash = fromHex(lastRootHashRef.current!);
-          let oldDirCid = cid(oldRootHash);
+          let oldDirCid = cid(oldRootHash, encKey);
           for (const part of currentDirPath) {
             const resolved = await tree.resolvePath(oldDirCid, part);
             if (resolved) oldDirCid = resolved.cid;
@@ -458,12 +461,12 @@ export function App() {
             oldHashes.set(e.name, toHex(e.cid.hash));
           }
 
-          // Update rootHash
-          loadFromHash(selectedTree.rootHash);
+          // Update rootHash with key
+          loadFromHashWithKey(selectedTree.rootHash, selectedTree.rootKey);
 
           // Fetch new entries to compare
           const newRootHash = fromHex(selectedTree.rootHash);
-          let newDirCid = cid(newRootHash);
+          let newDirCid = cid(newRootHash, encKey);
           for (const part of currentDirPath) {
             const resolved = await tree.resolvePath(newDirCid, part);
             if (resolved) newDirCid = resolved.cid;
@@ -548,39 +551,34 @@ async function loadFromNostr(npubStr: string, treeName: string, pathParts: strin
     const key = getResolverKey(npubStr, treeName);
 
     if (key) {
-      const rootHash = await resolver.resolve(key);
-      if (rootHash) {
-        const { toHex } = await import('hashtree');
-        const rootHashHex = toHex(rootHash);
+      const pubkey = npubToPubkey(npubStr);
 
-        // Set selectedTree so live updates work
-        const pubkey = npubToPubkey(npubStr);
-        if (pubkey) {
-          useNostrStore.getState().setSelectedTree({
-            id: '', // Will be set by actual nostr event
-            name: treeName,
-            pubkey,
-            rootHash: rootHashHex,
-            created_at: Math.floor(Date.now() / 1000),
-          });
-        }
+      // Subscribe to get both hash and key, and live updates
+      resolver.subscribe(key, (hash, encryptionKey) => {
+        if (hash) {
+          const hashHex = toHex(hash);
+          const keyHex = encryptionKey ? toHex(encryptionKey) : undefined;
 
-        loadFromHash(rootHashHex);
-
-        // Subscribe to live updates via resolver
-        resolver.subscribe(key, (hash) => {
-          if (hash) {
-            const hashHex = toHex(hash);
+          // Update selectedTree with hash AND key
+          if (pubkey) {
             const currentSelected = useNostrStore.getState().selectedTree;
-            if (currentSelected && currentSelected.name === treeName) {
+            // Only update if this is for the current tree
+            if (!currentSelected || currentSelected.name === treeName) {
               useNostrStore.getState().setSelectedTree({
-                ...currentSelected,
+                id: currentSelected?.id || '',
+                name: treeName,
+                pubkey,
                 rootHash: hashHex,
+                rootKey: keyHex,
+                created_at: currentSelected?.created_at || Math.floor(Date.now() / 1000),
               });
             }
           }
-        });
-      }
+
+          // Load with key for encrypted trees
+          loadFromHashWithKey(hashHex, keyHex);
+        }
+      });
     }
   } catch (e) {
     console.error('Failed to load from nostr:', e);
@@ -596,12 +594,18 @@ function npubToPubkey(npubStr: string): string | null {
   return null;
 }
 
-// Set rootCid - hooks will re-fetch entries automatically
-function loadFromHash(rootHex: string) {
+// Set rootCid with optional key - hooks will re-fetch entries automatically
+function loadFromHashWithKey(rootHex: string, keyHex?: string) {
   try {
     const hash = fromHex(rootHex);
-    useAppStore.getState().setRootCid(cid(hash));
+    const key = keyHex ? fromHex(keyHex) : undefined;
+    useAppStore.getState().setRootCid(cid(hash, key));
   } catch {
     // Invalid hex format - silently ignore
   }
+}
+
+// Set rootCid (public, no key) - hooks will re-fetch entries automatically
+function loadFromHash(rootHex: string) {
+  loadFromHashWithKey(rootHex);
 }

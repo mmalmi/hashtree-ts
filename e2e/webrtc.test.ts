@@ -54,7 +54,7 @@ test.describe('WebRTC P2P Connection', () => {
 
   async function waitForAutoLogin(page: Page) {
     // App auto-generates key on first visit, wait for header to appear
-    await page.waitForSelector('header span:has-text("Hashtree")', { timeout: 10000 });
+    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
   }
 
   test('peer indicator shows correct connection count', async () => {
