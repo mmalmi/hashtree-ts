@@ -742,8 +742,8 @@ function DirectoryActions() {
             </div>
           ) : (
             <div className="flex flex-col items-center text-text-3">
-              <span className="i-lucide-upload text-4xl mb-2" />
-              <span className="text-sm">Drop or click to upload</span>
+              <span className="i-lucide-plus text-4xl mb-2" />
+              <span className="text-sm">Drop or click to add</span>
             </div>
           )}
           <input

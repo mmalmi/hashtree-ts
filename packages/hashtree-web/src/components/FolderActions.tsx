@@ -117,8 +117,8 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
       {canEdit && (
         <>
           <label className={`btn-success cursor-pointer ${btnClass}`}>
-            <span className="i-lucide-upload" />
-            Upload
+            <span className="i-lucide-plus" />
+            Add
             <input
               type="file"
               multiple
@@ -132,9 +132,9 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
           </label>
 
           {hasDirectorySupport && (
-            <label className={`btn-ghost cursor-pointer ${btnClass}`} title="Upload a folder with all its contents">
-              <span className="i-lucide-folder-up" />
-              Upload Dir
+            <label className={`btn-ghost cursor-pointer ${btnClass}`} title="Add a folder with all its contents">
+              <span className="i-lucide-folder-plus" />
+              Add Dir
               <input
                 ref={dirInputRef}
                 type="file"

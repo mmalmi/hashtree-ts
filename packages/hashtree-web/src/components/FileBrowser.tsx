@@ -501,7 +501,7 @@ export function FileBrowser() {
         >
           {treeList.length === 0 ? (
             <div className="p-8 text-center text-muted">
-              Upload files to begin
+              Add files to begin
             </div>
           ) : treeList.map((tree, idx) => (
             <Link
@@ -561,7 +561,7 @@ export function FileBrowser() {
       >
         {isDraggingOver && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 border-2 border-dashed border-accent rounded m-2">
-            <span className="text-accent font-medium">Drop files to upload</span>
+            <span className="text-accent font-medium">Drop files to add</span>
           </div>
         )}
 
