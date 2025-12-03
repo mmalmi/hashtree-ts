@@ -6,10 +6,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { TreeBuilder } from '../src/builder.js';
 import { MemoryStore } from '../src/store/memory.js';
-import { toHex } from '../src/types.js';
+import { toHex, fromHex } from '../src/types.js';
 import { sha256 } from '../src/hash.js';
 import { encodeTreeNode, decodeTreeNode } from '../src/codec.js';
 import { NodeType, TreeNode } from '../src/types.js';
+import { encryptChk, decryptChk } from '../src/crypto.js';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -269,6 +270,36 @@ describe('Interoperability Test Vectors', () => {
         size
       }
     });
+  });
+
+  it('should generate CHK encryption vectors', async () => {
+    // Test cases for CHK encryption interoperability
+    const testCases = [
+      { name: 'chk_empty', data: new Uint8Array(0) },
+      { name: 'chk_hello', data: new TextEncoder().encode('hello') },
+      { name: 'chk_binary', data: new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05]) },
+      { name: 'chk_longer', data: new TextEncoder().encode('This is a longer message for testing CHK encryption interoperability.') },
+    ];
+
+    for (const tc of testCases) {
+      const { ciphertext, key } = await encryptChk(tc.data);
+
+      vectors.push({
+        name: tc.name,
+        input: {
+          type: 'blob', // Using blob type in vectors interface
+          data: toHex(tc.data)
+        },
+        expected: {
+          hash: toHex(key), // Key derived from SHA256 of plaintext
+          cbor: toHex(ciphertext) // AES-GCM encrypted ciphertext
+        }
+      });
+
+      // Verify decryption works
+      const decrypted = await decryptChk(ciphertext, key);
+      expect(decrypted).toEqual(tc.data);
+    }
   });
 
   // Write vectors to file after all tests
