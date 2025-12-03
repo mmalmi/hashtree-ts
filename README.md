@@ -28,6 +28,7 @@ Content-addressed merkle tree storage library for the browser.
 - `MemoryStore` - In-memory storage
 - `IndexedDBStore` - Browser IndexedDB persistence
 - `BlossomStore` - Remote blossom server storage
+- `WebRTCStore` - P2P sync via WebRTC with Nostr signaling
 
 ## Installation
 
@@ -38,37 +39,31 @@ npm install hashtree
 ## Usage
 
 ```typescript
-import {
-  MemoryStore,
-  TreeBuilder,
-  TreeReader,
-  toHex,
-} from 'hashtree';
+import { MemoryStore, HashTree, toHex } from 'hashtree';
 
 const store = new MemoryStore();
-const builder = new TreeBuilder({ store, chunkSize: 1024 });
-const reader = new TreeReader({ store });
+const tree = new HashTree({ store, chunkSize: 1024 });
 
 // Store a file
 const data = new TextEncoder().encode('Hello, World!');
-const { hash, size } = await builder.putFile(data);
+const { hash, size } = await tree.putFile(data);
 console.log('File hash:', toHex(hash));
 
 // Read it back
-const content = await reader.readFile(hash);
+const content = await tree.readFile(hash);
 console.log(new TextDecoder().decode(content));
 
 // Create a directory
-const dirHash = await builder.putDirectory([
+const dirHash = await tree.putDirectory([
   { name: 'hello.txt', hash, size },
 ]);
 
 // List directory
-const entries = await reader.listDirectory(dirHash);
+const entries = await tree.listDirectory(dirHash);
 console.log(entries);
 
 // Resolve path
-const fileHash = await reader.resolvePath(dirHash, 'hello.txt');
+const fileHash = await tree.resolvePath(dirHash, 'hello.txt');
 ```
 
 ### Streaming
