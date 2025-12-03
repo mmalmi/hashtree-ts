@@ -262,7 +262,7 @@ export function FileBrowser() {
       return;
     }
 
-    if (key !== 'arrowup' && key !== 'arrowdown' && key !== 'j' && key !== 'k') return;
+    if (key !== 'arrowup' && key !== 'arrowdown' && key !== 'arrowleft' && key !== 'arrowright' && key !== 'j' && key !== 'k' && key !== 'h' && key !== 'l') return;
 
     e.preventDefault();
 
@@ -274,7 +274,7 @@ export function FileBrowser() {
 
     let newIndex: number;
 
-    if (key === 'arrowdown' || key === 'j') {
+    if (key === 'arrowdown' || key === 'arrowright' || key === 'j' || key === 'l') {
       newIndex = currentIndex < navItemCount - 1 ? currentIndex + 1 : 0;
     } else {
       newIndex = currentIndex > 0 ? currentIndex - 1 : navItemCount - 1;
