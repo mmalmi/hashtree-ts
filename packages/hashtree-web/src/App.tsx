@@ -20,6 +20,7 @@ import {
   RecentsView,
   FollowsTreesView,
   UsersPage,
+  Toolbar,
 } from './components';
 import { EditProfilePage } from './components/EditProfilePage';
 import {
@@ -497,10 +498,9 @@ export function App() {
     <HashRouter>
       <div className="h-full flex flex-col bg-surface-0">
         {/* Top bar */}
-        <header className="h-12 shrink-0 bg-surface-1 border-b border-surface-3 flex items-center justify-between px-3 md:px-4">
-          <div className="flex items-center gap-2 md:gap-3">
-            <LogoLink />
-          </div>
+        <header className="h-12 shrink-0 bg-surface-1 border-b border-surface-3 flex items-center px-3 md:px-4 gap-2">
+          <LogoLink />
+          <Toolbar />
           <div className="flex items-center gap-2 md:gap-3">
             <div className="hidden md:block"><SearchInput /></div>
             <ConnectivityIndicator />

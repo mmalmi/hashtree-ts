@@ -15,3 +15,4 @@ export { Logo } from './Logo';
 export { RecentsView } from './RecentsView';
 export { FollowsTreesView } from './FollowsTreesView';
 export { UsersPage } from './UsersPage';
+export { Toolbar } from './Toolbar';
