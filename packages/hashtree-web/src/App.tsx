@@ -19,7 +19,7 @@ import {
   Logo,
   RecentsView,
   FollowsTreesView,
-  AccountsPage,
+  UsersPage,
 } from './components';
 import { EditProfilePage } from './components/EditProfilePage';
 import {
@@ -516,7 +516,7 @@ export function App() {
             <Routes>
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/wallet" element={<WalletPage />} />
-              <Route path="/accounts" element={<AccountsPage />} />
+              <Route path="/users" element={<UsersPage />} />
               {/* User/profile routes (npub) */}
               <Route path="/:npub/follows" element={<FollowsRouteInner />} />
               <Route path="/:npub/edit" element={<EditProfilePage />} />

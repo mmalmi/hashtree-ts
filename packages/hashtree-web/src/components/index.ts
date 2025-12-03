@@ -14,4 +14,4 @@ export { StreamView } from './stream';
 export { Logo } from './Logo';
 export { RecentsView } from './RecentsView';
 export { FollowsTreesView } from './FollowsTreesView';
-export { AccountsPage } from './AccountsPage';
+export { UsersPage } from './UsersPage';

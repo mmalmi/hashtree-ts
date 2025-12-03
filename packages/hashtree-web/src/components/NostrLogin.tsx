@@ -55,9 +55,9 @@ export function NostrLogin() {
     return (
       <button
         onClick={goToMyTrees}
-        onDoubleClick={() => navigate('/accounts')}
+        onDoubleClick={() => navigate('/users')}
         className="bg-transparent border-none cursor-pointer p-0 hover:opacity-80"
-        title="My Trees (double-click for accounts)"
+        title="My Trees (double-click for users)"
       >
         <Avatar key={pubkey} pubkey={pubkey} size={32} />
       </button>

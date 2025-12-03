@@ -81,11 +81,11 @@ export function ProfileView({ npub }: Props) {
             {isLoggedInVal && isOwnProfile && (
               <>
                 <button
-                  onClick={() => navigate('/accounts')}
+                  onClick={() => navigate('/users')}
                   className="btn-ghost"
-                  title="Switch account"
+                  title="Switch user"
                 >
-                  Accounts
+                  Users
                 </button>
                 <button
                   onClick={() => navigate(`/${npub}/edit`)}

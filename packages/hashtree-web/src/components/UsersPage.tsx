@@ -13,7 +13,7 @@ import {
   type Account,
 } from '../accounts';
 
-export function AccountsPage() {
+export function UsersPage() {
   const myPubkey = useNostrStore(s => s.pubkey);
   const myNpub = useNostrStore(s => s.npub);
   const accounts = useAccountsStore(s => s.accounts);
@@ -154,7 +154,7 @@ export function AccountsPage() {
         >
           <span className="i-lucide-arrow-left text-lg" />
         </button>
-        <h1 className="text-xl font-bold text-text-1 m-0">Accounts</h1>
+        <h1 className="text-xl font-bold text-text-1 m-0">Users</h1>
       </div>
 
       {/* Account List */}
@@ -272,9 +272,9 @@ function AccountRow({ account, isActive, isSwitching, canRemove, onSwitch, onRem
           <div className="font-medium text-text-1 truncate">
             <Name pubkey={account.pubkey} />
           </div>
-          <div className="text-xs text-text-2">
-            {account.type === 'extension' ? 'Extension' : 'nsec'}
-          </div>
+          {account.type === 'extension' && (
+            <div className="text-xs text-text-2">Extension</div>
+          )}
         </div>
       </button>
 
@@ -287,15 +287,6 @@ function AccountRow({ account, isActive, isSwitching, canRemove, onSwitch, onRem
           <span className="i-lucide-check-circle text-success" />
         )}
 
-        {!isActive && !isSwitching && (
-          <button
-            onClick={onSwitch}
-            className="btn-ghost p-2 text-sm"
-            title="Switch to this account"
-          >
-            Switch
-          </button>
-        )}
 
         {canRemove && !showConfirmRemove && (
           <button
