@@ -1,80 +1,75 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TreeReader, verifyTree } from '../src/index.js';
-import { TreeBuilder } from '../src/builder.js';
+import { HashTree, verifyTree } from '../src/index.js';
 import { MemoryStore } from '../src/store/memory.js';
-import { toHex, NodeType, TreeNode } from '../src/types.js';
-import { sha256 } from '../src/hash.js';
-import { encodeAndHash } from '../src/codec.js';
+import { toHex, NodeType } from '../src/types.js';
 
-describe('TreeReader', () => {
+describe('HashTree read operations', () => {
   let store: MemoryStore;
-  let builder: TreeBuilder;
-  let reader: TreeReader;
+  let tree: HashTree;
 
   beforeEach(() => {
     store = new MemoryStore();
-    builder = new TreeBuilder({ store, chunkSize: 100 });
-    reader = new TreeReader({ store });
+    tree = new HashTree({ store, chunkSize: 100 });
   });
 
   describe('getBlob', () => {
     it('should return blob data', async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const hash = await builder.putBlob(data);
+      const hash = await tree.putBlob(data);
 
-      const result = await reader.getBlob(hash);
+      const result = await tree.getBlob(hash);
       expect(result).toEqual(data);
     });
 
     it('should return null for non-existent hash', async () => {
       const hash = new Uint8Array(32).fill(0);
-      const result = await reader.getBlob(hash);
+      const result = await tree.getBlob(hash);
       expect(result).toBeNull();
     });
   });
 
   describe('getTreeNode', () => {
     it('should return decoded tree node', async () => {
-      const fileHash = await builder.putBlob(new Uint8Array([1]));
-      const dirHash = await builder.putDirectory([
-        { name: 'test.txt', hash: fileHash, size: 1 },
-      ]);
+      const { cid: fileCid } = await tree.putFile(new Uint8Array([1]), { public: true });
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'test.txt', cid: fileCid, size: 1 },
+      ], { public: true });
 
-      const node = await reader.getTreeNode({ hash: dirHash });
+      const node = await tree.getTreeNode(dirCid);
       expect(node).not.toBeNull();
       expect(node!.type).toBe(NodeType.Tree);
       expect(node!.links.length).toBe(1);
     });
 
     it('should return null for blob hash', async () => {
-      const hash = await builder.putBlob(new Uint8Array([1, 2, 3]));
-      const node = await reader.getTreeNode({ hash });
+      const hash = await tree.putBlob(new Uint8Array([1, 2, 3]));
+      const node = await tree.getTreeNode({ hash });
       expect(node).toBeNull();
     });
   });
 
   describe('isTree', () => {
     it('should return true for tree nodes', async () => {
-      const fileHash = await builder.putBlob(new Uint8Array([1]));
-      const dirHash = await builder.putDirectory([
-        { name: 'test.txt', hash: fileHash },
-      ]);
+      const { cid: fileCid } = await tree.putFile(new Uint8Array([1]), { public: true });
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'test.txt', cid: fileCid },
+      ], { public: true });
 
-      expect(await reader.isTree({ hash: dirHash })).toBe(true);
+      expect(await tree.isTree(dirCid)).toBe(true);
     });
 
     it('should return false for blobs', async () => {
-      const hash = await builder.putBlob(new Uint8Array([1, 2, 3]));
-      expect(await reader.isTree({ hash })).toBe(false);
+      const hash = await tree.putBlob(new Uint8Array([1, 2, 3]));
+      expect(await tree.isTree({ hash })).toBe(false);
     });
   });
 
   describe('readFile', () => {
     it('should read small file directly', async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const { hash } = await builder.putFile(data);
+      const { cid } = await tree.putFile(data, { public: true });
 
-      const result = await reader.readFile({ hash });
+      const result = await tree.readFile(cid);
       expect(result).toEqual(data);
     });
 
@@ -84,15 +79,15 @@ describe('TreeReader', () => {
         data[i] = i % 256;
       }
 
-      const { hash } = await builder.putFile(data);
-      const result = await reader.readFile({ hash });
+      const { cid } = await tree.putFile(data, { public: true });
+      const result = await tree.readFile(cid);
 
       expect(result).toEqual(data);
     });
 
     it('should return null for non-existent hash', async () => {
       const hash = new Uint8Array(32).fill(0);
-      const result = await reader.readFile({ hash });
+      const result = await tree.readFile({ hash });
       expect(result).toBeNull();
     });
   });
@@ -104,10 +99,10 @@ describe('TreeReader', () => {
         data[i] = i % 256;
       }
 
-      const { hash } = await builder.putFile(data);
+      const { cid } = await tree.putFile(data, { public: true });
 
       const chunks: Uint8Array[] = [];
-      for await (const chunk of reader.readFileStream({ hash })) {
+      for await (const chunk of tree.readFileStream(cid)) {
         chunks.push(chunk);
       }
 
@@ -122,7 +117,7 @@ describe('TreeReader', () => {
       const hash = new Uint8Array(32).fill(0);
       const chunks: Uint8Array[] = [];
 
-      for await (const chunk of reader.readFileStream({ hash })) {
+      for await (const chunk of tree.readFileStream({ hash })) {
         chunks.push(chunk);
       }
 
@@ -132,15 +127,15 @@ describe('TreeReader', () => {
 
   describe('listDirectory', () => {
     it('should list directory entries', async () => {
-      const h1 = await builder.putBlob(new Uint8Array([1]));
-      const h2 = await builder.putBlob(new Uint8Array([2]));
+      const { cid: c1 } = await tree.putFile(new Uint8Array([1]), { public: true });
+      const { cid: c2 } = await tree.putFile(new Uint8Array([2]), { public: true });
 
-      const dirHash = await builder.putDirectory([
-        { name: 'first.txt', hash: h1, size: 1 },
-        { name: 'second.txt', hash: h2, size: 1 },
-      ]);
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'first.txt', cid: c1, size: 1 },
+        { name: 'second.txt', cid: c2, size: 1 },
+      ], { public: true });
 
-      const entries = await reader.listDirectory({ hash: dirHash });
+      const entries = await tree.listDirectory(dirCid);
 
       expect(entries.length).toBe(2);
       expect(entries.find(e => e.name === 'first.txt')).toBeDefined();
@@ -148,17 +143,17 @@ describe('TreeReader', () => {
     });
 
     it('should indicate which entries are trees', async () => {
-      const fileHash = await builder.putBlob(new Uint8Array([1]));
-      const subDirHash = await builder.putDirectory([
-        { name: 'sub.txt', hash: fileHash },
-      ]);
+      const { cid: fileCid } = await tree.putFile(new Uint8Array([1]), { public: true });
+      const { cid: subDirCid } = await tree.putDirectory([
+        { name: 'sub.txt', cid: fileCid },
+      ], { public: true });
 
-      const rootHash = await builder.putDirectory([
-        { name: 'file.txt', hash: fileHash },
-        { name: 'subdir', hash: subDirHash },
-      ]);
+      const { cid: rootCid } = await tree.putDirectory([
+        { name: 'file.txt', cid: fileCid },
+        { name: 'subdir', cid: subDirCid, isTree: true },
+      ], { public: true });
 
-      const entries = await reader.listDirectory({ hash: rootHash });
+      const entries = await tree.listDirectory(rootCid);
 
       const fileEntry = entries.find(e => e.name === 'file.txt');
       const dirEntry = entries.find(e => e.name === 'subdir');
@@ -168,16 +163,16 @@ describe('TreeReader', () => {
     });
 
     it('should flatten internal chunk nodes', async () => {
-      const smallBuilder = new TreeBuilder({ store, maxLinks: 3 });
+      const smallTree = new HashTree({ store, maxLinks: 3 });
 
       const entries = [];
       for (let i = 0; i < 10; i++) {
-        const hash = await smallBuilder.putBlob(new Uint8Array([i]));
-        entries.push({ name: `file${i}.txt`, hash, size: 1 });
+        const { cid } = await smallTree.putFile(new Uint8Array([i]), { public: true });
+        entries.push({ name: `file${i}.txt`, cid, size: 1 });
       }
 
-      const dirHash = await smallBuilder.putDirectory(entries);
-      const listed = await reader.listDirectory({ hash: dirHash });
+      const { cid: dirCid } = await smallTree.putDirectory(entries, { public: true });
+      const listed = await tree.listDirectory(dirCid);
 
       // Should see all 10 files, not the internal chunk nodes
       expect(listed.length).toBe(10);
@@ -188,86 +183,86 @@ describe('TreeReader', () => {
   describe('resolvePath', () => {
     it('should resolve simple path', async () => {
       const fileData = new Uint8Array([1, 2, 3]);
-      const fileHash = await builder.putBlob(fileData);
+      const { cid: fileCid } = await tree.putFile(fileData, { public: true });
 
-      const dirHash = await builder.putDirectory([
-        { name: 'test.txt', hash: fileHash },
-      ]);
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'test.txt', cid: fileCid },
+      ], { public: true });
 
-      const resolved = await reader.resolvePath({ hash: dirHash }, 'test.txt');
-      expect(toHex(resolved!.cid.hash)).toBe(toHex(fileHash));
+      const resolved = await tree.resolvePath(dirCid, 'test.txt');
+      expect(toHex(resolved!.cid.hash)).toBe(toHex(fileCid.hash));
     });
 
     it('should resolve nested path', async () => {
-      const fileHash = await builder.putBlob(new Uint8Array([1]));
+      const { cid: fileCid } = await tree.putFile(new Uint8Array([1]), { public: true });
 
-      const subSubDir = await builder.putDirectory([
-        { name: 'deep.txt', hash: fileHash },
-      ]);
+      const { cid: subSubCid } = await tree.putDirectory([
+        { name: 'deep.txt', cid: fileCid },
+      ], { public: true });
 
-      const subDir = await builder.putDirectory([
-        { name: 'level2', hash: subSubDir },
-      ]);
+      const { cid: subCid } = await tree.putDirectory([
+        { name: 'level2', cid: subSubCid, isTree: true },
+      ], { public: true });
 
-      const rootDir = await builder.putDirectory([
-        { name: 'level1', hash: subDir },
-      ]);
+      const { cid: rootCid } = await tree.putDirectory([
+        { name: 'level1', cid: subCid, isTree: true },
+      ], { public: true });
 
-      const resolved = await reader.resolvePath({ hash: rootDir }, 'level1/level2/deep.txt');
+      const resolved = await tree.resolvePath(rootCid, 'level1/level2/deep.txt');
       expect(resolved).not.toBeNull();
-      expect(toHex(resolved!.cid.hash)).toBe(toHex(fileHash));
+      expect(toHex(resolved!.cid.hash)).toBe(toHex(fileCid.hash));
     });
 
     it('should return null for non-existent path', async () => {
-      const dirHash = await builder.putDirectory([]);
-      const resolved = await reader.resolvePath({ hash: dirHash }, 'missing.txt');
+      const { cid: dirCid } = await tree.putDirectory([], { public: true });
+      const resolved = await tree.resolvePath(dirCid, 'missing.txt');
       expect(resolved).toBeNull();
     });
 
     it('should handle leading/trailing slashes', async () => {
-      const fileHash = await builder.putBlob(new Uint8Array([1]));
-      const dirHash = await builder.putDirectory([
-        { name: 'test.txt', hash: fileHash },
-      ]);
+      const { cid: fileCid } = await tree.putFile(new Uint8Array([1]), { public: true });
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'test.txt', cid: fileCid },
+      ], { public: true });
 
-      expect(await reader.resolvePath({ hash: dirHash }, '/test.txt')).not.toBeNull();
-      expect(await reader.resolvePath({ hash: dirHash }, 'test.txt/')).not.toBeNull();
-      expect(await reader.resolvePath({ hash: dirHash }, '/test.txt/')).not.toBeNull();
+      expect(await tree.resolvePath(dirCid, '/test.txt')).not.toBeNull();
+      expect(await tree.resolvePath(dirCid, 'test.txt/')).not.toBeNull();
+      expect(await tree.resolvePath(dirCid, '/test.txt/')).not.toBeNull();
     });
   });
 
   describe('getSize', () => {
     it('should return blob size', async () => {
       const data = new Uint8Array(123);
-      const hash = await builder.putBlob(data);
+      const hash = await tree.putBlob(data);
 
-      expect(await reader.getSize(hash)).toBe(123);
+      expect(await tree.getSize(hash)).toBe(123);
     });
 
     it('should return tree totalSize', async () => {
       const data = new Uint8Array(350);
-      const { hash } = await builder.putFile(data);
+      const { cid } = await tree.putFile(data, { public: true });
 
-      expect(await reader.getSize(hash)).toBe(350);
+      expect(await tree.getSize(cid.hash)).toBe(350);
     });
   });
 
   describe('walk', () => {
     it('should walk entire tree', async () => {
-      const f1 = await builder.putBlob(new Uint8Array([1]));
-      const f2 = await builder.putBlob(new Uint8Array([2, 3]));
+      const { cid: f1 } = await tree.putFile(new Uint8Array([1]), { public: true });
+      const { cid: f2 } = await tree.putFile(new Uint8Array([2, 3]), { public: true });
 
-      const subDir = await builder.putDirectory([
-        { name: 'nested.txt', hash: f2, size: 2 },
-      ]);
+      const { cid: subCid } = await tree.putDirectory([
+        { name: 'nested.txt', cid: f2, size: 2 },
+      ], { public: true });
 
-      const rootDir = await builder.putDirectory([
-        { name: 'root.txt', hash: f1, size: 1 },
-        { name: 'sub', hash: subDir },
-      ]);
+      const { cid: rootCid } = await tree.putDirectory([
+        { name: 'root.txt', cid: f1, size: 1 },
+        { name: 'sub', cid: subCid, isTree: true },
+      ], { public: true });
 
       const walked: string[] = [];
-      for await (const entry of reader.walk(rootDir)) {
+      for await (const entry of tree.walk(rootCid.hash)) {
         walked.push(entry.path);
       }
 
@@ -281,40 +276,40 @@ describe('TreeReader', () => {
 
 describe('verifyTree', () => {
   let store: MemoryStore;
-  let builder: TreeBuilder;
+  let tree: HashTree;
 
   beforeEach(() => {
     store = new MemoryStore();
-    builder = new TreeBuilder({ store, chunkSize: 100 });
+    tree = new HashTree({ store, chunkSize: 100 });
   });
 
   it('should return valid for complete tree', async () => {
     const data = new Uint8Array(350);
-    const { hash } = await builder.putFile(data);
+    const { cid } = await tree.putFile(data, { public: true });
 
-    const result = await verifyTree(store, hash);
+    const result = await verifyTree(store, cid.hash);
     expect(result.valid).toBe(true);
     expect(result.missing).toEqual([]);
   });
 
   it('should detect missing chunks', async () => {
     const data = new Uint8Array(350);
-    const { hash } = await builder.putFile(data);
+    const { cid } = await tree.putFile(data, { public: true });
 
     // Delete one of the chunks
     const keys = store.keys();
-    const chunkToDelete = keys.find(k => toHex(k) !== toHex(hash));
+    const chunkToDelete = keys.find(k => toHex(k) !== toHex(cid.hash));
     if (chunkToDelete) {
       await store.delete(chunkToDelete);
     }
 
-    const result = await verifyTree(store, hash);
+    const result = await verifyTree(store, cid.hash);
     expect(result.valid).toBe(false);
     expect(result.missing.length).toBeGreaterThan(0);
   });
 
   it('should handle single blob', async () => {
-    const hash = await builder.putBlob(new Uint8Array([1, 2, 3]));
+    const hash = await tree.putBlob(new Uint8Array([1, 2, 3]));
 
     const result = await verifyTree(store, hash);
     expect(result.valid).toBe(true);

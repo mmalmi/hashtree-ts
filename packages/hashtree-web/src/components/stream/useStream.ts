@@ -1,8 +1,7 @@
 import { useSyncExternalStore } from 'react';
-import { StreamBuilder, toHex } from 'hashtree';
-import type { Hash } from 'hashtree';
+import { toHex, cid } from 'hashtree';
+import type { Hash, StreamWriter } from 'hashtree';
 import {
-  idbStore,
   getTree,
   useAppStore,
 } from '../../store';
@@ -24,7 +23,7 @@ interface StreamState {
   recordingTime: number;
   streamFilename: string;
   persistStream: boolean;
-  streamBuilder: StreamBuilder | null;
+  streamWriter: StreamWriter | null;
   streamStats: { chunks: number; buffered: number; totalSize: number };
 }
 
@@ -35,7 +34,7 @@ let state: StreamState = {
   recordingTime: 0,
   streamFilename: getDefaultFilename(),
   persistStream: true,
-  streamBuilder: null,
+  streamWriter: null,
   streamStats: { chunks: 0, buffered: 0, totalSize: 0 },
 };
 
@@ -85,8 +84,8 @@ export function setPersistStream(persist: boolean) {
   emit();
 }
 
-export function setStreamBuilder(streamBuilder: StreamBuilder | null) {
-  state = { ...state, streamBuilder };
+export function setStreamWriter(streamWriter: StreamWriter | null) {
+  state = { ...state, streamWriter };
   emit();
 }
 
@@ -158,8 +157,9 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
 
   // Reset state
   recentChunks = [];
-  const newStreamBuilder = new StreamBuilder({ store: idbStore, chunkSize: 64 * 1024 });
-  setStreamBuilder(newStreamBuilder);
+  const tree = getTree();
+  const newStreamWriter = tree.createStream();
+  setStreamWriter(newStreamWriter);
   setStreamStats({ chunks: 0, buffered: 0, totalSize: 0 });
 
   mediaRecorder = new MediaRecorder(mediaStream, {
@@ -173,10 +173,10 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       const currentState = getSnapshot();
 
       if (currentState.persistStream) {
-        const streamBuilder = currentState.streamBuilder;
-        if (streamBuilder) {
-          await streamBuilder.append(chunk);
-          setStreamStats(streamBuilder.stats);
+        const streamWriter = currentState.streamWriter;
+        if (streamWriter) {
+          await streamWriter.append(chunk);
+          setStreamStats(streamWriter.stats);
         }
       } else {
         recentChunks.push(chunk);
@@ -215,28 +215,27 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
 
     const tree = getTree();
     let fileHash: Hash | undefined, fileSize: number | undefined;
-    if (currentState.persistStream && currentState.streamBuilder) {
-      const result = await currentState.streamBuilder.finalize();
+    if (currentState.persistStream && currentState.streamWriter) {
+      const result = await currentState.streamWriter.finalize();
       fileHash = result.hash;
       fileSize = result.size;
     } else if (!currentState.persistStream && recentChunks.length > 0) {
       const combined = concatChunks(recentChunks);
       const result = await tree.putFile(combined, { public: true });
-      fileHash = result.hash;
+      fileHash = result.cid.hash;
       fileSize = result.size;
     } else {
       return;
     }
 
-    let newRootHash: Hash | undefined;
-    if (appState.rootHash) {
+    if (appState.rootCid) {
       const currentPath = getCurrentPathFromUrl();
-      newRootHash = await tree.setEntry(appState.rootHash, currentPath, filename, fileHash, fileSize);
-      appState.setRootHash(newRootHash);
-      await autosaveIfOwn(toHex(newRootHash));
+      const newRootCid = await tree.setEntry(appState.rootCid, currentPath, filename, cid(fileHash), fileSize);
+      appState.setRootCid(newRootCid);
+      await autosaveIfOwn(toHex(newRootCid.hash));
     } else {
-      newRootHash = (await tree.putDirectory([{ name: filename, hash: fileHash, size: fileSize }], { public: true })).hash;
-      appState.setRootHash(newRootHash);
+      const newRootCid = (await tree.putDirectory([{ name: filename, cid: cid(fileHash), size: fileSize }], { public: true })).cid;
+      appState.setRootCid(newRootCid);
     }
   }, 3000);
 
@@ -272,33 +271,32 @@ export async function stopRecording(): Promise<void> {
 
   const tree = getTree();
   let fileHash: Hash | undefined, fileSize: number | undefined;
-  if (currentState.persistStream && currentState.streamBuilder) {
-    const result = await currentState.streamBuilder.finalize();
+  if (currentState.persistStream && currentState.streamWriter) {
+    const result = await currentState.streamWriter.finalize();
     fileHash = result.hash;
     fileSize = result.size;
   } else if (!currentState.persistStream && recentChunks.length > 0) {
     const combined = concatChunks(recentChunks);
     const result = await tree.putFile(combined, { public: true });
-    fileHash = result.hash;
+    fileHash = result.cid.hash;
     fileSize = result.size;
   }
 
   if (fileHash && fileSize) {
     const appState = useAppStore.getState();
-    let newRootHash: Hash | undefined;
-    if (appState.rootHash) {
+    if (appState.rootCid) {
       const currentPath = getCurrentPathFromUrl();
-      newRootHash = await tree.setEntry(appState.rootHash, currentPath, filename, fileHash, fileSize);
-      appState.setRootHash(newRootHash);
-      await autosaveIfOwn(toHex(newRootHash));
+      const newRootCid = await tree.setEntry(appState.rootCid, currentPath, filename, cid(fileHash), fileSize);
+      appState.setRootCid(newRootCid);
+      await autosaveIfOwn(toHex(newRootCid.hash));
     } else {
-      newRootHash = (await tree.putDirectory([{ name: filename, hash: fileHash, size: fileSize }], { public: true })).hash;
-      appState.setRootHash(newRootHash);
+      const newRootCid = (await tree.putDirectory([{ name: filename, cid: cid(fileHash), size: fileSize }], { public: true })).cid;
+      appState.setRootCid(newRootCid);
       navigate('/');
     }
   }
 
-  setStreamBuilder(null);
+  setStreamWriter(null);
   recentChunks = [];
 }
 

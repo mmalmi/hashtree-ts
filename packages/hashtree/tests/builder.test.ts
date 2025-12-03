@@ -1,26 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { TreeBuilder, StreamBuilder, DEFAULT_CHUNK_SIZE, DEFAULT_MAX_LINKS } from '../src/builder.js';
-import { TreeReader } from '../src/index.js';
+import { HashTree, DEFAULT_CHUNK_SIZE, DEFAULT_MAX_LINKS } from '../src/index.js';
 import { MemoryStore } from '../src/store/memory.js';
-import { toHex } from '../src/types.js';
+import { toHex, cid } from '../src/types.js';
 import { sha256 } from '../src/hash.js';
 import { decodeTreeNode } from '../src/codec.js';
 
-describe('TreeBuilder', () => {
+describe('HashTree write operations', () => {
   let store: MemoryStore;
-  let builder: TreeBuilder;
-  let reader: TreeReader;
+  let tree: HashTree;
 
   beforeEach(() => {
     store = new MemoryStore();
-    builder = new TreeBuilder({ store });
-    reader = new TreeReader({ store });
+    tree = new HashTree({ store });
   });
 
   describe('putBlob', () => {
     it('should store blob and return hash', async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const hash = await builder.putBlob(data);
+      const hash = await tree.putBlob(data);
 
       expect(hash.length).toBe(32);
       expect(await store.has(hash)).toBe(true);
@@ -31,7 +28,7 @@ describe('TreeBuilder', () => {
 
     it('should compute correct hash', async () => {
       const data = new Uint8Array([1, 2, 3]);
-      const hash = await builder.putBlob(data);
+      const hash = await tree.putBlob(data);
       const expectedHash = await sha256(data);
 
       expect(toHex(hash)).toBe(toHex(expectedHash));
@@ -41,52 +38,52 @@ describe('TreeBuilder', () => {
   describe('putFile', () => {
     it('should store small file as single blob', async () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
-      const { hash, size } = await builder.putFile(data);
+      const { cid: fileCid, size } = await tree.putFile(data, { public: true });
 
       expect(size).toBe(5);
-      expect(await reader.readFile({ hash })).toEqual(data);
+      expect(await tree.readFile(fileCid)).toEqual(data);
     });
 
     it('should chunk large files', async () => {
       // Create data larger than chunk size
       const chunkSize = 1024;
-      const smallBuilder = new TreeBuilder({ store, chunkSize });
+      const smallTree = new HashTree({ store, chunkSize });
 
       const data = new Uint8Array(chunkSize * 2 + 100);
       for (let i = 0; i < data.length; i++) {
         data[i] = i % 256;
       }
 
-      const { hash, size } = await smallBuilder.putFile(data);
+      const { cid: fileCid, size } = await smallTree.putFile(data, { public: true });
 
       expect(size).toBe(data.length);
 
       // Should be a tree node, not raw blob
-      const isTree = await reader.isTree({ hash });
+      const isTree = await tree.isTree(fileCid);
       expect(isTree).toBe(true);
 
       // Should reassemble correctly
-      const retrieved = await reader.readFile({ hash });
+      const retrieved = await tree.readFile(fileCid);
       expect(retrieved).toEqual(data);
     });
 
     it('should handle file exactly chunk size', async () => {
       const chunkSize = 256;
-      const smallBuilder = new TreeBuilder({ store, chunkSize });
+      const smallTree = new HashTree({ store, chunkSize });
 
       const data = new Uint8Array(chunkSize);
       data.fill(42);
 
-      const { hash, size } = await smallBuilder.putFile(data);
+      const { cid: fileCid, size } = await smallTree.putFile(data, { public: true });
 
       expect(size).toBe(chunkSize);
-      expect(await reader.readFile({ hash })).toEqual(data);
+      expect(await tree.readFile(fileCid)).toEqual(data);
     });
 
     it('should create balanced tree for many chunks', async () => {
       const chunkSize = 100;
       const maxLinks = 4;
-      const smallBuilder = new TreeBuilder({ store, chunkSize, maxLinks });
+      const smallTree = new HashTree({ store, chunkSize, maxLinks });
 
       // Create 10 chunks worth of data (will need multiple tree levels)
       const data = new Uint8Array(chunkSize * 10);
@@ -94,10 +91,10 @@ describe('TreeBuilder', () => {
         data[i] = i % 256;
       }
 
-      const { hash, size } = await smallBuilder.putFile(data);
+      const { cid: fileCid, size } = await smallTree.putFile(data, { public: true });
 
       expect(size).toBe(data.length);
-      expect(await reader.readFile({ hash })).toEqual(data);
+      expect(await tree.readFile(fileCid)).toEqual(data);
     });
   });
 
@@ -106,96 +103,82 @@ describe('TreeBuilder', () => {
       const file1 = new Uint8Array([1, 2, 3]);
       const file2 = new Uint8Array([4, 5, 6, 7]);
 
-      const hash1 = await builder.putBlob(file1);
-      const hash2 = await builder.putBlob(file2);
+      const hash1 = await tree.putBlob(file1);
+      const hash2 = await tree.putBlob(file2);
 
-      const dirHash = await builder.putDirectory([
-        { name: 'a.txt', hash: hash1, size: file1.length },
-        { name: 'b.txt', hash: hash2, size: file2.length },
-      ]);
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'a.txt', cid: cid(hash1), size: file1.length },
+        { name: 'b.txt', cid: cid(hash2), size: file2.length },
+      ], { public: true });
 
-      const entries = await reader.listDirectory({ hash: dirHash });
+      const entries = await tree.listDirectory(dirCid);
       expect(entries.length).toBe(2);
       expect(entries.find(e => e.name === 'a.txt')).toBeDefined();
       expect(entries.find(e => e.name === 'b.txt')).toBeDefined();
     });
 
     it('should sort entries by name', async () => {
-      const hash = await builder.putBlob(new Uint8Array([1]));
+      const hash = await tree.putBlob(new Uint8Array([1]));
 
-      const dirHash = await builder.putDirectory([
-        { name: 'zebra', hash },
-        { name: 'apple', hash },
-        { name: 'mango', hash },
-      ]);
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'zebra', cid: cid(hash) },
+        { name: 'apple', cid: cid(hash) },
+        { name: 'mango', cid: cid(hash) },
+      ], { public: true });
 
-      const node = await reader.getTreeNode({ hash: dirHash });
+      const node = await tree.getTreeNode(dirCid);
       expect(node!.links.map(l => l.name)).toEqual(['apple', 'mango', 'zebra']);
     });
 
     it('should create nested directories', async () => {
       const fileData = new Uint8Array([1, 2, 3]);
-      const fileHash = await builder.putBlob(fileData);
+      const fileHash = await tree.putBlob(fileData);
 
-      const subDirHash = await builder.putDirectory([
-        { name: 'file.txt', hash: fileHash, size: 3 },
-      ]);
+      const { cid: subDirCid } = await tree.putDirectory([
+        { name: 'file.txt', cid: cid(fileHash), size: 3 },
+      ], { public: true });
 
-      const rootHash = await builder.putDirectory([
-        { name: 'subdir', hash: subDirHash },
-      ]);
+      const { cid: rootCid } = await tree.putDirectory([
+        { name: 'subdir', cid: subDirCid },
+      ], { public: true });
 
-      const resolved = await reader.resolvePath({ hash: rootHash }, 'subdir/file.txt');
+      const resolved = await tree.resolvePath(rootCid, 'subdir/file.txt');
       expect(resolved).not.toBeNull();
       expect(toHex(resolved!.cid.hash)).toBe(toHex(fileHash));
     });
 
     it('should split large directories', async () => {
       const maxLinks = 4;
-      const smallBuilder = new TreeBuilder({ store, maxLinks });
+      const smallTree = new HashTree({ store, maxLinks });
 
       const entries = [];
       for (let i = 0; i < 10; i++) {
         const data = new Uint8Array([i]);
-        const hash = await smallBuilder.putBlob(data);
-        entries.push({ name: `file${i.toString().padStart(2, '0')}.txt`, hash, size: 1 });
+        const hash = await smallTree.putBlob(data);
+        entries.push({ name: `file${i.toString().padStart(2, '0')}.txt`, cid: cid(hash), size: 1 });
       }
 
-      const dirHash = await smallBuilder.putDirectory(entries);
+      const { cid: dirCid } = await smallTree.putDirectory(entries, { public: true });
 
       // Should be able to list all entries even though dir is split
-      const listed = await reader.listDirectory({ hash: dirHash });
+      const listed = await tree.listDirectory(dirCid);
       expect(listed.length).toBe(10);
-    });
-  });
-
-  describe('putTreeNode', () => {
-    it('should create tree node with metadata', async () => {
-      const hash = await builder.putBlob(new Uint8Array([1]));
-
-      const nodeHash = await builder.putTreeNode(
-        [{ hash, name: 'test', size: 1 }],
-        { version: 2, created: '2024-01-01' }
-      );
-
-      const node = await reader.getTreeNode({ hash: nodeHash });
-      expect(node!.metadata).toEqual({ version: 2, created: '2024-01-01' });
     });
   });
 });
 
-describe('StreamBuilder', () => {
+describe('StreamWriter via createStream()', () => {
   let store: MemoryStore;
-  let reader: TreeReader;
+  let tree: HashTree;
 
   beforeEach(() => {
     store = new MemoryStore();
-    reader = new TreeReader({ store });
+    tree = new HashTree({ store });
   });
 
   describe('append', () => {
     it('should build file from multiple appends', async () => {
-      const stream = new StreamBuilder({ store, chunkSize: 100 });
+      const stream = new HashTree({ store, chunkSize: 100 }).createStream();
 
       await stream.append(new Uint8Array([1, 2, 3]));
       await stream.append(new Uint8Array([4, 5]));
@@ -204,13 +187,13 @@ describe('StreamBuilder', () => {
       const { hash, size } = await stream.finalize();
 
       expect(size).toBe(9);
-      const data = await reader.readFile({ hash });
+      const data = await tree.readFile({ hash });
       expect(data).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]));
     });
 
     it('should handle appends crossing chunk boundaries', async () => {
       const chunkSize = 10;
-      const stream = new StreamBuilder({ store, chunkSize });
+      const stream = new HashTree({ store, chunkSize }).createStream();
 
       // Append 25 bytes in various sizes
       await stream.append(new Uint8Array(7).fill(1));
@@ -220,7 +203,7 @@ describe('StreamBuilder', () => {
       const { hash, size } = await stream.finalize();
       expect(size).toBe(25);
 
-      const data = await reader.readFile({ hash });
+      const data = await tree.readFile({ hash });
       expect(data!.length).toBe(25);
       expect(data![0]).toBe(1);
       expect(data![7]).toBe(2);
@@ -228,7 +211,7 @@ describe('StreamBuilder', () => {
     });
 
     it('should track stats', async () => {
-      const stream = new StreamBuilder({ store, chunkSize: 100 });
+      const stream = new HashTree({ store, chunkSize: 100 }).createStream();
 
       expect(stream.stats.chunks).toBe(0);
       expect(stream.stats.buffered).toBe(0);
@@ -247,7 +230,7 @@ describe('StreamBuilder', () => {
 
   describe('currentRoot', () => {
     it('should return current root without finalizing', async () => {
-      const stream = new StreamBuilder({ store, chunkSize: 100 });
+      const stream = new HashTree({ store, chunkSize: 100 }).createStream();
 
       await stream.append(new Uint8Array([1, 2, 3]));
       const root1 = await stream.currentRoot();
@@ -264,7 +247,7 @@ describe('StreamBuilder', () => {
     });
 
     it('should return null for empty stream', async () => {
-      const stream = new StreamBuilder({ store });
+      const stream = new HashTree({ store }).createStream();
       const root = await stream.currentRoot();
       expect(root).toBeNull();
     });
@@ -272,18 +255,18 @@ describe('StreamBuilder', () => {
 
   describe('finalize', () => {
     it('should handle empty stream', async () => {
-      const stream = new StreamBuilder({ store });
+      const stream = new HashTree({ store }).createStream();
       const { hash, size } = await stream.finalize();
 
       expect(size).toBe(0);
-      const data = await reader.readFile({ hash });
+      const data = await tree.readFile({ hash });
       expect(data).toEqual(new Uint8Array(0));
     });
 
     it('should create balanced tree for large streams', async () => {
       const chunkSize = 100;
       const maxLinks = 4;
-      const stream = new StreamBuilder({ store, chunkSize, maxLinks });
+      const stream = new HashTree({ store, chunkSize, maxLinks }).createStream();
 
       // Add 20 chunks worth
       for (let i = 0; i < 20; i++) {
@@ -296,7 +279,7 @@ describe('StreamBuilder', () => {
       expect(size).toBe(2000);
 
       // Verify can read back
-      const data = await reader.readFile({ hash });
+      const data = await tree.readFile({ hash });
       expect(data!.length).toBe(2000);
       expect(data![0]).toBe(0);
       expect(data![100]).toBe(1);
@@ -306,22 +289,20 @@ describe('StreamBuilder', () => {
 
   describe('directory metadata', () => {
     it('should store metadata on directory root', async () => {
-      const builder = new TreeBuilder({ store });
-
-      const fileHash = await builder.putBlob(new TextEncoder().encode('test'));
+      const fileHash = await tree.putBlob(new TextEncoder().encode('test'));
       const metadata = {
         createdAt: 1700000000,
         version: '1.0',
         author: 'test-user',
       };
 
-      const dirHash = await builder.putDirectory(
-        [{ name: 'file.txt', hash: fileHash, size: 4 }],
-        metadata
+      const { cid: dirCid } = await tree.putDirectory(
+        [{ name: 'file.txt', cid: cid(fileHash), size: 4 }],
+        { public: true, metadata }
       );
 
       // Read back the tree node and verify metadata
-      const encoded = await store.get(dirHash);
+      const encoded = await store.get(dirCid.hash);
       expect(encoded).not.toBeNull();
 
       const node = decodeTreeNode(encoded!);
@@ -331,20 +312,20 @@ describe('StreamBuilder', () => {
     });
 
     it('should preserve metadata on large directories', async () => {
-      const builder = new TreeBuilder({ store, maxLinks: 4 });
+      const smallTree = new HashTree({ store, maxLinks: 4 });
 
       // Create enough entries to trigger sub-tree creation
       const entries = [];
       for (let i = 0; i < 10; i++) {
-        const hash = await builder.putBlob(new Uint8Array([i]));
-        entries.push({ name: `file${i}.txt`, hash, size: 1 });
+        const hash = await smallTree.putBlob(new Uint8Array([i]));
+        entries.push({ name: `file${i}.txt`, cid: cid(hash), size: 1 });
       }
 
       const metadata = { createdAt: 1700000000 };
-      const dirHash = await builder.putDirectory(entries, metadata);
+      const { cid: dirCid } = await smallTree.putDirectory(entries, { public: true, metadata });
 
       // Read back root and verify metadata
-      const encoded = await store.get(dirHash);
+      const encoded = await store.get(dirCid.hash);
       const node = decodeTreeNode(encoded!);
       expect(node.metadata).toEqual(metadata);
     });

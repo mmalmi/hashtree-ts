@@ -7,8 +7,9 @@
  * Use the "Public" variants (putFilePublic, readFilePublic) for unencrypted storage.
  */
 
-import { Store, Hash, CID, TreeNode, toHex, cid } from './types.js';
-import { decodeTreeNode, isTreeNode } from './codec.js';
+import { Store, Hash, CID, TreeNode, NodeType, Link, toHex, cid } from './types.js';
+import { decodeTreeNode, isTreeNode, encodeAndHash } from './codec.js';
+import { sha256 } from './hash.js';
 import * as create from './tree/create.js';
 import * as read from './tree/read.js';
 import * as edit from './tree/edit.js';
@@ -347,6 +348,166 @@ export class HashTree {
 
   getStore(): Store {
     return this.store;
+  }
+
+  /**
+   * Create a streaming file writer for incremental appends
+   * Useful for writing large files chunk by chunk (e.g., video recording)
+   */
+  createStream(): StreamWriter {
+    return new StreamWriter(this.store, this.chunkSize, this.maxLinks);
+  }
+}
+
+/**
+ * StreamWriter - supports incremental file appends
+ *
+ * Created via HashTree.createStream()
+ */
+export class StreamWriter {
+  private store: Store;
+  private chunkSize: number;
+  private maxLinks: number;
+
+  // Current partial chunk being built
+  private buffer: Uint8Array;
+  private bufferOffset: number = 0;
+
+  // Completed chunks
+  private chunks: Link[] = [];
+  private totalSize: number = 0;
+
+  constructor(store: Store, chunkSize: number, maxLinks: number) {
+    this.store = store;
+    this.chunkSize = chunkSize;
+    this.maxLinks = maxLinks;
+    this.buffer = new Uint8Array(this.chunkSize);
+  }
+
+  /**
+   * Append data to the stream
+   */
+  async append(data: Uint8Array): Promise<void> {
+    let offset = 0;
+
+    while (offset < data.length) {
+      const space = this.chunkSize - this.bufferOffset;
+      const toWrite = Math.min(space, data.length - offset);
+
+      this.buffer.set(data.slice(offset, offset + toWrite), this.bufferOffset);
+      this.bufferOffset += toWrite;
+      offset += toWrite;
+
+      // Flush full chunk
+      if (this.bufferOffset === this.chunkSize) {
+        await this.flushChunk();
+      }
+    }
+
+    this.totalSize += data.length;
+  }
+
+  /**
+   * Flush current buffer as a chunk
+   */
+  private async flushChunk(): Promise<void> {
+    if (this.bufferOffset === 0) return;
+
+    const chunk = this.buffer.slice(0, this.bufferOffset);
+    const hash = await sha256(chunk);
+    await this.store.put(hash, new Uint8Array(chunk));
+
+    this.chunks.push({ hash, size: chunk.length });
+    this.bufferOffset = 0;
+  }
+
+  /**
+   * Get current root hash without finalizing
+   * Useful for checkpoints (e.g., live streaming)
+   */
+  async currentRoot(): Promise<Hash | null> {
+    if (this.chunks.length === 0 && this.bufferOffset === 0) {
+      return null;
+    }
+
+    // Temporarily flush buffer
+    const tempChunks = [...this.chunks];
+    if (this.bufferOffset > 0) {
+      const chunk = this.buffer.slice(0, this.bufferOffset);
+      const hash = await sha256(chunk);
+      await this.store.put(hash, new Uint8Array(chunk));
+      tempChunks.push({ hash, size: chunk.length });
+    }
+
+    return this.buildTreeFromChunks(tempChunks, this.totalSize);
+  }
+
+  /**
+   * Finalize the stream and return root hash
+   */
+  async finalize(): Promise<{ hash: Hash; size: number }> {
+    // Flush remaining buffer
+    await this.flushChunk();
+
+    if (this.chunks.length === 0) {
+      // Empty stream - return hash of empty data
+      const emptyHash = await sha256(new Uint8Array(0));
+      await this.store.put(emptyHash, new Uint8Array(0));
+      return { hash: emptyHash, size: 0 };
+    }
+
+    const hash = await this.buildTreeFromChunks(this.chunks, this.totalSize);
+    return { hash, size: this.totalSize };
+  }
+
+  /**
+   * Build balanced tree from chunks
+   */
+  private async buildTreeFromChunks(chunks: Link[], totalSize: number): Promise<Hash> {
+    if (chunks.length === 1) {
+      return chunks[0].hash;
+    }
+
+    if (chunks.length <= this.maxLinks) {
+      const node: TreeNode = {
+        type: NodeType.Tree,
+        links: chunks,
+        totalSize,
+      };
+      const { data, hash } = await encodeAndHash(node);
+      await this.store.put(hash, data);
+      return hash;
+    }
+
+    // Build intermediate level
+    const subTrees: Link[] = [];
+    for (let i = 0; i < chunks.length; i += this.maxLinks) {
+      const batch = chunks.slice(i, i + this.maxLinks);
+      const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
+
+      const node: TreeNode = {
+        type: NodeType.Tree,
+        links: batch,
+        totalSize: batchSize,
+      };
+      const { data, hash } = await encodeAndHash(node);
+      await this.store.put(hash, data);
+
+      subTrees.push({ hash, size: batchSize });
+    }
+
+    return this.buildTreeFromChunks(subTrees, totalSize);
+  }
+
+  /**
+   * Get stats
+   */
+  get stats(): { chunks: number; buffered: number; totalSize: number } {
+    return {
+      chunks: this.chunks.length,
+      buffered: this.bufferOffset,
+      totalSize: this.totalSize,
+    };
   }
 }
 

@@ -67,9 +67,10 @@ export {
   type BlossomAuthEvent,
 } from './store/blossom.js';
 
-// HashTree - unified tree operations (create, read, edit)
+// HashTree - unified tree operations (create, read, edit, stream)
 export {
   HashTree,
+  StreamWriter,
   verifyTree,
   DEFAULT_CHUNK_SIZE,
   DEFAULT_MAX_LINKS,
@@ -78,13 +79,8 @@ export {
   type DirEntry,
 } from './hashtree.js';
 
-// Legacy aliases for backward compatibility
-export { HashTree as TreeBuilder } from './hashtree.js';
-export { HashTree as TreeReader } from './hashtree.js';
-export { HashTree as TreeEditor } from './hashtree.js';
-
-// StreamBuilder for incremental file building
-export { StreamBuilder, BEP52_CHUNK_SIZE } from './builder.js';
+// BEP52 chunk size constant
+export { BEP52_CHUNK_SIZE } from './builder.js';
 
 // WebRTC P2P store
 export {

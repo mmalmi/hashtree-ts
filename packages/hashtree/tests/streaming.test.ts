@@ -4,23 +4,22 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { StreamBuilder } from '../src/builder.js';
-import { TreeReader } from '../src/index.js';
+import { HashTree } from '../src/hashtree.js';
 import { MemoryStore } from '../src/store/memory.js';
 import { toHex } from '../src/types.js';
 
-describe('StreamBuilder - Streaming scenarios', () => {
+describe('StreamWriter - Streaming scenarios', () => {
   let store: MemoryStore;
-  let reader: TreeReader;
+  let tree: HashTree;
 
   beforeEach(() => {
     store = new MemoryStore();
-    reader = new TreeReader({ store });
+    tree = new HashTree({ store });
   });
 
   describe('incremental root updates', () => {
     it('should provide updated root hash after each chunk', async () => {
-      const stream = new StreamBuilder({ store, chunkSize: 100 });
+      const stream = new HashTree({ store, chunkSize: 100 }).createStream();
 
       await stream.append(new Uint8Array([1, 2, 3]));
       const root1 = await stream.currentRoot();
@@ -36,18 +35,18 @@ describe('StreamBuilder - Streaming scenarios', () => {
       expect(toHex(root2!)).not.toBe(toHex(root3!));
 
       // All intermediate roots should be readable
-      const data1 = await reader.readFile({ hash: root1! });
+      const data1 = await tree.readFile({ hash: root1! });
       expect(data1).toEqual(new Uint8Array([1, 2, 3]));
 
-      const data2 = await reader.readFile({ hash: root2! });
+      const data2 = await tree.readFile({ hash: root2! });
       expect(data2).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6]));
 
-      const data3 = await reader.readFile({ hash: root3! });
+      const data3 = await tree.readFile({ hash: root3! });
       expect(data3).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]));
     });
 
     it('should allow reading partial stream at any point', async () => {
-      const stream = new StreamBuilder({ store, chunkSize: 100 });
+      const stream = new HashTree({ store, chunkSize: 100 }).createStream();
       const checkpoints: Uint8Array[] = [];
 
       for (let i = 0; i < 5; i++) {
@@ -59,7 +58,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
 
       // Each checkpoint should be independently readable
       for (let i = 0; i < checkpoints.length; i++) {
-        const data = await reader.readFile({ hash: checkpoints[i] });
+        const data = await tree.readFile({ hash: checkpoints[i] });
         expect(data!.length).toBe((i + 1) * 20);
         expect(data![i * 20]).toBe(i);
       }
@@ -70,7 +69,8 @@ describe('StreamBuilder - Streaming scenarios', () => {
     it('should simulate video stream chunking', async () => {
       // Simulate 1-second video chunks (~100KB each)
       const chunkSize = 64 * 1024; // 64KB internal chunks
-      const stream = new StreamBuilder({ store, chunkSize });
+      const streamTree = new HashTree({ store, chunkSize });
+      const stream = streamTree.createStream();
 
       const videoChunks = [];
       const publishedRoots = [];
@@ -94,16 +94,16 @@ describe('StreamBuilder - Streaming scenarios', () => {
       expect(size).toBe(5 * 100 * 1024);
 
       // Viewer joining at second 3 should be able to read data
-      const partialData = await reader.readFile({ hash: publishedRoots[2] });
+      const partialData = await tree.readFile({ hash: publishedRoots[2] });
       expect(partialData!.length).toBe(3 * 100 * 1024);
 
       // Full stream should contain all data
-      const fullData = await reader.readFile({ hash });
+      const fullData = await tree.readFile({ hash });
       expect(fullData!.length).toBe(5 * 100 * 1024);
     });
 
     it('should handle rapid sequential chunk additions', async () => {
-      const stream = new StreamBuilder({ store, chunkSize: 1024 });
+      const stream = new HashTree({ store, chunkSize: 1024 }).createStream();
 
       // Simulate rapid data arrival (sequential - appends must be serialized)
       for (let i = 0; i < 50; i++) {
@@ -114,14 +114,14 @@ describe('StreamBuilder - Streaming scenarios', () => {
       const { hash, size } = await stream.finalize();
       expect(size).toBe(5000);
 
-      const data = await reader.readFile({ hash });
+      const data = await tree.readFile({ hash });
       expect(data!.length).toBe(5000);
     });
   });
 
   describe('concurrent readers', () => {
     it('should support multiple readers at different positions', async () => {
-      const stream = new StreamBuilder({ store, chunkSize: 100 });
+      const stream = new HashTree({ store, chunkSize: 100 }).createStream();
 
       // Build stream
       for (let i = 0; i < 10; i++) {
@@ -130,8 +130,8 @@ describe('StreamBuilder - Streaming scenarios', () => {
       const { hash } = await stream.finalize();
 
       // Multiple readers can read independently
-      const reader1 = new TreeReader({ store });
-      const reader2 = new TreeReader({ store });
+      const reader1 = new HashTree({ store });
+      const reader2 = new HashTree({ store });
 
       const [data1, data2] = await Promise.all([
         reader1.readFile({ hash }),
@@ -145,7 +145,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
 
   describe('edge cases', () => {
     it('should handle single byte appends', async () => {
-      const stream = new StreamBuilder({ store, chunkSize: 10 });
+      const stream = new HashTree({ store, chunkSize: 10 }).createStream();
 
       for (let i = 0; i < 25; i++) {
         await stream.append(new Uint8Array([i]));
@@ -154,7 +154,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
       const { hash, size } = await stream.finalize();
       expect(size).toBe(25);
 
-      const data = await reader.readFile({ hash });
+      const data = await tree.readFile({ hash });
       expect(data!.length).toBe(25);
       for (let i = 0; i < 25; i++) {
         expect(data![i]).toBe(i);
@@ -163,7 +163,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
 
     it('should handle chunk-aligned appends', async () => {
       const chunkSize = 100;
-      const stream = new StreamBuilder({ store, chunkSize });
+      const stream = new HashTree({ store, chunkSize }).createStream();
 
       // Append exactly chunk-sized data 5 times
       for (let i = 0; i < 5; i++) {
@@ -175,13 +175,13 @@ describe('StreamBuilder - Streaming scenarios', () => {
       expect(stream.stats.totalSize).toBe(500);
 
       const { hash } = await stream.finalize();
-      const data = await reader.readFile({ hash });
+      const data = await tree.readFile({ hash });
       expect(data!.length).toBe(500);
     });
 
     it('should handle very large single append', async () => {
       const chunkSize = 100;
-      const stream = new StreamBuilder({ store, chunkSize });
+      const stream = new HashTree({ store, chunkSize }).createStream();
 
       // Single large append (10 chunks worth)
       const bigData = new Uint8Array(chunkSize * 10);
@@ -195,13 +195,13 @@ describe('StreamBuilder - Streaming scenarios', () => {
       expect(stream.stats.totalSize).toBe(1000);
 
       const { hash } = await stream.finalize();
-      const data = await reader.readFile({ hash });
+      const data = await tree.readFile({ hash });
       expect(data).toEqual(bigData);
     });
 
     it('should handle mixed small and large appends', async () => {
       const chunkSize = 100;
-      const stream = new StreamBuilder({ store, chunkSize });
+      const stream = new HashTree({ store, chunkSize }).createStream();
 
       await stream.append(new Uint8Array([1, 2, 3])); // 3 bytes
       await stream.append(new Uint8Array(250).fill(4)); // 250 bytes (crosses chunks)
@@ -211,7 +211,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
       const { hash, size } = await stream.finalize();
       expect(size).toBe(300);
 
-      const data = await reader.readFile({ hash });
+      const data = await tree.readFile({ hash });
       expect(data![0]).toBe(1);
       expect(data![3]).toBe(4);
       expect(data![253]).toBe(5);
@@ -234,7 +234,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
 
       // Build "live" stream with only last N chunks
       const liveChunks = allChunks.slice(-maxChunks);
-      const stream = new StreamBuilder({ store, chunkSize });
+      const stream = new HashTree({ store, chunkSize }).createStream();
 
       for (const chunk of liveChunks) {
         await stream.append(chunk);
@@ -243,7 +243,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
       const { hash, size } = await stream.finalize();
       expect(size).toBe(maxChunks * chunkSize);
 
-      const data = await reader.readFile({ hash });
+      const data = await tree.readFile({ hash });
       // Should contain chunks 7, 8, 9
       expect(data![0]).toBe(7);
       expect(data![100]).toBe(8);
@@ -254,7 +254,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
   describe('deduplication', () => {
     it('should deduplicate identical chunks', async () => {
       const chunkSize = 100;
-      const stream = new StreamBuilder({ store, chunkSize });
+      const stream = new HashTree({ store, chunkSize }).createStream();
 
       const repeatedData = new Uint8Array(chunkSize).fill(42);
 
@@ -263,7 +263,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
         await stream.append(repeatedData);
       }
 
-      const { cid, size } = await stream.finalize();
+      const { size } = await stream.finalize();
       expect(size).toBe(500);
 
       // Store should have fewer items due to dedup
