@@ -544,9 +544,9 @@ export function FileBrowser() {
       )}
 
       {/* Mobile action buttons */}
-      {(dirHash || canEdit) && (
+      {(currentDirCid || canEdit) && (
         <div className="lg:hidden px-3 py-2 border-b border-surface-3 bg-surface-1">
-          <FolderActions dirHash={dirHash} canEdit={canEdit} compact />
+          <FolderActions dirCid={currentDirCid ?? undefined} canEdit={canEdit} compact />
         </div>
       )}
 

@@ -3,7 +3,8 @@
  */
 import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { fromHex, nhashEncode } from 'hashtree';
+import { nhashEncode, toHex } from 'hashtree';
+import type { CID } from 'hashtree';
 import { openCreateModal, openRenameModal, openForkModal } from '../hooks/useModals';
 import { useUpload } from '../hooks/useUpload';
 import { useRoute, useTrees } from '../hooks';
@@ -14,7 +15,7 @@ import { createZipFromDirectory, downloadBlob } from '../utils/compression';
 import { readFilesFromWebkitDirectory, supportsDirectoryUpload } from '../utils/directory';
 
 interface FolderActionsProps {
-  dirHash?: string | null;
+  dirCid?: CID | null;
   canEdit: boolean;
   compact?: boolean;
 }
@@ -32,7 +33,7 @@ function suggestForkName(dirName: string, existingTreeNames: string[]): string {
   return `${dirName}-${i}`;
 }
 
-export function FolderActions({ dirHash, canEdit, compact = false }: FolderActionsProps) {
+export function FolderActions({ dirCid, canEdit, compact = false }: FolderActionsProps) {
   const { uploadFiles, uploadFilesWithPaths } = useUpload();
   const route = useRoute();
   const userNpub = useNostrStore(s => s.npub);
@@ -48,23 +49,26 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
   const isSubdir = route.path.length > 0;
   const currentDirName = isSubdir ? route.path[route.path.length - 1] : null;
 
+  // Convert CID to hex hash for links that need it
+  const dirHash = dirCid ? toHex(dirCid.hash) : null;
+
   // For fork, use current dir name or tree name as suggestion
   const forkBaseName = currentDirName || route.treeName || 'folder';
 
   // Handle fork button click
   const handleFork = () => {
-    if (!dirHash) return;
+    if (!dirCid) return;
     const suggestedName = suggestForkName(forkBaseName, ownTreeNames);
-    openForkModal(fromHex(dirHash), suggestedName);
+    openForkModal(dirCid, suggestedName);
   };
 
   // Handle download as ZIP
   const handleDownloadZip = async () => {
-    if (!dirHash || isDownloading) return;
+    if (!dirCid || isDownloading) return;
     setIsDownloading(true);
     try {
       const tree = getTree();
-      const zipData = await createZipFromDirectory(tree, fromHex(dirHash), forkBaseName);
+      const zipData = await createZipFromDirectory(tree, dirCid, forkBaseName);
       const zipName = `${forkBaseName}.zip`;
       downloadBlob(zipData, zipName, 'application/zip');
     } catch (err) {
@@ -75,7 +79,7 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
     }
   };
 
-  if (!dirHash && !canEdit) return null;
+  if (!dirCid && !canEdit) return null;
 
   // Build stream URL if in tree context
   const streamUrl = route.npub && route.treeName

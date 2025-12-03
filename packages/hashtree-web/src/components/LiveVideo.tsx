@@ -1,8 +1,8 @@
 import { useRef, useEffect, useState, memo } from 'react';
 import { getTree } from '../store';
 import { getRefResolver } from '../refResolver';
-import type { Hash } from 'hashtree';
-import { toHex } from 'hashtree';
+import type { CID } from 'hashtree';
+import { toHex, cid as makeCid } from 'hashtree';
 
 interface LiveVideoProps {
   /** Resolver key (npub/treename) for subscribing to root hash updates */
@@ -11,8 +11,8 @@ interface LiveVideoProps {
   filePath: string[];
   /** Video mime type */
   mimeType: string;
-  /** Initial hash (used if no pointerKey or for immediate display) */
-  initialHash?: Hash;
+  /** Initial CID (used if no resolverKey or for immediate display) */
+  initialCid?: CID | null;
 }
 
 /**
@@ -27,7 +27,7 @@ export const LiveVideo = memo(function LiveVideo({
   resolverKey,
   filePath,
   mimeType,
-  initialHash,
+  initialCid,
 }: LiveVideoProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mediaSourceRef = useRef<MediaSource | null>(null);
@@ -46,23 +46,23 @@ export const LiveVideo = memo(function LiveVideo({
   const fallbackUrlRef = useRef(fallbackUrl);
   fallbackUrlRef.current = fallbackUrl;
 
-  // Resolve file hash from tree root hash
-  const resolveFileHash = async (rootHash: Hash): Promise<Hash | null> => {
+  // Resolve file CID from tree root CID
+  const resolveFileCid = async (rootCid: CID): Promise<CID | null> => {
     const tree = getTree();
-    let currentHash = rootHash;
+    let currentCid = rootCid;
 
     // Navigate through path
     for (const segment of filePathRef.current) {
-      const resolved = await tree.resolvePath(currentHash, segment);
+      const resolved = await tree.resolvePath(currentCid, segment);
       if (!resolved) return null;
-      currentHash = resolved;
+      currentCid = resolved.cid;
     }
 
-    return currentHash;
+    return currentCid;
   };
 
   // Stream chunks from merkle tree to MediaSource, skipping already-appended bytes
-  const streamChunks = async (fileHash: Hash, skipBytes: number = 0) => {
+  const streamChunks = async (fileCid: CID, skipBytes: number = 0) => {
     if (isStreamingRef.current) return;
     isStreamingRef.current = true;
 
@@ -77,7 +77,7 @@ export const LiveVideo = memo(function LiveVideo({
 
     try {
       let bytesRead = 0;
-      for await (const chunk of tree.readFileStream(fileHash)) {
+      for await (const chunk of tree.readFileStream(fileCid)) {
         const chunkStart = bytesRead;
         const chunkEnd = bytesRead + chunk.length;
         bytesRead = chunkEnd;
@@ -125,15 +125,15 @@ export const LiveVideo = memo(function LiveVideo({
   };
 
   // Handle hash update from pointer subscription (runs outside React render)
-  const handleHashUpdate = async (rootHash: Hash | null) => {
-    console.log('[LiveVideo] handleHashUpdate called', rootHash ? toHex(rootHash).slice(0, 8) : null);
-    if (!rootHash) return;
+  const handleHashUpdate = async (rootCid: CID | null) => {
+    console.log('[LiveVideo] handleHashUpdate called', rootCid ? toHex(rootCid.hash).slice(0, 8) : null);
+    if (!rootCid) return;
 
-    const fileHash = await resolveFileHash(rootHash);
-    console.log('[LiveVideo] resolved file hash:', fileHash ? toHex(fileHash).slice(0, 8) : null);
-    if (!fileHash) return;
+    const fileCid = await resolveFileCid(rootCid);
+    console.log('[LiveVideo] resolved file cid:', fileCid ? toHex(fileCid.hash).slice(0, 8) : null);
+    if (!fileCid) return;
 
-    const hashHex = toHex(fileHash);
+    const hashHex = toHex(fileCid.hash);
     if (hashHex === currentHashRef.current) {
       console.log('[LiveVideo] same file hash, skipping');
       return; // Same file hash, skip
@@ -145,7 +145,7 @@ export const LiveVideo = memo(function LiveVideo({
     if (useFallbackRef.current) {
       // Fallback mode - reload blob
       const tree = getTree();
-      const data = await tree.readFile(fileHash);
+      const data = await tree.readFile(fileCid);
       if (!data) return;
 
       const video = videoRef.current;
@@ -163,7 +163,7 @@ export const LiveVideo = memo(function LiveVideo({
       setFallbackUrl(url);
     } else {
       // MediaSource mode - stream only new bytes
-      streamChunks(fileHash, appendedBytesRef.current);
+      streamChunks(fileCid, appendedBytesRef.current);
     }
   };
 
@@ -192,11 +192,11 @@ export const LiveVideo = memo(function LiveVideo({
           sourceBufferRef.current = sb;
 
           // Stream initial content
-          if (initialHash) {
-            const fileHash = await resolveFileHash(initialHash);
-            if (fileHash) {
-              currentHashRef.current = toHex(fileHash);
-              streamChunks(fileHash, 0);
+          if (initialCid) {
+            const fileCid = await resolveFileCid(initialCid);
+            if (fileCid) {
+              currentHashRef.current = toHex(fileCid.hash);
+              streamChunks(fileCid, 0);
             }
           }
         } catch (e) {
@@ -211,7 +211,14 @@ export const LiveVideo = memo(function LiveVideo({
     if (resolverKey) {
       const resolver = getRefResolver();
       if (resolver) {
-        unsubscribe = resolver.subscribe(resolverKey, handleHashUpdate);
+        // Wrap the callback to convert hash/encryptionKey to CID
+        unsubscribe = resolver.subscribe(resolverKey, (hash, encryptionKey) => {
+          if (!hash) {
+            handleHashUpdate(null);
+          } else {
+            handleHashUpdate(makeCid(hash, encryptionKey));
+          }
+        });
       }
     }
 
@@ -225,16 +232,16 @@ export const LiveVideo = memo(function LiveVideo({
 
   // Fallback: load initial content when fallback mode activates
   useEffect(() => {
-    if (!useFallback || !initialHash) return;
+    if (!useFallback || !initialCid) return;
 
     const loadFallback = async () => {
-      const fileHash = await resolveFileHash(initialHash);
-      if (!fileHash) return;
+      const fileCid = await resolveFileCid(initialCid);
+      if (!fileCid) return;
 
-      currentHashRef.current = toHex(fileHash);
+      currentHashRef.current = toHex(fileCid.hash);
 
       const tree = getTree();
-      const data = await tree.readFile(fileHash);
+      const data = await tree.readFile(fileCid);
       if (!data) return;
 
       const blob = new Blob([new Uint8Array(data)], { type: mimeType });
@@ -249,7 +256,7 @@ export const LiveVideo = memo(function LiveVideo({
         URL.revokeObjectURL(fallbackUrl);
       }
     };
-  }, [useFallback, initialHash, mimeType]);
+  }, [useFallback, initialCid, mimeType]);
 
   // Restore position for fallback
   useEffect(() => {
@@ -309,14 +316,14 @@ export const LiveVideo = memo(function LiveVideo({
          prevProps.filePath.join('/') === nextProps.filePath.join('/');
 });
 
-// Legacy component for direct hash access (no resolver subscription)
-export function LiveVideoFromHash({ hash, mimeType }: { hash: Hash; mimeType: string }) {
+// Component for direct CID access (no resolver subscription)
+export function LiveVideoFromHash({ cid, mimeType }: { cid: CID; mimeType: string }) {
   return (
     <LiveVideo
       resolverKey={null}
       filePath={[]}
       mimeType={mimeType}
-      initialHash={hash}
+      initialCid={cid}
     />
   );
 }

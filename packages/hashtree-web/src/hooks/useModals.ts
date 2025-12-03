@@ -2,11 +2,12 @@
  * Modal state management using module-level store
  */
 import { useSyncExternalStore } from 'react';
+import type { CID } from 'hashtree';
 
 type ModalType = 'file' | 'folder' | 'tree';
 
 interface ForkTarget {
-  dirHash: Uint8Array;
+  dirCid: CID;
   suggestedName: string;
 }
 
@@ -82,8 +83,8 @@ export function closeRenameModal() {
   emit();
 }
 
-export function openForkModal(dirHash: Uint8Array, suggestedName: string) {
-  state = { ...state, showForkModal: true, forkTarget: { dirHash, suggestedName }, modalInput: suggestedName };
+export function openForkModal(dirCid: CID, suggestedName: string) {
+  state = { ...state, showForkModal: true, forkTarget: { dirCid, suggestedName }, modalInput: suggestedName };
   emit();
 }
 

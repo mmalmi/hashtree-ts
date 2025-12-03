@@ -10,7 +10,7 @@ export function SettingsPage() {
   const peerList = useAppStore(s => s.peers);
   const peerCountVal = useAppStore(s => s.peerCount);
   const statsVal = useAppStore(s => s.stats);
-  const rootHashVal = useAppStore(s => s.rootHash);
+  const rootCidVal = useAppStore(s => s.rootCid);
   const myPeerId = useAppStore(s => s.myPeerId);
   const relayList = useNostrStore(s => s.relays);
   const loggedIn = useNostrStore(s => s.isLoggedIn);
@@ -122,11 +122,11 @@ export function SettingsPage() {
               <span className="text-muted">Size</span>
               <span className="text-text-1">{formatBytes(statsVal.bytes)}</span>
             </div>
-            {rootHashVal && (
+            {rootCidVal && (
               <div className="pt-2 border-t border-surface-3">
                 <span className="text-muted text-xs block mb-1">Root Hash</span>
                 <code className="text-xs text-text-3 font-mono break-all">
-                  {toHex(rootHashVal)}
+                  {toHex(rootCidVal.hash)}
                 </code>
               </div>
             )}

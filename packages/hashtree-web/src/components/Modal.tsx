@@ -111,7 +111,7 @@ export function ForkModal() {
     const name = modalInput.trim();
     if (!name) return;
 
-    await forkTree(forkTarget.dirHash, name);
+    await forkTree(forkTarget.dirCid, name);
     closeForkModal();
   };
 

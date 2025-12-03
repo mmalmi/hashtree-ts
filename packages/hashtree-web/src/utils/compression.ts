@@ -2,8 +2,7 @@
  * Compression utilities using fflate for ZIP creation and extraction
  */
 import { zipSync, unzipSync, strToU8, Zippable, Unzipped } from 'fflate';
-import type { HashTree, TreeEntry, Hash } from 'hashtree';
-import { toHex } from 'hashtree';
+import type { HashTree, CID } from 'hashtree';
 
 export interface ZipProgress {
   current: number;
@@ -29,7 +28,7 @@ export function extractZip(data: Uint8Array): Unzipped {
 }
 
 interface CollectedItem {
-  hash: Hash;
+  cid: CID;
   size?: number;
   isDirectory: boolean;
 }
@@ -39,13 +38,13 @@ interface CollectedItem {
  */
 async function collectFiles(
   tree: HashTree,
-  hash: Hash,
+  dirCid: CID,
   basePath: string,
   items: Map<string, CollectedItem>,
   onProgress?: ProgressCallback,
   counter = { value: 0 }
 ): Promise<boolean> {
-  const entries = await tree.listDirectory(hash);
+  const entries = await tree.listDirectory(dirCid);
 
   // If directory is empty, return false to indicate it should be added as empty dir
   if (entries.length === 0) {
@@ -59,14 +58,14 @@ async function collectFiles(
 
     if (entry.isTree) {
       // Recursively collect from subdirectory
-      const subdirHasContent = await collectFiles(tree, entry.hash, fullPath, items, onProgress, counter);
+      const subdirHasContent = await collectFiles(tree, entry.cid, fullPath, items, onProgress, counter);
       if (!subdirHasContent) {
         // Empty directory - add it with trailing slash
-        items.set(fullPath + '/', { hash: entry.hash, isDirectory: true });
+        items.set(fullPath + '/', { cid: entry.cid, isDirectory: true });
       }
       hasContent = true;
     } else {
-      items.set(fullPath, { hash: entry.hash, size: entry.size, isDirectory: false });
+      items.set(fullPath, { cid: entry.cid, size: entry.size, isDirectory: false });
       counter.value++;
       onProgress?.({
         current: counter.value,
@@ -85,13 +84,13 @@ async function collectFiles(
  */
 export async function createZipFromDirectory(
   tree: HashTree,
-  dirHash: Hash,
+  dirCid: CID,
   dirName: string,
   onProgress?: ProgressCallback
 ): Promise<Uint8Array> {
   // Collect all files and empty directories
   const items = new Map<string, CollectedItem>();
-  await collectFiles(tree, dirHash, '', items, onProgress);
+  await collectFiles(tree, dirCid, '', items, onProgress);
 
   // Count only files for progress (not empty dirs)
   const fileCount = Array.from(items.values()).filter(i => !i.isDirectory).length;
@@ -111,7 +110,7 @@ export async function createZipFromDirectory(
         fileName: path,
       });
 
-      const data = await tree.readFile(info.hash);
+      const data = await tree.readFile(info.cid);
       if (data) {
         zipFiles[path] = data;
       }

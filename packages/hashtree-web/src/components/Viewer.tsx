@@ -1,7 +1,8 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import Markdown from 'markdown-to-jsx';
-import { toHex, fromHex, nhashEncode } from 'hashtree';
+import { toHex, fromHex, nhashEncode, cid } from 'hashtree';
+import type { CID } from 'hashtree';
 import { Avatar } from './user';
 import { npubToPubkey } from '../nostr';
 import { LiveVideo, LiveVideoFromHash } from './LiveVideo';
@@ -36,7 +37,6 @@ export function Viewer() {
   const navigate = useNavigate();
   const location = useLocation();
   const rootCid = useAppStore(s => s.rootCid);
-  const rootHash = rootCid?.hash ?? null;
   const currentDirCid = useCurrentDirCid();
   const { entries } = useDirectoryEntries(currentDirCid);
 
@@ -56,37 +56,37 @@ export function Viewer() {
     return entries.find(e => e.name === urlFileName && !e.isTree) || null;
   }, [urlFileName, entries]);
 
-  // File state - content loaded from hash
+  // File state - content loaded from cid
   const [content, setContent] = useState<Uint8Array | null>(null);
   const [loading, setLoading] = useState(false);
   const showLoading = useDelayedLoading(loading);
-  const [fileHash, setFileHash] = useState<Uint8Array | null>(null);
-  const [resolvedEntry, setResolvedEntry] = useState<{ name: string; hash: Uint8Array; size?: number } | null>(null);
+  const [fileCid, setFileCid] = useState<CID | null>(null);
+  const [resolvedEntry, setResolvedEntry] = useState<{ name: string; cid: CID; size?: number } | null>(null);
 
   // Use store entry if available, otherwise use resolved entry
   const entry = entryFromStore || resolvedEntry;
 
-  // Resolve file hash from path when store entry is not available
+  // Resolve file cid from path when store entry is not available
   useEffect(() => {
     if (entryFromStore) {
       setResolvedEntry(null);
       return;
     }
 
-    // For permalinks without path, check if rootHash itself is a file
-    if (route.isPermalink && !urlFileName && rootHash) {
+    // For permalinks without path, check if rootCid itself is a file
+    if (route.isPermalink && !urlFileName && rootCid) {
       let cancelled = false;
       const tree = getTree();
-      tree.isDirectory(rootHash).then(isDir => {
+      tree.isDirectory(rootCid).then(isDir => {
         if (!cancelled && !isDir) {
-          // The rootHash is the file itself
-          setResolvedEntry({ name: 'file', hash: rootHash });
+          // The rootCid is the file itself
+          setResolvedEntry({ name: 'file', cid: rootCid });
         }
       });
       return () => { cancelled = true; };
     }
 
-    if (!urlFileName || !rootHash) {
+    if (!urlFileName || !rootCid) {
       setResolvedEntry(null);
       return;
     }
@@ -94,21 +94,21 @@ export function Viewer() {
     let cancelled = false;
     const tree = getTree();
 
-    // For permalinks with path, check if rootHash itself is a file (not a directory)
+    // For permalinks with path, check if rootCid itself is a file (not a directory)
     // In that case, the path is just the filename for display purposes
     if (route.isPermalink) {
-      tree.isDirectory(rootHash).then(isDir => {
+      tree.isDirectory(rootCid).then(isDir => {
         if (!cancelled && !isDir) {
-          // The rootHash is the file itself, use urlFileName for display
-          setResolvedEntry({ name: urlFileName, hash: rootHash });
+          // The rootCid is the file itself, use urlFileName for display
+          setResolvedEntry({ name: urlFileName, cid: rootCid });
         } else if (!cancelled && isDir) {
           // It's a directory, resolve the path within it
           const fullPath = [...currentPath, urlFileName].join('/');
-          tree.resolvePath(rootHash, fullPath).then(async hash => {
-            if (!cancelled && hash) {
-              const isFileDir = await tree.isDirectory(hash);
+          tree.resolvePath(rootCid, fullPath).then(async result => {
+            if (!cancelled && result) {
+              const isFileDir = await tree.isDirectory(result.cid);
               if (!cancelled && !isFileDir) {
-                setResolvedEntry({ name: urlFileName, hash });
+                setResolvedEntry({ name: urlFileName, cid: result.cid });
               }
             }
           });
@@ -117,18 +117,18 @@ export function Viewer() {
     } else {
       // Non-permalink: resolve path normally
       const fullPath = [...currentPath, urlFileName].join('/');
-      tree.resolvePath(rootHash, fullPath).then(async hash => {
-        if (!cancelled && hash) {
-          const isDir = await tree.isDirectory(hash);
+      tree.resolvePath(rootCid, fullPath).then(async result => {
+        if (!cancelled && result) {
+          const isDir = await tree.isDirectory(result.cid);
           if (!cancelled && !isDir) {
-            setResolvedEntry({ name: urlFileName, hash });
+            setResolvedEntry({ name: urlFileName, cid: result.cid });
           }
         }
       });
     }
 
     return () => { cancelled = true; };
-  }, [entryFromStore, urlFileName, rootHash, currentPath.join('/'), route.isPermalink]);
+  }, [entryFromStore, urlFileName, rootCid?.hash ? toHex(rootCid.hash) : null, currentPath.join('/'), route.isPermalink]);
 
   // Parse query params from location.search (works with hash routing)
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -180,7 +180,7 @@ export function Viewer() {
 
     // Clear content immediately when selection changes
     setContent(null);
-    setFileHash(null);
+    setFileCid(null);
     setLoading(false);
 
     if (!entry || isVideo) {
@@ -189,10 +189,10 @@ export function Viewer() {
 
     let cancelled = false;
     setLoading(true);
-    setFileHash(entry.hash);
+    setFileCid(entry.cid);
 
-    // Pass decryption key for encrypted files
-    getTree().readFile(entry.hash, entry.key).then(data => {
+    // readFile takes CID directly
+    getTree().readFile(entry.cid).then(data => {
       if (!cancelled) {
         setContent(data);
         setLoading(false);
@@ -204,7 +204,7 @@ export function Viewer() {
     });
 
     return () => { cancelled = true; };
-  }, [entry?.hash, isVideo]);
+  }, [entry?.cid?.hash ? toHex(entry.cid.hash) : null, isVideo]);
 
   // Initialize editContent when entering edit mode
   useEffect(() => {
@@ -241,7 +241,7 @@ export function Viewer() {
     let data = content;
     // For video files, content isn't preloaded - fetch it now
     if (!data && isVideo) {
-      data = await getTree().readFile(entry.hash, entry.key);
+      data = await getTree().readFile(entry.cid);
     }
     if (!data) return;
 
@@ -299,8 +299,8 @@ export function Viewer() {
           )}
           {/* Encryption status icon */}
           <span
-            className={`${rootKey ? 'i-lucide-lock' : 'i-lucide-globe'} text-text-2 shrink-0`}
-            title={rootKey ? 'Encrypted' : 'Public'}
+            className={`${rootCid?.key ? 'i-lucide-lock' : 'i-lucide-globe'} text-text-2 shrink-0`}
+            title={rootCid?.key ? 'Encrypted' : 'Public'}
           />
           {/* File type icon */}
           <span className={`${getFileIcon(entry?.name || urlFileName || '')} text-text-2 shrink-0`} />
@@ -324,9 +324,9 @@ export function Viewer() {
             </button>
             {/* Permalink to this specific file's hash */}
             <Link
-              to={`/${nhashEncode(toHex(entry.hash))}/${encodeURIComponent(entry.name)}`}
+              to={`/${nhashEncode(toHex(entry.cid.hash))}/${encodeURIComponent(entry.name)}`}
               className="btn-ghost no-underline"
-              title={toHex(entry.hash)}
+              title={toHex(entry.cid.hash)}
             >
               Permalink
             </Link>
@@ -414,11 +414,11 @@ export function Viewer() {
               resolverKey={getResolverKey(viewedNpub, currentTreeName)}
               filePath={[...currentPath, entry.name]}
               mimeType={mimeType}
-              initialHash={useAppStore.getState().rootHash ?? undefined}
+              initialCid={useAppStore.getState().rootCid}
             />
           ) : (
             // Direct hash access (no resolver)
-            <LiveVideoFromHash hash={entry.hash} mimeType={mimeType} />
+            <LiveVideoFromHash cid={entry.cid} mimeType={mimeType} />
           )
         ) : content ? (
           <ContentView data={content} filename={entry.name} onDownload={handleDownload} />
@@ -697,8 +697,8 @@ function DirectoryActions() {
     if (!readmeEntry) return;
 
     let cancelled = false;
-    // Pass decryption key for encrypted files
-    getTree().readFile(readmeEntry.hash, readmeEntry.key).then(data => {
+    // readFile takes CID directly
+    getTree().readFile(readmeEntry.cid).then(data => {
       if (!cancelled && data) {
         const text = decodeAsText(data);
         if (text) setReadmeContent(text);
@@ -717,7 +717,7 @@ function DirectoryActions() {
       {/* Action buttons */}
       {hasTreeContext && (
         <div className="p-3 shrink-0">
-          <FolderActions dirHash={dirHash} canEdit={canEdit} />
+          <FolderActions dirCid={currentDirCid ?? undefined} canEdit={canEdit} />
         </div>
       )}
 

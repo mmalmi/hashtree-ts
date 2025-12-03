@@ -4,7 +4,7 @@ import { useStats } from '../hooks';
 
 export function Stats() {
   const stats = useStats();
-  const rootHashVal = useAppStore(s => s.rootHash);
+  const rootCidVal = useAppStore(s => s.rootCid);
 
   return (
     <div className="flex items-center gap-4 text-sm">
@@ -14,9 +14,9 @@ export function Stats() {
       <span className="text-muted">
         {formatBytes(stats.bytes)}
       </span>
-      {rootHashVal && (
+      {rootCidVal && (
         <code className="text-xs text-text-3 font-mono">
-          {toHex(rootHashVal).slice(0, 12)}...
+          {toHex(rootCidVal.hash).slice(0, 12)}...
         </code>
       )}
     </div>

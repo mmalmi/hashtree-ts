@@ -444,18 +444,18 @@ export function App() {
           // Fetch old entries before update for LIVE indicator comparison
           const tree = getTree();
           const oldRootHash = fromHex(lastRootHashRef.current!);
-          let oldDirHash = oldRootHash;
+          let oldDirCid = cid(oldRootHash);
           for (const part of currentDirPath) {
-            const resolved = await tree.resolvePath(oldDirHash, part);
-            if (resolved) oldDirHash = resolved;
+            const resolved = await tree.resolvePath(oldDirCid, part);
+            if (resolved) oldDirCid = resolved.cid;
             else break;
           }
-          const oldEntries = await tree.listDirectory(oldDirHash).catch(() => []);
+          const oldEntries = await tree.listDirectory(oldDirCid).catch(() => []);
 
           // Build map of old entry hashes
           const oldHashes = new Map<string, string>();
           for (const e of oldEntries) {
-            oldHashes.set(e.name, toHex(e.hash));
+            oldHashes.set(e.name, toHex(e.cid.hash));
           }
 
           // Update rootHash
@@ -463,19 +463,19 @@ export function App() {
 
           // Fetch new entries to compare
           const newRootHash = fromHex(selectedTree.rootHash);
-          let newDirHash = newRootHash;
+          let newDirCid = cid(newRootHash);
           for (const part of currentDirPath) {
-            const resolved = await tree.resolvePath(newDirHash, part);
-            if (resolved) newDirHash = resolved;
+            const resolved = await tree.resolvePath(newDirCid, part);
+            if (resolved) newDirCid = resolved.cid;
             else break;
           }
-          const newEntries = await tree.listDirectory(newDirHash).catch(() => []);
+          const newEntries = await tree.listDirectory(newDirCid).catch(() => []);
 
           // Find all changed or new files and update recentlyChangedFiles
           const changedFiles = new Set<string>();
           for (const e of newEntries) {
             const oldHash = oldHashes.get(e.name);
-            const newHash = toHex(e.hash);
+            const newHash = toHex(e.cid.hash);
             // Include both changed files (hash differs) and new files (no old hash)
             if (!oldHash || oldHash !== newHash) {
               changedFiles.add(e.name);
