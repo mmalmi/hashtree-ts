@@ -1,4 +1,4 @@
-import { useState, useCallback, DragEvent, KeyboardEvent } from 'react';
+import { useState, useCallback, useEffect, useRef, DragEvent, KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toHex, nhashEncode } from 'hashtree';
 import { useAppStore, formatBytes } from '../store';
@@ -169,19 +169,64 @@ export function FileBrowser() {
 
   // Keyboard focus index (separate from URL-selected file)
   const [focusedIndex, setFocusedIndex] = useState<number>(-1);
+  const fileListRef = useRef<HTMLDivElement>(null);
+
+  // Auto-focus file list when view changes (tree list <-> file browser)
+  useEffect(() => {
+    // Small delay to ensure DOM is ready after navigation
+    const timer = setTimeout(() => {
+      fileListRef.current?.focus();
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [inTreeView, currentTreeName, currentPath.join('/')]);
 
   // Sync focused index with selected entry when it changes
   const selectedIndex = selectedEntry ? entries.findIndex(ent => ent.name === selectedEntry.name) : -1;
 
+  // Build the root href for ".." when at top level (goes to user's tree list)
+  const buildRootHref = () => {
+    if (viewedNpub) return `/${viewedNpub}`;
+    return '/';
+  };
+
+  // Build href for a directory path using URL segments
+  const buildDirHref = (path: string[]): string => {
+    const parts: string[] = [];
+
+    if (currentNpub && currentTreeName) {
+      parts.push(currentNpub, currentTreeName);
+      parts.push(...path);
+      return '/' + parts.map(encodeURIComponent).join('/');
+    } else if (rootHash) {
+      // Use nhash format: /nhash1.../path
+      const nhash = nhashEncode(toHex(rootHash));
+      parts.push(nhash);
+      parts.push(...path);
+      return '/' + parts.map(encodeURIComponent).join('/');
+    }
+
+    parts.push(...path);
+    return '/' + parts.map(encodeURIComponent).join('/');
+  };
+
+  // Build navigation items list: [.., ., ...entries]
+  // Include parent (..) only when we have a parent to go to
+  const hasParent = currentNpub || currentPath.length > 0;
+  // Navigation items: special items + entries
+  // -2 = parent (..), -1 = current (.), 0+ = entries
+  const navItemCount = (hasParent ? 1 : 0) + 1 + entries.length; // parent? + current + entries
+
+  // Convert focused index to entry index (accounting for special items)
+  const specialItemCount = (hasParent ? 1 : 0) + 1; // parent? + current
+
   // Keyboard navigation handler
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
-    if (entries.length === 0) return;
-
     const key = e.key.toLowerCase();
 
-    // Handle Delete key - delete focused or selected item
+    // Handle Delete key - delete focused or selected item (only for actual entries)
     if ((key === 'delete' || key === 'backspace') && canEdit) {
-      const targetEntry = focusedIndex >= 0 ? entries[focusedIndex] : selectedEntry;
+      const entryIndex = focusedIndex - specialItemCount;
+      const targetEntry = entryIndex >= 0 ? entries[entryIndex] : selectedEntry;
       if (targetEntry) {
         e.preventDefault();
         if (confirm(`Delete ${targetEntry.name}?`)) {
@@ -195,11 +240,23 @@ export function FileBrowser() {
     // Handle Enter key - navigate to focused item
     if (key === 'enter' && focusedIndex >= 0) {
       e.preventDefault();
-      const entry = entries[focusedIndex];
-      if (entry) {
-        const href = buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootHash);
-        navigateTo(href);
-        setFocusedIndex(-1); // Clear focus after navigation
+      if (hasParent && focusedIndex === 0) {
+        // Navigate to parent
+        navigateTo(currentPath.length > 0 ? buildDirHref(currentPath.slice(0, -1)) : buildRootHref());
+        setFocusedIndex(-1);
+      } else if (focusedIndex === (hasParent ? 1 : 0)) {
+        // Navigate to current (just refresh/select current dir)
+        navigateTo(buildDirHref(currentPath));
+        setFocusedIndex(-1);
+      } else {
+        // Navigate to entry
+        const entryIndex = focusedIndex - specialItemCount;
+        const entry = entries[entryIndex];
+        if (entry) {
+          const href = buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootHash);
+          navigateTo(href);
+          setFocusedIndex(-1);
+        }
       }
       return;
     }
@@ -208,29 +265,44 @@ export function FileBrowser() {
 
     e.preventDefault();
 
-    // Start from focused index, or selected index, or -1
-    const currentIndex = focusedIndex >= 0 ? focusedIndex : selectedIndex;
+    // Start from focused index, or derive from selected entry
+    let currentIndex = focusedIndex;
+    if (currentIndex < 0 && selectedIndex >= 0) {
+      currentIndex = selectedIndex + specialItemCount;
+    }
+
     let newIndex: number;
 
     if (key === 'arrowdown' || key === 'j') {
-      newIndex = currentIndex < entries.length - 1 ? currentIndex + 1 : 0;
+      newIndex = currentIndex < navItemCount - 1 ? currentIndex + 1 : 0;
     } else {
-      newIndex = currentIndex > 0 ? currentIndex - 1 : entries.length - 1;
+      newIndex = currentIndex > 0 ? currentIndex - 1 : navItemCount - 1;
     }
 
-    const newEntry = entries[newIndex];
-    if (newEntry) {
-      if (newEntry.isTree) {
-        // Directory: just focus it, don't navigate
-        setFocusedIndex(newIndex);
-      } else {
-        // File: navigate to it and clear focus
-        setFocusedIndex(-1);
-        const href = buildEntryHref(newEntry, currentNpub, currentTreeName, currentPath, rootHash);
-        navigateTo(href);
+    // Check if it's a special item or entry
+    if (hasParent && newIndex === 0) {
+      // Parent directory - just focus
+      setFocusedIndex(newIndex);
+    } else if (newIndex === (hasParent ? 1 : 0)) {
+      // Current directory - just focus
+      setFocusedIndex(newIndex);
+    } else {
+      // Entry
+      const entryIndex = newIndex - specialItemCount;
+      const newEntry = entries[entryIndex];
+      if (newEntry) {
+        if (newEntry.isTree) {
+          // Directory: just focus it, don't navigate
+          setFocusedIndex(newIndex);
+        } else {
+          // File: navigate to it and clear focus
+          setFocusedIndex(-1);
+          const href = buildEntryHref(newEntry, currentNpub, currentTreeName, currentPath, rootHash);
+          navigateTo(href);
+        }
       }
     }
-  }, [entries, focusedIndex, selectedIndex, selectedEntry, currentNpub, currentTreeName, currentPath, rootHash, navigateTo, canEdit]);
+  }, [entries, focusedIndex, selectedIndex, selectedEntry, currentNpub, currentTreeName, currentPath, rootHash, navigateTo, canEdit, hasParent, navItemCount, specialItemCount]);
 
   // Drag-and-drop state
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
@@ -330,6 +402,49 @@ export function FileBrowser() {
     setDropTarget(null);
   };
 
+  // Tree list keyboard navigation
+  const [treeFocusedIndex, setTreeFocusedIndex] = useState<number>(-1);
+
+  // Build tree list for navigation (home first, then others)
+  const treeList = isOwnTrees
+    ? [{ name: 'home', key: 'home' }, ...trees.filter(t => t.name !== 'home')]
+    : trees;
+
+  // Handle keyboard navigation for tree list
+  const handleTreeListKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
+    if (treeList.length === 0) return;
+
+    const key = e.key.toLowerCase();
+
+    // Handle Enter key - navigate to focused tree
+    if (key === 'enter' && treeFocusedIndex >= 0) {
+      e.preventDefault();
+      const tree = treeList[treeFocusedIndex];
+      if (tree) {
+        navigateTo(buildTreeHref(targetNpub!, tree.name));
+        setTreeFocusedIndex(-1);
+      }
+      return;
+    }
+
+    if (key !== 'arrowup' && key !== 'arrowdown' && key !== 'j' && key !== 'k') return;
+
+    e.preventDefault();
+
+    // Find currently selected tree index
+    const selectedTreeIndex = currentTreeName ? treeList.findIndex(t => t.name === currentTreeName) : -1;
+    const currentIndex = treeFocusedIndex >= 0 ? treeFocusedIndex : selectedTreeIndex;
+    let newIndex: number;
+
+    if (key === 'arrowdown' || key === 'j') {
+      newIndex = currentIndex < treeList.length - 1 ? currentIndex + 1 : 0;
+    } else {
+      newIndex = currentIndex > 0 ? currentIndex - 1 : treeList.length - 1;
+    }
+
+    setTreeFocusedIndex(newIndex);
+  }, [treeList, treeFocusedIndex, currentTreeName, targetNpub, navigateTo]);
+
   // Show tree list when at root (no tree selected)
   if (!inTreeView) {
     // Determine which user to show in header
@@ -363,30 +478,24 @@ export function FileBrowser() {
         )}
 
         {/* Tree list */}
-        <div data-testid="file-list" className="flex-1 overflow-auto pb-4">
-          {/* Default "home" folder - always shown for own trees */}
-          {isOwnTrees && (
-            <Link
-              to={buildTreeHref(targetNpub!, 'home')}
-              className={`p-3 border-b border-surface-2 flex items-center gap-3 cursor-pointer no-underline text-text-1 min-w-0 ${
-                currentTreeName === 'home' ? 'bg-surface-2' : 'hover:bg-surface-1'
-              }`}
-            >
-              <span className="shrink-0 i-lucide-folder text-warning" />
-              <span className="truncate" title="home">home</span>
-            </Link>
-          )}
-          {trees.length === 0 && !isOwnTrees ? (
+        <div
+          ref={fileListRef}
+          data-testid="file-list"
+          className="flex-1 overflow-auto pb-4 outline-none"
+          tabIndex={0}
+          onKeyDown={handleTreeListKeyDown}
+        >
+          {treeList.length === 0 ? (
             <div className="p-8 text-center text-muted">
               Upload files to begin
             </div>
-          ) : trees.filter(t => t.name !== 'home').map((tree) => (
+          ) : treeList.map((tree, idx) => (
             <Link
               key={tree.key}
               to={buildTreeHref(targetNpub!, tree.name)}
               className={`p-3 border-b border-surface-2 flex items-center gap-3 cursor-pointer no-underline text-text-1 min-w-0 ${
                 currentTreeName === tree.name ? 'bg-surface-2' : 'hover:bg-surface-1'
-              }`}
+              } ${treeFocusedIndex === idx ? 'ring-2 ring-inset ring-accent' : ''}`}
             >
               <span className="shrink-0 i-lucide-folder text-warning" />
               <span className="truncate" title={tree.name}>{tree.name}</span>
@@ -396,32 +505,6 @@ export function FileBrowser() {
       </div>
     );
   }
-
-  // Build the root href for ".." when at top level (goes to user's tree list)
-  const buildRootHref = () => {
-    if (viewedNpub) return `/${viewedNpub}`;
-    return '/';
-  };
-
-  // Build href for a directory path using URL segments
-  const buildDirHref = (path: string[]): string => {
-    const parts: string[] = [];
-
-    if (currentNpub && currentTreeName) {
-      parts.push(currentNpub, currentTreeName);
-      parts.push(...path);
-      return '/' + parts.map(encodeURIComponent).join('/');
-    } else if (rootHash) {
-      // Use nhash format: /nhash1.../path
-      const nhash = nhashEncode(toHex(rootHash));
-      parts.push(nhash);
-      parts.push(...path);
-      return '/' + parts.map(encodeURIComponent).join('/');
-    }
-
-    parts.push(...path);
-    return '/' + parts.map(encodeURIComponent).join('/');
-  };
 
   const buildParentHref = () => buildDirHref(currentPath.slice(0, -1));
   const buildCurrentDirHref = () => buildDirHref(currentPath);
@@ -453,6 +536,7 @@ export function FileBrowser() {
 
       {/* File list */}
       <div
+        ref={fileListRef}
         data-testid="file-list"
         className={`flex-1 overflow-auto relative outline-none pb-4 ${isDraggingOver ? 'bg-accent/10' : ''}`}
         tabIndex={0}
@@ -469,7 +553,7 @@ export function FileBrowser() {
 
         {/* Parent directory row - navigation and drop target */}
         {/* Hide ".." for nhash routes at root level (no parent to go to) */}
-        {(currentNpub || currentPath.length > 0) && (
+        {hasParent && (
           <Link
             to={currentPath.length > 0 ? buildParentHref() : buildRootHref()}
             onDragOver={currentPath.length > 0 && canEdit ? handleDragOverParent : undefined}
@@ -477,7 +561,7 @@ export function FileBrowser() {
             onDrop={currentPath.length > 0 && canEdit ? handleDropOnParent : undefined}
             className={`p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 ${
               dropTarget === '__parent__' ? 'bg-accent/20 border-accent' : 'hover:bg-surface-2/50'
-            }`}
+            } ${focusedIndex === 0 ? 'ring-2 ring-inset ring-accent' : ''}`}
           >
             <span className="i-lucide-folder text-warning shrink-0" />
             <span className="truncate">..</span>
@@ -489,7 +573,7 @@ export function FileBrowser() {
           to={buildCurrentDirHref()}
           className={`p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 ${
             !selectedEntry && focusedIndex < 0 ? 'bg-surface-2' : ''
-          }`}
+          } ${focusedIndex === (hasParent ? 1 : 0) ? 'ring-2 ring-inset ring-accent' : ''}`}
         >
           <span className={`shrink-0 ${isDirectory ? 'i-lucide-folder-open text-warning' : `${getFileIcon(currentDirName)} text-text-2`}`} />
           <span className="truncate">{currentDirName}</span>
@@ -512,7 +596,7 @@ export function FileBrowser() {
               onDrop={entry.isTree ? (e) => handleDropOnDir(e, entry.name) : undefined}
               className={`p-3 pl-9 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 ${
                 selectedEntry?.name === entry.name ? 'bg-surface-2' : ''
-              } ${focusedIndex === idx ? 'ring-2 ring-inset ring-accent' : ''} ${
+              } ${focusedIndex === idx + specialItemCount ? 'ring-2 ring-inset ring-accent' : ''} ${
                 draggedItem === entry.name ? 'opacity-50' : ''
               } ${dropTarget === entry.name ? 'bg-accent/20 border-accent' : ''} ${
                 recentlyChangedFiles.has(entry.name) && selectedEntry?.name !== entry.name ? 'animate-pulse-live' : ''
