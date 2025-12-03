@@ -284,11 +284,13 @@ function AccountRow({ account, isActive, isSwitching, canRemove, onSwitch, onRem
         )}
 
         {isActive && (
-          <span className="i-lucide-check-circle text-success" />
+          <div className="p-2">
+            <span className="i-lucide-check-circle text-success" />
+          </div>
         )}
 
 
-        {canRemove && !showConfirmRemove && (
+        {canRemove && !isActive && !showConfirmRemove && (
           <button
             onClick={() => setShowConfirmRemove(true)}
             className="btn-ghost p-2 text-text-2 hover:text-danger"
@@ -301,12 +303,6 @@ function AccountRow({ account, isActive, isSwitching, canRemove, onSwitch, onRem
         {showConfirmRemove && (
           <div className="flex items-center gap-1">
             <button
-              onClick={() => setShowConfirmRemove(false)}
-              className="btn-ghost p-1 text-xs"
-            >
-              Cancel
-            </button>
-            <button
               onClick={() => {
                 onRemove();
                 setShowConfirmRemove(false);
@@ -314,6 +310,12 @@ function AccountRow({ account, isActive, isSwitching, canRemove, onSwitch, onRem
               className="btn-ghost p-1 text-xs text-danger"
             >
               Remove
+            </button>
+            <button
+              onClick={() => setShowConfirmRemove(false)}
+              className="btn-ghost p-1 text-xs"
+            >
+              Cancel
             </button>
           </div>
         )}
