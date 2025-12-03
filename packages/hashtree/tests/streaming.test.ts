@@ -36,13 +36,13 @@ describe('StreamBuilder - Streaming scenarios', () => {
       expect(toHex(root2!)).not.toBe(toHex(root3!));
 
       // All intermediate roots should be readable
-      const data1 = await reader.readFile(root1!);
+      const data1 = await reader.readFile({ hash: root1! });
       expect(data1).toEqual(new Uint8Array([1, 2, 3]));
 
-      const data2 = await reader.readFile(root2!);
+      const data2 = await reader.readFile({ hash: root2! });
       expect(data2).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6]));
 
-      const data3 = await reader.readFile(root3!);
+      const data3 = await reader.readFile({ hash: root3! });
       expect(data3).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]));
     });
 
@@ -59,7 +59,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
 
       // Each checkpoint should be independently readable
       for (let i = 0; i < checkpoints.length; i++) {
-        const data = await reader.readFile(checkpoints[i]);
+        const data = await reader.readFile({ hash: checkpoints[i] });
         expect(data!.length).toBe((i + 1) * 20);
         expect(data![i * 20]).toBe(i);
       }
@@ -90,15 +90,15 @@ describe('StreamBuilder - Streaming scenarios', () => {
       }
 
       // Final root
-      const { hash: finalRoot, size } = await stream.finalize();
+      const { hash, size } = await stream.finalize();
       expect(size).toBe(5 * 100 * 1024);
 
       // Viewer joining at second 3 should be able to read data
-      const partialData = await reader.readFile(publishedRoots[2]);
+      const partialData = await reader.readFile({ hash: publishedRoots[2] });
       expect(partialData!.length).toBe(3 * 100 * 1024);
 
       // Full stream should contain all data
-      const fullData = await reader.readFile(finalRoot);
+      const fullData = await reader.readFile({ hash });
       expect(fullData!.length).toBe(5 * 100 * 1024);
     });
 
@@ -114,7 +114,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
       const { hash, size } = await stream.finalize();
       expect(size).toBe(5000);
 
-      const data = await reader.readFile(hash);
+      const data = await reader.readFile({ hash });
       expect(data!.length).toBe(5000);
     });
   });
@@ -134,8 +134,8 @@ describe('StreamBuilder - Streaming scenarios', () => {
       const reader2 = new TreeReader({ store });
 
       const [data1, data2] = await Promise.all([
-        reader1.readFile(hash),
-        reader2.readFile(hash),
+        reader1.readFile({ hash }),
+        reader2.readFile({ hash }),
       ]);
 
       expect(data1).toEqual(data2);
@@ -154,7 +154,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
       const { hash, size } = await stream.finalize();
       expect(size).toBe(25);
 
-      const data = await reader.readFile(hash);
+      const data = await reader.readFile({ hash });
       expect(data!.length).toBe(25);
       for (let i = 0; i < 25; i++) {
         expect(data![i]).toBe(i);
@@ -175,7 +175,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
       expect(stream.stats.totalSize).toBe(500);
 
       const { hash } = await stream.finalize();
-      const data = await reader.readFile(hash);
+      const data = await reader.readFile({ hash });
       expect(data!.length).toBe(500);
     });
 
@@ -195,7 +195,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
       expect(stream.stats.totalSize).toBe(1000);
 
       const { hash } = await stream.finalize();
-      const data = await reader.readFile(hash);
+      const data = await reader.readFile({ hash });
       expect(data).toEqual(bigData);
     });
 
@@ -211,7 +211,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
       const { hash, size } = await stream.finalize();
       expect(size).toBe(300);
 
-      const data = await reader.readFile(hash);
+      const data = await reader.readFile({ hash });
       expect(data![0]).toBe(1);
       expect(data![3]).toBe(4);
       expect(data![253]).toBe(5);
@@ -243,7 +243,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
       const { hash, size } = await stream.finalize();
       expect(size).toBe(maxChunks * chunkSize);
 
-      const data = await reader.readFile(hash);
+      const data = await reader.readFile({ hash });
       // Should contain chunks 7, 8, 9
       expect(data![0]).toBe(7);
       expect(data![100]).toBe(8);
@@ -263,7 +263,7 @@ describe('StreamBuilder - Streaming scenarios', () => {
         await stream.append(repeatedData);
       }
 
-      const { hash, size } = await stream.finalize();
+      const { cid, size } = await stream.finalize();
       expect(size).toBe(500);
 
       // Store should have fewer items due to dedup

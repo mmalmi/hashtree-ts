@@ -1,8 +1,7 @@
 export { useSelectedFile } from './useSelectedFile';
 export { useRoute } from './useRoute';
 export { useCurrentPath } from './useCurrentPath';
-export { useCurrentDirHash, useCurrentDirLocation } from './useCurrentDirHash';
-export type { DirLocation } from './useCurrentDirHash';
+export { useCurrentDirHash, useCurrentDirCid } from './useCurrentDirHash';
 export { useTrees } from './useTrees';
 export { useDirectoryEntries } from './useDirectoryEntries';
 export { useStats } from './useStats';

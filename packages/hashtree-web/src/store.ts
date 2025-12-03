@@ -6,8 +6,9 @@ import {
   IndexedDBStore,
   HashTree,
   WebRTCStore,
+  cid,
 } from 'hashtree';
-import type { Hash, PeerStatus, EventSigner, EventEncrypter, EventDecrypter, EncryptionKey } from 'hashtree';
+import type { CID, PeerStatus, EventSigner, EventEncrypter, EventDecrypter } from 'hashtree';
 
 // Store instances - using IndexedDB for persistence
 export const idbStore = new IndexedDBStore('hashtree-explorer');
@@ -32,8 +33,7 @@ export interface StorageStats {
 
 // App state store
 interface AppState {
-  rootHash: Hash | null;
-  rootKey: EncryptionKey | null;
+  rootCid: CID | null;
 
   // WebRTC state
   peerCount: number;
@@ -44,9 +44,7 @@ interface AppState {
   stats: StorageStats;
 
   // Actions
-  setRoot: (hash: Hash | null, key: EncryptionKey | null) => void;
-  setRootHash: (hash: Hash | null) => void;
-  setRootKey: (key: EncryptionKey | null) => void;
+  setRootCid: (cid: CID | null) => void;
   setPeerCount: (count: number) => void;
   setPeers: (peers: PeerStatus[]) => void;
   setMyPeerId: (id: string | null) => void;
@@ -54,16 +52,13 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  rootHash: null,
-  rootKey: null,
+  rootCid: null,
   peerCount: 0,
   peers: [],
   myPeerId: null,
   stats: { items: 0, bytes: 0 },
 
-  setRoot: (hash, key) => set({ rootHash: hash, rootKey: key }),
-  setRootHash: (hash) => set({ rootHash: hash }),
-  setRootKey: (key) => set({ rootKey: key }),
+  setRootCid: (rootCid) => set({ rootCid }),
   setPeerCount: (count) => set({ peerCount: count }),
   setPeers: (peers) => set({ peers }),
   setMyPeerId: (id) => set({ myPeerId: id }),

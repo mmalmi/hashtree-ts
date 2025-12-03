@@ -11,6 +11,26 @@
 export type Hash = Uint8Array;
 
 /**
+ * Content Identifier - hash + optional decryption key
+ *
+ * For public content: just the hash
+ * For encrypted content: hash + CHK decryption key
+ */
+export interface CID {
+  /** SHA256 hash of the (encrypted) content */
+  hash: Hash;
+  /** CHK decryption key (for encrypted content) */
+  key?: Uint8Array;
+}
+
+/**
+ * Create a CID from hash and optional key
+ */
+export function cid(hash: Hash, key?: Uint8Array): CID {
+  return key ? { hash, key } : { hash };
+}
+
+/**
  * Node types in the tree
  */
 export enum NodeType {

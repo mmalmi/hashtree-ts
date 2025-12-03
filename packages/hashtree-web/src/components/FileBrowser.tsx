@@ -9,7 +9,7 @@ import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
 import { useNostrStore, pubkeyToNpub, npubToPubkey } from '../nostr';
 import { UserRow } from './user';
 import { FolderActions } from './FolderActions';
-import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirLocation, useTrees, useDirectoryEntries } from '../hooks';
+import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirCid, useTrees, useDirectoryEntries } from '../hooks';
 import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
 // Get icon class based on file extension
@@ -138,11 +138,11 @@ function buildTreeHref(ownerNpub: string, treeName: string): string {
 
 export function FileBrowser() {
   // Use zustand hooks with selectors for reactive updates
-  const rootHash = useAppStore(s => s.rootHash);
-  const rootKey = useAppStore(s => s.rootKey);
-  const currentDirLocation = useCurrentDirLocation();
-  const currentDirHash = currentDirLocation?.hash ?? null;
-  const { entries, isDirectory } = useDirectoryEntries(currentDirLocation);
+  const rootCid = useAppStore(s => s.rootCid);
+  const rootHash = rootCid?.hash ?? null;
+  const currentDirCid = useCurrentDirCid();
+  const currentDirHash = currentDirCid?.hash ?? null;
+  const { entries, isDirectory } = useDirectoryEntries(currentDirCid);
   const recentlyChangedFiles = useRecentlyChanged();
 
   // Derive from URL - source of truth
@@ -592,8 +592,8 @@ export function FileBrowser() {
           } ${focusedIndex === (hasParent ? 1 : 0) ? 'ring-2 ring-inset ring-accent' : ''}`}
         >
           <span
-            className={`shrink-0 ${currentDirLocation?.key ? 'i-lucide-lock' : 'i-lucide-globe'} text-text-2`}
-            title={currentDirLocation?.key ? 'Encrypted' : 'Public'}
+            className={`shrink-0 ${currentDirCid?.key ? 'i-lucide-lock' : 'i-lucide-globe'} text-text-2`}
+            title={currentDirCid?.key ? 'Encrypted' : 'Public'}
           />
           <span className={`shrink-0 ${isDirectory ? 'i-lucide-folder-open text-warning' : `${getFileIcon(currentDirName)} text-text-2`}`} />
           <span className="truncate">{currentDirName}</span>

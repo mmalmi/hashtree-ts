@@ -40,7 +40,7 @@ describe('TreeReader', () => {
         { name: 'test.txt', hash: fileHash, size: 1 },
       ]);
 
-      const node = await reader.getTreeNode(dirHash);
+      const node = await reader.getTreeNode({ hash: dirHash });
       expect(node).not.toBeNull();
       expect(node!.type).toBe(NodeType.Tree);
       expect(node!.links.length).toBe(1);
@@ -48,7 +48,7 @@ describe('TreeReader', () => {
 
     it('should return null for blob hash', async () => {
       const hash = await builder.putBlob(new Uint8Array([1, 2, 3]));
-      const node = await reader.getTreeNode(hash);
+      const node = await reader.getTreeNode({ hash });
       expect(node).toBeNull();
     });
   });
@@ -60,12 +60,12 @@ describe('TreeReader', () => {
         { name: 'test.txt', hash: fileHash },
       ]);
 
-      expect(await reader.isTree(dirHash)).toBe(true);
+      expect(await reader.isTree({ hash: dirHash })).toBe(true);
     });
 
     it('should return false for blobs', async () => {
       const hash = await builder.putBlob(new Uint8Array([1, 2, 3]));
-      expect(await reader.isTree(hash)).toBe(false);
+      expect(await reader.isTree({ hash })).toBe(false);
     });
   });
 
@@ -74,7 +74,7 @@ describe('TreeReader', () => {
       const data = new Uint8Array([1, 2, 3, 4, 5]);
       const { hash } = await builder.putFile(data);
 
-      const result = await reader.readFile(hash);
+      const result = await reader.readFile({ hash });
       expect(result).toEqual(data);
     });
 
@@ -85,14 +85,14 @@ describe('TreeReader', () => {
       }
 
       const { hash } = await builder.putFile(data);
-      const result = await reader.readFile(hash);
+      const result = await reader.readFile({ hash });
 
       expect(result).toEqual(data);
     });
 
     it('should return null for non-existent hash', async () => {
       const hash = new Uint8Array(32).fill(0);
-      const result = await reader.readFile(hash);
+      const result = await reader.readFile({ hash });
       expect(result).toBeNull();
     });
   });
@@ -107,7 +107,7 @@ describe('TreeReader', () => {
       const { hash } = await builder.putFile(data);
 
       const chunks: Uint8Array[] = [];
-      for await (const chunk of reader.readFileStream(hash)) {
+      for await (const chunk of reader.readFileStream({ hash })) {
         chunks.push(chunk);
       }
 
@@ -122,7 +122,7 @@ describe('TreeReader', () => {
       const hash = new Uint8Array(32).fill(0);
       const chunks: Uint8Array[] = [];
 
-      for await (const chunk of reader.readFileStream(hash)) {
+      for await (const chunk of reader.readFileStream({ hash })) {
         chunks.push(chunk);
       }
 
@@ -140,7 +140,7 @@ describe('TreeReader', () => {
         { name: 'second.txt', hash: h2, size: 1 },
       ]);
 
-      const entries = await reader.listDirectory(dirHash);
+      const entries = await reader.listDirectory({ hash: dirHash });
 
       expect(entries.length).toBe(2);
       expect(entries.find(e => e.name === 'first.txt')).toBeDefined();
@@ -158,7 +158,7 @@ describe('TreeReader', () => {
         { name: 'subdir', hash: subDirHash },
       ]);
 
-      const entries = await reader.listDirectory(rootHash);
+      const entries = await reader.listDirectory({ hash: rootHash });
 
       const fileEntry = entries.find(e => e.name === 'file.txt');
       const dirEntry = entries.find(e => e.name === 'subdir');
@@ -177,7 +177,7 @@ describe('TreeReader', () => {
       }
 
       const dirHash = await smallBuilder.putDirectory(entries);
-      const listed = await reader.listDirectory(dirHash);
+      const listed = await reader.listDirectory({ hash: dirHash });
 
       // Should see all 10 files, not the internal chunk nodes
       expect(listed.length).toBe(10);
@@ -194,8 +194,8 @@ describe('TreeReader', () => {
         { name: 'test.txt', hash: fileHash },
       ]);
 
-      const resolved = await reader.resolvePath(dirHash, 'test.txt');
-      expect(toHex(resolved!)).toBe(toHex(fileHash));
+      const resolved = await reader.resolvePath({ hash: dirHash }, 'test.txt');
+      expect(toHex(resolved!.cid.hash)).toBe(toHex(fileHash));
     });
 
     it('should resolve nested path', async () => {
@@ -213,14 +213,14 @@ describe('TreeReader', () => {
         { name: 'level1', hash: subDir },
       ]);
 
-      const resolved = await reader.resolvePath(rootDir, 'level1/level2/deep.txt');
+      const resolved = await reader.resolvePath({ hash: rootDir }, 'level1/level2/deep.txt');
       expect(resolved).not.toBeNull();
-      expect(toHex(resolved!)).toBe(toHex(fileHash));
+      expect(toHex(resolved!.cid.hash)).toBe(toHex(fileHash));
     });
 
     it('should return null for non-existent path', async () => {
       const dirHash = await builder.putDirectory([]);
-      const resolved = await reader.resolvePath(dirHash, 'missing.txt');
+      const resolved = await reader.resolvePath({ hash: dirHash }, 'missing.txt');
       expect(resolved).toBeNull();
     });
 
@@ -230,9 +230,9 @@ describe('TreeReader', () => {
         { name: 'test.txt', hash: fileHash },
       ]);
 
-      expect(await reader.resolvePath(dirHash, '/test.txt')).not.toBeNull();
-      expect(await reader.resolvePath(dirHash, 'test.txt/')).not.toBeNull();
-      expect(await reader.resolvePath(dirHash, '/test.txt/')).not.toBeNull();
+      expect(await reader.resolvePath({ hash: dirHash }, '/test.txt')).not.toBeNull();
+      expect(await reader.resolvePath({ hash: dirHash }, 'test.txt/')).not.toBeNull();
+      expect(await reader.resolvePath({ hash: dirHash }, '/test.txt/')).not.toBeNull();
     });
   });
 
@@ -246,7 +246,7 @@ describe('TreeReader', () => {
 
     it('should return tree totalSize', async () => {
       const data = new Uint8Array(350);
-      const { hash, size } = await builder.putFile(data);
+      const { hash } = await builder.putFile(data);
 
       expect(await reader.getSize(hash)).toBe(350);
     });

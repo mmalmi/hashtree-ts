@@ -8,6 +8,7 @@
 // Core types
 export type {
   Hash,
+  CID,
   TreeNode,
   BlobNode,
   Link,
@@ -22,6 +23,7 @@ export {
   NodeType,
   toHex,
   fromHex,
+  cid,
 } from './types.js';
 
 // Hash utilities

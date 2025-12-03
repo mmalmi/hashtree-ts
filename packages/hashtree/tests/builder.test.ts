@@ -44,7 +44,7 @@ describe('TreeBuilder', () => {
       const { hash, size } = await builder.putFile(data);
 
       expect(size).toBe(5);
-      expect(await reader.readFile(hash)).toEqual(data);
+      expect(await reader.readFile({ hash })).toEqual(data);
     });
 
     it('should chunk large files', async () => {
@@ -62,11 +62,11 @@ describe('TreeBuilder', () => {
       expect(size).toBe(data.length);
 
       // Should be a tree node, not raw blob
-      const isTree = await reader.isTree(hash);
+      const isTree = await reader.isTree({ hash });
       expect(isTree).toBe(true);
 
       // Should reassemble correctly
-      const retrieved = await reader.readFile(hash);
+      const retrieved = await reader.readFile({ hash });
       expect(retrieved).toEqual(data);
     });
 
@@ -80,7 +80,7 @@ describe('TreeBuilder', () => {
       const { hash, size } = await smallBuilder.putFile(data);
 
       expect(size).toBe(chunkSize);
-      expect(await reader.readFile(hash)).toEqual(data);
+      expect(await reader.readFile({ hash })).toEqual(data);
     });
 
     it('should create balanced tree for many chunks', async () => {
@@ -97,7 +97,7 @@ describe('TreeBuilder', () => {
       const { hash, size } = await smallBuilder.putFile(data);
 
       expect(size).toBe(data.length);
-      expect(await reader.readFile(hash)).toEqual(data);
+      expect(await reader.readFile({ hash })).toEqual(data);
     });
   });
 
@@ -114,7 +114,7 @@ describe('TreeBuilder', () => {
         { name: 'b.txt', hash: hash2, size: file2.length },
       ]);
 
-      const entries = await reader.listDirectory(dirHash);
+      const entries = await reader.listDirectory({ hash: dirHash });
       expect(entries.length).toBe(2);
       expect(entries.find(e => e.name === 'a.txt')).toBeDefined();
       expect(entries.find(e => e.name === 'b.txt')).toBeDefined();
@@ -129,7 +129,7 @@ describe('TreeBuilder', () => {
         { name: 'mango', hash },
       ]);
 
-      const node = await reader.getTreeNode(dirHash);
+      const node = await reader.getTreeNode({ hash: dirHash });
       expect(node!.links.map(l => l.name)).toEqual(['apple', 'mango', 'zebra']);
     });
 
@@ -145,9 +145,9 @@ describe('TreeBuilder', () => {
         { name: 'subdir', hash: subDirHash },
       ]);
 
-      const resolved = await reader.resolvePath(rootHash, 'subdir/file.txt');
+      const resolved = await reader.resolvePath({ hash: rootHash }, 'subdir/file.txt');
       expect(resolved).not.toBeNull();
-      expect(toHex(resolved!)).toBe(toHex(fileHash));
+      expect(toHex(resolved!.cid.hash)).toBe(toHex(fileHash));
     });
 
     it('should split large directories', async () => {
@@ -164,7 +164,7 @@ describe('TreeBuilder', () => {
       const dirHash = await smallBuilder.putDirectory(entries);
 
       // Should be able to list all entries even though dir is split
-      const listed = await reader.listDirectory(dirHash);
+      const listed = await reader.listDirectory({ hash: dirHash });
       expect(listed.length).toBe(10);
     });
   });
@@ -178,7 +178,7 @@ describe('TreeBuilder', () => {
         { version: 2, created: '2024-01-01' }
       );
 
-      const node = await reader.getTreeNode(nodeHash);
+      const node = await reader.getTreeNode({ hash: nodeHash });
       expect(node!.metadata).toEqual({ version: 2, created: '2024-01-01' });
     });
   });
@@ -204,7 +204,7 @@ describe('StreamBuilder', () => {
       const { hash, size } = await stream.finalize();
 
       expect(size).toBe(9);
-      const data = await reader.readFile(hash);
+      const data = await reader.readFile({ hash });
       expect(data).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]));
     });
 
@@ -220,7 +220,7 @@ describe('StreamBuilder', () => {
       const { hash, size } = await stream.finalize();
       expect(size).toBe(25);
 
-      const data = await reader.readFile(hash);
+      const data = await reader.readFile({ hash });
       expect(data!.length).toBe(25);
       expect(data![0]).toBe(1);
       expect(data![7]).toBe(2);
@@ -276,7 +276,7 @@ describe('StreamBuilder', () => {
       const { hash, size } = await stream.finalize();
 
       expect(size).toBe(0);
-      const data = await reader.readFile(hash);
+      const data = await reader.readFile({ hash });
       expect(data).toEqual(new Uint8Array(0));
     });
 
@@ -296,7 +296,7 @@ describe('StreamBuilder', () => {
       expect(size).toBe(2000);
 
       // Verify can read back
-      const data = await reader.readFile(hash);
+      const data = await reader.readFile({ hash });
       expect(data!.length).toBe(2000);
       expect(data![0]).toBe(0);
       expect(data![100]).toBe(1);

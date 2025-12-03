@@ -119,15 +119,15 @@ describe('HashTree encrypted', () => {
     it('should encrypt and decrypt small file', async () => {
       const data = new TextEncoder().encode('hello encrypted world');
 
-      // putFile() encrypts by default
-      const { hash, size, key } = await tree.putFile(data);
+      // putFile() encrypts by default, returns CID with key
+      const { cid, size } = await tree.putFile(data);
 
       expect(size).toBe(data.length);
-      expect(key).toBeDefined();
-      expect(key!.length).toBe(32);
+      expect(cid.key).toBeDefined();
+      expect(cid.key!.length).toBe(32);
 
-      // readFile(hash, key) decrypts
-      const decrypted = await tree.readFile(hash, key);
+      // readFile(cid) decrypts using the key in the CID
+      const decrypted = await tree.readFile(cid);
       expect(decrypted).toEqual(data);
     });
 
@@ -135,11 +135,11 @@ describe('HashTree encrypted', () => {
       const smallTree = new HashTree({ store, chunkSize: 10 });
       const data = new TextEncoder().encode('this is a longer message that will be chunked and encrypted');
 
-      const { hash, size, key } = await smallTree.putFile(data);
+      const { cid, size } = await smallTree.putFile(data);
 
       expect(size).toBe(data.length);
 
-      const decrypted = await smallTree.readFile(hash, key);
+      const decrypted = await smallTree.readFile(cid);
       expect(decrypted).toEqual(data);
     });
 
@@ -150,23 +150,23 @@ describe('HashTree encrypted', () => {
       const result1 = await tree.putFile(data);
       const result2 = await tree.putFile(data);
 
-      expect(result1.key).toEqual(result2.key);
-      expect(result1.hash).toEqual(result2.hash);
+      expect(result1.cid.key).toEqual(result2.cid.key);
+      expect(result1.cid.hash).toEqual(result2.cid.hash);
     });
 
     it('should fail to decrypt with wrong key', async () => {
       const data = new TextEncoder().encode('hello');
-      const { hash } = await tree.putFile(data);
+      const { cid } = await tree.putFile(data);
       const wrongKey = generateKey();
 
-      await expect(tree.readFile(hash, wrongKey)).rejects.toThrow();
+      await expect(tree.readFile({ hash: cid.hash, key: wrongKey })).rejects.toThrow();
     });
 
     it('should return null for missing hash', async () => {
       const key = generateKey();
       const missingHash = new Uint8Array(32);
 
-      const result = await tree.readFile(missingHash, key);
+      const result = await tree.readFile({ hash: missingHash, key });
       expect(result).toBeNull();
     });
   });
@@ -174,10 +174,10 @@ describe('HashTree encrypted', () => {
   describe('readFileStream (encrypted)', () => {
     it('should stream decrypt small file', async () => {
       const data = new TextEncoder().encode('hello stream');
-      const { hash, key } = await tree.putFile(data);
+      const { cid } = await tree.putFile(data);
 
       const chunks: Uint8Array[] = [];
-      for await (const chunk of tree.readFileStream(hash, key)) {
+      for await (const chunk of tree.readFileStream(cid)) {
         chunks.push(chunk);
       }
 
@@ -189,10 +189,10 @@ describe('HashTree encrypted', () => {
       const smallTree = new HashTree({ store, chunkSize: 10 });
       const data = new TextEncoder().encode('this is a longer message for streaming');
 
-      const { hash, key } = await smallTree.putFile(data);
+      const { cid } = await smallTree.putFile(data);
 
       const chunks: Uint8Array[] = [];
-      for await (const chunk of smallTree.readFileStream(hash, key)) {
+      for await (const chunk of smallTree.readFileStream(cid)) {
         chunks.push(chunk);
       }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { HashRouter, Routes, Route, useParams, Link, useLocation, useNavigate } from 'react-router-dom';
-import { toHex, fromHex, nhashDecode, npathDecode, isNHash, isNPath } from 'hashtree';
+import { toHex, fromHex, nhashDecode, npathDecode, isNHash, isNPath, cid } from 'hashtree';
 import {
   FileBrowser,
   Viewer,
@@ -136,7 +136,7 @@ function HomeRoute() {
     const appStore = useAppStore.getState();
     const nostrStore = useNostrStore.getState();
 
-    appStore.setRootHash(null);
+    appStore.setRootCid(null);
     nostrStore.setSelectedTree(null);
   }, [npub, isNewUser, navigate]);
 
@@ -169,7 +169,7 @@ function UserRouteInner() {
     const appStore = useAppStore.getState();
     const nostrStore = useNostrStore.getState();
 
-    appStore.setRootHash(null);
+    appStore.setRootCid(null);
     nostrStore.setSelectedTree(null);
   }, [npub]);
 
@@ -199,7 +199,7 @@ function FollowsRouteInner() {
     const appStore = useAppStore.getState();
     const nostrStore = useNostrStore.getState();
 
-    appStore.setRootHash(null);
+    appStore.setRootCid(null);
     nostrStore.setSelectedTree(null);
   }, [npub]);
 
@@ -216,7 +216,7 @@ function ProfileRouteInner() {
     const appStore = useAppStore.getState();
     const nostrStore = useNostrStore.getState();
 
-    appStore.setRootHash(null);
+    appStore.setRootCid(null);
     nostrStore.setSelectedTree(null);
   }, [npub]);
 
@@ -400,7 +400,7 @@ function UserView({ npub }: { npub: string | undefined }) {
     const appStore = useAppStore.getState();
     const nostrStore = useNostrStore.getState();
 
-    appStore.setRootHash(null);
+    appStore.setRootCid(null);
     nostrStore.setSelectedTree(null);
   }, [npub]);
 
@@ -596,11 +596,11 @@ function npubToPubkey(npubStr: string): string | null {
   return null;
 }
 
-// Set rootHash - hooks will re-fetch entries automatically
+// Set rootCid - hooks will re-fetch entries automatically
 function loadFromHash(rootHex: string) {
   try {
     const hash = fromHex(rootHex);
-    useAppStore.getState().setRootHash(hash);
+    useAppStore.getState().setRootCid(cid(hash));
   } catch {
     // Invalid hex format - silently ignore
   }

@@ -2,12 +2,12 @@
  * Actions - file and directory operations using HashTree
  *
  * All operations use encryption by default (CHK - Content Hash Key).
- * The root key is stored in app state and persisted in nostr events.
+ * The root CID (hash + optional key) is stored in app state and persisted in nostr events.
  */
 import { navigate } from './utils/navigate';
 import { parseRoute } from './utils/route';
-import { toHex, verifyTree } from 'hashtree';
-import type { Hash, EncryptionKey } from 'hashtree';
+import { toHex, verifyTree, cid } from 'hashtree';
+import type { Hash, CID } from 'hashtree';
 import { autosaveIfOwn, saveHashtree, useNostrStore } from './nostr';
 import { nip19 } from 'nostr-tools';
 import {
@@ -94,41 +94,32 @@ export async function saveFile(entryName: string | undefined, content: string): 
   if (!entryName) return null;
 
   const state = useAppStore.getState();
-  if (!state.rootHash) return null;
+  if (!state.rootCid) return null;
 
   const tree = getTree();
   const data = new TextEncoder().encode(content);
   const currentPath = getCurrentPathFromUrl();
 
-  // Use encrypted operations (default)
-  const { hash, size, key: fileKey } = await tree.putFile(data);
+  // putFile returns CID with key (encrypted by default)
+  const { cid: fileCid, size } = await tree.putFile(data);
 
-  if (state.rootKey) {
-    // Encrypted tree - use encrypted edit
-    const { hash: newRoot, key: newKey } = await tree.setEntryEncrypted(
-      state.rootHash,
-      state.rootKey,
-      currentPath,
-      entryName,
-      hash,
-      size,
-      fileKey
-    );
-    state.setRoot(newRoot, newKey);
-    await autosaveIfOwn(toHex(newRoot), toHex(newKey));
-  } else {
-    // Public tree (legacy) - use regular edit
-    const newRoot = await tree.setEntry(state.rootHash, currentPath, entryName, hash, size);
-    state.setRootHash(newRoot);
-    await autosaveIfOwn(toHex(newRoot));
-  }
+  // setEntry uses root CID and entry CID - handles encryption automatically
+  const newRootCid = await tree.setEntry(
+    state.rootCid,
+    currentPath,
+    entryName,
+    fileCid,
+    size
+  );
+
+  state.setRootCid(newRootCid);
+  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   return data;
 }
 
-// Helper to initialize a virtual tree (when rootHash is null but we're in a tree route)
-// Entries should include their encryption keys for encrypted content
-async function initVirtualTree(entries: { name: string; hash: Uint8Array; size: number; isTree?: boolean; key?: EncryptionKey }[]): Promise<{ hash: Uint8Array; key?: EncryptionKey } | null> {
+// Helper to initialize a virtual tree (when rootCid is null but we're in a tree route)
+async function initVirtualTree(entries: { name: string; cid: CID; size: number; isTree?: boolean }[]): Promise<CID | null> {
   const route = parseRoute();
   if (!route.npub || !route.treeName) return null;
 
@@ -147,13 +138,19 @@ async function initVirtualTree(entries: { name: string; hash: Uint8Array; size: 
   const isOwnTree = routePubkey === nostrStore.pubkey;
   if (!isOwnTree) return null; // Can only create in own trees
 
-  // Create new encrypted tree with the entries
-  const { hash: newRootHash, key: newRootKey } = await tree.putDirectory(entries);
-  useAppStore.getState().setRoot(newRootHash, newRootKey ?? null);
+  // Create new encrypted tree with the entries (using DirEntry format)
+  const dirEntries = entries.map(e => ({
+    name: e.name,
+    cid: e.cid,
+    size: e.size,
+    isTree: e.isTree,
+  }));
+  const { cid: newRootCid } = await tree.putDirectory(dirEntries);
+  useAppStore.getState().setRootCid(newRootCid);
 
   // Save to nostr with key
-  const hashHex = toHex(newRootHash);
-  const keyHex = newRootKey ? toHex(newRootKey) : undefined;
+  const hashHex = toHex(newRootCid.hash);
+  const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
   await saveHashtree(route.treeName, hashHex, keyHex);
   nostrStore.setSelectedTree({
     id: '',
@@ -164,7 +161,7 @@ async function initVirtualTree(entries: { name: string; hash: Uint8Array; size: 
     created_at: Math.floor(Date.now() / 1000),
   });
 
-  return { hash: newRootHash, key: newRootKey };
+  return newRootCid;
 }
 
 // Create new file
@@ -176,33 +173,23 @@ export async function createFile(name: string, content: string = '') {
   const data = new TextEncoder().encode(content);
   const currentPath = getCurrentPathFromUrl();
 
-  // Use encrypted operations (default)
-  const { hash, size, key: fileKey } = await tree.putFile(data);
+  // putFile returns CID (encrypted by default)
+  const { cid: fileCid, size } = await tree.putFile(data);
 
-  if (state.rootHash) {
+  if (state.rootCid) {
     // Add to existing tree
-    if (state.rootKey) {
-      // Encrypted tree
-      const { hash: newRoot, key: newKey } = await tree.setEntryEncrypted(
-        state.rootHash,
-        state.rootKey,
-        currentPath,
-        name,
-        hash,
-        size,
-        fileKey
-      );
-      state.setRoot(newRoot, newKey);
-      await autosaveIfOwn(toHex(newRoot), toHex(newKey));
-    } else {
-      // Public tree (legacy)
-      const newRoot = await tree.setEntry(state.rootHash, currentPath, name, hash, size);
-      state.setRootHash(newRoot);
-      await autosaveIfOwn(toHex(newRoot));
-    }
+    const newRootCid = await tree.setEntry(
+      state.rootCid,
+      currentPath,
+      name,
+      fileCid,
+      size
+    );
+    state.setRootCid(newRootCid);
+    await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
   } else {
     // Initialize virtual tree with this file
-    const result = await initVirtualTree([{ name, hash, size, key: fileKey }]);
+    const result = await initVirtualTree([{ name, cid: fileCid, size }]);
     if (!result) return; // Failed to initialize
   }
 
@@ -218,34 +205,24 @@ export async function createFolder(name: string) {
   const tree = getTree();
   const currentPath = getCurrentPathFromUrl();
 
-  // Use encrypted operations (default)
-  const { hash: emptyDirHash, key: dirKey } = await tree.putDirectory([]);
+  // putDirectory returns CID (encrypted by default)
+  const { cid: emptyDirCid } = await tree.putDirectory([]);
 
-  if (state.rootHash) {
+  if (state.rootCid) {
     // Add to existing tree
-    if (state.rootKey) {
-      // Encrypted tree
-      const { hash: newRoot, key: newKey } = await tree.setEntryEncrypted(
-        state.rootHash,
-        state.rootKey,
-        currentPath,
-        name,
-        emptyDirHash,
-        0,
-        dirKey,
-        true
-      );
-      state.setRoot(newRoot, newKey);
-      await autosaveIfOwn(toHex(newRoot), toHex(newKey));
-    } else {
-      // Public tree (legacy)
-      const newRoot = await tree.setEntry(state.rootHash, currentPath, name, emptyDirHash, 0, true);
-      state.setRootHash(newRoot);
-      await autosaveIfOwn(toHex(newRoot));
-    }
+    const newRootCid = await tree.setEntry(
+      state.rootCid,
+      currentPath,
+      name,
+      emptyDirCid,
+      0,
+      true
+    );
+    state.setRootCid(newRootCid);
+    await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
   } else {
     // Initialize virtual tree with this folder
-    await initVirtualTree([{ name, hash: emptyDirHash, size: 0, isTree: true, key: dirKey }]);
+    await initVirtualTree([{ name, cid: emptyDirCid, size: 0, isTree: true }]);
   }
 }
 
@@ -254,7 +231,7 @@ export async function renameEntry(oldName: string, newName: string) {
   if (!newName || oldName === newName) return;
 
   const state = useAppStore.getState();
-  if (!state.rootHash) return;
+  if (!state.rootCid) return;
 
   const tree = getTree();
   const route = parseRoute();
@@ -273,23 +250,14 @@ export async function renameEntry(oldName: string, newName: string) {
     parentPath = getCurrentPathFromUrl();
   }
 
-  if (state.rootKey) {
-    // Encrypted tree
-    const { hash: newRoot, key: newKey } = await tree.renameEntryEncrypted(
-      state.rootHash,
-      state.rootKey,
-      parentPath,
-      oldName,
-      newName
-    );
-    state.setRoot(newRoot, newKey);
-    await autosaveIfOwn(toHex(newRoot), toHex(newKey));
-  } else {
-    // Public tree (legacy)
-    const newRoot = await tree.renameEntry(state.rootHash, parentPath, oldName, newName);
-    state.setRootHash(newRoot);
-    await autosaveIfOwn(toHex(newRoot));
-  }
+  const newRootCid = await tree.renameEntry(
+    state.rootCid,
+    parentPath,
+    oldName,
+    newName
+  );
+  state.setRootCid(newRootCid);
+  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Update URL if renamed file/dir was selected or we're inside it
   if (isRenamingCurrentDir) {
@@ -305,27 +273,18 @@ export async function renameEntry(oldName: string, newName: string) {
 // Delete entry
 export async function deleteEntry(name: string) {
   const state = useAppStore.getState();
-  if (!state.rootHash) return;
+  if (!state.rootCid) return;
 
   const tree = getTree();
   const currentPath = getCurrentPathFromUrl();
 
-  if (state.rootKey) {
-    // Encrypted tree
-    const { hash: newRoot, key: newKey } = await tree.removeEntryEncrypted(
-      state.rootHash,
-      state.rootKey,
-      currentPath,
-      name
-    );
-    state.setRoot(newRoot, newKey);
-    await autosaveIfOwn(toHex(newRoot), toHex(newKey));
-  } else {
-    // Public tree (legacy)
-    const newRoot = await tree.removeEntry(state.rootHash, currentPath, name);
-    state.setRootHash(newRoot);
-    await autosaveIfOwn(toHex(newRoot));
-  }
+  const newRootCid = await tree.removeEntry(
+    state.rootCid,
+    currentPath,
+    name
+  );
+  state.setRootCid(newRootCid);
+  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Navigate to directory if deleted file was active
   const route = parseRoute();
@@ -339,7 +298,7 @@ export async function deleteEntry(name: string) {
 // Delete current folder (must be in a subdirectory)
 export async function deleteCurrentFolder() {
   const state = useAppStore.getState();
-  if (!state.rootHash) return;
+  if (!state.rootCid) return;
 
   const route = parseRoute();
   if (route.path.length === 0) return; // Can't delete root
@@ -349,22 +308,13 @@ export async function deleteCurrentFolder() {
 
   const tree = getTree();
 
-  if (state.rootKey) {
-    // Encrypted tree
-    const { hash: newRoot, key: newKey } = await tree.removeEntryEncrypted(
-      state.rootHash,
-      state.rootKey,
-      parentPath,
-      folderName
-    );
-    state.setRoot(newRoot, newKey);
-    await autosaveIfOwn(toHex(newRoot), toHex(newKey));
-  } else {
-    // Public tree (legacy)
-    const newRoot = await tree.removeEntry(state.rootHash, parentPath, folderName);
-    state.setRootHash(newRoot);
-    await autosaveIfOwn(toHex(newRoot));
-  }
+  const newRootCid = await tree.removeEntry(
+    state.rootCid,
+    parentPath,
+    folderName
+  );
+  state.setRootCid(newRootCid);
+  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Navigate to parent directory
   const url = buildRouteUrl(route.npub, route.treeName, parentPath);
@@ -372,14 +322,13 @@ export async function deleteCurrentFolder() {
 }
 
 // Move entry into a directory
-// TODO: Add moveEntryEncrypted to library and update this function
 export async function moveEntry(sourceName: string, targetDirName: string) {
   const state = useAppStore.getState();
-  if (!state.rootHash) return;
+  if (!state.rootCid) return;
   if (sourceName === targetDirName) return;
 
   // Move not yet supported for encrypted trees
-  if (state.rootKey) {
+  if (state.rootCid.key) {
     alert('Move not yet supported for encrypted trees');
     return;
   }
@@ -387,24 +336,24 @@ export async function moveEntry(sourceName: string, targetDirName: string) {
   const tree = getTree();
   const currentPath = getCurrentPathFromUrl();
 
-  // Resolve target directory hash from tree
+  // Resolve target directory from tree
   const targetPath = [...currentPath, targetDirName].join('/');
-  const targetHash = await tree.resolvePath(state.rootHash, targetPath);
-  if (!targetHash) return;
+  const targetResult = await tree.resolvePath(state.rootCid, targetPath);
+  if (!targetResult) return;
 
   // Check target is a directory
-  if (!await tree.isDirectory(targetHash)) return;
+  if (!targetResult.isTree) return;
 
   // Check for name collision
-  const targetContents = await tree.listDirectory(targetHash);
+  const targetContents = await tree.listDirectory(targetResult.cid);
   if (targetContents.some(e => e.name === sourceName)) {
     alert(`A file named "${sourceName}" already exists in "${targetDirName}"`);
     return;
   }
 
-  const newRoot = await tree.moveEntry(state.rootHash, currentPath, sourceName, [...currentPath, targetDirName]);
-  state.setRootHash(newRoot);
-  await autosaveIfOwn(toHex(newRoot));
+  const newRootCid = await tree.moveEntry(state.rootCid, currentPath, sourceName, [...currentPath, targetDirName]);
+  state.setRootCid(newRootCid);
+  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Clear selection if moved file was active
   const route = parseRoute();
@@ -416,13 +365,12 @@ export async function moveEntry(sourceName: string, targetDirName: string) {
 }
 
 // Move entry to parent directory
-// TODO: Add moveEntryEncrypted to library and update this function
 export async function moveToParent(sourceName: string) {
   const state = useAppStore.getState();
-  if (!state.rootHash) return;
+  if (!state.rootCid) return;
 
   // Move not yet supported for encrypted trees
-  if (state.rootKey) {
+  if (state.rootCid.key) {
     alert('Move not yet supported for encrypted trees');
     return;
   }
@@ -434,18 +382,20 @@ export async function moveToParent(sourceName: string) {
   const parentPath = currentPath.slice(0, -1);
 
   // Check for name collision in parent
-  const parentHash = parentPath.length === 0 ? state.rootHash : await tree.resolvePath(state.rootHash, parentPath.join('/'));
-  if (!parentHash) return;
+  const parentCid = parentPath.length === 0
+    ? state.rootCid
+    : (await tree.resolvePath(state.rootCid, parentPath.join('/')))?.cid;
+  if (!parentCid) return;
 
-  const parentEntries = await tree.listDirectory(parentHash);
+  const parentEntries = await tree.listDirectory(parentCid);
   if (parentEntries.some(e => e.name === sourceName)) {
     alert(`A file named "${sourceName}" already exists in the parent directory`);
     return;
   }
 
-  const newRoot = await tree.moveEntry(state.rootHash, currentPath, sourceName, parentPath);
-  state.setRootHash(newRoot);
-  await autosaveIfOwn(toHex(newRoot));
+  const newRootCid = await tree.moveEntry(state.rootCid, currentPath, sourceName, parentPath);
+  state.setRootCid(newRootCid);
+  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Clear selection if moved file was active
   const route = parseRoute();
@@ -459,27 +409,27 @@ export async function moveToParent(sourceName: string) {
 // Verify tree
 export async function verifyCurrentTree(): Promise<{ valid: boolean; missing: number }> {
   const state = useAppStore.getState();
-  if (!state.rootHash) return { valid: false, missing: 0 };
+  if (!state.rootCid) return { valid: false, missing: 0 };
 
-  const { valid, missing } = await verifyTree(idbStore, state.rootHash);
+  const { valid, missing } = await verifyTree(idbStore, state.rootCid.hash);
   return { valid, missing: missing.length };
 }
 
 // Clear store
 export function clearStore() {
   idbStore.clear();
-  useAppStore.getState().setRootHash(null);
+  useAppStore.getState().setRootCid(null);
   navigate('/');
 }
 
 // Fork a directory as a new top-level tree
 // Preserves the key if forking from an encrypted tree
-export async function forkTree(dirHash: Hash, name: string, dirKey?: EncryptionKey): Promise<boolean> {
+export async function forkTree(dirCid: CID, name: string): Promise<boolean> {
   if (!name) return false;
 
   const { saveHashtree } = await import('./nostr');
-  const rootHex = toHex(dirHash);
-  const keyHex = dirKey ? toHex(dirKey) : undefined;
+  const rootHex = toHex(dirCid.hash);
+  const keyHex = dirCid.key ? toHex(dirCid.key) : undefined;
 
   const nostrState = useNostrStore.getState();
   const appState = useAppStore.getState();
@@ -495,7 +445,7 @@ export async function forkTree(dirHash: Hash, name: string, dirKey?: EncryptionK
     created_at: Math.floor(Date.now() / 1000),
   });
 
-  appState.setRoot(dirHash, dirKey ?? null);
+  appState.setRootCid(dirCid);
 
   const success = await saveHashtree(name, rootHex, keyHex);
   if (success) {
@@ -514,11 +464,11 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
 
   // Build directory structure from file paths
   // Files may have paths like "folder/subfolder/file.txt"
-  const dirEntries = new Map<string, { name: string; hash: Uint8Array; size: number; isTree?: boolean; key?: EncryptionKey }[]>();
+  const dirEntries = new Map<string, { name: string; cid: CID; size: number; isTree?: boolean }[]>();
 
   for (const file of files) {
-    // Use encrypted file storage (default)
-    const { hash, size, key } = await tree.putFile(file.data);
+    // putFile returns CID (encrypted by default)
+    const { cid: fileCid, size } = await tree.putFile(file.data);
     const pathParts = file.name.split('/');
     const fileName = pathParts.pop()!;
     const dirPath = pathParts.join('/');
@@ -526,14 +476,13 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
     if (!dirEntries.has(dirPath)) {
       dirEntries.set(dirPath, []);
     }
-    dirEntries.get(dirPath)!.push({ name: fileName, hash, size, key });
+    dirEntries.get(dirPath)!.push({ name: fileName, cid: fileCid, size });
   }
 
   // Get sorted directory paths (shortest first to create parent dirs first)
   const sortedDirs = Array.from(dirEntries.keys()).sort((a, b) => a.split('/').length - b.split('/').length);
 
-  let rootHash = state.rootHash;
-  let rootKey = state.rootKey;
+  let rootCid = state.rootCid;
 
   // Process each directory level
   for (const dirPath of sortedDirs) {
@@ -541,38 +490,28 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
     const targetPath = dirPath ? [...currentPath, ...dirPath.split('/')] : currentPath;
 
     for (const entry of entries) {
-      if (rootHash) {
-        if (rootKey) {
-          // Encrypted tree
-          const result = await tree.setEntryEncrypted(
-            rootHash,
-            rootKey,
-            targetPath,
-            entry.name,
-            entry.hash,
-            entry.size,
-            entry.key,
-            entry.isTree ?? false
-          );
-          rootHash = result.hash;
-          rootKey = result.key;
-        } else {
-          // Public tree (legacy)
-          rootHash = await tree.setEntry(rootHash, targetPath, entry.name, entry.hash, entry.size, entry.isTree ?? false);
-        }
+      if (rootCid) {
+        const newRootCid = await tree.setEntry(
+          rootCid,
+          targetPath,
+          entry.name,
+          entry.cid,
+          entry.size,
+          entry.isTree ?? false
+        );
+        rootCid = newRootCid;
       } else {
         // First file - create an encrypted tree
-        const result = await tree.putDirectory([{ name: entry.name, hash: entry.hash, size: entry.size, key: entry.key }]);
-        rootHash = result.hash;
-        rootKey = result.key ?? null;
+        const result = await tree.putDirectory([{ name: entry.name, cid: entry.cid, size: entry.size }]);
+        rootCid = result.cid;
       }
     }
   }
 
-  if (rootHash) {
-    state.setRoot(rootHash, rootKey);
-    const keyHex = rootKey ? toHex(rootKey) : undefined;
-    await autosaveIfOwn(toHex(rootHash), keyHex);
+  if (rootCid) {
+    state.setRootCid(rootCid);
+    const keyHex = rootCid.key ? toHex(rootCid.key) : undefined;
+    await autosaveIfOwn(toHex(rootCid.hash), keyHex);
   }
 }
 
@@ -585,9 +524,9 @@ export async function createTree(name: string): Promise<boolean> {
 
   const tree = getTree();
   // Create encrypted empty directory (default)
-  const { hash, key } = await tree.putDirectory([]);
-  const rootHex = toHex(hash);
-  const keyHex = key ? toHex(key) : undefined;
+  const { cid: rootCid } = await tree.putDirectory([]);
+  const rootHex = toHex(rootCid.hash);
+  const keyHex = rootCid.key ? toHex(rootCid.key) : undefined;
 
   const nostrState = useNostrStore.getState();
   const appState = useAppStore.getState();
@@ -605,7 +544,7 @@ export async function createTree(name: string): Promise<boolean> {
     });
 
     // Also set app state immediately so UI shows the tree
-    appState.setRoot(hash, key ?? null);
+    appState.setRootCid(rootCid);
 
     const success = await saveHashtree(name, rootHex, keyHex);
     if (success) {
@@ -615,7 +554,7 @@ export async function createTree(name: string): Promise<boolean> {
   }
 
   // Not logged in - work locally
-  appState.setRoot(hash, key ?? null);
+  appState.setRootCid(rootCid);
   navigate('/');
   return true;
 }

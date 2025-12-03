@@ -16,7 +16,7 @@ import {
 import { saveFile, deleteEntry, selectFile } from '../actions';
 import { openRenameModal } from '../hooks/useModals';
 import { useNostrStore } from '../nostr';
-import { useSelectedFile, useRoute, useCurrentDirHash, useCurrentDirLocation, useDirectoryEntries } from '../hooks';
+import { useSelectedFile, useRoute, useCurrentDirHash, useCurrentDirCid, useDirectoryEntries } from '../hooks';
 import { useUpload } from '../hooks/useUpload';
 import { getResolverKey } from '../refResolver';
 import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
@@ -35,10 +35,10 @@ function useDebounce<T extends (...args: unknown[]) => unknown>(fn: T, delay: nu
 export function Viewer() {
   const navigate = useNavigate();
   const location = useLocation();
-  const rootHash = useAppStore(s => s.rootHash);
-  const rootKey = useAppStore(s => s.rootKey);
-  const currentDirLocation = useCurrentDirLocation();
-  const { entries } = useDirectoryEntries(currentDirLocation);
+  const rootCid = useAppStore(s => s.rootCid);
+  const rootHash = rootCid?.hash ?? null;
+  const currentDirCid = useCurrentDirCid();
+  const { entries } = useDirectoryEntries(currentDirCid);
 
   const route = useRoute();
   const viewedNpub = route.npub;
@@ -623,10 +623,11 @@ function isLikelyTextFile(filename?: string): boolean {
 }
 
 function DirectoryActions() {
-  const rootHash = useAppStore(s => s.rootHash);
-  const currentDirLocation = useCurrentDirLocation();
-  const currentDirHash = currentDirLocation?.hash ?? null;
-  const { entries } = useDirectoryEntries(currentDirLocation);
+  const rootCid = useAppStore(s => s.rootCid);
+  const rootHash = rootCid?.hash ?? null;
+  const currentDirCid = useCurrentDirCid();
+  const currentDirHash = currentDirCid?.hash ?? null;
+  const { entries } = useDirectoryEntries(currentDirCid);
   const route = useRoute();
   const viewedNpub = route.npub;
   const userNpub = useNostrStore(s => s.npub);

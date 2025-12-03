@@ -5,7 +5,7 @@ import { useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatBytes } from '../../store';
 import { useNostrStore } from '../../nostr';
-import { useRoute, useCurrentDirLocation, useDirectoryEntries } from '../../hooks';
+import { useRoute, useCurrentDirCid, useDirectoryEntries } from '../../hooks';
 import {
   startPreview,
   stopPreview,
@@ -88,8 +88,8 @@ export function StreamView() {
 
 function StreamControls({ videoRef, onCancel }: { videoRef: { current: HTMLVideoElement | null }; onCancel: () => void }) {
   const { isRecording, isPreviewing, streamFilename, persistStream } = useStreamState();
-  const currentDirLocation = useCurrentDirLocation();
-  const { entries } = useDirectoryEntries(currentDirLocation);
+  const currentDirCid = useCurrentDirCid();
+  const { entries } = useDirectoryEntries(currentDirCid);
 
   const filenameExists = entries.some(e => e.name === `${streamFilename}.webm`);
 
