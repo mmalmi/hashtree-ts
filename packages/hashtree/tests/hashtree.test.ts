@@ -13,7 +13,7 @@ describe('HashTree', () => {
   describe('create', () => {
     it('should store small file as single blob', async () => {
       const data = new TextEncoder().encode('hello world');
-      const { hash, size } = await tree.putFile(data);
+      const { hash, size } = await tree.putFile(data, { public: true });
 
       expect(size).toBe(11);
       expect(hash).toBeInstanceOf(Uint8Array);
@@ -27,7 +27,7 @@ describe('HashTree', () => {
     it('should chunk large files', async () => {
       const smallTree = new HashTree({ store, chunkSize: 10 });
       const data = new TextEncoder().encode('this is a longer message that will be chunked');
-      const { hash, size } = await smallTree.putFile(data);
+      const { hash, size } = await smallTree.putFile(data, { public: true });
 
       expect(size).toBe(data.length);
 
@@ -37,20 +37,20 @@ describe('HashTree', () => {
     });
 
     it('should create empty directory', async () => {
-      const hash = await tree.putDirectory([]);
+      const { hash } = await tree.putDirectory([], { public: true });
 
       const entries = await tree.listDirectory(hash);
       expect(entries).toHaveLength(0);
     });
 
     it('should create directory with entries', async () => {
-      const { hash: file1 } = await tree.putFile(new TextEncoder().encode('content1'));
-      const { hash: file2 } = await tree.putFile(new TextEncoder().encode('content2'));
+      const { hash: file1 } = await tree.putFile(new TextEncoder().encode('content1'), { public: true });
+      const { hash: file2 } = await tree.putFile(new TextEncoder().encode('content2'), { public: true });
 
-      const dirHash = await tree.putDirectory([
+      const { hash: dirHash } = await tree.putDirectory([
         { name: 'a.txt', hash: file1, size: 8 },
         { name: 'b.txt', hash: file2, size: 8 },
-      ]);
+      ], { public: true });
 
       const entries = await tree.listDirectory(dirHash);
       expect(entries).toHaveLength(2);
@@ -61,15 +61,15 @@ describe('HashTree', () => {
   describe('read', () => {
     it('should read file', async () => {
       const data = new TextEncoder().encode('test content');
-      const { hash } = await tree.putFile(data);
+      const { hash } = await tree.putFile(data, { public: true });
 
       const result = await tree.readFile(hash);
       expect(result).toEqual(data);
     });
 
     it('should list directory', async () => {
-      const { hash: fileHash } = await tree.putFile(new TextEncoder().encode('data'));
-      const dirHash = await tree.putDirectory([{ name: 'file.txt', hash: fileHash, size: 4 }]);
+      const { hash: fileHash } = await tree.putFile(new TextEncoder().encode('data'), { public: true });
+      const { hash: dirHash } = await tree.putDirectory([{ name: 'file.txt', hash: fileHash, size: 4 }], { public: true });
 
       const entries = await tree.listDirectory(dirHash);
       expect(entries).toHaveLength(1);
@@ -77,9 +77,9 @@ describe('HashTree', () => {
     });
 
     it('should resolve path', async () => {
-      const { hash: fileHash } = await tree.putFile(new TextEncoder().encode('nested'));
-      const subDirHash = await tree.putDirectory([{ name: 'file.txt', hash: fileHash, size: 6 }]);
-      const rootHash = await tree.putDirectory([{ name: 'subdir', hash: subDirHash, size: 6 }]);
+      const { hash: fileHash } = await tree.putFile(new TextEncoder().encode('nested'), { public: true });
+      const { hash: subDirHash } = await tree.putDirectory([{ name: 'file.txt', hash: fileHash, size: 6 }], { public: true });
+      const { hash: rootHash } = await tree.putDirectory([{ name: 'subdir', hash: subDirHash, size: 6 }], { public: true });
 
       const resolved = await tree.resolvePath(rootHash, 'subdir/file.txt');
       expect(resolved).not.toBeNull();
@@ -87,8 +87,8 @@ describe('HashTree', () => {
     });
 
     it('should check if hash is directory', async () => {
-      const { hash: fileHash } = await tree.putFile(new TextEncoder().encode('data'));
-      const dirHash = await tree.putDirectory([]);
+      const { hash: fileHash } = await tree.putFile(new TextEncoder().encode('data'), { public: true });
+      const { hash: dirHash } = await tree.putDirectory([], { public: true });
 
       expect(await tree.isDirectory(fileHash)).toBe(false);
       expect(await tree.isDirectory(dirHash)).toBe(true);
@@ -97,7 +97,7 @@ describe('HashTree', () => {
     it('should stream file', async () => {
       const smallTree = new HashTree({ store, chunkSize: 5 });
       const data = new TextEncoder().encode('hello world!');
-      const { hash } = await smallTree.putFile(data);
+      const { hash } = await smallTree.putFile(data, { public: true });
 
       const chunks: Uint8Array[] = [];
       for await (const chunk of smallTree.readFileStream(hash)) {
@@ -117,8 +117,8 @@ describe('HashTree', () => {
 
   describe('edit', () => {
     it('should add entry to directory', async () => {
-      const rootHash = await tree.putDirectory([]);
-      const { hash: fileHash, size } = await tree.putFile(new TextEncoder().encode('hello'));
+      const { hash: rootHash } = await tree.putDirectory([], { public: true });
+      const { hash: fileHash, size } = await tree.putFile(new TextEncoder().encode('hello'), { public: true });
 
       const newRoot = await tree.setEntry(rootHash, [], 'test.txt', fileHash, size);
 
@@ -128,10 +128,10 @@ describe('HashTree', () => {
     });
 
     it('should update existing entry', async () => {
-      const { hash: file1 } = await tree.putFile(new TextEncoder().encode('v1'));
-      const rootHash = await tree.putDirectory([{ name: 'file.txt', hash: file1, size: 2 }]);
+      const { hash: file1 } = await tree.putFile(new TextEncoder().encode('v1'), { public: true });
+      const { hash: rootHash } = await tree.putDirectory([{ name: 'file.txt', hash: file1, size: 2 }], { public: true });
 
-      const { hash: file2, size } = await tree.putFile(new TextEncoder().encode('v2 updated'));
+      const { hash: file2, size } = await tree.putFile(new TextEncoder().encode('v2 updated'), { public: true });
       const newRoot = await tree.setEntry(rootHash, [], 'file.txt', file2, size);
 
       const entries = await tree.listDirectory(newRoot);
@@ -140,12 +140,12 @@ describe('HashTree', () => {
     });
 
     it('should remove entry', async () => {
-      const { hash: file1 } = await tree.putFile(new TextEncoder().encode('a'));
-      const { hash: file2 } = await tree.putFile(new TextEncoder().encode('b'));
-      const rootHash = await tree.putDirectory([
+      const { hash: file1 } = await tree.putFile(new TextEncoder().encode('a'), { public: true });
+      const { hash: file2 } = await tree.putFile(new TextEncoder().encode('b'), { public: true });
+      const { hash: rootHash } = await tree.putDirectory([
         { name: 'a.txt', hash: file1, size: 1 },
         { name: 'b.txt', hash: file2, size: 1 },
-      ]);
+      ], { public: true });
 
       const newRoot = await tree.removeEntry(rootHash, [], 'a.txt');
 
@@ -155,8 +155,8 @@ describe('HashTree', () => {
     });
 
     it('should rename entry', async () => {
-      const { hash: fileHash } = await tree.putFile(new TextEncoder().encode('content'));
-      const rootHash = await tree.putDirectory([{ name: 'old.txt', hash: fileHash, size: 7 }]);
+      const { hash: fileHash } = await tree.putFile(new TextEncoder().encode('content'), { public: true });
+      const { hash: rootHash } = await tree.putDirectory([{ name: 'old.txt', hash: fileHash, size: 7 }], { public: true });
 
       const newRoot = await tree.renameEntry(rootHash, [], 'old.txt', 'new.txt');
 
@@ -167,13 +167,13 @@ describe('HashTree', () => {
     });
 
     it('should move entry between directories', async () => {
-      const { hash: fileHash } = await tree.putFile(new TextEncoder().encode('content'));
-      const dir1Hash = await tree.putDirectory([{ name: 'file.txt', hash: fileHash, size: 7 }]);
-      const dir2Hash = await tree.putDirectory([]);
-      const rootHash = await tree.putDirectory([
+      const { hash: fileHash } = await tree.putFile(new TextEncoder().encode('content'), { public: true });
+      const { hash: dir1Hash } = await tree.putDirectory([{ name: 'file.txt', hash: fileHash, size: 7 }], { public: true });
+      const { hash: dir2Hash } = await tree.putDirectory([], { public: true });
+      const { hash: rootHash } = await tree.putDirectory([
         { name: 'dir1', hash: dir1Hash, size: 7 },
         { name: 'dir2', hash: dir2Hash, size: 0 },
-      ]);
+      ], { public: true });
 
       const newRoot = await tree.moveEntry(rootHash, ['dir1'], 'file.txt', ['dir2']);
 
@@ -192,12 +192,12 @@ describe('HashTree', () => {
     });
 
     it('should handle nested path edits', async () => {
-      const cHash = await tree.putDirectory([]);
-      const bHash = await tree.putDirectory([{ name: 'c', hash: cHash, size: 0 }]);
-      const aHash = await tree.putDirectory([{ name: 'b', hash: bHash, size: 0 }]);
-      const rootHash = await tree.putDirectory([{ name: 'a', hash: aHash, size: 0 }]);
+      const { hash: cHash } = await tree.putDirectory([], { public: true });
+      const { hash: bHash } = await tree.putDirectory([{ name: 'c', hash: cHash, size: 0 }], { public: true });
+      const { hash: aHash } = await tree.putDirectory([{ name: 'b', hash: bHash, size: 0 }], { public: true });
+      const { hash: rootHash } = await tree.putDirectory([{ name: 'a', hash: aHash, size: 0 }], { public: true });
 
-      const { hash: fileHash, size } = await tree.putFile(new TextEncoder().encode('deep'));
+      const { hash: fileHash, size } = await tree.putFile(new TextEncoder().encode('deep'), { public: true });
       const newRoot = await tree.setEntry(rootHash, ['a', 'b', 'c'], 'file.txt', fileHash, size);
 
       // Verify nested file

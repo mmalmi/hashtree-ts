@@ -2,6 +2,9 @@
  * HashTree - Unified merkle tree operations
  *
  * Single class for creating, reading, and editing content-addressed merkle trees.
+ *
+ * All files are encrypted by default using CHK (Content Hash Key) encryption.
+ * Use the "Public" variants (putFilePublic, readFilePublic) for unencrypted storage.
  */
 
 import { Store, Hash, TreeNode, toHex } from './types.js';
@@ -11,10 +14,15 @@ import * as create from './tree/create.js';
 import * as read from './tree/read.js';
 import * as edit from './tree/edit.js';
 import {
-  putFileEncrypted as putEncrypted,
-  readFileEncrypted as readEncrypted,
-  readFileEncryptedStream as readEncryptedStream,
+  putFileEncrypted,
+  readFileEncrypted,
+  readFileEncryptedStream,
+  putDirectoryEncrypted,
+  listDirectoryEncrypted,
+  getTreeNodeEncrypted,
+  type EncryptedDirEntry,
 } from './encrypted.js';
+import * as editEncrypted from './tree/editEncrypted.js';
 
 /** Default chunk size: 256KB */
 export const DEFAULT_CHUNK_SIZE = 256 * 1024;
@@ -33,12 +41,16 @@ export interface TreeEntry {
   hash: Hash;
   size?: number;
   isTree: boolean;
+  /** CHK key for encrypted entries */
+  key?: EncryptionKey;
 }
 
 export interface DirEntry {
   name: string;
   hash: Hash;
   size?: number;
+  /** CHK key for encrypted entries */
+  key?: EncryptionKey;
 }
 
 /**
@@ -59,18 +71,51 @@ export class HashTree {
     return { store: this.store, chunkSize: this.chunkSize, maxLinks: this.maxLinks };
   }
 
-  // Create
+  // Create (encrypted by default)
 
   async putBlob(data: Uint8Array): Promise<Hash> {
     return create.putBlob(this.store, data);
   }
 
-  async putFile(data: Uint8Array): Promise<{ hash: Hash; size: number }> {
-    return create.putFile(this.config, data);
+  /**
+   * Store a file
+   * @param data - File data to store
+   * @param options - { public?: boolean } - if true, store without encryption
+   * @returns { hash, size, key? } - key is only returned for encrypted files
+   */
+  async putFile(
+    data: Uint8Array,
+    options?: { public?: boolean }
+  ): Promise<{ hash: Hash; size: number; key?: EncryptionKey }> {
+    if (options?.public) {
+      return create.putFile(this.config, data);
+    }
+    return putFileEncrypted(this.config, data);
   }
 
-  async putDirectory(entries: DirEntry[], metadata?: Record<string, unknown>): Promise<Hash> {
-    return create.putDirectory(this.config, entries, metadata);
+  /**
+   * Store a directory
+   * @param entries - Directory entries (with keys for encrypted children)
+   * @param options - { public?: boolean, metadata?: Record } - if public true, store without encryption
+   * @returns { hash, size, key? } - key is only returned for encrypted directories
+   */
+  async putDirectory(
+    entries: DirEntry[],
+    options?: { public?: boolean; metadata?: Record<string, unknown> }
+  ): Promise<{ hash: Hash; size: number; key?: EncryptionKey }> {
+    if (options?.public) {
+      const hash = await create.putDirectory(this.config, entries, options.metadata);
+      const size = entries.reduce((sum, e) => sum + (e.size ?? 0), 0);
+      return { hash, size };
+    }
+    // Encrypted by default
+    const encryptedEntries: EncryptedDirEntry[] = entries.map(e => ({
+      name: e.name,
+      hash: e.hash,
+      size: e.size,
+      key: e.key,
+    }));
+    return putDirectoryEncrypted(this.config, encryptedEntries, options?.metadata);
   }
 
   // Read
@@ -79,7 +124,15 @@ export class HashTree {
     return read.getBlob(this.store, hash);
   }
 
-  async getTreeNode(hash: Hash): Promise<TreeNode | null> {
+  /**
+   * Get a tree node
+   * @param hash - Hash of the tree node
+   * @param key - Decryption key (required for encrypted nodes, omit for public)
+   */
+  async getTreeNode(hash: Hash, key?: EncryptionKey): Promise<TreeNode | null> {
+    if (key) {
+      return getTreeNodeEncrypted(this.store, hash, key);
+    }
     return read.getTreeNode(this.store, hash);
   }
 
@@ -91,15 +144,48 @@ export class HashTree {
     return read.isDirectory(this.store, hash);
   }
 
-  async readFile(hash: Hash): Promise<Uint8Array | null> {
+  /**
+   * Read a file
+   * @param hash - Hash of the file
+   * @param key - Decryption key (required for encrypted files, omit for public files)
+   */
+  async readFile(hash: Hash, key?: EncryptionKey): Promise<Uint8Array | null> {
+    if (key) {
+      return readFileEncrypted(this.store, hash, key);
+    }
     return read.readFile(this.store, hash);
   }
 
-  async *readFileStream(hash: Hash): AsyncGenerator<Uint8Array> {
-    yield* read.readFileStream(this.store, hash);
+  /**
+   * Stream a file
+   * @param hash - Hash of the file
+   * @param key - Decryption key (required for encrypted files, omit for public files)
+   */
+  async *readFileStream(hash: Hash, key?: EncryptionKey): AsyncGenerator<Uint8Array> {
+    if (key) {
+      yield* readFileEncryptedStream(this.store, hash, key);
+    } else {
+      yield* read.readFileStream(this.store, hash);
+    }
   }
 
-  async listDirectory(hash: Hash): Promise<TreeEntry[]> {
+  /**
+   * List directory entries
+   * @param hash - Hash of the directory
+   * @param key - Decryption key (required for encrypted directories, omit for public)
+   * @returns Directory entries with their encryption keys
+   */
+  async listDirectory(hash: Hash, key?: EncryptionKey): Promise<TreeEntry[]> {
+    if (key) {
+      const entries = await listDirectoryEncrypted(this.store, hash, key);
+      return entries.map(e => ({
+        name: e.name,
+        hash: e.hash,
+        size: e.size,
+        isTree: e.isTree ?? false,
+        key: e.key,
+      }));
+    }
     return read.listDirectory(this.store, hash);
   }
 
@@ -118,8 +204,12 @@ export class HashTree {
     yield* read.walk(this.store, hash, path);
   }
 
-  // Edit
+  // Edit (public/unencrypted trees)
 
+  /**
+   * Add or update an entry in a directory (public trees)
+   * For encrypted trees, use setEntryEncrypted
+   */
   async setEntry(
     rootHash: Hash,
     path: string[],
@@ -131,10 +221,18 @@ export class HashTree {
     return edit.setEntry(this.config, rootHash, path, name, hash, size, isTree);
   }
 
+  /**
+   * Remove an entry from a directory (public trees)
+   * For encrypted trees, use removeEntryEncrypted
+   */
   async removeEntry(rootHash: Hash, path: string[], name: string): Promise<Hash> {
     return edit.removeEntry(this.config, rootHash, path, name);
   }
 
+  /**
+   * Rename an entry (public trees)
+   * For encrypted trees, use renameEntryEncrypted
+   */
   async renameEntry(
     rootHash: Hash,
     path: string[],
@@ -153,22 +251,90 @@ export class HashTree {
     return edit.moveEntry(this.config, rootHash, sourcePath, name, targetPath);
   }
 
-  // Encrypted (CHK - Content Hash Key) - EXPERIMENTAL
-  // Key is derived from content, ensuring deterministic encryption
-  // Same content → same ciphertext → deduplication works
+  // Edit (encrypted trees)
 
-  async putFileEncrypted(
-    data: Uint8Array
-  ): Promise<{ hash: Hash; size: number; key: EncryptionKey }> {
-    return putEncrypted(this.config, data);
+  /**
+   * Add or update an entry in an encrypted directory
+   * @param rootHash - Current root hash
+   * @param rootKey - Current root decryption key
+   * @param path - Path to the directory
+   * @param name - Name of the entry
+   * @param hash - Hash of the entry content
+   * @param size - Size of the content
+   * @param key - Encryption key of the entry (for encrypted content)
+   * @param isTree - Whether the entry is a directory
+   * @returns New root hash and key
+   */
+  async setEntryEncrypted(
+    rootHash: Hash,
+    rootKey: EncryptionKey,
+    path: string[],
+    name: string,
+    hash: Hash,
+    size: number,
+    key?: EncryptionKey,
+    isTree = false
+  ): Promise<{ hash: Hash; key: EncryptionKey }> {
+    return editEncrypted.setEntryEncrypted(
+      this.config,
+      rootHash,
+      rootKey,
+      path,
+      name,
+      hash,
+      size,
+      key,
+      isTree
+    );
   }
 
-  async readFileEncrypted(hash: Hash, key: EncryptionKey): Promise<Uint8Array | null> {
-    return readEncrypted(this.store, hash, key);
+  /**
+   * Remove an entry from an encrypted directory
+   * @param rootHash - Current root hash
+   * @param rootKey - Current root decryption key
+   * @param path - Path to the directory
+   * @param name - Name of the entry to remove
+   * @returns New root hash and key
+   */
+  async removeEntryEncrypted(
+    rootHash: Hash,
+    rootKey: EncryptionKey,
+    path: string[],
+    name: string
+  ): Promise<{ hash: Hash; key: EncryptionKey }> {
+    return editEncrypted.removeEntryEncrypted(
+      this.config,
+      rootHash,
+      rootKey,
+      path,
+      name
+    );
   }
 
-  async *readFileEncryptedStream(hash: Hash, key: EncryptionKey): AsyncGenerator<Uint8Array> {
-    yield* readEncryptedStream(this.store, hash, key);
+  /**
+   * Rename an entry in an encrypted directory
+   * @param rootHash - Current root hash
+   * @param rootKey - Current root decryption key
+   * @param path - Path to the directory
+   * @param oldName - Current name
+   * @param newName - New name
+   * @returns New root hash and key
+   */
+  async renameEntryEncrypted(
+    rootHash: Hash,
+    rootKey: EncryptionKey,
+    path: string[],
+    oldName: string,
+    newName: string
+  ): Promise<{ hash: Hash; key: EncryptionKey }> {
+    return editEncrypted.renameEntryEncrypted(
+      this.config,
+      rootHash,
+      rootKey,
+      path,
+      oldName,
+      newName
+    );
   }
 
   // Utility

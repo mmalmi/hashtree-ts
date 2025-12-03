@@ -273,3 +273,195 @@ async function* streamEncryptedChunks(
     }
   }
 }
+
+/**
+ * Directory entry with optional encryption key
+ */
+export interface EncryptedDirEntry {
+  name: string;
+  hash: Hash;
+  size?: number;
+  /** CHK key for encrypted children */
+  key?: Uint8Array;
+  /** Whether this entry is a directory (tree) */
+  isTree?: boolean;
+}
+
+/**
+ * Store a directory with CHK encryption
+ *
+ * The directory node itself is encrypted. Child entries already have their own keys.
+ *
+ * @param config - Tree configuration
+ * @param entries - Directory entries (with keys for encrypted children)
+ * @param metadata - Optional metadata
+ * @returns Hash of encrypted directory and the encryption key
+ */
+export async function putDirectoryEncrypted(
+  config: EncryptedTreeConfig,
+  entries: EncryptedDirEntry[],
+  metadata?: Record<string, unknown>
+): Promise<EncryptedPutResult> {
+  const { store, maxLinks } = config;
+  const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
+
+  const links: Link[] = sorted.map(e => ({
+    hash: e.hash,
+    name: e.name,
+    size: e.size,
+    key: e.key,
+  }));
+
+  const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
+
+  if (links.length <= maxLinks) {
+    const node: TreeNode = {
+      type: NodeType.Tree,
+      links,
+      totalSize,
+      metadata,
+    };
+    const { data } = await encodeAndHash(node);
+    // CHK encrypt the directory node
+    const { ciphertext, key } = await encryptChk(data);
+    const hash = await sha256(ciphertext);
+    await store.put(hash, ciphertext);
+    return { hash, size: totalSize, key };
+  }
+
+  // Large directory - split into encrypted chunks
+  return buildEncryptedDirectoryByChunks(config, links, totalSize, metadata);
+}
+
+/**
+ * Build large directory with encrypted chunks
+ */
+async function buildEncryptedDirectoryByChunks(
+  config: EncryptedTreeConfig,
+  links: Link[],
+  totalSize: number,
+  metadata?: Record<string, unknown>
+): Promise<EncryptedPutResult> {
+  const { store, maxLinks } = config;
+  const subTrees: Link[] = [];
+
+  for (let i = 0; i < links.length; i += maxLinks) {
+    const batch = links.slice(i, i + maxLinks);
+    const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
+
+    const node: TreeNode = {
+      type: NodeType.Tree,
+      links: batch,
+      totalSize: batchSize,
+    };
+    const { data } = await encodeAndHash(node);
+    // CHK encrypt the subtree
+    const { ciphertext, key } = await encryptChk(data);
+    const hash = await sha256(ciphertext);
+    await store.put(hash, ciphertext);
+
+    subTrees.push({ hash, name: `_chunk_${i}`, size: batchSize, key });
+  }
+
+  if (subTrees.length <= maxLinks) {
+    const node: TreeNode = {
+      type: NodeType.Tree,
+      links: subTrees,
+      totalSize,
+      metadata,
+    };
+    const { data } = await encodeAndHash(node);
+    const { ciphertext, key } = await encryptChk(data);
+    const hash = await sha256(ciphertext);
+    await store.put(hash, ciphertext);
+    return { hash, size: totalSize, key };
+  }
+
+  return buildEncryptedDirectoryByChunks(config, subTrees, totalSize, metadata);
+}
+
+/**
+ * List directory entries from an encrypted directory
+ *
+ * @param store - Storage backend
+ * @param hash - Hash of encrypted directory
+ * @param key - CHK decryption key
+ * @returns Directory entries with their encryption keys
+ */
+export async function listDirectoryEncrypted(
+  store: Store,
+  hash: Hash,
+  key: EncryptionKey
+): Promise<EncryptedDirEntry[]> {
+  const encryptedData = await store.get(hash);
+  if (!encryptedData) return [];
+
+  const decrypted = await decryptChk(encryptedData, key);
+
+  if (!isTreeNode(decrypted)) {
+    return []; // Not a directory
+  }
+
+  const node = decodeTreeNode(decrypted);
+  return collectDirectoryEntries(store, node);
+}
+
+/**
+ * Collect all directory entries from a tree node (handles large directories with chunks)
+ */
+async function collectDirectoryEntries(
+  store: Store,
+  node: TreeNode
+): Promise<EncryptedDirEntry[]> {
+  const entries: EncryptedDirEntry[] = [];
+
+  for (const link of node.links) {
+    if (link.name?.startsWith('_chunk_') && link.key) {
+      // This is a chunk of a large directory - decrypt and recurse
+      const encryptedChild = await store.get(link.hash);
+      if (!encryptedChild) continue;
+
+      const decrypted = await decryptChk(encryptedChild, link.key);
+      if (isTreeNode(decrypted)) {
+        const childNode = decodeTreeNode(decrypted);
+        const childEntries = await collectDirectoryEntries(store, childNode);
+        entries.push(...childEntries);
+      }
+    } else if (link.name) {
+      // Regular directory entry
+      entries.push({
+        name: link.name,
+        hash: link.hash,
+        size: link.size,
+        key: link.key,
+      });
+    }
+  }
+
+  return entries;
+}
+
+/**
+ * Get a tree node from encrypted storage
+ *
+ * @param store - Storage backend
+ * @param hash - Hash of encrypted node
+ * @param key - CHK decryption key
+ * @returns Decrypted tree node
+ */
+export async function getTreeNodeEncrypted(
+  store: Store,
+  hash: Hash,
+  key: EncryptionKey
+): Promise<TreeNode | null> {
+  const encryptedData = await store.get(hash);
+  if (!encryptedData) return null;
+
+  const decrypted = await decryptChk(encryptedData, key);
+
+  if (!isTreeNode(decrypted)) {
+    return null;
+  }
+
+  return decodeTreeNode(decrypted);
+}
