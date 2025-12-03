@@ -531,9 +531,14 @@ function getMimeType(filename?: string): string | null {
     jpeg: 'image/jpeg',
     gif: 'image/gif',
     webp: 'image/webp',
+    avif: 'image/avif',
+    heic: 'image/heic',
+    heif: 'image/heif',
     svg: 'image/svg+xml',
     ico: 'image/x-icon',
     bmp: 'image/bmp',
+    tiff: 'image/tiff',
+    tif: 'image/tiff',
 
     // PDF
     pdf: 'application/pdf',
@@ -618,7 +623,7 @@ function DirectoryActions() {
   const viewedNpub = route.npub;
   const userNpub = useNostrStore(s => s.npub);
   const isLoggedIn = useNostrStore(s => s.isLoggedIn);
-  const { uploadProgress, uploadFiles } = useUpload();
+  const { uploadProgress, uploadFiles, cancelUpload } = useUpload();
 
   const canEdit = !viewedNpub || viewedNpub === userNpub || !isLoggedIn;
   // Show actions if we have a tree OR we're in a tree context (empty tree that hasn't been created yet)
@@ -725,6 +730,15 @@ function DirectoryActions() {
               <span className="text-xs mt-1 text-text-3">
                 {uploadProgress.current} / {uploadProgress.total}
               </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  cancelUpload();
+                }}
+                className="mt-3 btn-ghost text-xs px-3 py-1 text-danger hover:bg-danger/10"
+              >
+                Cancel
+              </button>
             </div>
           ) : (
             <div className="flex flex-col items-center text-text-3">

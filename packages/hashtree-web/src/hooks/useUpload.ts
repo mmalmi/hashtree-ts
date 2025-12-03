@@ -14,6 +14,7 @@ import { markFilesChanged } from './useRecentlyChanged';
 import { openExtractModal, type ArchiveFile } from './useModals';
 import { isArchiveFile, extractArchive } from '../utils/compression';
 import { nip19 } from 'nostr-tools';
+import type { FileWithPath } from '../utils/directory';
 
 // Upload progress type
 export interface UploadProgress {
@@ -26,6 +27,7 @@ export interface UploadProgress {
 
 // Module-level state
 let uploadProgress: UploadProgress | null = null;
+let uploadCancelled = false;
 
 const listeners = new Set<() => void>();
 
@@ -55,11 +57,33 @@ export function useUploadProgress() {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+/**
+ * Cancel any in-progress upload
+ */
+export function cancelUpload() {
+  uploadCancelled = true;
+  setUploadProgress(null);
+}
+
+/**
+ * Check if upload was cancelled and reset flag
+ */
+function checkCancelled(): boolean {
+  if (uploadCancelled) {
+    uploadCancelled = false;
+    return true;
+  }
+  return false;
+}
+
 export function useUpload() {
   const progress = useUploadProgress();
 
   const uploadFiles = useCallback(async (files: FileList): Promise<void> => {
     if (!files.length) return;
+
+    // Reset cancellation flag at start
+    uploadCancelled = false;
 
     // Clear selected file so upload indicator is visible (updates URL)
     clearFileSelection();
@@ -88,6 +112,9 @@ export function useUpload() {
     }
 
     for (let i = 0; i < filesArray.length; i++) {
+      // Check for cancellation at start of each file
+      if (checkCancelled()) return;
+
       const file = filesArray[i];
       if (!file) continue;
       const totalBytes = file.size;
@@ -223,5 +250,200 @@ export function useUpload() {
     }
   }, []);
 
-  return { uploadProgress: progress, uploadFiles };
+  /**
+   * Upload files with path information (for directory uploads)
+   * Files are uploaded with their relative paths preserved in the tree structure
+   */
+  const uploadFilesWithPaths = useCallback(async (filesWithPaths: FileWithPath[]): Promise<void> => {
+    if (!filesWithPaths.length) return;
+
+    // Reset cancellation flag at start
+    uploadCancelled = false;
+
+    // Clear selected file so upload indicator is visible
+    clearFileSelection();
+
+    const total = filesWithPaths.length;
+    const uploadedFileNames: string[] = [];
+    const tree = getTree();
+    const route = parseRoute();
+    const dirPath = getCurrentPathFromUrl();
+
+    // Check if we need to initialize a new tree
+    const appState = useAppStore.getState();
+    let needsTreeInit = !appState.rootHash && route.npub && route.treeName;
+    let isOwnTree = false;
+    let routePubkey: string | null = null;
+
+    if (needsTreeInit) {
+      const nostrStore = useNostrStore.getState();
+      try {
+        const decoded = nip19.decode(route.npub!);
+        if (decoded.type === 'npub') routePubkey = decoded.data as string;
+      } catch {}
+      isOwnTree = routePubkey === nostrStore.pubkey;
+    }
+
+    for (let i = 0; i < filesWithPaths.length; i++) {
+      // Check for cancellation at start of each file
+      if (checkCancelled()) return;
+
+      const { file, relativePath } = filesWithPaths[i];
+      if (!file) continue;
+      const totalBytes = file.size;
+
+      setUploadProgress({
+        current: i + 1,
+        total,
+        fileName: relativePath,
+        bytes: 0,
+        totalBytes,
+      });
+
+      // Read file with progress tracking
+      const chunks: Uint8Array[] = [];
+      let bytesRead = 0;
+      const reader = file.stream().getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        bytesRead += value.length;
+        setUploadProgress({
+          current: i + 1,
+          total,
+          fileName: relativePath,
+          bytes: bytesRead,
+          totalBytes,
+        });
+      }
+
+      // Combine chunks
+      const data = new Uint8Array(bytesRead);
+      let offset = 0;
+      for (const chunk of chunks) {
+        data.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      // Store the file
+      const { hash, size } = await tree.putFile(data);
+
+      // Parse the relative path to get directory components and filename
+      const pathParts = relativePath.split('/');
+      const fileName = pathParts.pop()!;
+      const fileDirPath = pathParts; // Directory path within the uploaded structure
+
+      // Combine with current directory path
+      const fullDirPath = [...dirPath, ...fileDirPath];
+
+      uploadedFileNames.push(relativePath);
+
+      // Add file to tree
+      const currentAppState = useAppStore.getState();
+
+      try {
+        if (currentAppState.rootHash) {
+          // Add to existing tree with full path
+          // First ensure all parent directories exist by checking if path resolves
+          let workingRoot = currentAppState.rootHash;
+          for (let j = 0; j < fullDirPath.length; j++) {
+            const checkPath = fullDirPath.slice(0, j + 1).join('/');
+            const existingDir = await tree.resolvePath(workingRoot, checkPath);
+            if (!existingDir) {
+              // Directory doesn't exist, create it
+              const partialPath = fullDirPath.slice(0, j);
+              const dirName = fullDirPath[j];
+              const emptyDir = await tree.putDirectory([]);
+              workingRoot = await tree.setEntry(workingRoot, partialPath, dirName, emptyDir, 0, true);
+            }
+          }
+
+          const newRootHash = await tree.setEntry(
+            workingRoot,
+            fullDirPath,
+            fileName,
+            hash,
+            size
+          );
+          currentAppState.setRootHash(newRootHash);
+          // Mark this file as changed for pulse effect (use just filename for display in current dir)
+          if (fileDirPath.length === 0) {
+            markFilesChanged(new Set([fileName]));
+          }
+        } else if (needsTreeInit) {
+          // First file in a new virtual directory - create a directory entry
+          let rootHash = await tree.putDirectory([]);
+
+          // Create intermediate directories (new tree, so all need creating)
+          for (let j = 0; j < fullDirPath.length; j++) {
+            const partialPath = fullDirPath.slice(0, j);
+            const dirName = fullDirPath[j];
+            const emptyDir = await tree.putDirectory([]);
+            rootHash = await tree.setEntry(rootHash, partialPath, dirName, emptyDir, 0, true);
+          }
+
+          // Add the file
+          rootHash = await tree.setEntry(
+            rootHash,
+            fullDirPath,
+            fileName,
+            hash,
+            size
+          );
+          currentAppState.setRootHash(rootHash);
+
+          if (isOwnTree && routePubkey) {
+            const hashHex = toHex(rootHash);
+            await saveHashtree(route.treeName!, hashHex);
+            useNostrStore.getState().setSelectedTree({
+              id: '',
+              name: route.treeName!,
+              pubkey: routePubkey,
+              rootHash: hashHex,
+              created_at: Math.floor(Date.now() / 1000),
+            });
+          }
+          needsTreeInit = false;
+        } else {
+          // No existing tree - create new root with this file
+          let rootHash = await tree.putDirectory([]);
+
+          // Create intermediate directories (new tree, so all need creating)
+          for (let j = 0; j < fullDirPath.length; j++) {
+            const partialPath = fullDirPath.slice(0, j);
+            const dirName = fullDirPath[j];
+            const emptyDir = await tree.putDirectory([]);
+            rootHash = await tree.setEntry(rootHash, partialPath, dirName, emptyDir, 0, true);
+          }
+
+          rootHash = await tree.setEntry(
+            rootHash,
+            fullDirPath,
+            fileName,
+            hash,
+            size
+          );
+          currentAppState.setRootHash(rootHash);
+          if (i === 0) {
+            navigate('/');
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to add file ${relativePath}:`, err);
+        // Continue with next file instead of stopping entirely
+      }
+    }
+
+    // Autosave after all uploads complete
+    const finalAppState = useAppStore.getState();
+    if (finalAppState.rootHash) {
+      await autosaveIfOwn(toHex(finalAppState.rootHash));
+    }
+
+    setUploadProgress(null);
+  }, []);
+
+  return { uploadProgress: progress, uploadFiles, uploadFilesWithPaths, cancelUpload };
 }

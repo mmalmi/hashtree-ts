@@ -1,7 +1,7 @@
 /**
  * Shared folder action buttons - used in FileBrowser and Preview
  */
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { fromHex, nhashEncode } from 'hashtree';
 import { openCreateModal, openRenameModal, openForkModal } from '../hooks/useModals';
@@ -11,6 +11,7 @@ import { deleteCurrentFolder } from '../actions';
 import { useNostrStore } from '../nostr';
 import { getTree } from '../store';
 import { createZipFromDirectory, downloadBlob } from '../utils/compression';
+import { readFilesFromWebkitDirectory, supportsDirectoryUpload } from '../utils/directory';
 
 interface FolderActionsProps {
   dirHash?: string | null;
@@ -32,10 +33,12 @@ function suggestForkName(dirName: string, existingTreeNames: string[]): string {
 }
 
 export function FolderActions({ dirHash, canEdit, compact = false }: FolderActionsProps) {
-  const { uploadFiles } = useUpload();
+  const { uploadFiles, uploadFilesWithPaths } = useUpload();
   const route = useRoute();
   const userNpub = useNostrStore(s => s.npub);
   const [isDownloading, setIsDownloading] = useState(false);
+  const dirInputRef = useRef<HTMLInputElement>(null);
+  const hasDirectorySupport = supportsDirectoryUpload();
 
   // Get user's own trees for fork name suggestions
   const ownTrees = useTrees(userNpub);
@@ -127,6 +130,28 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
               className="hidden"
             />
           </label>
+
+          {hasDirectorySupport && (
+            <label className={`btn-ghost cursor-pointer ${btnClass}`} title="Upload a folder with all its contents">
+              <span className="i-lucide-folder-up" />
+              Upload Dir
+              <input
+                ref={dirInputRef}
+                type="file"
+                // @ts-expect-error webkitdirectory is not in the standard types
+                webkitdirectory=""
+                onChange={(e) => {
+                  const input = e.target as HTMLInputElement;
+                  if (input.files && input.files.length > 0) {
+                    const filesWithPaths = readFilesFromWebkitDirectory(input.files);
+                    uploadFilesWithPaths(filesWithPaths);
+                  }
+                  input.value = '';
+                }}
+                className="hidden"
+              />
+            </label>
+          )}
 
           <button onClick={() => openCreateModal('file')} className={`btn-ghost ${btnClass}`}>
             <span className="i-lucide-file-plus" />

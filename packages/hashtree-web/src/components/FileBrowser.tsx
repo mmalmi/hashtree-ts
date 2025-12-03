@@ -10,6 +10,7 @@ import { useNostrStore, pubkeyToNpub, npubToPubkey } from '../nostr';
 import { UserRow } from './user';
 import { FolderActions } from './FolderActions';
 import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirHash, useTrees, useDirectoryEntries } from '../hooks';
+import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
 // Get icon class based on file extension
 function getFileIcon(filename: string): string {
@@ -163,7 +164,7 @@ export function FileBrowser() {
   const targetNpub = viewedNpub || userNpub;
   const trees = useTrees(targetNpub);
   const dirHash = currentDirHash ? toHex(currentDirHash) : null;
-  const { uploadFiles } = useUpload();
+  const { uploadFiles, uploadFilesWithPaths } = useUpload();
 
   const navigateTo = useNavigate();
 
@@ -349,13 +350,26 @@ export function FileBrowser() {
     setDropTarget(null);
   };
 
-  // Handle external file drop on file list
+  // Handle external file drop on file list (supports directories)
   const handleFileDrop = async (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDraggingOver(false);
     if (!canEdit) return;
 
-    const files = e.dataTransfer?.files;
+    const dataTransfer = e.dataTransfer;
+    if (!dataTransfer) return;
+
+    // Check if this drop contains directories - use the directory-aware reader
+    if (hasDirectoryItems(dataTransfer) || dataTransfer.items?.length > 0) {
+      const filesWithPaths = await readFilesFromDataTransfer(dataTransfer);
+      if (filesWithPaths.length > 0) {
+        await uploadFilesWithPaths(filesWithPaths);
+        return;
+      }
+    }
+
+    // Fallback for regular files without directory structure
+    const files = dataTransfer.files;
     if (files && files.length > 0) {
       await uploadFiles(files);
     }
