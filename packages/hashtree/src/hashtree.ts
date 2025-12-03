@@ -49,6 +49,8 @@ export interface DirEntry {
   name: string;
   hash: Hash;
   size?: number;
+  /** Whether the entry is a directory (tree) */
+  isTree?: boolean;
   /** CHK key for encrypted entries */
   key?: EncryptionKey;
 }
@@ -114,6 +116,7 @@ export class HashTree {
       hash: e.hash,
       size: e.size,
       key: e.key,
+      isTree: e.isTree,
     }));
     return putDirectoryEncrypted(this.config, encryptedEntries, options?.metadata);
   }

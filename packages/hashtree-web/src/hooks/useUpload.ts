@@ -1,10 +1,12 @@
 /**
  * Upload hook - manages file upload with progress tracking
  * Uses module-level state pattern for lightweight state management
+ *
+ * All uploads use encryption by default (CHK - Content Hash Key).
  */
 import { useSyncExternalStore, useCallback } from 'react';
 import { toHex, nhashEncode } from 'hashtree';
-import type { Hash } from 'hashtree';
+import type { Hash, EncryptionKey } from 'hashtree';
 import { useAppStore, getTree } from '../store';
 import { autosaveIfOwn, saveHashtree, useNostrStore } from '../nostr';
 import { navigate } from '../utils/navigate';
@@ -176,7 +178,8 @@ export function useUpload() {
         }
       }
 
-      const { hash, size } = await tree.putFile(data, { public: true });
+      // Use encrypted file storage (default)
+      const { hash, size, key: fileKey } = await tree.putFile(data);
       uploadedFileNames.push(file.name);
 
       // Add file to tree immediately after upload completes
@@ -184,39 +187,56 @@ export function useUpload() {
 
       if (currentAppState.rootHash) {
         // Add to existing tree
-        const newRootHash = await tree.setEntry(
-          currentAppState.rootHash,
-          dirPath,
-          file.name,
-          hash,
-          size
-        );
-        currentAppState.setRootHash(newRootHash);
+        if (currentAppState.rootKey) {
+          // Encrypted tree
+          const { hash: newRootHash, key: newRootKey } = await tree.setEntryEncrypted(
+            currentAppState.rootHash,
+            currentAppState.rootKey,
+            dirPath,
+            file.name,
+            hash,
+            size,
+            fileKey
+          );
+          currentAppState.setRoot(newRootHash, newRootKey);
+        } else {
+          // Public tree (legacy)
+          const newRootHash = await tree.setEntry(
+            currentAppState.rootHash,
+            dirPath,
+            file.name,
+            hash,
+            size
+          );
+          currentAppState.setRootHash(newRootHash);
+        }
         // Mark this file as changed for pulse effect
         markFilesChanged(new Set([file.name]));
       } else if (needsTreeInit) {
-        // First file in a new virtual directory - create the tree
-        const newRootHash = (await tree.putDirectory([{ name: file.name, hash, size }], { public: true })).hash;
-        currentAppState.setRootHash(newRootHash);
+        // First file in a new virtual directory - create encrypted tree
+        const { hash: newRootHash, key: newRootKey } = await tree.putDirectory([{ name: file.name, hash, size, key: fileKey }]);
+        currentAppState.setRoot(newRootHash, newRootKey ?? null);
         markFilesChanged(new Set([file.name]));
 
         if (isOwnTree && routePubkey) {
           // Save to nostr and set up for autosave
           const hashHex = toHex(newRootHash);
-          await saveHashtree(route.treeName!, hashHex);
+          const keyHex = newRootKey ? toHex(newRootKey) : undefined;
+          await saveHashtree(route.treeName!, hashHex, keyHex);
           useNostrStore.getState().setSelectedTree({
             id: '',
             name: route.treeName!,
             pubkey: routePubkey,
             rootHash: hashHex,
+            rootKey: keyHex,
             created_at: Math.floor(Date.now() / 1000),
           });
         }
         needsTreeInit = false; // Tree is now initialized
       } else {
-        // No existing tree and not a virtual directory - create new root
-        const newRootHash = (await tree.putDirectory([{ name: file.name, hash, size }], { public: true })).hash;
-        currentAppState.setRootHash(newRootHash);
+        // No existing tree and not a virtual directory - create new encrypted root
+        const { hash: newRootHash, key: newRootKey } = await tree.putDirectory([{ name: file.name, hash, size, key: fileKey }]);
+        currentAppState.setRoot(newRootHash, newRootKey ?? null);
         markFilesChanged(new Set([file.name]));
         if (i === 0) {
           navigate('/');
@@ -227,7 +247,8 @@ export function useUpload() {
     // Autosave after all uploads complete (single save instead of per-file)
     const finalAppState = useAppStore.getState();
     if (finalAppState.rootHash) {
-      await autosaveIfOwn(toHex(finalAppState.rootHash));
+      const keyHex = finalAppState.rootKey ? toHex(finalAppState.rootKey) : undefined;
+      await autosaveIfOwn(toHex(finalAppState.rootHash), keyHex);
     }
 
     setUploadProgress(null);
@@ -327,8 +348,8 @@ export function useUpload() {
         offset += chunk.length;
       }
 
-      // Store the file
-      const { hash, size } = await tree.putFile(data, { public: true });
+      // Store the file with encryption (default)
+      const { hash, size, key: fileKey } = await tree.putFile(data);
 
       // Parse the relative path to get directory components and filename
       const pathParts = relativePath.split('/');
@@ -346,86 +367,117 @@ export function useUpload() {
       try {
         if (currentAppState.rootHash) {
           // Add to existing tree with full path
-          // First ensure all parent directories exist by checking if path resolves
           let workingRoot = currentAppState.rootHash;
-          for (let j = 0; j < fullDirPath.length; j++) {
-            const checkPath = fullDirPath.slice(0, j + 1).join('/');
-            const existingDir = await tree.resolvePath(workingRoot, checkPath);
-            if (!existingDir) {
-              // Directory doesn't exist, create it
-              const partialPath = fullDirPath.slice(0, j);
-              const dirName = fullDirPath[j];
-              const emptyDir = (await tree.putDirectory([], { public: true })).hash;
-              workingRoot = await tree.setEntry(workingRoot, partialPath, dirName, emptyDir, 0, true);
+          let workingKey = currentAppState.rootKey;
+
+          if (workingKey) {
+            // Encrypted tree - create directories and add file with encrypted operations
+            // For now, we use a simpler approach: create directories at the leaf level
+            // Since encrypted setEntryEncrypted handles creating intermediate dirs internally
+            const { hash: newRootHash, key: newRootKey } = await tree.setEntryEncrypted(
+              workingRoot,
+              workingKey,
+              fullDirPath,
+              fileName,
+              hash,
+              size,
+              fileKey
+            );
+            currentAppState.setRoot(newRootHash, newRootKey);
+          } else {
+            // Public tree (legacy) - ensure parent directories exist
+            for (let j = 0; j < fullDirPath.length; j++) {
+              const checkPath = fullDirPath.slice(0, j + 1).join('/');
+              const existingDir = await tree.resolvePath(workingRoot, checkPath);
+              if (!existingDir) {
+                // Directory doesn't exist, create it
+                const partialPath = fullDirPath.slice(0, j);
+                const dirName = fullDirPath[j];
+                const emptyDir = (await tree.putDirectory([], { public: true })).hash;
+                workingRoot = await tree.setEntry(workingRoot, partialPath, dirName, emptyDir, 0, true);
+              }
             }
+            const newRootHash = await tree.setEntry(
+              workingRoot,
+              fullDirPath,
+              fileName,
+              hash,
+              size
+            );
+            currentAppState.setRootHash(newRootHash);
           }
 
-          const newRootHash = await tree.setEntry(
-            workingRoot,
-            fullDirPath,
-            fileName,
-            hash,
-            size
-          );
-          currentAppState.setRootHash(newRootHash);
           // Mark this file as changed for pulse effect (use just filename for display in current dir)
           if (fileDirPath.length === 0) {
             markFilesChanged(new Set([fileName]));
           }
         } else if (needsTreeInit) {
-          // First file in a new virtual directory - create a directory entry
-          let rootHash = (await tree.putDirectory([], { public: true })).hash;
+          // First file in a new virtual directory - create encrypted tree
+          let rootHash: Hash;
+          let rootKey: EncryptionKey | undefined;
 
-          // Create intermediate directories (new tree, so all need creating)
-          for (let j = 0; j < fullDirPath.length; j++) {
-            const partialPath = fullDirPath.slice(0, j);
-            const dirName = fullDirPath[j];
-            const emptyDir = (await tree.putDirectory([], { public: true })).hash;
-            rootHash = await tree.setEntry(rootHash, partialPath, dirName, emptyDir, 0, true);
+          // Create the root directory first
+          const rootDir = await tree.putDirectory([]);
+          rootHash = rootDir.hash;
+          rootKey = rootDir.key;
+
+          if (rootKey) {
+            // Use encrypted operations to add nested directories and file
+            const result = await tree.setEntryEncrypted(
+              rootHash,
+              rootKey,
+              fullDirPath,
+              fileName,
+              hash,
+              size,
+              fileKey
+            );
+            rootHash = result.hash;
+            rootKey = result.key;
           }
 
-          // Add the file
-          rootHash = await tree.setEntry(
-            rootHash,
-            fullDirPath,
-            fileName,
-            hash,
-            size
-          );
-          currentAppState.setRootHash(rootHash);
+          currentAppState.setRoot(rootHash, rootKey ?? null);
 
           if (isOwnTree && routePubkey) {
             const hashHex = toHex(rootHash);
-            await saveHashtree(route.treeName!, hashHex);
+            const keyHex = rootKey ? toHex(rootKey) : undefined;
+            await saveHashtree(route.treeName!, hashHex, keyHex);
             useNostrStore.getState().setSelectedTree({
               id: '',
               name: route.treeName!,
               pubkey: routePubkey,
               rootHash: hashHex,
+              rootKey: keyHex,
               created_at: Math.floor(Date.now() / 1000),
             });
           }
           needsTreeInit = false;
         } else {
-          // No existing tree - create new root with this file
-          let rootHash = (await tree.putDirectory([], { public: true })).hash;
+          // No existing tree - create new encrypted root with this file
+          let rootHash: Hash;
+          let rootKey: EncryptionKey | undefined;
 
-          // Create intermediate directories (new tree, so all need creating)
-          for (let j = 0; j < fullDirPath.length; j++) {
-            const partialPath = fullDirPath.slice(0, j);
-            const dirName = fullDirPath[j];
-            const emptyDir = (await tree.putDirectory([], { public: true })).hash;
-            rootHash = await tree.setEntry(rootHash, partialPath, dirName, emptyDir, 0, true);
+          // Create the root directory first
+          const rootDir = await tree.putDirectory([]);
+          rootHash = rootDir.hash;
+          rootKey = rootDir.key;
+
+          if (rootKey) {
+            // Use encrypted operations to add nested directories and file
+            const result = await tree.setEntryEncrypted(
+              rootHash,
+              rootKey,
+              fullDirPath,
+              fileName,
+              hash,
+              size,
+              fileKey
+            );
+            rootHash = result.hash;
+            rootKey = result.key;
           }
 
-          rootHash = await tree.setEntry(
-            rootHash,
-            fullDirPath,
-            fileName,
-            hash,
-            size
-          );
-          currentAppState.setRootHash(rootHash);
+          currentAppState.setRoot(rootHash, rootKey ?? null);
           if (i === 0) {
             navigate('/');
           }
@@ -439,7 +491,8 @@ export function useUpload() {
     // Autosave after all uploads complete
     const finalAppState = useAppStore.getState();
     if (finalAppState.rootHash) {
-      await autosaveIfOwn(toHex(finalAppState.rootHash));
+      const keyHex = finalAppState.rootKey ? toHex(finalAppState.rootKey) : undefined;
+      await autosaveIfOwn(toHex(finalAppState.rootHash), keyHex);
     }
 
     setUploadProgress(null);

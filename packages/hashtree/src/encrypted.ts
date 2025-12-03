@@ -310,6 +310,7 @@ export async function putDirectoryEncrypted(
     name: e.name,
     size: e.size,
     key: e.key,
+    isTree: e.isTree,
   }));
 
   const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
@@ -434,6 +435,7 @@ async function collectDirectoryEntries(
         hash: link.hash,
         size: link.size,
         key: link.key,
+        isTree: link.isTree,
       });
     }
   }

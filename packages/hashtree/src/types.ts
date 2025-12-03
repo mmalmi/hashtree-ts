@@ -32,6 +32,8 @@ export interface Link {
   size?: number;
   /** CHK decryption key (content hash) for encrypted nodes */
   key?: Uint8Array;
+  /** Whether this link points to a directory/tree (for encrypted entries) */
+  isTree?: boolean;
 }
 
 /**

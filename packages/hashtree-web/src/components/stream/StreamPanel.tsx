@@ -1,7 +1,7 @@
 import { useRef, useEffect } from 'react';
 import { formatBytes } from '../../store';
 import { useNostrStore } from '../../nostr';
-import { useCurrentDirHash, useDirectoryEntries } from '../../hooks';
+import { useCurrentDirLocation, useDirectoryEntries } from '../../hooks';
 import {
   startPreview,
   stopPreview,
@@ -120,8 +120,8 @@ function PreviewControls({ videoRef, onClose }: {
   videoRef: { current: HTMLVideoElement | null };
   onClose: () => void;
 }) {
-  const currentDirHash = useCurrentDirHash();
-  const { entries } = useDirectoryEntries(currentDirHash);
+  const currentDirLocation = useCurrentDirLocation();
+  const { entries } = useDirectoryEntries(currentDirLocation);
   const { streamFilename, persistStream } = useStreamState();
 
   const filenameExists = entries.some(e => e.name === `${streamFilename}.webm`);

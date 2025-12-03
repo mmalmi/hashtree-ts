@@ -16,7 +16,7 @@ import {
 import { saveFile, deleteEntry, selectFile } from '../actions';
 import { openRenameModal } from '../hooks/useModals';
 import { useNostrStore } from '../nostr';
-import { useSelectedFile, useRoute, useCurrentDirHash, useDirectoryEntries } from '../hooks';
+import { useSelectedFile, useRoute, useCurrentDirHash, useCurrentDirLocation, useDirectoryEntries } from '../hooks';
 import { useUpload } from '../hooks/useUpload';
 import { getResolverKey } from '../refResolver';
 import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
@@ -36,8 +36,9 @@ export function Viewer() {
   const navigate = useNavigate();
   const location = useLocation();
   const rootHash = useAppStore(s => s.rootHash);
-  const currentDirHash = useCurrentDirHash();
-  const { entries } = useDirectoryEntries(currentDirHash);
+  const rootKey = useAppStore(s => s.rootKey);
+  const currentDirLocation = useCurrentDirLocation();
+  const { entries } = useDirectoryEntries(currentDirLocation);
 
   const route = useRoute();
   const viewedNpub = route.npub;
@@ -190,7 +191,8 @@ export function Viewer() {
     setLoading(true);
     setFileHash(entry.hash);
 
-    getTree().readFile(entry.hash).then(data => {
+    // Pass decryption key for encrypted files
+    getTree().readFile(entry.hash, entry.key).then(data => {
       if (!cancelled) {
         setContent(data);
         setLoading(false);
@@ -239,7 +241,7 @@ export function Viewer() {
     let data = content;
     // For video files, content isn't preloaded - fetch it now
     if (!data && isVideo) {
-      data = await getTree().readFile(entry.hash);
+      data = await getTree().readFile(entry.hash, entry.key);
     }
     if (!data) return;
 
@@ -295,6 +297,11 @@ export function Viewer() {
           ) : route.isPermalink && (
             <span className="i-lucide-hash text-accent shrink-0" />
           )}
+          {/* Encryption status icon */}
+          <span
+            className={`${rootKey ? 'i-lucide-lock' : 'i-lucide-globe'} text-text-2 shrink-0`}
+            title={rootKey ? 'Encrypted' : 'Public'}
+          />
           {/* File type icon */}
           <span className={`${getFileIcon(entry?.name || urlFileName || '')} text-text-2 shrink-0`} />
           {entry?.name || urlFileName || ''}
@@ -617,8 +624,9 @@ function isLikelyTextFile(filename?: string): boolean {
 
 function DirectoryActions() {
   const rootHash = useAppStore(s => s.rootHash);
-  const currentDirHash = useCurrentDirHash();
-  const { entries } = useDirectoryEntries(currentDirHash);
+  const currentDirLocation = useCurrentDirLocation();
+  const currentDirHash = currentDirLocation?.hash ?? null;
+  const { entries } = useDirectoryEntries(currentDirLocation);
   const route = useRoute();
   const viewedNpub = route.npub;
   const userNpub = useNostrStore(s => s.npub);
@@ -688,7 +696,8 @@ function DirectoryActions() {
     if (!readmeEntry) return;
 
     let cancelled = false;
-    getTree().readFile(readmeEntry.hash).then(data => {
+    // Pass decryption key for encrypted files
+    getTree().readFile(readmeEntry.hash, readmeEntry.key).then(data => {
       if (!cancelled && data) {
         const text = decodeAsText(data);
         if (text) setReadmeContent(text);

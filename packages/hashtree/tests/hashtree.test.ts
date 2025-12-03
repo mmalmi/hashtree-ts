@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { HashTree, MemoryStore, toHex } from '../src/index.js';
+import { HashTree, MemoryStore, toHex, type EncryptionKey } from '../src/index.js';
 
 describe('HashTree', () => {
   let store: MemoryStore;
@@ -213,6 +213,148 @@ describe('HashTree', () => {
       );
       expect(aEntries).toHaveLength(1);
       expect(aEntries[0].name).toBe('b');
+    });
+  });
+
+  describe('encrypted (default)', () => {
+    it('should encrypt file by default', async () => {
+      const data = new TextEncoder().encode('secret content');
+      const { hash, size, key } = await tree.putFile(data);
+
+      expect(key).toBeDefined();
+      expect(key!.length).toBe(32);
+      expect(size).toBe(14);
+
+      // Should be retrievable with key
+      const retrieved = await tree.readFile(hash, key);
+      expect(retrieved).toEqual(data);
+
+      // Should NOT be readable without key (returns encrypted data or null)
+      const withoutKey = await tree.readFile(hash);
+      expect(withoutKey).not.toEqual(data);
+    });
+
+    it('should encrypt directory by default', async () => {
+      const { hash: fileHash, key: fileKey } = await tree.putFile(new TextEncoder().encode('data'));
+      const { hash: dirHash, key: dirKey } = await tree.putDirectory([
+        { name: 'file.txt', hash: fileHash, size: 4, key: fileKey },
+      ]);
+
+      expect(dirKey).toBeDefined();
+      expect(dirKey!.length).toBe(32);
+
+      // Should list with key
+      const entries = await tree.listDirectory(dirHash, dirKey);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].name).toBe('file.txt');
+      expect(entries[0].key).toBeDefined();
+    });
+
+    it('should preserve isTree flag in encrypted directory', async () => {
+      // Create an encrypted subdirectory
+      const { hash: subDirHash, key: subDirKey } = await tree.putDirectory([]);
+
+      // Create root directory with subdirectory entry
+      const { hash: rootHash, key: rootKey } = await tree.putDirectory([
+        { name: 'subdir', hash: subDirHash, size: 0, key: subDirKey, isTree: true },
+      ]);
+
+      // List root and check isTree
+      const entries = await tree.listDirectory(rootHash, rootKey);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].name).toBe('subdir');
+      expect(entries[0].isTree).toBe(true);
+      expect(entries[0].key).toBeDefined();
+    });
+
+    it('should preserve isTree=false for files in encrypted directory', async () => {
+      const { hash: fileHash, key: fileKey } = await tree.putFile(new TextEncoder().encode('data'));
+      const { hash: dirHash, key: dirKey } = await tree.putDirectory([
+        { name: 'file.txt', hash: fileHash, size: 4, key: fileKey, isTree: false },
+      ]);
+
+      const entries = await tree.listDirectory(dirHash, dirKey);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].name).toBe('file.txt');
+      expect(entries[0].isTree).toBe(false);
+    });
+
+    it('should add entry to encrypted directory with setEntryEncrypted', async () => {
+      const { hash: rootHash, key: rootKey } = await tree.putDirectory([]);
+      const { hash: fileHash, size, key: fileKey } = await tree.putFile(new TextEncoder().encode('hello'));
+
+      const { hash: newRoot, key: newKey } = await tree.setEntryEncrypted(
+        rootHash,
+        rootKey!,
+        [],
+        'test.txt',
+        fileHash,
+        size,
+        fileKey,
+        false
+      );
+
+      const entries = await tree.listDirectory(newRoot, newKey);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].name).toBe('test.txt');
+      expect(entries[0].isTree).toBe(false);
+    });
+
+    it('should add subdirectory to encrypted directory with setEntryEncrypted', async () => {
+      const { hash: rootHash, key: rootKey } = await tree.putDirectory([]);
+      const { hash: subDirHash, key: subDirKey, size } = await tree.putDirectory([]);
+
+      const { hash: newRoot, key: newKey } = await tree.setEntryEncrypted(
+        rootHash,
+        rootKey!,
+        [],
+        'subdir',
+        subDirHash,
+        size,
+        subDirKey,
+        true  // isTree = true
+      );
+
+      const entries = await tree.listDirectory(newRoot, newKey);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].name).toBe('subdir');
+      expect(entries[0].isTree).toBe(true);
+    });
+
+    it('should handle nested encrypted directories', async () => {
+      // Create nested structure: root/a/b/file.txt
+      const { hash: fileHash, key: fileKey } = await tree.putFile(new TextEncoder().encode('nested'));
+
+      const { hash: bHash, key: bKey } = await tree.putDirectory([
+        { name: 'file.txt', hash: fileHash, size: 6, key: fileKey, isTree: false },
+      ]);
+
+      const { hash: aHash, key: aKey } = await tree.putDirectory([
+        { name: 'b', hash: bHash, size: 6, key: bKey, isTree: true },
+      ]);
+
+      const { hash: rootHash, key: rootKey } = await tree.putDirectory([
+        { name: 'a', hash: aHash, size: 6, key: aKey, isTree: true },
+      ]);
+
+      // Navigate to root/a
+      const rootEntries = await tree.listDirectory(rootHash, rootKey);
+      expect(rootEntries[0].name).toBe('a');
+      expect(rootEntries[0].isTree).toBe(true);
+
+      // Navigate to root/a/b
+      const aEntries = await tree.listDirectory(rootEntries[0].hash, rootEntries[0].key);
+      expect(aEntries[0].name).toBe('b');
+      expect(aEntries[0].isTree).toBe(true);
+
+      // Navigate to root/a/b/file.txt
+      const bEntries = await tree.listDirectory(aEntries[0].hash, aEntries[0].key);
+      expect(bEntries[0].name).toBe('file.txt');
+      expect(bEntries[0].isTree).toBe(false);
+
+      // Read the file
+      const content = await tree.readFile(bEntries[0].hash, bEntries[0].key);
+      expect(content).toEqual(new TextEncoder().encode('nested'));
     });
   });
 });

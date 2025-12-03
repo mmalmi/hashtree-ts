@@ -9,7 +9,7 @@ import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
 import { useNostrStore, pubkeyToNpub, npubToPubkey } from '../nostr';
 import { UserRow } from './user';
 import { FolderActions } from './FolderActions';
-import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirHash, useTrees, useDirectoryEntries } from '../hooks';
+import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirLocation, useTrees, useDirectoryEntries } from '../hooks';
 import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
 // Get icon class based on file extension
@@ -139,8 +139,10 @@ function buildTreeHref(ownerNpub: string, treeName: string): string {
 export function FileBrowser() {
   // Use zustand hooks with selectors for reactive updates
   const rootHash = useAppStore(s => s.rootHash);
-  const currentDirHash = useCurrentDirHash();
-  const { entries, isDirectory } = useDirectoryEntries(currentDirHash);
+  const rootKey = useAppStore(s => s.rootKey);
+  const currentDirLocation = useCurrentDirLocation();
+  const currentDirHash = currentDirLocation?.hash ?? null;
+  const { entries, isDirectory } = useDirectoryEntries(currentDirLocation);
   const recentlyChangedFiles = useRecentlyChanged();
 
   // Derive from URL - source of truth
@@ -589,6 +591,10 @@ export function FileBrowser() {
             !selectedEntry && focusedIndex < 0 ? 'bg-surface-2' : ''
           } ${focusedIndex === (hasParent ? 1 : 0) ? 'ring-2 ring-inset ring-accent' : ''}`}
         >
+          <span
+            className={`shrink-0 ${currentDirLocation?.key ? 'i-lucide-lock' : 'i-lucide-globe'} text-text-2`}
+            title={currentDirLocation?.key ? 'Encrypted' : 'Public'}
+          />
           <span className={`shrink-0 ${isDirectory ? 'i-lucide-folder-open text-warning' : `${getFileIcon(currentDirName)} text-text-2`}`} />
           <span className="truncate">{currentDirName}</span>
         </Link>
