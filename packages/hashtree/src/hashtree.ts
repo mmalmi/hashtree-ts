@@ -153,7 +153,7 @@ export class HashTree {
     return edit.moveEntry(this.config, rootHash, sourcePath, name, targetPath);
   }
 
-  // Encrypted (CHK - Content Hash Key)
+  // Encrypted (CHK - Content Hash Key) - EXPERIMENTAL
   // Key is derived from content, ensuring deterministic encryption
   // Same content → same ciphertext → deduplication works
 
