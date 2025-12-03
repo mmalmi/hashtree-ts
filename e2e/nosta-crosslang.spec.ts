@@ -22,7 +22,9 @@ function generateUuid(): string {
     Math.random().toString(36).substring(2, 15);
 }
 
-test.describe('Nosta Cross-Language', () => {
+// Skip: These tests are network-dependent (require external relay wss://temp.iris.to and Nosta Rust peer)
+// They can be run manually when testing cross-language compatibility
+test.describe.skip('Nosta Cross-Language', () => {
   test.setTimeout(120000);
 
   let nostaProcess: ChildProcess | null = null;

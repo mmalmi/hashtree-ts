@@ -25,3 +25,16 @@ export async function waitForNewUserRedirect(page: any) {
   await page.waitForURL(/\/#\/npub.*\/home/, { timeout: 10000 });
   await expect(page.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
 }
+
+/**
+ * Selector for "My Trees" button in header.
+ * Uses partial match because title includes additional text.
+ */
+export const myTreesButtonSelector = 'header button[title*="My Trees"]';
+
+/**
+ * Click the "My Trees" button to navigate to user's tree list.
+ */
+export async function clickMyTreesButton(page: any) {
+  await page.locator(myTreesButtonSelector).click();
+}

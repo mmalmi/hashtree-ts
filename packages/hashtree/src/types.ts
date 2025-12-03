@@ -30,6 +30,8 @@ export interface Link {
   name?: string;
   /** Size of subtree in bytes (for efficient seeks) */
   size?: number;
+  /** CHK decryption key (content hash) for encrypted nodes */
+  key?: Uint8Array;
 }
 
 /**

@@ -5,7 +5,8 @@ import { navigate } from './utils/navigate';
 import { parseRoute } from './utils/route';
 import { toHex, verifyTree } from 'hashtree';
 import type { Hash } from 'hashtree';
-import { autosaveIfOwn, useNostrStore } from './nostr';
+import { autosaveIfOwn, saveHashtree, useNostrStore } from './nostr';
+import { nip19 } from 'nostr-tools';
 import {
   idbStore,
   getTree,
@@ -104,21 +105,66 @@ export async function saveFile(entryName: string | undefined, content: string): 
   return data;
 }
 
+// Helper to initialize a virtual tree (when rootHash is null but we're in a tree route)
+async function initVirtualTree(entries: { name: string; hash: Uint8Array; size: number; isTree?: boolean }[]): Promise<Uint8Array | null> {
+  const route = parseRoute();
+  if (!route.npub || !route.treeName) return null;
+
+  const tree = getTree();
+  const nostrStore = useNostrStore.getState();
+
+  let routePubkey: string | null = null;
+  try {
+    const decoded = nip19.decode(route.npub);
+    if (decoded.type === 'npub') routePubkey = decoded.data as string;
+  } catch {
+    return null;
+  }
+
+  const isOwnTree = routePubkey === nostrStore.pubkey;
+  if (!isOwnTree) return null; // Can only create in own trees
+
+  // Create new tree with the entries
+  const newRootHash = await tree.putDirectory(entries);
+  useAppStore.getState().setRootHash(newRootHash);
+
+  // Save to nostr
+  const hashHex = toHex(newRootHash);
+  await saveHashtree(route.treeName, hashHex);
+  nostrStore.setSelectedTree({
+    id: '',
+    name: route.treeName,
+    pubkey: routePubkey,
+    rootHash: hashHex,
+    created_at: Math.floor(Date.now() / 1000),
+  });
+
+  return newRootHash;
+}
+
 // Create new file
 export async function createFile(name: string, content: string = '') {
   if (!name) return;
 
   const state = useAppStore.getState();
-  if (!state.rootHash) return;
-
   const tree = getTree();
   const data = new TextEncoder().encode(content);
   const { hash, size } = await tree.putFile(data);
   const currentPath = getCurrentPathFromUrl();
 
-  const newRoot = await tree.setEntry(state.rootHash, currentPath, name, hash, size);
-  state.setRootHash(newRoot);
-  await autosaveIfOwn(toHex(newRoot));
+  let newRoot: Uint8Array;
+
+  if (state.rootHash) {
+    // Add to existing tree
+    newRoot = await tree.setEntry(state.rootHash, currentPath, name, hash, size);
+    state.setRootHash(newRoot);
+    await autosaveIfOwn(toHex(newRoot));
+  } else {
+    // Initialize virtual tree with this file
+    const result = await initVirtualTree([{ name, hash, size }]);
+    if (!result) return; // Failed to initialize
+    newRoot = result;
+  }
 
   // Navigate to the newly created file with edit mode
   updateRoute(name, { edit: true });
@@ -129,15 +175,19 @@ export async function createFolder(name: string) {
   if (!name) return;
 
   const state = useAppStore.getState();
-  if (!state.rootHash) return;
-
   const tree = getTree();
   const emptyDirHash = await tree.putDirectory([]);
   const currentPath = getCurrentPathFromUrl();
 
-  const newRoot = await tree.setEntry(state.rootHash, currentPath, name, emptyDirHash, 0, true);
-  state.setRootHash(newRoot);
-  await autosaveIfOwn(toHex(newRoot));
+  if (state.rootHash) {
+    // Add to existing tree
+    const newRoot = await tree.setEntry(state.rootHash, currentPath, name, emptyDirHash, 0, true);
+    state.setRootHash(newRoot);
+    await autosaveIfOwn(toHex(newRoot));
+  } else {
+    // Initialize virtual tree with this folder
+    await initVirtualTree([{ name, hash: emptyDirHash, size: 0, isTree: true }]);
+  }
 }
 
 // Rename entry

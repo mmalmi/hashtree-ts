@@ -20,6 +20,8 @@ interface LinkCBOR {
   n?: string;
   /** size (optional) */
   s?: number;
+  /** CHK decryption key (optional) */
+  k?: Uint8Array;
 }
 
 /**
@@ -46,6 +48,7 @@ export function encodeTreeNode(node: TreeNode): Uint8Array {
       const l: LinkCBOR = { h: link.hash };
       if (link.name !== undefined) l.n = link.name;
       if (link.size !== undefined) l.s = link.size;
+      if (link.key !== undefined) l.k = link.key;
       return l;
     }),
   };
@@ -71,6 +74,7 @@ export function decodeTreeNode(data: Uint8Array): TreeNode {
       const link: Link = { hash: l.h };
       if (l.n !== undefined) link.name = l.n;
       if (l.s !== undefined) link.size = l.s;
+      if (l.k !== undefined) link.key = l.k;
       return link;
     }),
   };

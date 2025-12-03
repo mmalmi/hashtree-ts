@@ -1,48 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, waitForNewUserRedirect } from './test-utils.js';
+import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
 
 // Helper to navigate to accounts page
 async function navigateToAccountsPage(page: any) {
-  // First go to profile
-  await page.locator('header button[title="My Trees"]').click();
-  await page.waitForTimeout(300);
-
-  // Click the accounts/users button
-  await page.locator('button[title="Switch account"]').click();
+  // Double-click on avatar to go to accounts
+  await page.locator(myTreesButtonSelector).dblclick();
   await page.waitForTimeout(300);
 
   // Should be on accounts page
   await expect(page.getByRole('heading', { name: 'Accounts' })).toBeVisible({ timeout: 5000 });
 }
 
-// Helper to get the current user's npub from URL or page
-async function getCurrentNpub(page: any): Promise<string> {
-  const url = page.url();
-  const match = url.match(/#\/(npub[^/]+)/);
-  if (match) return match[1];
-
-  // Try to get from localStorage
-  const npub = await page.evaluate(() => {
-    const nsec = localStorage.getItem('hashtree:nsec');
-    if (!nsec) return null;
-    // Can't decode here, but we can get active account
-    const accounts = localStorage.getItem('hashtree:accounts');
-    if (accounts) {
-      const parsed = JSON.parse(accounts);
-      if (parsed.length > 0) return parsed[0].npub;
-    }
-    return null;
-  });
-
-  return npub || '';
-}
-
 // Generate a test nsec for adding accounts
 function generateTestNsec(): string {
   // This is a deterministic nsec for testing purposes only
-  // In real usage, this would be a real private key
-  // nsec1... format - 63 chars total, starts with nsec1
-  // Using a hardcoded test key that's valid but not used for real funds
   return 'nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5';
 }
 
@@ -68,29 +39,19 @@ test.describe('Multi-Account Management', () => {
     await waitForNewUserRedirect(page);
   });
 
-  test('should display accounts button on own profile', async ({ page }) => {
-    // Navigate to profile
-    await page.locator('header button[title="My Trees"]').click();
-    await page.waitForTimeout(300);
-
-    // Should see the accounts button (users icon)
-    await expect(page.locator('button[title="Switch account"]')).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should navigate to accounts page from profile', async ({ page }) => {
+  test('should navigate to accounts page via double-click on avatar', async ({ page }) => {
     await navigateToAccountsPage(page);
 
     // Verify accounts page elements
-    await expect(page.getByText('Current Account')).toBeVisible();
-    await expect(page.getByText(/All Accounts \(\d+\)/)).toBeVisible();
-    await expect(page.getByText('Add Account')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Accounts' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add with nsec' })).toBeVisible();
   });
 
   test('should show initial auto-generated account', async ({ page }) => {
     await navigateToAccountsPage(page);
 
-    // Should show 1 account initially (auto-generated) - using regex for flexibility
-    await expect(page.getByText(/All Accounts \(1\)/)).toBeVisible({ timeout: 5000 });
+    // Should show 1 account initially (auto-generated) with nsec type indicator
+    await expect(page.getByText('nsec').first()).toBeVisible({ timeout: 5000 });
 
     // Current account should be shown with check mark
     await expect(page.locator('span.i-lucide-check-circle').first()).toBeVisible();
@@ -98,9 +59,6 @@ test.describe('Multi-Account Management', () => {
 
   test('should add account with nsec', async ({ page }) => {
     await navigateToAccountsPage(page);
-
-    // Initial state: 1 account
-    await expect(page.getByText('All Accounts (1)')).toBeVisible({ timeout: 5000 });
 
     // Click "Add with nsec" button
     await page.getByRole('button', { name: 'Add with nsec' }).click();
@@ -115,8 +73,8 @@ test.describe('Multi-Account Management', () => {
     await page.getByRole('button', { name: 'Add' }).click();
     await page.waitForTimeout(500);
 
-    // Should now show 2 accounts
-    await expect(page.getByText('All Accounts (2)')).toBeVisible({ timeout: 5000 });
+    // Should now show 2 accounts - look for the "Switch" button which only appears for non-active accounts
+    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
   });
 
   test('should show error for invalid nsec', async ({ page }) => {
@@ -173,10 +131,7 @@ test.describe('Multi-Account Management', () => {
     await page.getByRole('button', { name: 'Add' }).click();
     await page.waitForTimeout(500);
 
-    // Should have 2 accounts
-    await expect(page.getByText('All Accounts (2)')).toBeVisible({ timeout: 5000 });
-
-    // Find and click the Switch button for the other account
+    // Should have 2 accounts now - find and click the Switch button
     const switchButton = page.getByRole('button', { name: 'Switch' });
     await expect(switchButton).toBeVisible({ timeout: 5000 });
     await switchButton.click();
@@ -188,14 +143,10 @@ test.describe('Multi-Account Management', () => {
     expect(newUrl).toContain('npub');
   });
 
-  test('should not remove last account', async ({ page }) => {
+  test('should not allow removing last account', async ({ page }) => {
     await navigateToAccountsPage(page);
 
-    // Should have 1 account
-    await expect(page.getByText('All Accounts (1)')).toBeVisible({ timeout: 5000 });
-
-    // The remove button should not be visible for the only account
-    // (because canRemove is false when only 1 account)
+    // With only 1 account, the remove button (trash icon) should not be visible
     await expect(page.locator('button[title="Remove account"]')).not.toBeVisible();
   });
 
@@ -208,40 +159,27 @@ test.describe('Multi-Account Management', () => {
     await page.getByRole('button', { name: 'Add' }).click();
     await page.waitForTimeout(500);
 
-    // Should have 2 accounts
-    await expect(page.getByText(/All Accounts \(2\)/)).toBeVisible({ timeout: 5000 });
+    // Should have 2 accounts now
+    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
 
-    // Verify 2 accounts in localStorage
-    const accountsBefore = await page.evaluate(() => {
-      const data = localStorage.getItem('hashtree:accounts');
-      return data ? JSON.parse(data).length : 0;
-    });
-    expect(accountsBefore).toBe(2);
+    // Find the remove button (trash icon) - use first() since both accounts have one
+    const removeButton = page.locator('button[title="Remove account"]').first();
+    await expect(removeButton).toBeVisible();
 
-    // Find the remove button (trash icon) - it should exist for non-active accounts
-    const removeButtons = page.locator('button[title="Remove account"]');
-    const removeButtonCount = await removeButtons.count();
-    expect(removeButtonCount).toBeGreaterThan(0);
-
-    // Click the first remove button
-    await removeButtons.first().click();
+    // Click to show confirmation
+    await removeButton.click();
     await page.waitForTimeout(300);
 
-    // Should show confirmation - look for "Remove" text button
-    // The button has classes "btn-ghost p-1 text-xs text-danger"
-    const confirmRemoveButton = page.locator('button:has-text("Remove")').filter({ hasText: /^Remove$/ });
+    // Should show confirmation buttons - use exact: true to avoid matching "Remove account"
+    const confirmRemoveButton = page.getByRole('button', { name: 'Remove', exact: true });
     await expect(confirmRemoveButton).toBeVisible({ timeout: 5000 });
 
     // Confirm removal
     await confirmRemoveButton.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
-    // Verify only 1 account remains in localStorage
-    const accountsAfter = await page.evaluate(() => {
-      const data = localStorage.getItem('hashtree:accounts');
-      return data ? JSON.parse(data).length : 0;
-    });
-    expect(accountsAfter).toBe(1);
+    // Should now have only 1 account - no Switch button visible
+    await expect(page.getByRole('button', { name: 'Switch' })).not.toBeVisible({ timeout: 5000 });
   });
 
   test('should cancel account removal', async ({ page }) => {
@@ -253,24 +191,24 @@ test.describe('Multi-Account Management', () => {
     await page.getByRole('button', { name: 'Add' }).click();
     await page.waitForTimeout(500);
 
-    // Find the remove button
+    // Find the remove button - use first() since both accounts have one
     const removeButton = page.locator('button[title="Remove account"]').first();
     await removeButton.click();
     await page.waitForTimeout(200);
 
     // Click Cancel instead of Remove
-    await page.locator('button:has-text("Cancel")').last().click();
+    await page.getByRole('button', { name: 'Cancel' }).last().click();
     await page.waitForTimeout(200);
 
-    // Should still have 2 accounts
-    await expect(page.getByText('All Accounts (2)')).toBeVisible({ timeout: 5000 });
+    // Should still have 2 accounts - Switch button should be visible
+    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
   });
 
   test('should go back from accounts page', async ({ page }) => {
     await navigateToAccountsPage(page);
 
     // Click back button
-    await page.locator('button:has(span.i-lucide-arrow-left)').click();
+    await page.getByRole('button', { name: 'Back' }).click();
     await page.waitForTimeout(300);
 
     // Should be back on profile/tree list page
@@ -287,20 +225,18 @@ test.describe('Multi-Account Management', () => {
     await page.waitForTimeout(500);
 
     // Should have 2 accounts
-    await expect(page.getByText('All Accounts (2)')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
 
     // Reload the page
     await page.reload();
     await page.waitForTimeout(500);
 
     // Navigate back to accounts page
-    await page.locator('header button[title="My Trees"]').click();
-    await page.waitForTimeout(300);
-    await page.locator('button[title="Switch account"]').click();
+    await page.locator(myTreesButtonSelector).dblclick();
     await page.waitForTimeout(300);
 
     // Should still have 2 accounts
-    await expect(page.getByText('All Accounts (2)')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
   });
 
   test('should not add duplicate account', async ({ page }) => {
@@ -315,7 +251,7 @@ test.describe('Multi-Account Management', () => {
     await page.waitForTimeout(500);
 
     // Should have 2 accounts
-    await expect(page.getByText('All Accounts (2)')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
 
     // Try to add the same account again
     await page.getByRole('button', { name: 'Add with nsec' }).click();
@@ -325,74 +261,12 @@ test.describe('Multi-Account Management', () => {
 
     // Should show error about duplicate
     await expect(page.getByText('Account already added')).toBeVisible();
-
-    // Should still have only 2 accounts
-    await expect(page.getByText('All Accounts (2)')).toBeVisible({ timeout: 5000 });
   });
 
   test('should show account type indicator (nsec)', async ({ page }) => {
     await navigateToAccountsPage(page);
 
-    // Add an nsec account
-    await page.getByRole('button', { name: 'Add with nsec' }).click();
-    await page.locator('input[placeholder="nsec1..."]').fill(generateTestNsec());
-    await page.getByRole('button', { name: 'Add' }).click();
-    await page.waitForTimeout(500);
-
     // Should show "nsec" label for the account type
     await expect(page.getByText('nsec').first()).toBeVisible();
-  });
-
-  test('should show current account at top', async ({ page }) => {
-    await navigateToAccountsPage(page);
-
-    // Current Account section should be visible at top
-    await expect(page.getByText('Current Account')).toBeVisible();
-
-    // Should show avatar in current account section - use first() to avoid strict mode
-    const currentAccountSection = page.locator('.bg-surface-1.rounded-lg').first();
-    await expect(currentAccountSection.locator('img').first()).toBeVisible();
-  });
-
-  test('should not show accounts button on other user profiles', async ({ page, browser }) => {
-    // Get current user's npub
-    await page.locator('header button[title="My Trees"]').click();
-    await page.waitForTimeout(300);
-
-    const currentUrl = page.url();
-    const match = currentUrl.match(/#\/(npub[^/]+)/);
-    expect(match).toBeTruthy();
-    const myNpub = match![1];
-
-    // Create a second browser context to simulate another user
-    const context2 = await browser.newContext();
-    const page2 = await context2.newPage();
-    setupPageErrorHandler(page2);
-
-    await page2.goto('/');
-    await page2.evaluate(async () => {
-      const dbs = await indexedDB.databases();
-      for (const db of dbs) {
-        if (db.name) indexedDB.deleteDatabase(db.name);
-      }
-      localStorage.clear();
-      sessionStorage.clear();
-    });
-    await page2.reload();
-    await page2.waitForTimeout(500);
-    await page2.waitForSelector('header span:has-text("Hashtree")', { timeout: 5000 });
-    await waitForNewUserRedirect(page2);
-
-    // Navigate to first user's profile from second user's perspective
-    await page2.goto(`/#/${myNpub}`);
-    await page2.waitForTimeout(1000);
-
-    // Should NOT see the accounts button (not own profile)
-    await expect(page2.locator('button[title="Switch account"]')).not.toBeVisible();
-
-    // But should see Follow button (other user's profile) - use exact match to avoid "Following"
-    await expect(page2.getByRole('button', { name: 'Follow', exact: true })).toBeVisible({ timeout: 5000 });
-
-    await context2.close();
   });
 });

@@ -153,13 +153,14 @@ export class HashTree {
     return edit.moveEntry(this.config, rootHash, sourcePath, name, targetPath);
   }
 
-  // Encrypted
+  // Encrypted (CHK - Content Hash Key)
+  // Key is derived from content, ensuring deterministic encryption
+  // Same content → same ciphertext → deduplication works
 
   async putFileEncrypted(
-    data: Uint8Array,
-    key?: EncryptionKey
+    data: Uint8Array
   ): Promise<{ hash: Hash; size: number; key: EncryptionKey }> {
-    return putEncrypted(this.config, data, key);
+    return putEncrypted(this.config, data);
   }
 
   async readFileEncrypted(hash: Hash, key: EncryptionKey): Promise<Uint8Array | null> {

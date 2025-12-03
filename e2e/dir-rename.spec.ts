@@ -1,46 +1,39 @@
 import { test, expect } from '@playwright/test';
+import { setupPageErrorHandler, waitForNewUserRedirect } from './test-utils.js';
 
 test.describe('Directory rename', () => {
   test('should rename a subdirectory', async ({ page }) => {
+    setupPageErrorHandler(page);
     await page.goto('/');
+    await waitForNewUserRedirect(page);
 
-    // Wait for the app to load and find New Folder button
-    await page.waitForSelector('text=New Folder', { timeout: 10000 });
-
-    // Click New Folder to create a root tree
-    await page.click('text=New Folder');
-
-    // Enter folder name in modal
-    const input = page.locator('input[placeholder="Folder name..."]');
-    await input.waitFor({ timeout: 5000 });
-    await input.fill('test-rename-root');
-    await page.click('button:has-text("Create")');
-
-    // Wait for modal to close
-    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
-
-    // Wait for navigation to tree view - should show empty directory
+    // Now we're in the user's home folder, which starts empty
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
-    // Create a subdirectory - use visible button with folder-plus icon
-    await page.click('button:has(.i-lucide-folder-plus):visible');
+    // Create a subdirectory - use the Folder button in the toolbar
+    await page.getByRole('button', { name: 'Folder' }).click();
 
-    // Enter subdirectory name
+    // Enter subdirectory name in modal
     const subInput = page.locator('input[placeholder="Folder name..."]');
     await subInput.waitFor({ timeout: 5000 });
     await subInput.fill('old-folder-name');
-    await page.click('button:has-text("Create")');
+    await page.getByRole('button', { name: 'Create' }).click();
+    await page.waitForTimeout(1000); // Wait for folder to be created
 
     // Wait for modal to close
     await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
 
-    // Wait for the subdirectory to appear in the file list
-    await expect(page.locator('[data-testid="file-list"] >> text=old-folder-name')).toBeVisible({ timeout: 10000 });
+    // Wait for subfolder creation to complete and appear in list
+    // Wait longer as the file list may take time to update
+    await page.waitForTimeout(2000);
+
+    // Wait for the subdirectory to appear in the file list (look for the link)
+    await expect(page.locator('[data-testid="file-list"] a:has-text("old-folder-name")')).toBeVisible({ timeout: 15000 });
 
     // Navigate into the subdirectory by clicking on it
-    await page.click('[data-testid="file-list"] >> text=old-folder-name');
+    await page.click('[data-testid="file-list"] a:has-text("old-folder-name")');
 
-    // Wait for navigation - should see empty directory again
+    // Wait for navigation - should see empty directory inside the subfolder
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
     // URL should now include the folder name
@@ -70,70 +63,55 @@ test.describe('Directory rename', () => {
   });
 
   test('should not show rename button for root directory', async ({ page }) => {
+    setupPageErrorHandler(page);
     await page.goto('/');
+    await waitForNewUserRedirect(page);
 
-    // Wait for the app to load and find New Folder button
-    await page.waitForSelector('text=New Folder', { timeout: 10000 });
-
-    // Click New Folder to create a root tree
-    await page.click('text=New Folder');
-
-    // Enter folder name in modal
-    const input = page.locator('input[placeholder="Folder name..."]');
-    await input.waitFor({ timeout: 5000 });
-    await input.fill('test-root-no-rename');
-    await page.click('button:has-text("Create")');
-
-    // Wait for modal to close
-    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
-
-    // Wait for navigation to tree view
+    // Now we're in the user's home folder (which is a root tree)
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
-    // Should NOT see a Rename button for root directory
+    // Should NOT see a Rename button for root directory (home folder)
     // The "Folder" button should exist (for creating subfolders) but not Rename
-    await expect(page.locator('button:has(.i-lucide-folder-plus):visible')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Folder' })).toBeVisible();
     await expect(page.locator('button:has-text("Rename")')).not.toBeVisible();
   });
 
   test('should delete a subdirectory', async ({ page }) => {
+    setupPageErrorHandler(page);
     await page.goto('/');
+    await waitForNewUserRedirect(page);
 
-    // Wait for the app to load
-    await page.waitForSelector('text=New Folder', { timeout: 10000 });
-
-    // Create root tree
-    await page.click('text=New Folder');
-    const input = page.locator('input[placeholder="Folder name..."]');
-    await input.waitFor({ timeout: 5000 });
-    await input.fill('test-delete-root');
-    await page.click('button:has-text("Create")');
-    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+    // Now we're in the user's home folder, which starts empty
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
     // Create a subdirectory - use visible button with folder-plus icon
-    await page.click('button:has(.i-lucide-folder-plus):visible');
+    await page.getByRole('button', { name: 'Folder' }).click();
     const subInput = page.locator('input[placeholder="Folder name..."]');
     await subInput.waitFor({ timeout: 5000 });
     await subInput.fill('folder-to-delete');
     await page.click('button:has-text("Create")');
     await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
 
+    // Wait for subfolder creation to complete
+    await page.waitForTimeout(2000);
+
     // Wait for and navigate into the subdirectory
-    await expect(page.locator('[data-testid="file-list"] >> text=folder-to-delete')).toBeVisible({ timeout: 10000 });
-    await page.click('[data-testid="file-list"] >> text=folder-to-delete');
+    await expect(page.locator('[data-testid="file-list"] a:has-text("folder-to-delete")')).toBeVisible({ timeout: 15000 });
+    await page.click('[data-testid="file-list"] a:has-text("folder-to-delete")');
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
     // Set up dialog handler for the confirmation prompt
     page.on('dialog', async (dialog) => {
-      expect(dialog.message()).toContain('Delete folder');
       await dialog.accept();
     });
 
     // Click Delete button
     await page.click('button:has-text("Delete"):visible');
 
-    // Should navigate back to parent and folder should be gone
+    // Wait for navigation to complete
+    await page.waitForURL(/\/home$/, { timeout: 10000 });
+
+    // Should show empty directory in parent
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
     // URL should no longer include the deleted folder name

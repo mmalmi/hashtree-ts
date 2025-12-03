@@ -160,9 +160,10 @@ export function Viewer() {
   const isHtml = mimeType === 'text/html';
   const canEdit = !viewedNpub || viewedNpub === userNpub || !isLoggedIn;
 
-  // Check if currently viewed file was recently changed (for LIVE indicator)
+  // Check if currently viewed file was recently changed
   const recentlyChangedFiles = useRecentlyChanged();
-  const isLive = urlFileName ? recentlyChangedFiles.has(urlFileName) : false;
+  const isWebm = mimeType === 'video/webm';
+  const isRecentlyChanged = urlFileName && !isEditing && recentlyChangedFiles.has(urlFileName);
 
   // Stable key for video - only changes when file path changes, not on hash updates
   const videoKeyRef = useRef<string | null>(null);
@@ -297,7 +298,7 @@ export function Viewer() {
           {/* File type icon */}
           <span className={`${getFileIcon(entry?.name || urlFileName || '')} text-text-2 shrink-0`} />
           {entry?.name || urlFileName || ''}
-          {isLive && (
+          {isRecentlyChanged && (
             <span className="ml-2 px-1.5 py-0.5 text-xs font-bold bg-red-600 text-white rounded animate-pulse">
               LIVE
             </span>

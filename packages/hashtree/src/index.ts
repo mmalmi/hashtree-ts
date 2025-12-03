@@ -29,6 +29,12 @@ export { sha256 } from './hash.js';
 
 // Encryption utilities
 export {
+  // CHK (Content Hash Key) encryption - deterministic, enables deduplication
+  encryptChk,
+  decryptChk,
+  contentHash,
+  encryptedSizeChk,
+  // Legacy encryption with random IV (deprecated, use CHK)
   encrypt,
   decrypt,
   generateKey,

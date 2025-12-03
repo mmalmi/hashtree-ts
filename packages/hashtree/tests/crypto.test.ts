@@ -140,13 +140,15 @@ describe('HashTree encrypted', () => {
       expect(decrypted).toEqual(data);
     });
 
-    it('should use provided key', async () => {
+    it('should derive deterministic key from content (CHK)', async () => {
       const data = new TextEncoder().encode('hello');
-      const providedKey = generateKey();
 
-      const { key } = await tree.putFileEncrypted(data, providedKey);
+      // With CHK, same content always produces same key
+      const result1 = await tree.putFileEncrypted(data);
+      const result2 = await tree.putFileEncrypted(data);
 
-      expect(key).toBe(providedKey);
+      expect(result1.key).toEqual(result2.key);
+      expect(result1.hash).toEqual(result2.hash);
     });
 
     it('should fail to decrypt with wrong key', async () => {
