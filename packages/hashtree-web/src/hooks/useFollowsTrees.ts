@@ -41,7 +41,13 @@ export function useFollowsTrees(): { trees: FollowedTree[]; loading: boolean; fo
 
     const processTreeEvent = (event: { id: string; pubkey: string; tags: string[][]; content: string; created_at?: number }) => {
       const dTag = event.tags.find(t => t[0] === 'd')?.[1];
-      if (!dTag || !event.content) return;
+      if (!dTag) return;
+
+      // Read hash and optional key from tags
+      const rootHash = event.tags.find(t => t[0] === 'hash')?.[1];
+      if (!rootHash) return;
+
+      const rootKey = event.tags.find(t => t[0] === 'key')?.[1];
 
       const key = `${event.pubkey}:${dTag}`;
       const existing = latestByKey.get(key);
@@ -52,7 +58,8 @@ export function useFollowsTrees(): { trees: FollowedTree[]; loading: boolean; fo
           pubkey: event.pubkey,
           npub: nip19.npubEncode(event.pubkey),
           name: dTag,
-          rootHash: event.content,
+          rootHash,
+          rootKey,
           created_at: event.created_at || 0,
         });
         updateTrees();

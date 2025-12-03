@@ -37,9 +37,22 @@ export interface NostrFilter {
 // Subscription entry
 interface SubscriptionEntry {
   unsubscribe: () => void;
-  callbacks: Set<(hash: Hash | null) => void>;
+  callbacks: Set<(hash: Hash | null, key?: Hash) => void>;
   currentHash: string | null;
+  currentKey: string | null;
   latestCreatedAt: number;
+}
+
+/**
+ * Parse hash and optional key from a nostr event
+ * New format: hash and optional key stored in tags
+ */
+function parseHashAndKey(event: NostrEvent): { hash: string; key?: string } | null {
+  const hashTag = event.tags.find(t => t[0] === 'hash')?.[1];
+  if (!hashTag) return null;
+
+  const keyTag = event.tags.find(t => t[0] === 'key')?.[1];
+  return { hash: hashTag, key: keyTag };
 }
 
 export interface NostrRefResolverConfig {
@@ -105,9 +118,12 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             const dTag = event.tags.find(t => t[0] === 'd')?.[1];
             if (dTag !== treeName) return;
 
+            const hashAndKey = parseHashAndKey(event);
+            if (!hashAndKey) return;
+
             if ((event.created_at || 0) > latestCreatedAt) {
               latestCreatedAt = event.created_at || 0;
-              latestHash = event.content;
+              latestHash = hashAndKey.hash;
             }
 
             // Got a hash, resolve immediately
@@ -125,7 +141,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
      * Callback fires on each update (including initial value).
      * This runs outside React render cycle.
      */
-    subscribe(key: string, callback: (hash: Hash | null) => void): () => void {
+    subscribe(key: string, callback: (hash: Hash | null, encryptionKey?: Hash) => void): () => void {
       const parsed = parseKey(key);
       if (!parsed) {
         callback(null);
@@ -142,7 +158,8 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
         sub.callbacks.add(callback);
         // Fire immediately with current value
         if (sub.currentHash) {
-          callback(fromHex(sub.currentHash));
+          const keyBytes = sub.currentKey ? fromHex(sub.currentKey) : undefined;
+          callback(fromHex(sub.currentHash), keyBytes);
         }
       } else {
         // Create new subscription
@@ -160,18 +177,24 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             const subEntry = subscriptions.get(key);
             if (!subEntry) return;
 
+            const hashAndKey = parseHashAndKey(event);
+            if (!hashAndKey) return;
+
             const eventCreatedAt = event.created_at || 0;
-            const newHash = event.content;
+            const newHash = hashAndKey.hash;
+            const newKey = hashAndKey.key;
 
             // Only update if this event is newer
             if (eventCreatedAt >= subEntry.latestCreatedAt && newHash && newHash !== subEntry.currentHash) {
               subEntry.currentHash = newHash;
+              subEntry.currentKey = newKey || null;
               subEntry.latestCreatedAt = eventCreatedAt;
               const hashBytes = fromHex(newHash);
+              const keyBytes = newKey ? fromHex(newKey) : undefined;
               // Notify all callbacks
               for (const cb of subEntry.callbacks) {
                 try {
-                  cb(hashBytes);
+                  cb(hashBytes, keyBytes);
                 } catch (e) {
                   console.error('Resolver callback error:', e);
                 }
@@ -184,6 +207,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           unsubscribe,
           callbacks: new Set([callback]),
           currentHash: null,
+          currentKey: null,
           latestCreatedAt: 0,
         };
         subscriptions.set(key, sub);
@@ -206,8 +230,11 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
     /**
      * Publish/update a pointer
+     * @param key - The key to publish to
+     * @param hash - The hash to publish
+     * @param encryptionKey - Optional encryption key for encrypted trees
      */
-    async publish(key: string, hash: Hash): Promise<boolean> {
+    async publish(key: string, hash: Hash, encryptionKey?: Hash): Promise<boolean> {
       const parsed = parseKey(key);
       if (!parsed) return false;
 
@@ -218,14 +245,22 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
       try {
         const hashHex = toHex(hash);
+        const keyHex = encryptionKey ? toHex(encryptionKey) : undefined;
+
+        // Build tags - new format with hash/key in tags
+        const tags: string[][] = [
+          ['d', treeName],
+          ['l', 'hashtree'],
+          ['hash', hashHex],
+        ];
+        if (keyHex) {
+          tags.push(['key', keyHex]);
+        }
 
         const success = await nostrPublish({
           kind: 30078,
-          content: hashHex,
-          tags: [
-            ['d', treeName],
-            ['l', 'hashtree'],
-          ],
+          content: '', // Empty content in new format
+          tags,
         });
 
         if (success) {
@@ -233,11 +268,13 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           const sub = subscriptions.get(key);
           if (sub) {
             sub.currentHash = hashHex;
+            sub.currentKey = keyHex || null;
             sub.latestCreatedAt = Math.floor(Date.now() / 1000);
+            const keyBytes = keyHex ? fromHex(keyHex) : undefined;
             // Notify callbacks
             for (const cb of sub.callbacks) {
               try {
-                cb(hash);
+                cb(hash, keyBytes);
               } catch (e) {
                 console.error('Resolver callback error:', e);
               }
@@ -257,7 +294,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
      * Streams results as they arrive - returns unsubscribe function.
      * Caller decides when to stop listening.
      */
-    list(prefix: string, callback: (entries: Array<{ key: string; hash: Hash }>) => void): () => void {
+    list(prefix: string, callback: (entries: Array<{ key: string; hash: Hash; encryptionKey?: Hash }>) => void): () => void {
       const parts = prefix.split('/');
       if (parts.length === 0) {
         callback([]);
@@ -280,14 +317,15 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
       }
 
       // Track entries by d-tag
-      const entriesByDTag = new Map<string, { hash: string; created_at: number }>();
+      const entriesByDTag = new Map<string, { hash: string; key?: string; created_at: number }>();
 
       const emitCurrentState = () => {
-        const result: Array<{ key: string; hash: Hash }> = [];
+        const result: Array<{ key: string; hash: Hash; encryptionKey?: Hash }> = [];
         for (const [dTag, entry] of entriesByDTag) {
           result.push({
             key: `${npubStr}/${dTag}`,
             hash: fromHex(entry.hash),
+            encryptionKey: entry.key ? fromHex(entry.key) : undefined,
           });
         }
         callback(result);
@@ -301,12 +339,16 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
         },
         (event) => {
           const dTag = event.tags.find(t => t[0] === 'd')?.[1];
-          if (!dTag || !event.content) return;
+          if (!dTag) return;
+
+          const hashAndKey = parseHashAndKey(event);
+          if (!hashAndKey) return;
 
           const existing = entriesByDTag.get(dTag);
           if (!existing || (event.created_at || 0) > existing.created_at) {
             entriesByDTag.set(dTag, {
-              hash: event.content,
+              hash: hashAndKey.hash,
+              key: hashAndKey.key,
               created_at: event.created_at || 0,
             });
             emitCurrentState();

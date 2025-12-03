@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { navigate } from '../utils/navigate';
 import { Avatar, Name } from './user';
-import { useNostrStore, loginWithNsec, loginWithExtension } from '../nostr';
+import { useNostrStore, loginWithNsec, loginWithExtension, generateNewKey } from '../nostr';
 import {
   useAccountsStore,
   createAccountFromNsec,
@@ -80,6 +81,12 @@ export function AccountsPage() {
     }
   };
 
+  const handleGenerateNew = () => {
+    setError('');
+    // generateNewKey creates a new keypair, sets it active, and adds to accounts store
+    generateNewKey();
+  };
+
   const handleSwitchAccount = async (account: Account) => {
     if (account.pubkey === myPubkey) return;
 
@@ -98,8 +105,6 @@ export function AccountsPage() {
       if (success) {
         setActiveAccount(account.pubkey);
         saveActiveAccountToStorage(account.pubkey);
-        // Navigate to the new user's profile
-        navigate(`/${account.npub}`);
       } else {
         setError('Failed to switch account');
       }
@@ -179,24 +184,32 @@ export function AccountsPage() {
           <div className="text-danger text-sm mt-3">{error}</div>
         )}
 
-        <div className="flex gap-2 mt-4">
-          {canShowExtensionOption && (
-            <button
-              onClick={handleAddExtension}
-              className="btn-ghost flex-1"
-            >
-              Add from Extension
-            </button>
-          )}
+        <div className="flex flex-col gap-2 mt-4">
+          <button
+            onClick={handleGenerateNew}
+            className="btn-success"
+          >
+            Generate new
+          </button>
 
-          {!showAddNsec ? (
-            <button
-              onClick={() => setShowAddNsec(true)}
-              className="btn-ghost flex-1"
-            >
-              Add with nsec
-            </button>
-          ) : (
+          <div className="flex gap-2">
+            {canShowExtensionOption && (
+              <button
+                onClick={handleAddExtension}
+                className="btn-ghost flex-1"
+              >
+                Add from Extension
+              </button>
+            )}
+
+            {!showAddNsec ? (
+              <button
+                onClick={() => setShowAddNsec(true)}
+                className="btn-ghost flex-1"
+              >
+                Add with nsec
+              </button>
+            ) : (
             <div className="flex flex-col gap-2 flex-1">
               <input
                 type="password"
@@ -226,6 +239,7 @@ export function AccountsPage() {
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>
@@ -246,12 +260,14 @@ function AccountRow({ account, isActive, isSwitching, canRemove, onSwitch, onRem
 
   return (
     <div className={`flex items-center gap-3 p-3 rounded-lg ${isActive ? 'bg-surface-2' : 'bg-surface-1 hover:bg-surface-2'}`}>
+      <Link to={`/${account.npub}`} className="shrink-0">
+        <Avatar pubkey={account.pubkey} size={40} />
+      </Link>
       <button
         onClick={onSwitch}
         disabled={isActive || isSwitching}
         className="flex items-center gap-3 flex-1 min-w-0 bg-transparent border-none cursor-pointer p-0 text-left disabled:cursor-default"
       >
-        <Avatar pubkey={account.pubkey} size={40} />
         <div className="flex-1 min-w-0">
           <div className="font-medium text-text-1 truncate">
             <Name pubkey={account.pubkey} />

@@ -197,16 +197,19 @@ export interface RefResolver {
    * Subscription stays open indefinitely until unsubscribed.
    *
    * @param key The key to watch
-   * @param callback Called with new hash (or null if deleted/unavailable)
+   * @param callback Called with new hash (or null if deleted/unavailable), and optional encryption key
    * @returns Unsubscribe function
    */
-  subscribe(key: string, callback: (hash: Hash | null) => void): () => void;
+  subscribe(key: string, callback: (hash: Hash | null, encryptionKey?: Hash) => void): () => void;
 
   /**
    * Publish/update a root hash (optional - only for writable backends)
+   * @param key The key to publish to
+   * @param hash The hash to publish
+   * @param encryptionKey Optional encryption key for encrypted trees
    * @returns true if published successfully
    */
-  publish?(key: string, hash: Hash): Promise<boolean>;
+  publish?(key: string, hash: Hash, encryptionKey?: Hash): Promise<boolean>;
 
   /**
    * List all keys matching a prefix.
@@ -214,10 +217,10 @@ export interface RefResolver {
    * Callback fires on each new entry or update.
    *
    * @param prefix The prefix to watch (e.g., "npub1..." for all trees of a user)
-   * @param callback Called with updated list as entries arrive
+   * @param callback Called with updated list as entries arrive (includes optional encryption key)
    * @returns Unsubscribe function
    */
-  list?(prefix: string, callback: (entries: Array<{ key: string; hash: Hash }>) => void): () => void;
+  list?(prefix: string, callback: (entries: Array<{ key: string; hash: Hash; encryptionKey?: Hash }>) => void): () => void;
 
   /**
    * Stop the resolver and clean up resources

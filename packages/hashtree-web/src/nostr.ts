@@ -46,7 +46,10 @@ export interface HashTreeEvent {
   id: string;
   pubkey: string;
   name: string;
+  /** Root hash (hex encoded) */
   rootHash: string;
+  /** Decryption key for encrypted trees (hex encoded, optional) */
+  rootKey?: string;
   created_at: number;
 }
 
@@ -371,19 +374,27 @@ export function logout() {
 
 /**
  * Save/publish hashtree to relays
+ * @param name - Tree name
+ * @param rootHash - Root hash (hex encoded)
+ * @param rootKey - Decryption key (hex encoded, optional for encrypted trees)
  */
-export async function saveHashtree(name: string, rootHash: string): Promise<boolean> {
+export async function saveHashtree(name: string, rootHash: string, rootKey?: string): Promise<boolean> {
   const store = useNostrStore.getState();
   if (!store.pubkey || !ndk.signer) return false;
 
   try {
     const event = new NDKEvent(ndk);
     event.kind = 30078;
-    event.content = rootHash;
+    event.content = ''; // Content is empty, data stored in tags
     event.tags = [
       ['d', name],
       ['l', 'hashtree'],
+      ['hash', rootHash],
     ];
+    // Only add key tag if present (encrypted tree)
+    if (rootKey) {
+      event.tags.push(['key', rootKey]);
+    }
 
     await event.publish();
 
@@ -393,6 +404,7 @@ export async function saveHashtree(name: string, rootHash: string): Promise<bool
       useNostrStore.getState().setSelectedTree({
         ...currentSelected,
         rootHash,
+        rootKey,
         created_at: event.created_at || Math.floor(Date.now() / 1000),
       });
     }
@@ -435,9 +447,11 @@ export function isOwnTree(): boolean {
 
 /**
  * Autosave current tree if it's our own
+ * @param rootHash - Root hash (hex encoded)
+ * @param rootKey - Decryption key (hex encoded, optional for encrypted trees)
  */
-export async function autosaveIfOwn(newRootHash: string): Promise<boolean> {
+export async function autosaveIfOwn(rootHash: string, rootKey?: string): Promise<boolean> {
   const store = useNostrStore.getState();
   if (!isOwnTree() || !store.selectedTree) return false;
-  return saveHashtree(store.selectedTree.name, newRootHash);
+  return saveHashtree(store.selectedTree.name, rootHash, rootKey);
 }
