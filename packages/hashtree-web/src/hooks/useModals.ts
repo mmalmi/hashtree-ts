@@ -10,6 +10,17 @@ interface ForkTarget {
   suggestedName: string;
 }
 
+interface ArchiveFile {
+  name: string;
+  data: Uint8Array;
+  size: number;
+}
+
+interface ExtractTarget {
+  archiveName: string;
+  files: ArchiveFile[];
+}
+
 interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
@@ -17,6 +28,8 @@ interface ModalState {
   renameTarget: string; // Original name of item being renamed
   showForkModal: boolean;
   forkTarget: ForkTarget | null;
+  showExtractModal: boolean;
+  extractTarget: ExtractTarget | null;
   modalInput: string;
 }
 
@@ -28,6 +41,8 @@ let state: ModalState = {
   renameTarget: '',
   showForkModal: false,
   forkTarget: null,
+  showExtractModal: false,
+  extractTarget: null,
   modalInput: '',
 };
 
@@ -77,6 +92,16 @@ export function closeForkModal() {
   emit();
 }
 
+export function openExtractModal(archiveName: string, files: ArchiveFile[]) {
+  state = { ...state, showExtractModal: true, extractTarget: { archiveName, files }, modalInput: '' };
+  emit();
+}
+
+export function closeExtractModal() {
+  state = { ...state, showExtractModal: false, extractTarget: null, modalInput: '' };
+  emit();
+}
+
 export function setModalInput(input: string) {
   state = { ...state, modalInput: input };
   emit();
@@ -95,6 +120,10 @@ export function useModals() {
     closeRenameModal,
     openForkModal,
     closeForkModal,
+    openExtractModal,
+    closeExtractModal,
     setModalInput,
   };
 }
+
+export type { ArchiveFile, ExtractTarget };

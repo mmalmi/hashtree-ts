@@ -7,6 +7,7 @@ import {
   CreateModal,
   RenameModal,
   ForkModal,
+  ExtractModal,
   NostrLogin,
   ConnectivityIndicator,
   SearchInput,
@@ -533,6 +534,7 @@ export function App() {
         <CreateModal />
         <RenameModal />
         <ForkModal />
+        <ExtractModal />
       </div>
     </HashRouter>
   );

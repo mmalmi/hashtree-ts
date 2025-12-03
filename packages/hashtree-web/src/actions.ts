@@ -387,6 +387,56 @@ export async function forkTree(dirHash: Hash, name: string): Promise<boolean> {
   return success;
 }
 
+// Upload extracted files from an archive
+export async function uploadExtractedFiles(files: { name: string; data: Uint8Array; size: number }[]): Promise<void> {
+  if (files.length === 0) return;
+
+  const tree = getTree();
+  const state = useAppStore.getState();
+  const currentPath = getCurrentPathFromUrl();
+
+  // Build directory structure from file paths
+  // Files may have paths like "folder/subfolder/file.txt"
+  const dirEntries = new Map<string, { name: string; hash: Uint8Array; size: number; isTree?: boolean }[]>();
+
+  for (const file of files) {
+    const { hash, size } = await tree.putFile(file.data);
+    const pathParts = file.name.split('/');
+    const fileName = pathParts.pop()!;
+    const dirPath = pathParts.join('/');
+
+    if (!dirEntries.has(dirPath)) {
+      dirEntries.set(dirPath, []);
+    }
+    dirEntries.get(dirPath)!.push({ name: fileName, hash, size });
+  }
+
+  // Get sorted directory paths (shortest first to create parent dirs first)
+  const sortedDirs = Array.from(dirEntries.keys()).sort((a, b) => a.split('/').length - b.split('/').length);
+
+  let rootHash = state.rootHash;
+
+  // Process each directory level
+  for (const dirPath of sortedDirs) {
+    const entries = dirEntries.get(dirPath)!;
+    const targetPath = dirPath ? [...currentPath, ...dirPath.split('/')] : currentPath;
+
+    for (const entry of entries) {
+      if (rootHash) {
+        rootHash = await tree.setEntry(rootHash, targetPath, entry.name, entry.hash, entry.size, entry.isTree ?? false);
+      } else {
+        // First file - create the tree
+        rootHash = await tree.putDirectory([{ name: entry.name, hash: entry.hash, size: entry.size }]);
+      }
+    }
+  }
+
+  if (rootHash) {
+    state.setRootHash(rootHash);
+    await autosaveIfOwn(toHex(rootHash));
+  }
+}
+
 // Create a new tree (top-level folder on nostr or local)
 export async function createTree(name: string): Promise<boolean> {
   if (!name) return false;

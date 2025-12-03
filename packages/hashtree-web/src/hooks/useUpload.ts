@@ -11,6 +11,8 @@ import { navigate } from '../utils/navigate';
 import { getCurrentPathFromUrl, parseRoute } from '../utils/route';
 import { clearFileSelection } from '../actions';
 import { markFilesChanged } from './useRecentlyChanged';
+import { openExtractModal, type ArchiveFile } from './useModals';
+import { isArchiveFile, extractArchive } from '../utils/compression';
 import { nip19 } from 'nostr-tools';
 
 // Upload progress type
@@ -123,6 +125,28 @@ export function useUpload() {
       for (const chunk of chunks) {
         data.set(chunk, offset);
         offset += chunk.length;
+      }
+
+      // Check if this is an archive file and offer to extract
+      if (isArchiveFile(file.name)) {
+        try {
+          const extractedFiles = extractArchive(data, file.name);
+          if (extractedFiles.length > 0) {
+            // Convert to ArchiveFile format and show modal
+            const archiveFiles: ArchiveFile[] = extractedFiles.map(f => ({
+              name: f.name,
+              data: f.data,
+              size: f.data.length,
+            }));
+            setUploadProgress(null);
+            openExtractModal(file.name, archiveFiles);
+            // Don't continue with normal upload - the modal will handle it
+            return;
+          }
+        } catch (err) {
+          console.warn('Failed to parse archive, uploading as regular file:', err);
+          // Fall through to normal upload
+        }
       }
 
       const { hash, size } = await tree.putFile(data);

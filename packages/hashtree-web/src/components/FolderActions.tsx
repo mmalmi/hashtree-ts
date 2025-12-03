@@ -1,6 +1,7 @@
 /**
  * Shared folder action buttons - used in FileBrowser and Preview
  */
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fromHex, nhashEncode } from 'hashtree';
 import { openCreateModal, openRenameModal, openForkModal } from '../hooks/useModals';
@@ -8,6 +9,8 @@ import { useUpload } from '../hooks/useUpload';
 import { useRoute, useTrees } from '../hooks';
 import { deleteCurrentFolder } from '../actions';
 import { useNostrStore } from '../nostr';
+import { getTree } from '../store';
+import { createZipFromDirectory, downloadBlob } from '../utils/compression';
 
 interface FolderActionsProps {
   dirHash?: string | null;
@@ -32,6 +35,7 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
   const { uploadFiles } = useUpload();
   const route = useRoute();
   const userNpub = useNostrStore(s => s.npub);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Get user's own trees for fork name suggestions
   const ownTrees = useTrees(userNpub);
@@ -49,6 +53,23 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
     if (!dirHash) return;
     const suggestedName = suggestForkName(forkBaseName, ownTreeNames);
     openForkModal(fromHex(dirHash), suggestedName);
+  };
+
+  // Handle download as ZIP
+  const handleDownloadZip = async () => {
+    if (!dirHash || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const tree = getTree();
+      const zipData = await createZipFromDirectory(tree, fromHex(dirHash), forkBaseName);
+      const zipName = `${forkBaseName}.zip`;
+      downloadBlob(zipData, zipName, 'application/zip');
+    } catch (err) {
+      console.error('Failed to create ZIP:', err);
+      alert('Failed to create ZIP file');
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   if (!dirHash && !canEdit) return null;
@@ -78,6 +99,15 @@ export function FolderActions({ dirHash, canEdit, compact = false }: FolderActio
           <button onClick={handleFork} className={`btn-ghost ${btnClass}`} title="Fork as new top-level folder">
             <span className="i-lucide-git-fork" />
             Fork
+          </button>
+          <button
+            onClick={handleDownloadZip}
+            disabled={isDownloading}
+            className={`btn-ghost ${btnClass}`}
+            title="Download directory as ZIP"
+          >
+            <span className={isDownloading ? "i-lucide-loader-2 animate-spin" : "i-lucide-archive"} />
+            {isDownloading ? 'Zipping...' : 'ZIP'}
           </button>
         </>
       )}
