@@ -5,7 +5,7 @@
  */
 
 import { WebRTCStore, MemoryStore, sha256 } from 'hashtree';
-import { generateSecretKey, getPublicKey, finalizeEvent, nip04 } from 'nostr-tools';
+import { generateSecretKey, getPublicKey, finalizeEvent, nip04, type EventTemplate } from 'nostr-tools';
 
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -45,7 +45,7 @@ export function initWebRTCTest() {
       const pubkey = getPublicKey(secretKey);
       console.log(`Our pubkey: ${pubkey.slice(0, 16)}...`);
 
-      const signer = async (event: any) => finalizeEvent(event, secretKey);
+      const signer = async (event: EventTemplate) => finalizeEvent(event, secretKey);
       const encrypt = async (pk: string, plaintext: string) => nip04.encrypt(secretKey, pk, plaintext);
       const decrypt = async (pk: string, ciphertext: string) => nip04.decrypt(secretKey, pk, ciphertext);
 
@@ -171,7 +171,7 @@ export function initWebRTCTest() {
       const pubkey = getPublicKey(secretKey);
       console.log(`Our pubkey: ${pubkey.slice(0, 16)}...`);
 
-      const signer = async (event: any) => finalizeEvent(event, secretKey);
+      const signer = async (event: EventTemplate) => finalizeEvent(event, secretKey);
       const encrypt = async (pk: string, plaintext: string) => nip04.encrypt(secretKey, pk, plaintext);
       const decrypt = async (pk: string, ciphertext: string) => nip04.decrypt(secretKey, pk, ciphertext);
 

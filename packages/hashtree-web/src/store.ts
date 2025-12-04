@@ -62,8 +62,9 @@ export const useAppStore = create<AppState>((set) => ({
 
 // Expose for debugging in tests
 if (typeof window !== 'undefined') {
-  (window as any).__appStore = useAppStore;
-  (window as any).__idbStore = idbStore;
+  const win = window as Window & { __appStore?: typeof useAppStore; __idbStore?: typeof idbStore };
+  win.__appStore = useAppStore;
+  win.__idbStore = idbStore;
 }
 
 // Format bytes

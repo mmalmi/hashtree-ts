@@ -104,7 +104,7 @@ export const useNostrStore = create<NostrState>((set) => ({
 
 // Expose for debugging in tests
 if (typeof window !== 'undefined') {
-  (window as any).__nostrStore = useNostrStore;
+  (window as Window & { __nostrStore?: typeof useNostrStore }).__nostrStore = useNostrStore;
 }
 
 // Private key (only set for nsec login)

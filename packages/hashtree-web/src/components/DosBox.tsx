@@ -13,13 +13,24 @@ import { saveFile } from '../actions';
 // Import WASM files with ?url to get their resolved paths
 import wdosboxWasmUrl from 'emulators/dist/wdosbox.wasm?url';
 
+// DOSBox emulator instance type
+interface DosInstance {
+  exit: () => Promise<void>;
+}
+
+// Filesystem node type from js-dos
+interface FsNode {
+  name: string;
+  nodes?: FsNode[];
+}
+
 // Type declaration for the emulators global
 declare global {
   interface Window {
     emulators: {
       pathPrefix: string;
-      dosboxDirect: (bundle: Uint8Array) => Promise<any>;
-      dosboxWorker: (bundle: Uint8Array) => Promise<any>;
+      dosboxDirect: (bundle: Uint8Array) => Promise<DosInstance>;
+      dosboxWorker: (bundle: Uint8Array) => Promise<DosInstance>;
     };
   }
 }
@@ -96,7 +107,7 @@ export function DosBoxViewer({ directoryCid, exeName, onExit }: DosBoxViewerProp
   const [error, setError] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [collectedFiles, setCollectedFiles] = useState<CollectedFiles | null>(null);
-  const dosInstanceRef = useRef<any>(null);
+  const dosInstanceRef = useRef<DosInstance | null>(null);
   const [shouldStart, setShouldStart] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -429,7 +440,7 @@ echo.
             try {
               const fsTree = await ci.fsTree();
 
-              const syncNode = async (node: any, path: string = '') => {
+              const syncNode = async (node: FsNode, path: string = '') => {
                 const fullPath = path ? `${path}/${node.name}` : node.name;
 
                 if (node.nodes && node.nodes.length > 0) {
