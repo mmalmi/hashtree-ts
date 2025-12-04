@@ -50,8 +50,12 @@ export function SettingsPage() {
       <div className="flex-1 overflow-y-auto p-4 space-y-6 w-full max-w-md mx-auto">
         {/* Relays */}
         <div>
-          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3 flex items-center gap-2">
             Relays ({relayList.length})
+            <span
+              className="i-lucide-info text-sm cursor-help"
+              title="Relays are used to find peers"
+            />
           </h3>
           <div className="bg-surface-2 rounded divide-y divide-surface-3">
             {relayList.map((relay) => {
@@ -68,8 +72,12 @@ export function SettingsPage() {
 
         {/* Peers */}
         <div>
-          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3">
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3 flex items-center gap-2">
             Peers ({peerCountVal})
+            <span
+              className="i-lucide-info text-sm cursor-help"
+              title="Peers are used to exchange data"
+            />
           </h3>
           {myPeerId && (
             <div className="text-xs text-muted mb-2 font-mono">
