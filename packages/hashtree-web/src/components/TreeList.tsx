@@ -31,7 +31,7 @@ export function TreeList({ onSelect, onNewTree }: Props) {
     <div className="flex-1 flex flex-col min-h-0 p-3">
       <div className="mb-3">
         {viewedNpub ? (
-          <UserRow pubkey={npubToPubkey(viewedNpub) || viewedNpub} avatarSize={32} className="min-w-0" />
+          <UserRow pubkey={npubToPubkey(viewedNpub) || viewedNpub} avatarSize={32} showBadge={!isOwnTrees} className="min-w-0" />
         ) : (
           <span className="text-xs text-muted uppercase tracking-wide">Trees</span>
         )}
