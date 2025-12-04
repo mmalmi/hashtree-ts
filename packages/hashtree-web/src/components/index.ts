@@ -3,7 +3,7 @@ export { Viewer } from './Viewer';
 export { CreateModal, RenameModal, ForkModal, ExtractModal } from './Modal';
 export { NostrLogin } from './NostrLogin';
 export { ConnectivityIndicator } from './ConnectivityIndicator';
-export { SearchInput } from './SearchInput';
+export { SearchInput, MobileSearch } from './SearchInput';
 export { AppMenu } from './AppMenu';
 export { SettingsPage } from './SettingsPanel';
 export { WalletPage } from './WalletPage';

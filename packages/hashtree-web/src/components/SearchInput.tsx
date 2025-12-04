@@ -1,12 +1,11 @@
-import { useState, ChangeEvent, KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, ChangeEvent, KeyboardEvent } from 'react';
 import { nhashEncode, isNHash, isNPath } from 'hashtree';
 
 // Match 64 hex chars optionally followed by /filename
 const HASH_PATTERN = /^([a-f0-9]{64})(\/.*)?$/i;
 
-export function SearchInput() {
+function useSearchNavigation() {
   const [value, setValue] = useState('');
-  const [focused, setFocused] = useState(false);
 
   const navigate = (input: string) => {
     let trimmed = input.trim();
@@ -57,6 +56,13 @@ export function SearchInput() {
     return false;
   };
 
+  return { value, setValue, navigate };
+}
+
+export function SearchInput() {
+  const { value, setValue, navigate } = useSearchNavigation();
+  const [focused, setFocused] = useState(false);
+
   const handleInput = (e: ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value.trim();
     // Auto-navigate on paste if valid
@@ -73,20 +79,7 @@ export function SearchInput() {
 
   return (
     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-2 border transition-colors ${focused ? 'border-accent' : 'border-surface-3'}`}>
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="text-muted shrink-0"
-      >
-        <circle cx="11" cy="11" r="8" />
-        <path d="M21 21l-4.35-4.35" />
-      </svg>
+      <span className="i-lucide-search text-sm text-muted shrink-0" />
       <input
         type="text"
         value={value}
@@ -97,6 +90,74 @@ export function SearchInput() {
         placeholder="npub or hash..."
         className="bg-transparent border-none outline-none text-sm text-text-1 placeholder:text-muted w-40 lg:w-64"
       />
+    </div>
+  );
+}
+
+// Mobile search - shows icon button, expands to full header search on click
+export function MobileSearch() {
+  const [expanded, setExpanded] = useState(false);
+  const { value, setValue, navigate } = useSearchNavigation();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (expanded && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [expanded]);
+
+  const handleInput = (e: ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value.trim();
+    if (!navigate(newValue)) {
+      setValue(e.target.value);
+    } else {
+      setExpanded(false);
+    }
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      if (navigate(value.trim())) {
+        setExpanded(false);
+      }
+    } else if (e.key === 'Escape') {
+      setExpanded(false);
+      setValue('');
+    }
+  };
+
+  if (!expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        className="p-2 text-text-2 hover:text-text-1 hover:bg-surface-2 rounded-full transition-colors md:hidden"
+        title="Search"
+      >
+        <span className="i-lucide-search text-lg" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 flex items-center px-3 bg-surface-1 z-10 md:hidden">
+      <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-2 border border-accent">
+        <span className="i-lucide-search text-sm text-muted shrink-0" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={value}
+          onChange={handleInput}
+          onKeyDown={handleKeyDown}
+          placeholder="npub or hash..."
+          className="flex-1 bg-transparent border-none outline-none text-sm text-text-1 placeholder:text-muted"
+        />
+      </div>
+      <button
+        onClick={() => { setExpanded(false); setValue(''); }}
+        className="ml-2 p-2 text-text-2 hover:text-text-1"
+      >
+        <span className="i-lucide-x text-lg" />
+      </button>
     </div>
   );
 }
