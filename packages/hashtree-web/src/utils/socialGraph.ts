@@ -410,12 +410,14 @@ export function useFollows(pubkey: string | null | undefined): Set<string> {
 }
 
 /**
- * Hook to get the graph size
+ * Hook to get the graph size (number of users)
  */
 export function useGraphSize(): number {
   useSocialGraphStore((state) => state.version);
   if (!instance) return 0;
-  return instance.size();
+  const size = instance.size();
+  // size() returns an object with users, follows, mutes, sizeByDistance
+  return typeof size === 'object' && size !== null ? (size as { users: number }).users : 0;
 }
 
 /**
