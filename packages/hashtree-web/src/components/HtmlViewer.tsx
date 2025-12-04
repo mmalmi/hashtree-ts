@@ -267,10 +267,15 @@ export function HtmlViewer({ html, directoryCid, filename }: HtmlViewerProps) {
     return () => { cancelled = true; };
   }, [directoryCid]);
 
-  // Create blob URLs and modified HTML
+  // Create blob URLs and modified HTML (only when files are loaded)
   const { blobUrl, cleanup } = useMemo(() => {
-    if (loading || files.length === 0) {
-      // Just render HTML without directory context
+    if (loading) {
+      // Don't create blob URL while loading
+      return { blobUrl: '', cleanup: () => {} };
+    }
+
+    if (files.length === 0) {
+      // No sibling files - just render HTML as-is
       const blob = new Blob([html], { type: 'text/html' });
       return { blobUrl: URL.createObjectURL(blob), cleanup: () => {} };
     }
@@ -307,12 +312,21 @@ export function HtmlViewer({ html, directoryCid, filename }: HtmlViewerProps) {
     );
   }
 
+  // Show loading state while collecting directory files
+  if (loading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-muted">
+        Loading resources...
+      </div>
+    );
+  }
+
   return (
     <iframe
       src={blobUrl}
       className="block w-full h-full border-none bg-surface-0"
       title={filename}
-      sandbox="allow-scripts"
+      sandbox="allow-scripts allow-same-origin"
     />
   );
 }
