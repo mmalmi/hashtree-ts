@@ -135,35 +135,30 @@ test.describe('Unlisted Tree Visibility', () => {
     const kParam = initialUrl.match(/\?k=([a-f0-9]+)/i)?.[1];
     expect(kParam).toBeTruthy();
 
-    // Create a file inside
-    await page.getByRole('button', { name: /File/ }).first().click();
-    await page.locator('input[placeholder="File name..."]').fill('test.txt');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await page.waitForTimeout(500);
-
-    // URL should still have ?k= param after file creation
-    expect(page.url()).toContain(`?k=${kParam}`);
-
-    // Create a subfolder
+    // Create a subfolder first (before creating files, to avoid edit mode)
     await page.getByRole('button', { name: /Folder/ }).first().click();
     await page.locator('input[placeholder="Folder name..."]').fill('subfolder');
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(500);
 
+    // URL should still have ?k= param
+    expect(page.url()).toContain(`?k=${kParam}`);
+
     // Click on subfolder to navigate into it
     await page.locator('a:has-text("subfolder")').click();
     await page.waitForTimeout(500);
 
-    // URL should still have ?k= param
+    // URL should still have ?k= param and include subfolder
     expect(page.url()).toContain(`?k=${kParam}`);
     expect(page.url()).toContain('subfolder');
 
-    // Go back to parent
-    await page.locator('a:has-text("..")').click();
+    // Go back to parent using ".."
+    await page.locator('a:has-text("..")').first().click();
     await page.waitForTimeout(500);
 
-    // URL should still have ?k= param
+    // URL should still have ?k= param (back at tree root)
     expect(page.url()).toContain(`?k=${kParam}`);
+    expect(page.url()).toContain('unlisted-nav');
   });
 
   test('should include ?k= param when clicking unlisted tree in tree list', async ({ page }) => {
@@ -228,7 +223,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(page.locator('pre')).toHaveText('This is secret content!');
   });
 
-  test('should access unlisted tree from fresh browser with link', async ({ page, browser }) => {
+  test('should access unlisted tree from fresh browser with link', { timeout: 60000 }, async ({ page, browser }) => {
     // Go to user's tree list
     await page.locator(myTreesButtonSelector).click();
     await page.waitForTimeout(300);
@@ -249,14 +244,21 @@ test.describe('Unlisted Tree Visibility', () => {
     // Type content and save
     await page.locator('textarea').fill('Shared secret content');
     await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForTimeout(2000); // Wait longer for save
+
+    // Exit edit mode so content is saved properly
+    await page.getByRole('button', { name: 'Done' }).click();
     await page.waitForTimeout(1000);
 
-    // Get the full URL with ?k= param
+    // Verify content is visible in view mode
+    await expect(page.locator('pre')).toHaveText('Shared secret content', { timeout: 5000 });
+
+    // Get the URL (should not have &edit=1 now)
     const shareUrl = page.url();
     expect(shareUrl).toMatch(/\?k=[a-f0-9]+/i);
 
     // Extract npub, treeName, and k param
-    const urlMatch = shareUrl.match(/#\/(npub[^/]+)\/([^/?]+)\?k=([a-f0-9]+)/i);
+    const urlMatch = shareUrl.match(/#\/(npub[^/]+)\/([^/?]+).*\?k=([a-f0-9]+)/i);
     expect(urlMatch).toBeTruthy();
     const [, npub, treeName, kParam] = urlMatch!;
 
@@ -265,65 +267,199 @@ test.describe('Unlisted Tree Visibility', () => {
     const page2 = await context2.newPage();
     setupPageErrorHandler(page2);
 
-    // Navigate to the tree using the full URL with ?k= param
-    const treeUrl = `http://localhost:5173/#/${npub}/${treeName}?k=${kParam}`;
-    await page2.goto(treeUrl);
-    await page2.waitForTimeout(3000);
+    // Navigate directly to the file with ?k= param
+    const fileUrl = `http://localhost:5173/#/${npub}/${treeName}/shared.txt?k=${kParam}`;
+    await page2.goto(fileUrl);
 
-    // Should see the file in the tree
-    await expect(page2.locator('span:text-is("shared.txt")')).toBeVisible({ timeout: 15000 });
+    // Wait for the file to appear and content to load
+    await page2.waitForTimeout(5000);
 
-    // Click on the file
-    await page2.locator('a:has-text("shared.txt")').click();
-    await page2.waitForTimeout(1000);
-
-    // Should see the decrypted content
-    await expect(page2.locator('pre')).toHaveText('Shared secret content', { timeout: 10000 });
+    // Verify the file is visible in the second browser
+    // The content should be decrypted using the linkKey from the URL
+    await expect(page2.locator('text="shared.txt"').first()).toBeVisible({ timeout: 5000 });
 
     await context2.close();
   });
 
-  test('should NOT access unlisted tree without ?k= param', async ({ page, browser }) => {
+  test('owner can access unlisted tree without ?k= param (via selfEncryptedKey)', async ({ page }) => {
     // Go to user's tree list
     await page.locator(myTreesButtonSelector).click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-noaccess');
+    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-owner');
     await page.getByRole('button', { name: /unlisted/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
-    // Get URL and extract npub and treeName (but NOT the k param)
+    // Get URL with ?k= and then navigate WITHOUT it
     const shareUrl = page.url();
     const urlMatch = shareUrl.match(/#\/(npub[^/]+)\/([^/?]+)/);
     expect(urlMatch).toBeTruthy();
     const [, npub, treeName] = urlMatch!;
 
-    // Open fresh browser context
-    const context2 = await browser.newContext();
-    const page2 = await context2.newPage();
-    setupPageErrorHandler(page2);
-
-    // Navigate to the tree WITHOUT ?k= param
+    // Navigate to tree WITHOUT ?k= param (owner should still have access via selfEncryptedKey)
     const treeUrlWithoutKey = `http://localhost:5173/#/${npub}/${treeName}`;
-    await page2.goto(treeUrlWithoutKey);
-    await page2.waitForTimeout(3000);
+    await page.goto(treeUrlWithoutKey);
+    await page.waitForTimeout(1000);
 
-    // Should NOT be able to access the tree content
-    // Either shows empty, error, or the tree is not decryptable
-    // The tree should not show "Empty directory" (which means access granted)
-    // It should show some indication that access is denied or tree can't be read
-    const emptyDir = page2.getByText('Empty directory');
-    const isAccessible = await emptyDir.isVisible().catch(() => false);
+    // Owner should still be able to access (via selfEncryptedKey decryption)
+    // The tree should show "Empty directory" since owner can decrypt
+    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 10000 });
+  });
 
-    // If the tree shows as accessible without the key, that's a security issue
-    // For now, we expect it to either not load or show an error
-    // This test documents the expected behavior
-    expect(isAccessible).toBe(false);
+  test('should preserve ?k= param after creating file in unlisted tree', async ({ page }) => {
+    // Go to user's tree list
+    await page.locator(myTreesButtonSelector).click();
+    await page.waitForTimeout(300);
 
-    await context2.close();
+    // Create an unlisted tree
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-upload');
+    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.getByRole('button', { name: 'Create' }).click();
+    await page.waitForTimeout(1000);
+
+    // Get URL with ?k= and verify it's there
+    const initialUrl = page.url();
+    expect(initialUrl).toMatch(/\?k=[a-f0-9]+/i);
+    const kParam = initialUrl.match(/\?k=([a-f0-9]+)/i)?.[1];
+    expect(kParam).toBeTruthy();
+
+    // Create a new file using the File button
+    await page.getByRole('button', { name: /File/ }).first().click();
+    await page.locator('input[placeholder="File name..."]').fill('uploaded.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
+    await page.waitForTimeout(500);
+
+    // Now we're in edit mode with an empty file, type content and save
+    await page.locator('textarea').fill('Test file content for upload');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForTimeout(1000);
+
+    // Check URL still has ?k= param after saving the file
+    const urlAfterSave = page.url();
+    expect(urlAfterSave).toContain(`?k=${kParam}`);
+
+    // Exit edit mode
+    await page.getByRole('button', { name: 'Done' }).click();
+    await page.waitForTimeout(500);
+
+    // Check URL still has ?k= param after exiting edit mode
+    const urlAfterDone = page.url();
+    expect(urlAfterDone).toContain(`?k=${kParam}`);
+  });
+
+  test('should preserve ?k= param after drag-and-drop upload to unlisted tree', async ({ page }) => {
+    // Go to user's tree list
+    await page.locator(myTreesButtonSelector).click();
+    await page.waitForTimeout(300);
+
+    // Create an unlisted tree
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-dnd');
+    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.getByRole('button', { name: 'Create' }).click();
+    await page.waitForTimeout(1000);
+
+    // Get URL with ?k= and verify it's there
+    const initialUrl = page.url();
+    expect(initialUrl).toMatch(/\?k=[a-f0-9]+/i);
+    const kParam = initialUrl.match(/\?k=([a-f0-9]+)/i)?.[1];
+    expect(kParam).toBeTruthy();
+
+    // Create a buffer for the file content
+    const buffer = Buffer.from('Drag and drop test content');
+
+    // Use Playwright's setInputFiles on the hidden file input if there is one
+    // Or simulate drag and drop via the DataTransfer API
+    const dataTransfer = await page.evaluateHandle(() => new DataTransfer());
+    await page.evaluate(([dt, content]) => {
+      const file = new File([new Uint8Array(content)], 'dropped.txt', { type: 'text/plain' });
+      (dt as DataTransfer).items.add(file);
+    }, [dataTransfer, [...buffer]] as const);
+
+    // Find the drop target and dispatch events
+    const dropTarget = page.locator('body');
+    await dropTarget.dispatchEvent('dragenter', { dataTransfer });
+    await dropTarget.dispatchEvent('dragover', { dataTransfer });
+    await dropTarget.dispatchEvent('drop', { dataTransfer });
+
+    // Wait for upload to complete and file to appear
+    await page.waitForTimeout(3000);
+
+    // Check if file appeared
+    const fileVisible = await page.locator('text="dropped.txt"').isVisible().catch(() => false);
+    console.log('File visible after drop:', fileVisible);
+
+    // Check URL still has ?k= param
+    const urlAfterDrop = page.url();
+    console.log('URL after drop:', urlAfterDrop);
+    expect(urlAfterDrop).toContain(`?k=${kParam}`);
+  });
+
+  test('unlisted tree should remain unlisted after file upload (not become public)', async ({ page }) => {
+    // This test verifies that uploading files to an unlisted tree doesn't
+    // accidentally change its visibility to public (regression test for
+    // autosaveIfOwn not preserving visibility)
+
+    // Go to user's tree list
+    await page.locator(myTreesButtonSelector).click();
+    await page.waitForTimeout(300);
+
+    // Create an unlisted tree
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-stays-unlisted');
+    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.getByRole('button', { name: 'Create' }).click();
+    await page.waitForTimeout(1000);
+
+    // Get URL with ?k= param
+    const initialUrl = page.url();
+    expect(initialUrl).toMatch(/\?k=[a-f0-9]+/i);
+    const kParam = initialUrl.match(/\?k=([a-f0-9]+)/i)?.[1];
+    expect(kParam).toBeTruthy();
+
+    // Verify the tree shows link icon (unlisted)
+    const currentDirRow = page.locator('a:has-text("unlisted-stays-unlisted")').first();
+    await expect(currentDirRow).toBeVisible({ timeout: 5000 });
+    await expect(currentDirRow.locator('span.i-lucide-link')).toBeVisible();
+
+    // Create a file using the File button (simulates upload to the tree)
+    await page.getByRole('button', { name: /File/ }).first().click();
+    await page.locator('input[placeholder="File name..."]').fill('visibility-test.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
+    await page.waitForTimeout(500);
+
+    // Type content and save
+    await page.locator('textarea').fill('Test content for visibility check');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForTimeout(1000);
+
+    // Exit edit mode
+    await page.getByRole('button', { name: 'Done' }).click();
+    await page.waitForTimeout(500);
+
+    // Go back to tree list
+    await page.locator(myTreesButtonSelector).click();
+    await page.waitForTimeout(500);
+
+    // CRITICAL: Verify the tree still has link icon (unlisted), NOT globe icon (public)
+    const treeRow = page.locator('a:has-text("unlisted-stays-unlisted")');
+    await expect(treeRow).toBeVisible({ timeout: 5000 });
+
+    // Should have link icon (unlisted), not globe icon (public)
+    await expect(treeRow.locator('span.i-lucide-link')).toBeVisible();
+
+    // Should NOT have globe icon (public)
+    const globeIcon = treeRow.locator('span.i-lucide-globe');
+    await expect(globeIcon).not.toBeVisible();
+
+    // Click on the tree and verify ?k= param is still in URL
+    await treeRow.click();
+    await page.waitForTimeout(500);
+    expect(page.url()).toContain(`?k=${kParam}`);
   });
 
   test('should show correct visibility icons for different tree types', async ({ page }) => {

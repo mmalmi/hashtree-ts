@@ -30,6 +30,7 @@ import {
   saveActiveAccountToStorage,
   loadAccountsFromStorage,
 } from './accounts';
+import { parseRoute } from './utils/route';
 
 // Using global Window.nostr interface from NDK types
 
@@ -456,12 +457,15 @@ export async function saveHashtree(
           break;
 
         case 'unlisted':
-          // Encrypt key with link key
+          // Encrypt key with link key for sharing
           linkKey = options.linkKey ?? visibilityHex.generateLinkKey();
           const encryptedKey = await visibilityHex.encryptKeyForLink(rootKey, linkKey);
           const keyId = await visibilityHex.computeKeyId(linkKey);
           event.tags.push(['encryptedKey', encryptedKey]);
           event.tags.push(['keyId', keyId]);
+          // Also self-encrypt so owner can always access without link key
+          const selfEncryptedUnlisted = await nip04.encrypt(secretKey!, store.pubkey, rootKey);
+          event.tags.push(['selfEncryptedKey', selfEncryptedUnlisted]);
           break;
 
         case 'private':
@@ -524,11 +528,27 @@ export function isOwnTree(): boolean {
 
 /**
  * Autosave current tree if it's our own
+ * Preserves the tree's visibility setting (public/unlisted/private)
  * @param rootHash - Root hash (hex encoded)
  * @param rootKey - Decryption key (hex encoded, optional for encrypted trees)
  */
 export async function autosaveIfOwn(rootHash: string, rootKey?: string): Promise<boolean> {
   const store = useNostrStore.getState();
   if (!isOwnTree() || !store.selectedTree) return false;
-  return saveHashtree(store.selectedTree.name, rootHash, rootKey);
+
+  // Preserve the tree's visibility when autosaving
+  const visibility = store.selectedTree.visibility;
+
+  // For unlisted trees, get the linkKey from the URL
+  let linkKey: string | undefined;
+  if (visibility === 'unlisted') {
+    const route = parseRoute();
+    linkKey = route.linkKey ?? undefined;
+  }
+
+  const result = await saveHashtree(store.selectedTree.name, rootHash, rootKey, {
+    visibility,
+    linkKey,
+  });
+  return result.success;
 }

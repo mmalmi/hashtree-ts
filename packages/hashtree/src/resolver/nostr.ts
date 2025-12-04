@@ -7,7 +7,7 @@
  * render cycle. Components can subscribe to hash changes and update directly
  * (e.g., MediaSource append) without triggering re-renders.
  */
-import type { RefResolver, Hash, RefResolverListEntry } from '../types.js';
+import type { RefResolver, Hash, RefResolverListEntry, SubscribeVisibilityInfo } from '../types.js';
 import { fromHex, toHex } from '../types.js';
 
 // Nostr event structure (minimal)
@@ -37,9 +37,10 @@ export interface NostrFilter {
 // Subscription entry
 interface SubscriptionEntry {
   unsubscribe: () => void;
-  callbacks: Set<(hash: Hash | null, key?: Hash) => void>;
+  callbacks: Set<(hash: Hash | null, key?: Hash, visibilityInfo?: SubscribeVisibilityInfo) => void>;
   currentHash: string | null;
   currentKey: string | null;
+  currentVisibility: SubscribeVisibilityInfo | null;
   latestCreatedAt: number;
 }
 
@@ -75,10 +76,13 @@ function parseHashAndVisibility(event: NostrEvent): ParsedTreeVisibility | null 
   const selfEncryptedKey = event.tags.find(t => t[0] === 'selfEncryptedKey')?.[1];
 
   let visibility: TreeVisibility;
-  if (selfEncryptedKey) {
-    visibility = 'private';
-  } else if (encryptedKey) {
+  if (encryptedKey) {
+    // encryptedKey means unlisted (shareable via link)
+    // May also have selfEncryptedKey for owner access
     visibility = 'unlisted';
+  } else if (selfEncryptedKey) {
+    // Only selfEncryptedKey (no encryptedKey) means private
+    visibility = 'private';
   } else {
     visibility = 'public';
   }
@@ -182,7 +186,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
      * Callback fires on each update (including initial value).
      * This runs outside React render cycle.
      */
-    subscribe(key: string, callback: (hash: Hash | null, encryptionKey?: Hash) => void): () => void {
+    subscribe(key: string, callback: (hash: Hash | null, encryptionKey?: Hash, visibilityInfo?: SubscribeVisibilityInfo) => void): () => void {
       const parsed = parseKey(key);
       if (!parsed) {
         callback(null);
@@ -200,7 +204,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
         // Fire immediately with current value
         if (sub.currentHash) {
           const keyBytes = sub.currentKey ? fromHex(sub.currentKey) : undefined;
-          callback(fromHex(sub.currentHash), keyBytes);
+          callback(fromHex(sub.currentHash), keyBytes, sub.currentVisibility ?? undefined);
         }
       } else {
         // Create new subscription
@@ -218,24 +222,34 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             const subEntry = subscriptions.get(key);
             if (!subEntry) return;
 
-            const hashAndKey = parseHashAndKey(event);
-            if (!hashAndKey) return;
+            const visibilityData = parseHashAndVisibility(event);
+            if (!visibilityData) return;
 
             const eventCreatedAt = event.created_at || 0;
-            const newHash = hashAndKey.hash;
-            const newKey = hashAndKey.key;
+            const newHash = visibilityData.hash;
+            const newKey = visibilityData.key;
 
             // Only update if this event is newer
             if (eventCreatedAt >= subEntry.latestCreatedAt && newHash && newHash !== subEntry.currentHash) {
               subEntry.currentHash = newHash;
               subEntry.currentKey = newKey || null;
               subEntry.latestCreatedAt = eventCreatedAt;
+
+              // Build visibility info for callback
+              const visibilityInfo: SubscribeVisibilityInfo = {
+                visibility: visibilityData.visibility,
+                encryptedKey: visibilityData.encryptedKey,
+                keyId: visibilityData.keyId,
+                selfEncryptedKey: visibilityData.selfEncryptedKey,
+              };
+              subEntry.currentVisibility = visibilityInfo;
+
               const hashBytes = fromHex(newHash);
               const keyBytes = newKey ? fromHex(newKey) : undefined;
               // Notify all callbacks
               for (const cb of subEntry.callbacks) {
                 try {
-                  cb(hashBytes, keyBytes);
+                  cb(hashBytes, keyBytes, visibilityInfo);
                 } catch (e) {
                   console.error('Resolver callback error:', e);
                 }
@@ -249,6 +263,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           callbacks: new Set([callback]),
           currentHash: null,
           currentKey: null,
+          currentVisibility: null,
           latestCreatedAt: 0,
         };
         subscriptions.set(key, sub);

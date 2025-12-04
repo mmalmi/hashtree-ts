@@ -16,6 +16,7 @@ export type {
   StoreWithMeta,
   RefResolver,
   RefResolverListEntry,
+  SubscribeVisibilityInfo,
   // Legacy alias
   RefResolver as RootResolver,
 } from './types.js';

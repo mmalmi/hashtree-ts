@@ -211,6 +211,20 @@ export interface RefResolverListEntry {
 }
 
 /**
+ * Visibility info passed to subscribe callbacks
+ */
+export interface SubscribeVisibilityInfo {
+  /** Tree visibility: public, unlisted, or private */
+  visibility: 'public' | 'unlisted' | 'private';
+  /** Encrypted key for unlisted trees - decrypt with link key from URL */
+  encryptedKey?: string;
+  /** Key ID for unlisted trees */
+  keyId?: string;
+  /** Self-encrypted key for private/unlisted trees - decrypt with NIP-04 */
+  selfEncryptedKey?: string;
+}
+
+/**
  * RefResolver - Maps human-readable keys to merkle root hashes (refs)
  *
  * This abstraction allows different backends (Nostr, DNS, HTTP, local storage)
@@ -237,10 +251,10 @@ export interface RefResolver {
    * Subscription stays open indefinitely until unsubscribed.
    *
    * @param key The key to watch
-   * @param callback Called with new hash (or null if deleted/unavailable), and optional encryption key
+   * @param callback Called with new hash (or null if deleted/unavailable), optional encryption key (for public trees), and visibility info
    * @returns Unsubscribe function
    */
-  subscribe(key: string, callback: (hash: Hash | null, encryptionKey?: Hash) => void): () => void;
+  subscribe(key: string, callback: (hash: Hash | null, encryptionKey?: Hash, visibilityInfo?: SubscribeVisibilityInfo) => void): () => void;
 
   /**
    * Publish/update a root hash (optional - only for writable backends)

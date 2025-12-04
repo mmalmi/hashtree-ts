@@ -538,7 +538,7 @@ async function loadFromNostr(npubStr: string, treeName: string, _pathParts: stri
 
       // Subscribe to get both hash and key, and live updates
       // The useTreeRoot hook in components will automatically pick up updates from the resolver
-      resolver.subscribe(key, (hash, encryptionKey) => {
+      resolver.subscribe(key, (hash, encryptionKey, visibilityInfo) => {
         if (hash) {
           const hashHex = toHex(hash);
           const keyHex = encryptionKey ? toHex(encryptionKey) : undefined;
@@ -554,6 +554,10 @@ async function loadFromNostr(npubStr: string, treeName: string, _pathParts: stri
                 pubkey,
                 rootHash: hashHex,
                 rootKey: keyHex,
+                visibility: visibilityInfo?.visibility ?? 'public',
+                encryptedKey: visibilityInfo?.encryptedKey,
+                keyId: visibilityInfo?.keyId,
+                selfEncryptedKey: visibilityInfo?.selfEncryptedKey,
                 created_at: currentSelected?.created_at || Math.floor(Date.now() / 1000),
               });
             }

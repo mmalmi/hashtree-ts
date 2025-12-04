@@ -25,8 +25,8 @@ function getCurrentRootCid(): CID | null {
   return getTreeRootSync(route.npub, route.treeName);
 }
 
-// Build route URL
-function buildRouteUrl(npub: string | null, treeName: string | null, path: string[], fileName?: string): string {
+// Build route URL, preserving linkKey if present
+function buildRouteUrl(npub: string | null, treeName: string | null, path: string[], fileName?: string, linkKey?: string | null): string {
   const parts: string[] = [];
 
   if (npub && treeName) {
@@ -39,7 +39,11 @@ function buildRouteUrl(npub: string | null, treeName: string | null, path: strin
     parts.push(fileName);
   }
 
-  return '/' + parts.map(encodeURIComponent).join('/');
+  let url = '/' + parts.map(encodeURIComponent).join('/');
+  if (linkKey) {
+    url += `?k=${linkKey}`;
+  }
+  return url;
 }
 
 // Get current directory path from URL (excludes file if selected)
@@ -58,9 +62,10 @@ function getCurrentPathFromUrl(): string[] {
 function updateRoute(fileName?: string, options?: { edit?: boolean }) {
   const route = parseRoute();
   const currentPath = getCurrentPathFromUrl();
-  let url = buildRouteUrl(route.npub, route.treeName, currentPath, fileName);
+  let url = buildRouteUrl(route.npub, route.treeName, currentPath, fileName, route.linkKey);
   if (options?.edit) {
-    url += '?edit=1';
+    // Append edit param, preserving existing query string
+    url += url.includes('?') ? '&edit=1' : '?edit=1';
   }
   navigate(url);
 }
@@ -76,7 +81,7 @@ export function navigateTo(_hash: Hash, name?: string) {
     const route = parseRoute();
     const currentPath = getCurrentPathFromUrl();
     const newPath = [...currentPath, name];
-    const url = buildRouteUrl(route.npub, route.treeName, newPath);
+    const url = buildRouteUrl(route.npub, route.treeName, newPath, undefined, route.linkKey);
     navigate(url);
   }
 }
@@ -88,7 +93,7 @@ export function goBack() {
 
   const newPath = currentPath.slice(0, -1);
   const route = parseRoute();
-  const url = buildRouteUrl(route.npub, route.treeName, newPath);
+  const url = buildRouteUrl(route.npub, route.treeName, newPath, undefined, route.linkKey);
   navigate(url);
 }
 
@@ -271,7 +276,7 @@ export async function renameEntry(oldName: string, newName: string) {
   if (isRenamingCurrentDir) {
     // Navigate to the renamed directory
     const newPath = [...parentPath, newName];
-    const url = buildRouteUrl(route.npub, route.treeName, newPath);
+    const url = buildRouteUrl(route.npub, route.treeName, newPath, undefined, route.linkKey);
     navigate(url);
   } else if (lastSegment === oldName) {
     updateRoute(newName);
@@ -298,7 +303,7 @@ export async function deleteEntry(name: string) {
   const route = parseRoute();
   const urlFileName = route.path.length > 0 ? route.path[route.path.length - 1] : null;
   if (urlFileName === name) {
-    const url = buildRouteUrl(route.npub, route.treeName, currentPath);
+    const url = buildRouteUrl(route.npub, route.treeName, currentPath, undefined, route.linkKey);
     navigate(url);
   }
 }
@@ -325,7 +330,7 @@ export async function deleteCurrentFolder() {
   await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Navigate to parent directory
-  const url = buildRouteUrl(route.npub, route.treeName, parentPath);
+  const url = buildRouteUrl(route.npub, route.treeName, parentPath, undefined, route.linkKey);
   navigate(url);
 }
 
@@ -367,7 +372,7 @@ export async function moveEntry(sourceName: string, targetDirName: string) {
   const route = parseRoute();
   const urlFileName = route.path.length > 0 ? route.path[route.path.length - 1] : null;
   if (urlFileName === sourceName) {
-    const url = buildRouteUrl(route.npub, route.treeName, currentPath);
+    const url = buildRouteUrl(route.npub, route.treeName, currentPath, undefined, route.linkKey);
     navigate(url);
   }
 }
@@ -409,7 +414,7 @@ export async function moveToParent(sourceName: string) {
   const route = parseRoute();
   const urlFileName = route.path.length > 0 ? route.path[route.path.length - 1] : null;
   if (urlFileName === sourceName) {
-    const url = buildRouteUrl(route.npub, route.treeName, currentPath);
+    const url = buildRouteUrl(route.npub, route.treeName, currentPath, undefined, route.linkKey);
     navigate(url);
   }
 }

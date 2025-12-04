@@ -247,7 +247,12 @@ export function useUpload() {
       if (currentRoute.npub && currentRoute.treeName) {
         // Tree route: /npub/treeName/path/filename
         const parts = [currentRoute.npub, currentRoute.treeName, ...dirPath, fileName];
-        navigate('/' + parts.map(encodeURIComponent).join('/'));
+        let url = '/' + parts.map(encodeURIComponent).join('/');
+        // Preserve linkKey for unlisted trees
+        if (currentRoute.linkKey) {
+          url += `?k=${currentRoute.linkKey}`;
+        }
+        navigate(url);
       } else if (currentRoute.hash) {
         // Hash route: /nhash1.../path/filename
         const nhash = nhashEncode(currentRoute.hash);
