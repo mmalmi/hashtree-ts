@@ -8,6 +8,7 @@ import { npubToPubkey } from '../nostr';
 import { LiveVideo, LiveVideoFromHash } from './LiveVideo';
 import { StreamView } from './stream';
 import { FolderActions } from './FolderActions';
+import { DosBoxViewer, isDosExecutable } from './DosBox';
 import {
   formatBytes,
   decodeAsText,
@@ -164,7 +165,13 @@ export function Viewer() {
   const isVideo = mimeType?.startsWith('video/');
   const isImage = mimeType?.startsWith('image/');
   const isHtml = mimeType === 'text/html';
+  const isDosExe = urlFileName ? isDosExecutable(urlFileName) : false;
   const canEdit = !viewedNpub || viewedNpub === userNpub || !isLoggedIn;
+
+  // Debug: log DOS exe detection
+  if (isDosExe) {
+    console.log('[Viewer] DOS exe detected:', urlFileName, { isDosExe, entry: !!entry, currentDirCid: !!currentDirCid });
+  }
 
   // Check if currently viewed file was recently changed
   const recentlyChangedFiles = useRecentlyChanged();
@@ -188,7 +195,7 @@ export function Viewer() {
     setFileCid(null);
     setLoading(false);
 
-    if (!entry || isVideo) {
+    if (!entry || isVideo || isDosExe) {
       return;
     }
 
@@ -397,7 +404,7 @@ export function Viewer() {
       )}
 
       {/* Content */}
-      <div className={`flex-1 overflow-auto ${isVideo || isImage || isHtml ? '' : 'p-4'}`}>
+      <div className={`flex-1 overflow-auto ${isVideo || isImage || isHtml || isDosExe ? '' : 'p-4'}`}>
         {/* Show textarea immediately if in edit mode with a filename (even before entry loads) */}
         {isEditing && urlFileName ? (
           <textarea
@@ -410,6 +417,15 @@ export function Viewer() {
           <DirectoryActions />
         ) : loading ? (
           showLoading ? <div className="w-full h-full flex items-center justify-center text-muted">Loading...</div> : null
+        ) : isDosExe && currentDirCid ? (
+          // DOS executable - show DOSBox viewer
+          // Key on CID hash to prevent remounting when layout changes (fullscreen toggle)
+          <DosBoxViewer
+            key={toHex(entry.cid.hash)}
+            exeCid={entry.cid}
+            directoryCid={currentDirCid}
+            exeName={entry.name}
+          />
         ) : isVideo && mimeType ? (
           viewedNpub && currentTreeName ? (
             // Use resolver subscription for live updates
@@ -593,6 +609,8 @@ function getFileIcon(filename: string): string {
       return 'i-lucide-video';
     case 'mp3': case 'wav': case 'ogg': case 'flac': case 'm4a':
       return 'i-lucide-music';
+    case 'exe': case 'com': case 'bat':
+      return 'i-lucide-terminal';
     case 'js': case 'ts': case 'jsx': case 'tsx': case 'py': case 'rb': case 'go': case 'rs':
     case 'c': case 'cpp': case 'h': case 'java': case 'php': case 'sh': case 'bash':
       return 'i-lucide-file-code';

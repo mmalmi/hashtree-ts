@@ -273,6 +273,9 @@ export function FileBrowser() {
 
     if (key !== 'arrowup' && key !== 'arrowdown' && key !== 'arrowleft' && key !== 'arrowright' && key !== 'j' && key !== 'k' && key !== 'h' && key !== 'l') return;
 
+    // Don't prevent browser back/forward navigation (Ctrl/Cmd + Arrow)
+    if (e.ctrlKey || e.metaKey) return;
+
     e.preventDefault();
 
     // Start from focused index, or derive from selected entry
