@@ -93,132 +93,81 @@ async function collectDirectoryFiles(
   return files;
 }
 
+
 /**
- * Create blob URLs for all files and return a mapping
+ * Inline resources directly into HTML for security
+ * This avoids needing allow-same-origin in the sandbox
  */
-function createBlobUrls(files: DirectoryFile[]): Map<string, string> {
-  const urls = new Map<string, string>();
+function inlineResources(html: string, files: DirectoryFile[]): string {
+  // Create a map of filename -> file data
+  const fileMap = new Map<string, DirectoryFile>();
   for (const file of files) {
-    const blob = new Blob([file.data], { type: file.mimeType });
-    urls.set(file.name.toLowerCase(), URL.createObjectURL(blob));
-  }
-  return urls;
-}
-
-/**
- * Inject resource interception script into HTML
- * This rewrites relative URLs to use blob URLs
- */
-function injectResourceLoader(html: string, fileUrls: Map<string, string>): string {
-  // Create a JSON map of filename -> blob URL
-  const urlMap: Record<string, string> = {};
-  fileUrls.forEach((url, name) => {
-    urlMap[name] = url;
-  });
-
-  // Script that intercepts resource loading
-  const interceptScript = `
-<script>
-(function() {
-  const fileUrls = ${JSON.stringify(urlMap)};
-
-  // Helper to resolve URL
-  function resolveUrl(url) {
-    if (!url) return url;
-    // Skip absolute URLs and data URLs
-    if (url.startsWith('http://') || url.startsWith('https://') ||
-        url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('//')) {
-      return url;
-    }
-    // Remove leading ./ or /
-    const cleanUrl = url.replace(/^\\.?\\//, '').toLowerCase();
-    return fileUrls[cleanUrl] || url;
+    fileMap.set(file.name.toLowerCase(), file);
   }
 
-  // Override fetch
-  const originalFetch = window.fetch;
-  window.fetch = function(url, options) {
-    const resolved = resolveUrl(typeof url === 'string' ? url : url.url);
-    if (resolved !== url) {
-      return originalFetch(resolved, options);
-    }
-    return originalFetch(url, options);
-  };
-
-  // Override XMLHttpRequest
-  const originalXhrOpen = XMLHttpRequest.prototype.open;
-  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-    const resolved = resolveUrl(url);
-    return originalXhrOpen.call(this, method, resolved, ...rest);
-  };
-
-  // Observe DOM for new elements with src/href attributes
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeType === 1) {
-          const el = node;
-          if (el.src) el.src = resolveUrl(el.src);
-          if (el.href && el.tagName !== 'A') el.href = resolveUrl(el.href);
-          // Handle child elements
-          el.querySelectorAll && el.querySelectorAll('[src], link[href]').forEach((child) => {
-            if (child.src) child.src = resolveUrl(child.src);
-            if (child.href && child.tagName === 'LINK') child.href = resolveUrl(child.href);
-          });
-        }
-      });
-    });
-  });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-})();
-</script>
-`;
-
-  // Inject script at the beginning of <head> or after <!DOCTYPE>
-  if (html.includes('<head>')) {
-    return html.replace('<head>', '<head>' + interceptScript);
-  } else if (html.includes('<head ')) {
-    return html.replace(/<head\s/, '<head>' + interceptScript + '</head><head ');
-  } else if (html.toLowerCase().includes('<!doctype')) {
-    return html.replace(/<!doctype[^>]*>/i, '$&' + interceptScript);
-  } else {
-    return interceptScript + html;
-  }
-}
-
-/**
- * Rewrite static resource URLs in HTML
- */
-function rewriteStaticUrls(html: string, fileUrls: Map<string, string>): string {
   let result = html;
 
-  // Rewrite src attributes
+  // Inline <script src="..."> as <script>content</script>
   result = result.replace(
-    /(<(?:img|script|audio|video|source|embed|iframe)[^>]*\s)src\s*=\s*["']([^"']+)["']/gi,
-    (match, prefix, src) => {
+    /<script([^>]*)\ssrc\s*=\s*["']([^"']+)["']([^>]*)><\/script>/gi,
+    (match, before, src, after) => {
       const cleanSrc = src.replace(/^\.?\//, '').toLowerCase();
-      const blobUrl = fileUrls.get(cleanSrc);
-      if (blobUrl) {
-        return `${prefix}src="${blobUrl}"`;
+      const file = fileMap.get(cleanSrc);
+      if (file && (file.mimeType === 'text/javascript' || file.mimeType === 'application/javascript')) {
+        const content = new TextDecoder().decode(file.data);
+        return `<script${before}${after}>${content}</script>`;
       }
       return match;
     }
   );
 
-  // Rewrite href attributes for link tags (CSS)
+  // Inline <link rel="stylesheet" href="..."> as <style>content</style>
   result = result.replace(
-    /(<link[^>]*\s)href\s*=\s*["']([^"']+)["']/gi,
-    (match, prefix, href) => {
+    /<link([^>]*)rel\s*=\s*["']stylesheet["']([^>]*)href\s*=\s*["']([^"']+)["']([^>]*)>/gi,
+    (match, before1, before2, href, after) => {
       const cleanHref = href.replace(/^\.?\//, '').toLowerCase();
-      const blobUrl = fileUrls.get(cleanHref);
-      if (blobUrl) {
-        return `${prefix}href="${blobUrl}"`;
+      const file = fileMap.get(cleanHref);
+      if (file && file.mimeType === 'text/css') {
+        const content = new TextDecoder().decode(file.data);
+        return `<style>${content}</style>`;
       }
       return match;
     }
   );
 
-  // Rewrite url() in inline styles
+  // Also handle href before rel
+  result = result.replace(
+    /<link([^>]*)href\s*=\s*["']([^"']+)["']([^>]*)rel\s*=\s*["']stylesheet["']([^>]*)>/gi,
+    (match, before1, href, before2, after) => {
+      const cleanHref = href.replace(/^\.?\//, '').toLowerCase();
+      const file = fileMap.get(cleanHref);
+      if (file && file.mimeType === 'text/css') {
+        const content = new TextDecoder().decode(file.data);
+        return `<style>${content}</style>`;
+      }
+      return match;
+    }
+  );
+
+  // Convert images to data URLs
+  result = result.replace(
+    /(<img[^>]*\s)src\s*=\s*["']([^"']+)["']/gi,
+    (match, prefix, src) => {
+      if (src.startsWith('http://') || src.startsWith('https://') ||
+          src.startsWith('data:') || src.startsWith('blob:')) {
+        return match;
+      }
+      const cleanSrc = src.replace(/^\.?\//, '').toLowerCase();
+      const file = fileMap.get(cleanSrc);
+      if (file && file.mimeType.startsWith('image/')) {
+        const base64 = btoa(String.fromCharCode(...file.data));
+        return `${prefix}src="data:${file.mimeType};base64,${base64}"`;
+      }
+      return match;
+    }
+  );
+
+  // Convert url() in CSS to data URLs
   result = result.replace(
     /url\(\s*["']?([^"')]+)["']?\s*\)/gi,
     (match, url) => {
@@ -227,9 +176,10 @@ function rewriteStaticUrls(html: string, fileUrls: Map<string, string>): string 
         return match;
       }
       const cleanUrl = url.replace(/^\.?\//, '').toLowerCase();
-      const blobUrl = fileUrls.get(cleanUrl);
-      if (blobUrl) {
-        return `url("${blobUrl}")`;
+      const file = fileMap.get(cleanUrl);
+      if (file && (file.mimeType.startsWith('image/') || file.mimeType.startsWith('font/'))) {
+        const base64 = btoa(String.fromCharCode(...file.data));
+        return `url("data:${file.mimeType};base64,${base64}")`;
       }
       return match;
     }
@@ -267,42 +217,18 @@ export function HtmlViewer({ html, directoryCid, filename }: HtmlViewerProps) {
     return () => { cancelled = true; };
   }, [directoryCid]);
 
-  // Create blob URLs and modified HTML (only when files are loaded)
-  const { blobUrl, cleanup } = useMemo(() => {
+  // Create modified HTML with inlined resources (only when files are loaded)
+  const modifiedHtml = useMemo(() => {
     if (loading) {
-      // Don't create blob URL while loading
-      return { blobUrl: '', cleanup: () => {} };
+      return '';
     }
 
-    if (files.length === 0) {
-      // No sibling files - just render HTML as-is
-      const blob = new Blob([html], { type: 'text/html' });
-      return { blobUrl: URL.createObjectURL(blob), cleanup: () => {} };
-    }
-
-    // Create blob URLs for all files
-    const fileUrls = createBlobUrls(files);
-
-    // Rewrite HTML to use blob URLs
-    let modifiedHtml = rewriteStaticUrls(html, fileUrls);
-    modifiedHtml = injectResourceLoader(modifiedHtml, fileUrls);
-
-    const blob = new Blob([modifiedHtml], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-
-    return {
-      blobUrl: url,
-      cleanup: () => {
-        URL.revokeObjectURL(url);
-        fileUrls.forEach((blobUrl) => URL.revokeObjectURL(blobUrl));
-      },
-    };
+    // Inline all resources directly into HTML for security
+    // This allows us to use sandbox="allow-scripts" without allow-same-origin
+    return files.length > 0
+      ? inlineResources(html, files)
+      : html;
   }, [html, files, loading]);
-
-  // Cleanup blob URLs on unmount
-  useEffect(() => {
-    return cleanup;
-  }, [cleanup]);
 
   if (error) {
     return (
@@ -323,10 +249,10 @@ export function HtmlViewer({ html, directoryCid, filename }: HtmlViewerProps) {
 
   return (
     <iframe
-      src={blobUrl}
+      srcDoc={modifiedHtml}
       className="block w-full h-full border-none bg-surface-0"
       title={filename}
-      sandbox="allow-scripts allow-same-origin"
+      sandbox="allow-scripts"
     />
   );
 }
