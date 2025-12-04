@@ -7,6 +7,7 @@ import { useNostrStore } from '../nostr';
 import { UserRow } from './user/UserRow';
 import { useTreeRoot } from '../hooks';
 import { useGraphSize, useIsRecrawling, useFollows } from '../utils/socialGraph';
+import { useSettingsStore, DEFAULT_POOL_SETTINGS } from '../stores/settings';
 
 export function SettingsPage() {
   const peerList = useAppStore(s => s.peers);
@@ -22,6 +23,12 @@ export function SettingsPage() {
   const graphSize = useGraphSize();
   const isRecrawling = useIsRecrawling();
   const myFollows = useFollows(myPubkey);
+
+  // Pool settings
+  const poolSettings = useSettingsStore(s => s.pools);
+  const poolsLoaded = useSettingsStore(s => s.poolsLoaded);
+  const setPoolSettings = useSettingsStore(s => s.setPoolSettings);
+  const resetPoolSettings = useSettingsStore(s => s.resetPoolSettings);
 
   // Fetch storage stats on mount
   useEffect(() => {
@@ -93,7 +100,7 @@ export function SettingsPage() {
           )}
           {loggedIn && peerList.length > 0 && (
             <div className="text-xs text-muted mb-2">
-              Follows: {peerList.filter(p => p.pool === 'follows' && p.state === 'connected').length}/20 &middot; Other: {peerList.filter(p => p.pool === 'other' && p.state === 'connected').length}/10
+              Follows: {peerList.filter(p => p.pool === 'follows' && p.state === 'connected').length}/{poolSettings.followsMax} &middot; Other: {peerList.filter(p => p.pool === 'other' && p.state === 'connected').length}/{poolSettings.otherMax}
             </div>
           )}
           {!loggedIn ? (
@@ -154,6 +161,84 @@ export function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Pool Settings */}
+        {loggedIn && poolsLoaded && (
+          <div>
+            <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3 flex items-center gap-2">
+              Connection Pools
+              <span
+                className="i-lucide-info text-sm cursor-help"
+                title="Configure max peers per pool. Changes apply immediately."
+              />
+            </h3>
+            <div className="bg-surface-2 rounded p-3 space-y-4">
+              {/* Follows pool */}
+              <div>
+                <div className="text-sm text-text-1 mb-2">Follows Pool</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Max</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={poolSettings.followsMax}
+                      onChange={(e) => setPoolSettings({ followsMax: Math.max(0, Math.min(50, parseInt(e.target.value) || 0)) })}
+                      className="w-full bg-surface-3 border border-surface-4 rounded px-2 py-1 text-sm text-text-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Satisfied</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={poolSettings.followsSatisfied}
+                      onChange={(e) => setPoolSettings({ followsSatisfied: Math.max(0, Math.min(50, parseInt(e.target.value) || 0)) })}
+                      className="w-full bg-surface-3 border border-surface-4 rounded px-2 py-1 text-sm text-text-1"
+                    />
+                  </div>
+                </div>
+              </div>
+              {/* Other pool */}
+              <div>
+                <div className="text-sm text-text-1 mb-2">Other Pool</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Max</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={poolSettings.otherMax}
+                      onChange={(e) => setPoolSettings({ otherMax: Math.max(0, Math.min(50, parseInt(e.target.value) || 0)) })}
+                      className="w-full bg-surface-3 border border-surface-4 rounded px-2 py-1 text-sm text-text-1"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted block mb-1">Satisfied</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={poolSettings.otherSatisfied}
+                      onChange={(e) => setPoolSettings({ otherSatisfied: Math.max(0, Math.min(50, parseInt(e.target.value) || 0)) })}
+                      className="w-full bg-surface-3 border border-surface-4 rounded px-2 py-1 text-sm text-text-1"
+                    />
+                  </div>
+                </div>
+              </div>
+              {/* Reset button */}
+              <button
+                onClick={resetPoolSettings}
+                className="text-xs text-accent hover:underline"
+              >
+                Reset to defaults ({DEFAULT_POOL_SETTINGS.followsMax}/{DEFAULT_POOL_SETTINGS.followsSatisfied} follows, {DEFAULT_POOL_SETTINGS.otherMax}/{DEFAULT_POOL_SETTINGS.otherSatisfied} other)
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Current Tree Stats */}
         <div>

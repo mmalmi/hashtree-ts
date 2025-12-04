@@ -9,6 +9,7 @@ import {
 } from 'hashtree';
 import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClassifier } from 'hashtree';
 import { getSocialGraph, useSocialGraphStore } from './utils/socialGraph';
+import { useSettingsStore, DEFAULT_POOL_SETTINGS } from './stores/settings';
 
 // Store instances - using IndexedDB for persistence
 export const idbStore = new IndexedDBStore('hashtree-explorer');
@@ -117,6 +118,18 @@ function createPeerClassifier(): PeerClassifier {
   };
 }
 
+/**
+ * Get pool config from settings store
+ */
+function getPoolConfigFromSettings() {
+  const settings = useSettingsStore.getState();
+  const pools = settings.poolsLoaded ? settings.pools : DEFAULT_POOL_SETTINGS;
+  return {
+    follows: { maxConnections: pools.followsMax, satisfiedConnections: pools.followsSatisfied },
+    other: { maxConnections: pools.otherMax, satisfiedConnections: pools.otherSatisfied },
+  };
+}
+
 // Initialize WebRTC store with signer and pubkey
 export function initWebRTC(
   signer: EventSigner,
@@ -137,10 +150,7 @@ export function initWebRTC(
     debug: true,
     // Pool-based peer management
     peerClassifier: createPeerClassifier(),
-    pools: {
-      follows: { maxConnections: 20, satisfiedConnections: 10 },
-      other: { maxConnections: 10, satisfiedConnections: 5 },
-    },
+    pools: getPoolConfigFromSettings(),
   });
 
   _tree = new HashTree({ store: webrtcStore, chunkSize: 1024 });
@@ -156,6 +166,13 @@ export function initWebRTC(
   useSocialGraphStore.subscribe(() => {
     if (webrtcStore) {
       webrtcStore.setPeerClassifier(createPeerClassifier());
+    }
+  });
+
+  // Update pool config when settings change
+  useSettingsStore.subscribe((state, prevState) => {
+    if (webrtcStore && state.pools !== prevState.pools) {
+      webrtcStore.setPoolConfig(getPoolConfigFromSettings());
     }
   });
 

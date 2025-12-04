@@ -558,6 +558,23 @@ export class WebRTCStore implements Store {
     this.emit({ type: 'update' });
   }
 
+  /**
+   * Update pool configuration (e.g., from settings)
+   */
+  setPoolConfig(pools: { follows: PoolConfig; other: PoolConfig }): void {
+    this.pools = pools;
+    this.log('Pool config updated:', pools);
+    // Existing connections remain, but new limits apply for future connections
+    this.emit({ type: 'update' });
+  }
+
+  /**
+   * Get current pool configuration
+   */
+  getPoolConfig(): { follows: PoolConfig; other: PoolConfig } {
+    return { ...this.pools };
+  }
+
   // Store interface implementation
 
   async put(hash: Hash, data: Uint8Array): Promise<boolean> {
