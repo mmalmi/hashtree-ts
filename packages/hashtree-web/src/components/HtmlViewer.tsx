@@ -61,19 +61,28 @@ function getMimeType(filename: string): string {
 }
 
 /**
- * Collect all files from a directory (non-recursive, same level only)
+ * Recursively collect all files from a directory tree
  */
-async function collectDirectoryFiles(dirCid: CID): Promise<DirectoryFile[]> {
+async function collectDirectoryFiles(
+  dirCid: CID,
+  basePath: string = ''
+): Promise<DirectoryFile[]> {
   const tree = getTree();
   const entries = await tree.listDirectory(dirCid);
   const files: DirectoryFile[] = [];
 
   for (const entry of entries) {
-    if (!entry.isTree) {
+    const fullPath = basePath ? `${basePath}/${entry.name}` : entry.name;
+
+    if (entry.isTree) {
+      // Recursively collect subdirectory
+      const subFiles = await collectDirectoryFiles(entry.cid, fullPath);
+      files.push(...subFiles);
+    } else {
       const data = await tree.readFile(entry.cid);
       if (data) {
         files.push({
-          name: entry.name,
+          name: fullPath,
           data,
           mimeType: getMimeType(entry.name),
         });
