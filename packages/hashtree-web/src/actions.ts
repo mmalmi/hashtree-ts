@@ -507,7 +507,33 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
   const tree = getTree();
   const currentPath = getCurrentPathFromUrl();
 
-  // If extracting to subdirectory, prepend the subdir name to all paths
+  let rootCid = getCurrentRootCid();
+
+  // If extracting to subdirectory, create it first
+  if (subdirName) {
+    const { cid: emptyDirCid } = await tree.putDirectory([]);
+
+    if (rootCid) {
+      // Add subdirectory to existing tree
+      const newRootCid = await tree.setEntry(
+        rootCid,
+        currentPath,
+        subdirName,
+        emptyDirCid,
+        0,
+        true
+      );
+      rootCid = newRootCid;
+    } else {
+      // Initialize virtual tree with the subdirectory
+      const result = await initVirtualTree([{ name: subdirName, cid: emptyDirCid, size: 0, isTree: true }]);
+      if (result) {
+        rootCid = result;
+      }
+    }
+  }
+
+  // Base path for extraction (includes subdirName if provided)
   const basePath = subdirName ? [...currentPath, subdirName] : currentPath;
 
   // Build directory structure from file paths
@@ -529,8 +555,6 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
 
   // Get sorted directory paths (shortest first to create parent dirs first)
   const sortedDirs = Array.from(dirEntries.keys()).sort((a, b) => a.split('/').length - b.split('/').length);
-
-  let rootCid = getCurrentRootCid();
 
   // Process each directory level
   for (const dirPath of sortedDirs) {

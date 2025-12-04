@@ -50,7 +50,7 @@ let state: ModalState = {
   forkTarget: null,
   showExtractModal: false,
   extractTarget: null,
-  extractLocation: 'current',
+  extractLocation: 'subdir',
   modalInput: '',
 };
 
@@ -106,7 +106,7 @@ export function closeForkModal() {
 }
 
 export function openExtractModal(archiveName: string, files: ArchiveFile[], originalData?: Uint8Array) {
-  state = { ...state, showExtractModal: true, extractTarget: { archiveName, files, originalData }, extractLocation: 'current', modalInput: '' };
+  state = { ...state, showExtractModal: true, extractTarget: { archiveName, files, originalData }, extractLocation: 'subdir', modalInput: '' };
   emit();
 }
 

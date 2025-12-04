@@ -115,7 +115,7 @@ export function ZipPreview({ data, filename, onDownload }: ZipPreviewProps) {
       });
     }
 
-    // Open extract modal with the files
+    // Open extract modal with the files (no originalData since ZIP already exists)
     openExtractModal(filename, archiveFiles);
   };
 
