@@ -22,6 +22,8 @@ interface ExtractTarget {
   files: ArchiveFile[];
 }
 
+type ExtractLocation = 'current' | 'subdir';
+
 interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
@@ -32,6 +34,7 @@ interface ModalState {
   forkTarget: ForkTarget | null;
   showExtractModal: boolean;
   extractTarget: ExtractTarget | null;
+  extractLocation: ExtractLocation;
   modalInput: string;
 }
 
@@ -46,6 +49,7 @@ let state: ModalState = {
   forkTarget: null,
   showExtractModal: false,
   extractTarget: null,
+  extractLocation: 'current',
   modalInput: '',
 };
 
@@ -101,12 +105,17 @@ export function closeForkModal() {
 }
 
 export function openExtractModal(archiveName: string, files: ArchiveFile[]) {
-  state = { ...state, showExtractModal: true, extractTarget: { archiveName, files }, modalInput: '' };
+  state = { ...state, showExtractModal: true, extractTarget: { archiveName, files }, extractLocation: 'current', modalInput: '' };
   emit();
 }
 
 export function closeExtractModal() {
-  state = { ...state, showExtractModal: false, extractTarget: null, modalInput: '' };
+  state = { ...state, showExtractModal: false, extractTarget: null, extractLocation: 'current', modalInput: '' };
+  emit();
+}
+
+export function setExtractLocation(location: ExtractLocation) {
+  state = { ...state, extractLocation: location };
   emit();
 }
 
@@ -131,8 +140,9 @@ export function useModals() {
     closeForkModal,
     openExtractModal,
     closeExtractModal,
+    setExtractLocation,
     setModalInput,
   };
 }
 
-export type { ArchiveFile, ExtractTarget };
+export type { ArchiveFile, ExtractTarget, ExtractLocation };

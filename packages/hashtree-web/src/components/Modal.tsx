@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import type { TreeVisibility } from 'hashtree';
-import { useModals, closeCreateModal, closeRenameModal, closeForkModal, closeExtractModal, setModalInput, setCreateTreeVisibility } from '../hooks/useModals';
+import { useModals, closeCreateModal, closeRenameModal, closeForkModal, closeExtractModal, setModalInput, setCreateTreeVisibility, setExtractLocation, type ExtractLocation } from '../hooks/useModals';
 import { createFile, createFolder, createTree, renameEntry, forkTree, uploadExtractedFiles } from '../actions';
 import { getVisibilityInfo } from './VisibilityIcon';
 
@@ -197,7 +197,7 @@ export function ForkModal() {
 }
 
 export function ExtractModal() {
-  const { showExtractModal, extractTarget } = useModals();
+  const { showExtractModal, extractTarget, extractLocation } = useModals();
   const [isExtracting, setIsExtracting] = useState(false);
 
   if (!showExtractModal || !extractTarget) return null;
@@ -205,10 +205,13 @@ export function ExtractModal() {
   const { archiveName, files } = extractTarget;
   const totalSize = files.reduce((sum, f) => sum + f.size, 0);
 
+  // Get subdirectory name from archive (remove .zip extension)
+  const subdirName = archiveName.replace(/\.zip$/i, '');
+
   const handleExtract = async () => {
     setIsExtracting(true);
     try {
-      await uploadExtractedFiles(files);
+      await uploadExtractedFiles(files, extractLocation === 'subdir' ? subdirName : undefined);
       closeExtractModal();
     } catch (err) {
       console.error('Failed to extract files:', err);
@@ -233,7 +236,7 @@ export function ExtractModal() {
         <p className="text-text-2 mb-2">
           <strong>{archiveName}</strong> contains {files.length} file{files.length !== 1 ? 's' : ''} ({formatSize(totalSize)})
         </p>
-        <div className="max-h-200px overflow-y-auto bg-surface-2 rounded p-2 text-sm">
+        <div className="max-h-150px overflow-y-auto bg-surface-2 rounded p-2 text-sm">
           {files.slice(0, 20).map((f, i) => (
             <div key={i} className="flex justify-between py-0.5">
               <span className="truncate flex-1 mr-2">{f.name}</span>
@@ -245,6 +248,34 @@ export function ExtractModal() {
           )}
         </div>
       </div>
+
+      {/* Extraction location picker */}
+      <div className="mb-4">
+        <label className="text-sm text-text-2 mb-2 block">Extract to:</label>
+        <div className="flex gap-2">
+          {([
+            { value: 'current', label: 'Current folder', icon: 'i-lucide-folder' },
+            { value: 'subdir', label: subdirName, icon: 'i-lucide-folder-plus' },
+          ] as const).map(({ value, label, icon }) => {
+            const isSelected = extractLocation === value;
+            return (
+              <button
+                key={value}
+                onClick={() => setExtractLocation(value)}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded border ${
+                  isSelected
+                    ? 'border-accent bg-accent/10 text-accent'
+                    : 'border-surface-3 text-text-1 hover:border-surface-4 hover:bg-surface-2'
+                }`}
+              >
+                <span className={icon} />
+                <span className="text-sm truncate">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex gap-2">
         <button
           onClick={closeExtractModal}

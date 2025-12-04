@@ -9,6 +9,7 @@ import { LiveVideo, LiveVideoFromHash } from './LiveVideo';
 import { StreamView } from './stream';
 import { FolderActions } from './FolderActions';
 import { DosBoxViewer, isDosExecutable } from './DosBox';
+import { ZipPreview } from './ZipPreview';
 import {
   formatBytes,
   decodeAsText,
@@ -530,6 +531,12 @@ function ContentView({ data, filename, onDownload }: { data: Uint8Array; filenam
         <audio src={blobUrl} controls className="w-full" />
       );
     }
+  }
+
+  // ZIP files - show preview with extraction option
+  const isZip = filename?.toLowerCase().endsWith('.zip');
+  if (isZip) {
+    return <ZipPreview data={data} filename={filename || 'archive.zip'} onDownload={onDownload} />;
   }
 
   // Binary/unsupported format fallback - show download pane (matches upload zone size)

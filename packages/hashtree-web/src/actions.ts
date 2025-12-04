@@ -459,11 +459,15 @@ export async function forkTree(dirCid: CID, name: string): Promise<boolean> {
 }
 
 // Upload extracted files from an archive
-export async function uploadExtractedFiles(files: { name: string; data: Uint8Array; size: number }[]): Promise<void> {
+// If subdirName is provided, files will be extracted into a subdirectory with that name
+export async function uploadExtractedFiles(files: { name: string; data: Uint8Array; size: number }[], subdirName?: string): Promise<void> {
   if (files.length === 0) return;
 
   const tree = getTree();
   const currentPath = getCurrentPathFromUrl();
+
+  // If extracting to subdirectory, prepend the subdir name to all paths
+  const basePath = subdirName ? [...currentPath, subdirName] : currentPath;
 
   // Build directory structure from file paths
   // Files may have paths like "folder/subfolder/file.txt"
@@ -490,7 +494,7 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
   // Process each directory level
   for (const dirPath of sortedDirs) {
     const entries = dirEntries.get(dirPath)!;
-    const targetPath = dirPath ? [...currentPath, ...dirPath.split('/')] : currentPath;
+    const targetPath = dirPath ? [...basePath, ...dirPath.split('/')] : basePath;
 
     for (const entry of entries) {
       if (rootCid) {
