@@ -25,8 +25,6 @@ declare global {
 }
 
 interface DosBoxViewerProps {
-  /** CID of the .exe/.com file to run */
-  exeCid: CID;
   /** CID of the parent directory (for sibling files) */
   directoryCid: CID;
   /** Name of the executable file */
@@ -92,7 +90,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function DosBoxViewer({ exeCid, directoryCid, exeName, onExit }: DosBoxViewerProps) {
+export function DosBoxViewer({ directoryCid, exeName, onExit }: DosBoxViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'running' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -280,8 +278,6 @@ echo.
           });
 
           // Handle audio - buffer and play sound samples
-          const audioBufferSize = 0;
-          const audioQueue: Float32Array[] = [];
           let nextStartTime = 0;
 
           events.onSoundPush((samples: Float32Array) => {
@@ -453,7 +449,7 @@ echo.
                       console.log('[DOSBox] Saving:', fullPath);
                       await saveFile(fullPath, content);
                     }
-                  } catch (e) {
+                  } catch {
                     console.warn('[DOSBox] Could not read:', fullPath);
                   }
                 }

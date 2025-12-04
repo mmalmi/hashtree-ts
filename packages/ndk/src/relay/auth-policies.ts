@@ -75,7 +75,7 @@ function signIn({ndk, signer, debug}: ISignIn = {}) {
     signer ??= ndk?.signer
 
     // If we dont have a signer, we need to wait for one to be ready
-    // eslint-disable-next-line no-async-promise-executor
+     
     return new Promise(async (resolve, reject) => {
       if (signer) {
         await signAndAuth(event, relay, signer, debug!, resolve, reject)

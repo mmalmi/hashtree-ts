@@ -6,7 +6,7 @@ import { deleteEntry, moveEntry, moveToParent } from '../actions';
 import { openCreateModal } from '../hooks/useModals';
 import { useUpload } from '../hooks/useUpload';
 import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
-import { useNostrStore, pubkeyToNpub, npubToPubkey } from '../nostr';
+import { useNostrStore, npubToPubkey } from '../nostr';
 import { UserRow } from './user';
 import { FolderActions } from './FolderActions';
 import { VisibilityIcon, LinkLockIcon } from './VisibilityIcon';
@@ -145,7 +145,6 @@ export function FileBrowser() {
   const rootCid = useTreeRoot();
   const rootHash = rootCid?.hash ?? null;
   const currentDirCid = useCurrentDirCid();
-  const currentDirHash = currentDirCid?.hash ?? null;
   const { entries, isDirectory } = useDirectoryEntries(currentDirCid);
   const recentlyChangedFiles = useRecentlyChanged();
 
@@ -175,7 +174,6 @@ export function FileBrowser() {
   const targetNpub = viewedNpub || userNpub;
   const trees = useTrees(targetNpub);
   const currentTree = currentTreeName ? trees.find(t => t.name === currentTreeName) : null;
-  const dirHash = currentDirHash ? toHex(currentDirHash) : null;
   const { uploadFiles, uploadFilesWithPaths } = useUpload();
 
   const navigateTo = useNavigate();

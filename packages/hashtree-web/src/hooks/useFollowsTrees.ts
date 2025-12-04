@@ -4,7 +4,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { nip19 } from 'nostr-tools';
 import type { NDKSubscription } from '@nostr-dev-kit/ndk';
-import type { TreeVisibility } from 'hashtree';
 import { ndk, useNostrStore, type HashTreeEvent, parseVisibility } from '../nostr';
 
 export interface FollowedTree extends HashTreeEvent {

@@ -13,7 +13,7 @@ test.describe('Nosta WebRTC Connection', () => {
 
   let nostaProcess: ChildProcess | null = null;
   let nostaPubkey: string | null = null;
-  let nostaConnectedPeers: string[] = [];
+  const nostaConnectedPeers: string[] = [];
   let testContentHash: string | null = null;
 
   test.beforeAll(async () => {

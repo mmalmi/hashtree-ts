@@ -1,12 +1,11 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import Markdown from 'markdown-to-jsx';
-import { toHex, fromHex, nhashEncode, cid } from 'hashtree';
+import { toHex, nhashEncode } from 'hashtree';
 import type { CID } from 'hashtree';
 import { Avatar } from './user';
 import { npubToPubkey } from '../nostr';
 import { LiveVideo, LiveVideoFromHash } from './LiveVideo';
-import { StreamView } from './stream';
 import { FolderActions } from './FolderActions';
 import { DosBoxViewer, isDosExecutable } from './DosBox';
 import { ZipPreview } from './ZipPreview';
@@ -18,7 +17,7 @@ import {
 import { saveFile, deleteEntry, selectFile } from '../actions';
 import { openRenameModal } from '../hooks/useModals';
 import { useNostrStore } from '../nostr';
-import { useSelectedFile, useRoute, useCurrentDirHash, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees } from '../hooks';
+import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees } from '../hooks';
 import { VisibilityIcon, LinkLockIcon } from './VisibilityIcon';
 import { useUpload } from '../hooks/useUpload';
 import { getResolverKey } from '../refResolver';
@@ -68,7 +67,7 @@ export function Viewer() {
   const [content, setContent] = useState<Uint8Array | null>(null);
   const [loading, setLoading] = useState(false);
   const showLoading = useDelayedLoading(loading);
-  const [fileCid, setFileCid] = useState<CID | null>(null);
+  const [, setFileCid] = useState<CID | null>(null);
   const [resolvedEntry, setResolvedEntry] = useState<{ name: string; cid: CID; size?: number } | null>(null);
 
   // Use store entry if available, otherwise use resolved entry
@@ -177,7 +176,6 @@ export function Viewer() {
 
   // Check if currently viewed file was recently changed
   const recentlyChangedFiles = useRecentlyChanged();
-  const isWebm = mimeType === 'video/webm';
   const isRecentlyChanged = urlFileName && !isEditing && recentlyChangedFiles.has(urlFileName);
 
   // Stable key for video - only changes when file path changes, not on hash updates
@@ -706,7 +704,6 @@ function DirectoryActions() {
   const rootCid = useTreeRoot();
   const rootHash = rootCid?.hash ?? null;
   const currentDirCid = useCurrentDirCid();
-  const currentDirHash = currentDirCid?.hash ?? null;
   const { entries } = useDirectoryEntries(currentDirCid);
   const route = useRoute();
   const viewedNpub = route.npub;
@@ -725,7 +722,6 @@ function DirectoryActions() {
   const hasTreeContext = rootHash !== null || (route.treeName !== null && canEdit);
   const [readmeContent, setReadmeContent] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const dirHash = currentDirHash ? toHex(currentDirHash) : null;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const openFilePicker = () => {

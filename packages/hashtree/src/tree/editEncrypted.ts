@@ -257,7 +257,6 @@ async function rebuildPathEncrypted(
 
   while (parts.length > 0) {
     const childName = parts.pop()!;
-    const parentKeyIndex = parts.length;
 
     // Get parent directory
     let parentHash: Hash;

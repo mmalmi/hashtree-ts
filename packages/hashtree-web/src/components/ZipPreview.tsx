@@ -89,7 +89,7 @@ export function ZipPreview({ data, filename, onDownload }: ZipPreviewProps) {
       });
 
       return { entries, totalSize, unzipped };
-    } catch (err) {
+    } catch {
       setError('Failed to read ZIP file');
       return { entries: [], totalSize: 0, unzipped: null };
     }

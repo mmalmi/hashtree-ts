@@ -41,7 +41,7 @@ export async function negentropySync(
   const subId = Math.random().toString(36).substring(2, 15)
   const ne = new Negentropy(storage, opts?.frameSizeLimit)
 
-  let initialMessage = ne.initiate<string>()
+  const initialMessage = ne.initiate<string>()
   let msg: string | null = initialMessage
 
   return new Promise<boolean>((resolve, reject) => {

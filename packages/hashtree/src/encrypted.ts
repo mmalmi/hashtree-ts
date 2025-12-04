@@ -46,7 +46,7 @@ export async function putFileEncrypted(
   config: EncryptedTreeConfig,
   data: Uint8Array
 ): Promise<EncryptedPutResult> {
-  const { store, chunkSize, maxLinks } = config;
+  const { store, chunkSize } = config;
   const size = data.length;
 
   // Single chunk - use CHK directly

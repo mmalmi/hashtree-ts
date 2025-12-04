@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from 'react';
 import type { TreeVisibility } from 'hashtree';
-import { useModals, closeCreateModal, closeRenameModal, closeForkModal, closeExtractModal, setModalInput, setCreateTreeVisibility, setExtractLocation, type ExtractLocation } from '../hooks/useModals';
+import { useModals, closeCreateModal, closeRenameModal, closeForkModal, closeExtractModal, setModalInput, setCreateTreeVisibility, setExtractLocation } from '../hooks/useModals';
 import { createFile, createFolder, createTree, renameEntry, forkTree, uploadExtractedFiles, uploadSingleFile } from '../actions';
 import { getVisibilityInfo, VisibilityIcon } from './VisibilityIcon';
 

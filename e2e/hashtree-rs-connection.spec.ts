@@ -13,7 +13,7 @@ test.describe('hashtreeRs WebRTC Connection', () => {
 
   let hashtreeRsProcess: ChildProcess | null = null;
   let hashtreeRsPubkey: string | null = null;
-  let hashtreeRsConnectedPeers: string[] = [];
+  const hashtreeRsConnectedPeers: string[] = [];
   let testContentHash: string | null = null;
 
   test.beforeAll(async () => {

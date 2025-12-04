@@ -28,7 +28,6 @@ import {
   createAccountFromNsec,
   createExtensionAccount,
   saveActiveAccountToStorage,
-  loadAccountsFromStorage,
 } from './accounts';
 import { parseRoute } from './utils/route';
 

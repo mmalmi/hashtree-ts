@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { HashRouter, Routes, Route, useParams, Link, useLocation, useNavigate } from 'react-router-dom';
 import { toHex, fromHex, nhashDecode, npathDecode, isNHash, isNPath, cid } from 'hashtree';
 import {
@@ -29,7 +29,7 @@ import {
 import { markFilesChanged } from './hooks/useRecentlyChanged';
 import { nip19 } from 'nostr-tools';
 import { useNostrStore } from './nostr';
-import { useSelectedFile, useRoute, addRecent } from './hooks';
+import { useRoute, addRecent } from './hooks';
 import { useWalletStore, initWallet } from './wallet';
 
 // Wallet link with balance
@@ -157,33 +157,6 @@ function HomeRoute() {
   );
 }
 
-// Route: User's tree list (shows profile in preview pane)
-function UserRouteInner() {
-  const { npub } = useParams<{ npub: string }>();
-
-  useEffect(() => {
-    if (!npub) return;
-    // Clear selected tree when viewing user's tree list
-    useNostrStore.getState().setSelectedTree(null);
-  }, [npub]);
-
-  if (!npub) return null;
-
-  // For user route, show file browser on mobile, profile on desktop
-  return (
-    <>
-      {/* File browser - always visible on mobile, sidebar on desktop */}
-      <div className="flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col">
-        <FileBrowser />
-      </div>
-      {/* Profile view - hidden on mobile, visible on desktop */}
-      <div className="hidden lg:flex flex-1 flex-col min-w-0 min-h-0">
-        <ProfileView npub={npub} />
-      </div>
-    </>
-  );
-}
-
 // Route: User's follows list
 function FollowsRouteInner() {
   const { npub } = useParams<{ npub: string }>();
@@ -264,8 +237,6 @@ function TreeRouteInner() {
   // If first segment is nhash or npath, delegate to that handler
   // This prevents /nhash1.../filename from matching as /:npub/:treeName/*
   if (npub && (isNHash(npub) || isNPath(npub))) {
-    // Reconstruct the full path for nhash/npath handling
-    const fullPath = treeName ? (path ? `${treeName}/${path}` : treeName) : '';
     if (isNHash(npub)) {
       return <NHashView nhash={npub} />;
     }
@@ -286,7 +257,7 @@ function TreeRouteInner() {
       npub,
       treeName,
     });
-  }, [npub, treeName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [npub, treeName]);
 
   if (!npub || !treeName) return null;
 
@@ -301,7 +272,7 @@ function TreeRouteInner() {
 // Distinguishes by prefix: npub1... vs nhash1... vs npath1...
 // For nhash, path comes from URL segments: /nhash1.../path/to/file
 function NpubOrNHashOrNPathRoute() {
-  const { id, '*': path } = useParams<{ id: string; '*': string }>();
+  const { id } = useParams<{ id: string; '*': string }>();
 
   // Check if it's an nhash (permalink) - path comes from URL segments
   if (id && isNHash(id)) {

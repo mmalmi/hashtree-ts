@@ -8,7 +8,7 @@
  */
 import { navigate } from './utils/navigate';
 import { parseRoute } from './utils/route';
-import { toHex, verifyTree, cid } from 'hashtree';
+import { toHex, verifyTree } from 'hashtree';
 import type { Hash, CID } from 'hashtree';
 import { autosaveIfOwn, saveHashtree, useNostrStore } from './nostr';
 import { nip19 } from 'nostr-tools';

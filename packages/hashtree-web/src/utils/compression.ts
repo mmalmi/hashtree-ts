@@ -1,7 +1,7 @@
 /**
  * Compression utilities using fflate for ZIP creation and extraction
  */
-import { zipSync, unzipSync, strToU8, Zippable, Unzipped } from 'fflate';
+import { zipSync, unzipSync, Zippable, Unzipped } from 'fflate';
 import type { HashTree, CID } from 'hashtree';
 
 export interface ZipProgress {

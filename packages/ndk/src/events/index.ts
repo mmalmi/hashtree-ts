@@ -335,7 +335,7 @@ export class NDKEvent extends EventEmitter {
 
     try {
       this.id = this.getEventHash()
-      // eslint-disable-next-line no-empty
+       
     } catch (_e) {}
 
     // if (this.id) nostrEvent.id = this.id;

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable prefer-const */
-/* eslint-disable no-empty */
+ 
 
 export function tryNormalizeRelayUrl(url: string): string | undefined {
   try {

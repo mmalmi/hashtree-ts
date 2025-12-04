@@ -51,7 +51,6 @@ export function useCurrentDirCid(): CID | null {
 
     computeCid();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rootHash, rootKey, pathKey]); // Use string keys for stable comparison, rootCid/currentPath captured in closure
 
   return dirCid;
