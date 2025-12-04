@@ -12,11 +12,11 @@
  * Components use this instead of reading rootCid from global app state.
  */
 import { useState, useEffect, useRef } from 'react';
-import { fromHex, nhashDecode, cid, visibilityHex } from 'hashtree';
+import { fromHex, cid, visibilityHex } from 'hashtree';
 import type { CID, SubscribeVisibilityInfo, Hash } from 'hashtree';
 import { useRoute } from './useRoute';
 import { getRefResolver, getResolverKey } from '../refResolver';
-import { useNostrStore } from '../nostr';
+import { useNostrStore, getSecretKey } from '../nostr';
 import { nip04 } from 'nostr-tools';
 
 // Shared subscription cache - stores raw resolver data, not decrypted CIDs
@@ -116,8 +116,9 @@ async function decryptEncryptionKey(
   if (visibilityInfo.selfEncryptedKey) {
     try {
       const store = useNostrStore.getState();
-      if (store.secretKey && store.pubkey) {
-        const decrypted = await nip04.decrypt(store.secretKey, store.pubkey, visibilityInfo.selfEncryptedKey);
+      const sk = getSecretKey();
+      if (sk && store.pubkey) {
+        const decrypted = await nip04.decrypt(sk, store.pubkey, visibilityInfo.selfEncryptedKey);
         return fromHex(decrypted);
       }
     } catch (e) {
@@ -141,15 +142,10 @@ export function useTreeRoot(): CID | null {
   const lastLinkKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // For permalinks (nhash routes), extract hash directly from URL
-    if (route.isPermalink && route.hash) {
-      try {
-        const decoded = nhashDecode(route.hash);
-        // nhash contains just the hash, no encryption key
-        setRootCid(cid(fromHex(decoded.hash)));
-      } catch {
-        setRootCid(null);
-      }
+    // For permalinks (nhash routes), use CID from route (already decoded)
+    if (route.isPermalink && route.cid) {
+      const key = route.cid.key ? fromHex(route.cid.key) : undefined;
+      setRootCid(cid(fromHex(route.cid.hash), key));
       return;
     }
 
@@ -196,7 +192,7 @@ export function useTreeRoot(): CID | null {
     });
 
     return unsubscribe;
-  }, [route.npub, route.treeName, route.hash, route.isPermalink, route.linkKey]);
+  }, [route.npub, route.treeName, route.cid?.hash, route.cid?.key, route.isPermalink, route.linkKey]);
 
   return rootCid;
 }

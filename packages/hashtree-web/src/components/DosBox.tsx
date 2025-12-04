@@ -280,7 +280,7 @@ echo.
           });
 
           // Handle audio - buffer and play sound samples
-          let audioBufferSize = 0;
+          const audioBufferSize = 0;
           const audioQueue: Float32Array[] = [];
           let nextStartTime = 0;
 

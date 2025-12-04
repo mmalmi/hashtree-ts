@@ -2,24 +2,14 @@
  * FollowsTreesView - shows trees from followed users on the home page
  */
 import { useFollowsTrees } from '../hooks/useFollowsTrees';
-import { useDelayedLoading } from '../hooks/useDelayedLoading';
 import { TreeRow } from './TreeRow';
 
 export function FollowsTreesView() {
   const { trees, loading, followsCount } = useFollowsTrees();
-  const showLoading = useDelayedLoading(loading);
 
-  if (loading && !showLoading) {
+  // Don't show anything while loading (no spinner)
+  if (loading) {
     return null;
-  }
-
-  if (showLoading) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center text-text-3 p-8">
-        <span className="i-lucide-loader-2 animate-spin text-2xl mb-3" />
-        <span className="text-sm">Loading follows...</span>
-      </div>
-    );
   }
 
   return (

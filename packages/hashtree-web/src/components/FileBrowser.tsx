@@ -167,6 +167,10 @@ export function FileBrowser() {
   const isOwnTrees = !viewedNpub || viewedNpub === userNpub;
   const canEdit = isOwnTrees || !isLoggedIn;
 
+  // Check if we're viewing an encrypted tree but can't decrypt it
+  // This happens when: we have a hash, but no key, and it's not a public tree
+  const hasHashButNoKey = rootCid?.hash && !rootCid?.key;
+
   // Get trees from resolver subscription
   const targetNpub = viewedNpub || userNpub;
   const trees = useTrees(targetNpub);
@@ -557,8 +561,8 @@ export function FileBrowser() {
         </div>
       )}
 
-      {/* Mobile action buttons */}
-      {(currentDirCid || canEdit) && (
+      {/* Mobile action buttons - hide when viewing locked unlisted/private directory */}
+      {(currentDirCid || canEdit) && !(hasHashButNoKey && currentTree && (currentTree.visibility === 'unlisted' || currentTree.visibility === 'private')) && (
         <div className="lg:hidden px-3 py-2 border-b border-surface-3 bg-surface-1">
           <FolderActions dirCid={currentDirCid ?? undefined} canEdit={canEdit} compact />
         </div>
@@ -608,11 +612,33 @@ export function FileBrowser() {
           {currentTree && (
             <VisibilityIcon visibility={currentTree.visibility} className="text-text-2" />
           )}
-          <span className={`shrink-0 ${isDirectory ? 'i-lucide-folder-open text-warning' : `${getFileIcon(currentDirName)} text-text-2`}`} />
+          <span className={`shrink-0 ${isDirectory || hasHashButNoKey ? 'i-lucide-folder-open text-warning' : `${getFileIcon(currentDirName)} text-text-2`}`} />
           <span className="truncate">{currentDirName}</span>
         </Link>
 
-        {entries.length === 0 ? (
+        {/* Show locked indicator when we can't decrypt the tree */}
+        {hasHashButNoKey && currentTree && (currentTree.visibility === 'unlisted' || currentTree.visibility === 'private') ? (
+          <div className="p-8 text-center">
+            <div className="inline-flex items-center justify-center mb-4">
+              {currentTree.visibility === 'unlisted' ? (
+                <span className="relative inline-block">
+                  <span className="i-lucide-link text-3xl text-text-3" />
+                  <span className="i-lucide-lock absolute -bottom-0 -right-2 text-lg text-text-3" />
+                </span>
+              ) : (
+                <span className="i-lucide-lock text-3xl text-text-3" />
+              )}
+            </div>
+            <div className="text-text-2 font-medium mb-2">
+              {currentTree.visibility === 'unlisted' ? 'Link Required' : 'Private Folder'}
+            </div>
+            <div className="text-text-3 text-sm max-w-xs mx-auto">
+              {currentTree.visibility === 'unlisted'
+                ? 'This folder requires a special link to access. Ask the owner for the link with the access key.'
+                : 'This folder is private and can only be accessed by its owner.'}
+            </div>
+          </div>
+        ) : entries.length === 0 ? (
           <div className="p-4 pl-6 text-center text-muted text-sm">
             {isDraggingOver ? '' : 'Empty directory'}
           </div>

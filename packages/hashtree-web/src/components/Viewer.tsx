@@ -19,7 +19,7 @@ import { saveFile, deleteEntry, selectFile } from '../actions';
 import { openRenameModal } from '../hooks/useModals';
 import { useNostrStore } from '../nostr';
 import { useSelectedFile, useRoute, useCurrentDirHash, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees } from '../hooks';
-import { VisibilityIcon } from './VisibilityIcon';
+import { VisibilityIcon, LinkLockIcon } from './VisibilityIcon';
 import { useUpload } from '../hooks/useUpload';
 import { getResolverKey } from '../refResolver';
 import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
@@ -333,7 +333,11 @@ export function Viewer() {
               <Avatar pubkey={npubToPubkey(viewedNpub) || viewedNpub} size={20} />
             </Link>
           ) : route.isPermalink && (
-            <span className="i-lucide-hash text-accent shrink-0" />
+            rootCid?.key ? (
+              <LinkLockIcon className="text-text-2" title="Encrypted permalink" />
+            ) : (
+              <span className="i-lucide-globe text-text-2 shrink-0" title="Public permalink" />
+            )
           )}
           {/* Visibility icon */}
           {currentTree && (
@@ -359,9 +363,9 @@ export function Viewer() {
             >
               Download
             </button>
-            {/* Permalink to this specific file's hash */}
+            {/* Permalink to this specific file's hash (includes key if encrypted) */}
             <Link
-              to={`/${nhashEncode(toHex(entry.cid.hash))}/${encodeURIComponent(entry.name)}`}
+              to={`/${nhashEncode({ hash: toHex(entry.cid.hash), decryptKey: entry.cid.key ? toHex(entry.cid.key) : undefined })}/${encodeURIComponent(entry.name)}`}
               className="btn-ghost no-underline"
               title={toHex(entry.cid.hash)}
             >
@@ -704,9 +708,15 @@ function DirectoryActions() {
   const { entries } = useDirectoryEntries(currentDirCid);
   const route = useRoute();
   const viewedNpub = route.npub;
+  const currentTreeName = route.treeName;
   const userNpub = useNostrStore(s => s.npub);
   const isLoggedIn = useNostrStore(s => s.isLoggedIn);
   const { uploadProgress, uploadFiles, cancelUpload } = useUpload();
+
+  // Get current tree for visibility info
+  const targetNpub = viewedNpub || userNpub;
+  const trees = useTrees(targetNpub);
+  const currentTree = currentTreeName ? trees.find(t => t.name === currentTreeName) : null;
 
   const canEdit = !viewedNpub || viewedNpub === userNpub || !isLoggedIn;
   // Show actions if we have a tree OR we're in a tree context (empty tree that hasn't been created yet)
@@ -788,8 +798,8 @@ function DirectoryActions() {
       onDragLeave={handleFileDragLeave}
       onDrop={handleFileDrop}
     >
-      {/* Action buttons */}
-      {hasTreeContext && (
+      {/* Action buttons - hide when viewing locked unlisted/private directory */}
+      {hasTreeContext && !(rootCid?.hash && !rootCid?.key && currentTree && (currentTree.visibility === 'unlisted' || currentTree.visibility === 'private')) && (
         <div className="p-3 shrink-0">
           <FolderActions dirCid={currentDirCid ?? undefined} canEdit={canEdit} />
         </div>

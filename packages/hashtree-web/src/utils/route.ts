@@ -3,10 +3,17 @@
  * Parses URL hash to extract route info without needing React Router context
  */
 
+/** CID in hex format for routing (hash + optional key) */
+export interface RouteCid {
+  hash: string;
+  key?: string;
+}
+
 export interface RouteInfo {
   npub: string | null;
   treeName: string | null;
-  hash: string | null;
+  /** CID for permalink routes (hash + optional decrypt key) */
+  cid: RouteCid | null;
   path: string[];
   /** True when viewing a permalink (nhash route) */
   isPermalink: boolean;
@@ -37,19 +44,26 @@ export function parseRoute(): RouteInfo {
 
   // nhash route: #/nhash1.../path...
   if (parts[0]?.startsWith('nhash1')) {
-    return {
-      npub: null,
-      treeName: null,
-      hash: parts[0], // Keep the nhash string, caller can decode
-      path: parts.slice(1),
-      isPermalink: true,
-      linkKey,
-    };
+    // Decode nhash to extract hash and optional decrypt key
+    try {
+      const { nhashDecode } = require('hashtree');
+      const decoded = nhashDecode(parts[0]);
+      return {
+        npub: null,
+        treeName: null,
+        cid: { hash: decoded.hash, key: decoded.decryptKey },
+        path: parts.slice(1),
+        isPermalink: true,
+        linkKey,
+      };
+    } catch {
+      // Fall through if decode fails
+    }
   }
 
   // Special routes (no tree context)
   if (['settings', 'wallet'].includes(parts[0])) {
-    return { npub: null, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
+    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
   }
 
   // User routes
@@ -58,7 +72,7 @@ export function parseRoute(): RouteInfo {
 
     // Special user routes (profile, follows, edit)
     if (['profile', 'follows', 'edit'].includes(parts[1])) {
-      return { npub, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
+      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
     }
 
     // Tree route: #/npub/treeName/path...
@@ -68,7 +82,7 @@ export function parseRoute(): RouteInfo {
       return {
         npub,
         treeName: parts[1],
-        hash: null,
+        cid: null,
         path: isStreamRoute ? [] : parts.slice(2),
         isPermalink: false,
         linkKey,
@@ -76,11 +90,11 @@ export function parseRoute(): RouteInfo {
     }
 
     // User view: #/npub
-    return { npub, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
+    return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
   }
 
   // Home route
-  return { npub: null, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
+  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
 }
 
 /**

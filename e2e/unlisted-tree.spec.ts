@@ -281,6 +281,50 @@ test.describe('Unlisted Tree Visibility', () => {
     await context2.close();
   });
 
+  test('non-owner sees "Link Required" message when accessing unlisted tree without ?k= param', { timeout: 60000 }, async ({ page, browser }) => {
+
+    // Go to user's tree list
+    await page.locator(myTreesButtonSelector).click();
+    await page.waitForTimeout(300);
+
+    // Create an unlisted tree
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-no-key');
+    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    // Wait for navigation to the new tree (URL should contain tree name)
+    await page.waitForURL(/#\/npub[^/]+\/unlisted-no-key/, { timeout: 10000 });
+    await page.waitForTimeout(1000);
+
+    // Extract npub and treeName from URL
+    const shareUrl = page.url();
+    console.log('Owner URL after creating unlisted tree:', shareUrl);
+    const urlMatch = shareUrl.match(/#\/(npub[^/]+)\/([^/?]+)/);
+    expect(urlMatch).toBeTruthy();
+    const [, npub, treeName] = urlMatch!;
+
+    // Open fresh browser (non-owner) and try to access WITHOUT ?k= param
+    const context2 = await browser.newContext();
+    const page2 = await context2.newPage();
+    setupPageErrorHandler(page2);
+
+    // Navigate to tree WITHOUT ?k= param - should show locked indicator
+    const treeUrlWithoutKey = `http://localhost:5173/#/${npub}/${treeName}`;
+    await page2.goto(treeUrlWithoutKey);
+    await page2.waitForTimeout(3000);
+
+    // Debug: take screenshot and log URL
+    console.log('Non-owner URL:', page2.url());
+    await page2.screenshot({ path: 'test-results/non-owner-debug.png' });
+
+    // Should see "Link Required" message
+    await expect(page2.getByText('Link Required')).toBeVisible({ timeout: 10000 });
+    await expect(page2.getByText('This folder requires a special link to access')).toBeVisible();
+
+    await context2.close();
+  });
+
   test('owner can access unlisted tree without ?k= param (via selfEncryptedKey)', async ({ page }) => {
     // Go to user's tree list
     await page.locator(myTreesButtonSelector).click();
@@ -512,5 +556,112 @@ test.describe('Unlisted Tree Visibility', () => {
     // Private tree should have lock icon
     const privateRow = page.locator('a:has-text("private-tree")');
     await expect(privateRow.locator('span.i-lucide-lock')).toBeVisible();
+  });
+
+  test('files in unlisted trees should be encrypted (have CHK)', async ({ page }) => {
+    // This test verifies that files uploaded to unlisted trees are properly encrypted
+    // and have CHK (Content Hash Key) in the permalink
+
+    // Go to user's tree list
+    await page.locator(myTreesButtonSelector).click();
+
+    // Create an unlisted tree
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-encrypted');
+    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    // Wait for tree to be created
+    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
+
+    // Create a file with content
+    await page.getByRole('button', { name: 'File' }).click();
+    await page.locator('input[placeholder="File name..."]').fill('encrypted-file.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    // Type content and save
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await page.locator('textarea').fill('This content should be encrypted');
+    await page.getByRole('button', { name: 'Save' }).click();
+
+    // Exit edit mode
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // Look for the file's Permalink link (the one with visible text, not just icon)
+    const permalinkLink = page.getByRole('link', { name: 'Permalink' });
+    await expect(permalinkLink).toBeVisible({ timeout: 5000 });
+
+    // Get the href of the permalink
+    const permalinkHref = await permalinkLink.getAttribute('href');
+    console.log('Permalink href:', permalinkHref);
+    expect(permalinkHref).toBeTruthy();
+
+    // The nhash should be longer than 32 bytes (simple hash) if it includes a key
+    // Simple nhash (32 bytes hash) = ~58 chars (nhash1 + bech32 of 32 bytes)
+    // TLV nhash with key should be longer since it includes hash TLV + key TLV
+    const nhashMatch = permalinkHref!.match(/nhash1[a-z0-9]+/);
+    expect(nhashMatch).toBeTruthy();
+    const nhash = nhashMatch![0];
+    console.log('nhash:', nhash);
+    console.log('nhash length:', nhash.length);
+
+    // A simple 32-byte hash encoded in bech32 is about 58 chars
+    // With TLV (hash + key), it should be longer (around 115+ chars)
+    // If the file is encrypted, the nhash should include the decrypt key
+    expect(nhash.length).toBeGreaterThan(70); // Should have TLV encoding with key
+  });
+
+  test('owner can create and write to private folder', { timeout: 60000 }, async ({ page }) => {
+    // Go to user's tree list
+    await page.locator(myTreesButtonSelector).click();
+    await page.waitForTimeout(300);
+
+    // Create a private tree
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('my-private');
+    await page.getByRole('button', { name: /private/i }).click();
+    await page.getByRole('button', { name: 'Create' }).click();
+    await page.waitForTimeout(2000);
+
+    // Should be inside the private tree now, not showing "Link Required"
+    // The owner should be able to see the folder contents
+    await expect(page.locator('text="Link Required"')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text="Private Folder"')).not.toBeVisible({ timeout: 5000 });
+
+    // Wait for the UI to be ready and find the New file button
+    await page.waitForTimeout(1000);
+
+    // Create a new file in the private tree (button is labeled "File")
+    await page.getByRole('button', { name: 'File' }).click({ timeout: 10000 });
+    await page.locator('input[placeholder="File name..."]').fill('secret.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
+    await page.waitForTimeout(500);
+
+    // Type content and save
+    await page.locator('textarea').fill('My secret content');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForTimeout(2000);
+
+    // Exit edit mode
+    await page.getByRole('button', { name: 'Done' }).click();
+    await page.waitForTimeout(1000);
+
+    // Verify content is visible
+    await expect(page.locator('pre')).toHaveText('My secret content', { timeout: 5000 });
+
+    // Navigate away and back to verify persistence
+    await page.locator(myTreesButtonSelector).click();
+    await page.waitForTimeout(500);
+
+    // Click on the private tree
+    await page.locator('a:has-text("my-private")').click();
+    await page.waitForTimeout(2000);
+
+    // Should still not show the locked message
+    await expect(page.locator('text="Link Required"')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text="Private Folder"')).not.toBeVisible({ timeout: 5000 });
+
+    // The file should be visible
+    await expect(page.locator('text="secret.txt"')).toBeVisible({ timeout: 5000 });
   });
 });

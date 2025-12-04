@@ -49,9 +49,6 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
   const isSubdir = route.path.length > 0;
   const currentDirName = isSubdir ? route.path[route.path.length - 1] : null;
 
-  // Convert CID to hex hash for links that need it
-  const dirHash = dirCid ? toHex(dirCid.hash) : null;
-
   // For fork, use current dir name or tree name as suggestion
   const forkBaseName = currentDirName || route.treeName || 'folder';
 
@@ -92,13 +89,13 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-2">
-      {dirHash && (
+      {dirCid && (
         <>
-          {/* Permalink to this directory's hash */}
+          {/* Permalink to this directory's hash (includes key if encrypted) */}
           <Link
-            to={`/${nhashEncode(dirHash)}`}
+            to={`/${nhashEncode({ hash: toHex(dirCid.hash), decryptKey: dirCid.key ? toHex(dirCid.key) : undefined })}`}
             className={`btn-ghost no-underline ${btnClass}`}
-            title={dirHash}
+            title={toHex(dirCid.hash)}
           >
             <span className="i-lucide-link" />
             Permalink

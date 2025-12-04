@@ -2,7 +2,7 @@ import { type ReactNode, useState } from 'react';
 import type { TreeVisibility } from 'hashtree';
 import { useModals, closeCreateModal, closeRenameModal, closeForkModal, closeExtractModal, setModalInput, setCreateTreeVisibility, setExtractLocation, type ExtractLocation } from '../hooks/useModals';
 import { createFile, createFolder, createTree, renameEntry, forkTree, uploadExtractedFiles, uploadSingleFile } from '../actions';
-import { getVisibilityInfo } from './VisibilityIcon';
+import { getVisibilityInfo, VisibilityIcon } from './VisibilityIcon';
 
 export function CreateModal() {
   const { showCreateModal, createModalType, createTreeVisibility, modalInput } = useModals();
@@ -58,7 +58,7 @@ export function CreateModal() {
           <label className="text-sm text-text-2 mb-2 block">Visibility</label>
           <div className="flex gap-2">
             {(['public', 'unlisted', 'private'] as TreeVisibility[]).map((vis) => {
-              const { icon, title } = getVisibilityInfo(vis);
+              const { title } = getVisibilityInfo(vis);
               const isSelected = createTreeVisibility === vis;
               return (
                 <button
@@ -71,7 +71,7 @@ export function CreateModal() {
                   }`}
                   title={title}
                 >
-                  <span className={icon} />
+                  <VisibilityIcon visibility={vis} />
                   <span className="text-sm capitalize">{vis}</span>
                 </button>
               );

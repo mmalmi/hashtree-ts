@@ -111,6 +111,14 @@ if (typeof window !== 'undefined') {
 // Private key (only set for nsec login)
 let secretKey: Uint8Array | null = null;
 
+/**
+ * Get the secret key for decryption (only available for nsec login)
+ * Returns null for extension logins
+ */
+export function getSecretKey(): Uint8Array | null {
+  return secretKey;
+}
+
 // NDK instance with Dexie cache
 const cacheAdapter = new NDKCacheAdapterDexie({ dbName: 'hashtree-ndk-cache' });
 

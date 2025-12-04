@@ -26,7 +26,7 @@ export function useRoute(): RouteInfo {
         return {
           npub: null,
           treeName: null,
-          hash: decoded.hash,
+          cid: { hash: decoded.hash, key: decoded.decryptKey },
           path: parts.slice(1), // Path comes from URL segments after nhash
           isPermalink: true,
           linkKey,
@@ -45,7 +45,7 @@ export function useRoute(): RouteInfo {
         return {
           npub,
           treeName: decoded.treeName,
-          hash: null,
+          cid: null,
           path: decoded.path || [],
           isPermalink: false,
           linkKey,
@@ -57,7 +57,7 @@ export function useRoute(): RouteInfo {
 
     // Special routes (no tree context)
     if (['settings', 'wallet'].includes(parts[0])) {
-      return { npub: null, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
+      return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
     }
 
     // User routes
@@ -66,7 +66,7 @@ export function useRoute(): RouteInfo {
 
       // Special user routes (profile, follows, edit)
       if (['profile', 'follows', 'edit'].includes(parts[1])) {
-        return { npub, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
+        return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
       }
 
       // Tree route: /npub/treeName/path...
@@ -74,7 +74,7 @@ export function useRoute(): RouteInfo {
         return {
           npub,
           treeName: parts[1],
-          hash: null,
+          cid: null,
           path: parts.slice(2),
           isPermalink: false,
           linkKey,
@@ -82,10 +82,10 @@ export function useRoute(): RouteInfo {
       }
 
       // User view: /npub
-      return { npub, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
+      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
     }
 
     // Home route
-    return { npub: null, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
+    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
   }, [location.pathname, location.search]);
 }

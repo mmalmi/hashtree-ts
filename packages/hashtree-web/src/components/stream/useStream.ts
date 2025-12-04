@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { toHex, cid } from 'hashtree';
-import type { Hash, StreamWriter } from 'hashtree';
+import type { StreamWriter, CID } from 'hashtree';
 import {
   getTree,
 } from '../../store';
@@ -215,15 +215,17 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
     const filename = `${currentState.streamFilename}.webm`;
 
     const tree = getTree();
-    let fileHash: Hash | undefined, fileSize: number | undefined;
+    let fileCid: CID | undefined, fileSize: number | undefined;
     if (currentState.persistStream && currentState.streamWriter) {
       const result = await currentState.streamWriter.finalize();
-      fileHash = result.hash;
+      // StreamWriter returns hash only - wrap in CID (no encryption for persist mode yet)
+      fileCid = cid(result.hash);
       fileSize = result.size;
     } else if (!currentState.persistStream && recentChunks.length > 0) {
       const combined = concatChunks(recentChunks);
-      const result = await tree.putFile(combined, { public: true });
-      fileHash = result.cid.hash;
+      // Always encrypt files (CHK encryption for deduplication)
+      const result = await tree.putFile(combined);
+      fileCid = result.cid;
       fileSize = result.size;
     } else {
       return;
@@ -231,12 +233,12 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
 
     if (rootCid) {
       const currentPath = getCurrentPathFromUrl();
-      const newRootCid = await tree.setEntry(rootCid, currentPath, filename, cid(fileHash), fileSize);
+      const newRootCid = await tree.setEntry(rootCid, currentPath, filename, fileCid!, fileSize);
       // Publish to nostr - resolver will pick up the update
-      await autosaveIfOwn(toHex(newRootCid.hash));
+      await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
     } else {
-      // Create new tree - will be picked up by resolver via autosaveIfOwn
-      const newRootCid = (await tree.putDirectory([{ name: filename, cid: cid(fileHash), size: fileSize }], { public: true })).cid;
+      // Create new tree - public directory but with encrypted file entries
+      const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid!, size: fileSize }], { public: true })).cid;
       await autosaveIfOwn(toHex(newRootCid.hash));
     }
   }, 3000);
@@ -272,29 +274,31 @@ export async function stopRecording(): Promise<void> {
   const filename = `${currentState.streamFilename}.webm`;
 
   const tree = getTree();
-  let fileHash: Hash | undefined, fileSize: number | undefined;
+  let fileCid: CID | undefined, fileSize: number | undefined;
   if (currentState.persistStream && currentState.streamWriter) {
     const result = await currentState.streamWriter.finalize();
-    fileHash = result.hash;
+    // StreamWriter returns hash only - wrap in CID (no encryption for persist mode yet)
+    fileCid = cid(result.hash);
     fileSize = result.size;
   } else if (!currentState.persistStream && recentChunks.length > 0) {
     const combined = concatChunks(recentChunks);
-    const result = await tree.putFile(combined, { public: true });
-    fileHash = result.cid.hash;
+    // Always encrypt files (CHK encryption for deduplication)
+    const result = await tree.putFile(combined);
+    fileCid = result.cid;
     fileSize = result.size;
   }
 
-  if (fileHash && fileSize) {
+  if (fileCid && fileSize) {
     const route = parseRoute();
     const rootCid = getTreeRootSync(route.npub, route.treeName);
     if (rootCid) {
       const currentPath = getCurrentPathFromUrl();
-      const newRootCid = await tree.setEntry(rootCid, currentPath, filename, cid(fileHash), fileSize);
+      const newRootCid = await tree.setEntry(rootCid, currentPath, filename, fileCid, fileSize);
       // Publish to nostr - resolver will pick up the update
-      await autosaveIfOwn(toHex(newRootCid.hash));
+      await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
     } else {
-      // Create new tree - will be picked up by resolver via autosaveIfOwn
-      const newRootCid = (await tree.putDirectory([{ name: filename, cid: cid(fileHash), size: fileSize }], { public: true })).cid;
+      // Create new tree - public directory but with encrypted file entries
+      const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid, size: fileSize }], { public: true })).cid;
       await autosaveIfOwn(toHex(newRootCid.hash));
       navigate('/');
     }
