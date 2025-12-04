@@ -49,7 +49,7 @@ export function TreeRow({
           onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate(`/${npub}`); }}
           className="shrink-0 bg-transparent border-none p-0 cursor-pointer hover:opacity-80"
         >
-          <Avatar pubkey={pubkey} size={24} />
+          <Avatar pubkey={pubkey} size={24} showBadge />
         </button>
       ) : (
         <span className="shrink-0 w-6 h-6 flex items-center justify-center">

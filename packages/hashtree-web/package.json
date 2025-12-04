@@ -25,6 +25,7 @@
     "hashtree": "workspace:*",
     "markdown-to-jsx": "^9.1.2",
     "minidenticons": "^4.2.1",
+    "nostr-social-graph": "^1.0.33",
     "nostr-tools": "^2.18.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

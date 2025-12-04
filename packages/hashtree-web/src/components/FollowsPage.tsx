@@ -69,7 +69,7 @@ function FollowItem({ pubkey }: { pubkey: string }) {
       onClick={() => navigate(`/${npubStr}`)}
       className="flex items-center gap-3 p-4 hover:bg-surface-2 bg-transparent border-none cursor-pointer text-left w-full"
     >
-      <Avatar pubkey={pubkey} size={44} />
+      <Avatar pubkey={pubkey} size={44} showBadge />
       <div className="flex-1 min-w-0">
         <div className="font-medium text-text-1 truncate">
           <Name pubkey={pubkey} />

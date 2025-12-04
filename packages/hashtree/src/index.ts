@@ -98,6 +98,9 @@ export {
   type EventSigner,
   type EventEncrypter,
   type EventDecrypter,
+  type PeerPool,
+  type PeerClassifier,
+  type PoolConfig,
 } from './webrtc/index.js';
 
 // BEP52 (BitTorrent v2) compatible merkle tree

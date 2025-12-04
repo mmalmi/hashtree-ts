@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { navigate } from '../utils/navigate';
 import { useProfile } from '../hooks/useProfile';
 import { useFollows, followPubkey, unfollowPubkey } from '../hooks/useFollows';
-import { Avatar, Name } from './user';
+import { Avatar, Name, FollowedBy } from './user';
 import { nip19 } from 'nostr-tools';
 import { useNostrStore } from '../nostr';
+import { useFollowsMe, useFollowers } from '../utils/socialGraph';
 
 interface Props {
   npub: string;
@@ -32,6 +33,8 @@ export function ProfileView({ npub }: Props) {
 
   const isOwnProfile = myPubkeyVal === pubkeyHex;
   const isFollowing = myFollows?.follows.includes(pubkeyHex) ?? false;
+  const followsMe = useFollowsMe(pubkeyHex);
+  const knownFollowers = useFollowers(pubkeyHex);
 
   const copyUserId = async () => {
     await navigator.clipboard.writeText(npub);
@@ -67,17 +70,24 @@ export function ProfileView({ npub }: Props) {
 
       {/* Profile header */}
       <div className="px-4 pb-4 -mt-12 relative">
-        {/* Avatar */}
+        {/* Avatar - no badge here, social context shown below in stats */}
         <div className="mb-3">
           <Avatar pubkey={pubkeyHex} size={80} className="border-4 border-surface-0" />
         </div>
 
         {/* Name and action buttons */}
         <div className="flex items-center justify-between gap-2">
-          <h1 className="text-xl font-bold text-text-1 m-0">
-            <Name pubkey={pubkeyHex} />
-          </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="text-xl font-bold text-text-1 m-0 truncate">
+              <Name pubkey={pubkeyHex} />
+            </h1>
+            {followsMe && !isOwnProfile && (
+              <span className="shrink-0 text-xs bg-surface-2 text-text-2 px-2 py-0.5 rounded">
+                Follows you
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
             {isLoggedInVal && isOwnProfile && (
               <>
                 <button
@@ -125,6 +135,11 @@ export function ProfileView({ npub }: Props) {
           <div className="text-sm text-accent mt-1">{profile.nip05}</div>
         )}
 
+        {/* Followed by friends */}
+        {!isOwnProfile && pubkeyHex && (
+          <FollowedBy pubkey={pubkeyHex} className="mt-2" />
+        )}
+
         {/* About */}
         {profile?.about && (
           <p className="text-sm text-text-2 mt-3 whitespace-pre-wrap break-words">
@@ -140,6 +155,11 @@ export function ProfileView({ npub }: Props) {
           >
             <span className="font-bold text-text-1">{follows?.follows.length ?? '...'}</span> Following
           </button>
+          {knownFollowers.size > 0 && (
+            <span className="text-text-2">
+              <span className="font-bold text-text-1">{knownFollowers.size}</span> known followers
+            </span>
+          )}
         </div>
 
         {/* Website */}

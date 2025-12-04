@@ -87,20 +87,38 @@ export type EventEncrypter = (pubkey: string, plaintext: string) => Promise<stri
 // Decrypter function type (compatible with window.nostr.nip04.decrypt)
 export type EventDecrypter = (pubkey: string, ciphertext: string) => Promise<string>;
 
+// Peer pool types for prioritized connections
+export type PeerPool = 'follows' | 'other';
+
+// Function to classify a peer into a pool based on pubkey
+export type PeerClassifier = (pubkey: string) => PeerPool;
+
+// Pool configuration
+export interface PoolConfig {
+  maxConnections: number;
+  satisfiedConnections: number;
+}
+
 // Configuration
 export interface WebRTCStoreConfig {
   signer: EventSigner;            // NIP-07 compatible signer
   pubkey: string;                 // signer's pubkey
   encrypt: EventEncrypter;        // NIP-04 compatible encrypter
   decrypt: EventDecrypter;        // NIP-04 compatible decrypter
-  satisfiedConnections?: number;  // default 3
-  maxConnections?: number;        // default 6
+  satisfiedConnections?: number;  // default 3 (legacy, used if no pools)
+  maxConnections?: number;        // default 6 (legacy, used if no pools)
   helloInterval?: number;         // default 10000ms
   messageTimeout?: number;        // default 15000ms
   requestTimeout?: number;        // default 5000ms
   relays?: string[];
   localStore?: import('../types.js').Store;
   debug?: boolean;
+  // Pool-based peer management
+  peerClassifier?: PeerClassifier;
+  pools?: {
+    follows: PoolConfig;
+    other: PoolConfig;
+  };
 }
 
 export interface PeerStatus {
@@ -110,6 +128,7 @@ export interface PeerStatus {
   direction: 'inbound' | 'outbound';
   connectedAt?: number;
   isSelf?: boolean;
+  pool?: PeerPool;
 }
 
 export type WebRTCStoreEvent =

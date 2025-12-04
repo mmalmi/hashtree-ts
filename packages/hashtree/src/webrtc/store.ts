@@ -7,6 +7,11 @@
  * Security: Directed signaling messages (offer, answer, candidate, candidates)
  * are encrypted with NIP-04 for privacy. Hello messages remain unencrypted
  * for peer discovery.
+ *
+ * Pool-based peer management:
+ * - 'follows' pool: Users in your social graph (followed or followers)
+ * - 'other' pool: Everyone else (randos)
+ * Each pool has its own connection limits.
  */
 import { SimplePool, type Event } from 'nostr-tools';
 import type { Store, Hash } from '../types.js';
@@ -22,6 +27,9 @@ import {
   type EventSigner,
   type EventEncrypter,
   type EventDecrypter,
+  type PeerPool,
+  type PeerClassifier,
+  type PoolConfig,
 } from './types.js';
 import { Peer } from './peer.js';
 
@@ -34,6 +42,12 @@ const DEFAULT_RELAYS = [
 const WEBRTC_KIND = 30078; // KIND_APP_DATA - same as iris-client
 const WEBRTC_TAG = 'webrtc';
 
+// Default pool configuration
+const DEFAULT_POOLS: { follows: PoolConfig; other: PoolConfig } = {
+  follows: { maxConnections: 10, satisfiedConnections: 5 },
+  other: { maxConnections: 5, satisfiedConnections: 2 },
+};
+
 // Pending request with callbacks
 interface WantedHash {
   resolve: (data: Uint8Array | null) => void;
@@ -41,10 +55,14 @@ interface WantedHash {
   triedPeers: Set<string>;
 }
 
+// Extended peer info with pool assignment
+interface PeerInfo {
+  peer: Peer;
+  pool: PeerPool;
+}
+
 export class WebRTCStore implements Store {
   private config: {
-    satisfiedConnections: number;
-    maxConnections: number;
     helloInterval: number;
     messageTimeout: number;
     requestTimeout: number;
@@ -52,13 +70,15 @@ export class WebRTCStore implements Store {
     localStore: Store | null;
     debug: boolean;
   };
+  private pools: { follows: PoolConfig; other: PoolConfig };
+  private peerClassifier: PeerClassifier;
   private signer: EventSigner;
   private encrypt: EventEncrypter;
   private decrypt: EventDecrypter;
   private myPeerId: PeerId;
   private pool: SimplePool;
   private subscription: ReturnType<SimplePool['subscribe']> | null = null;
-  private peers = new Map<string, Peer>();
+  private peers = new Map<string, PeerInfo>();
   private helloInterval: ReturnType<typeof setInterval> | null = null;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private eventHandlers = new Set<WebRTCStoreEventHandler>();
@@ -71,9 +91,23 @@ export class WebRTCStore implements Store {
     this.decrypt = config.decrypt;
     this.myPeerId = new PeerId(config.pubkey, generateUuid());
 
+    // Default classifier: everyone is 'other' unless classifier provided
+    this.peerClassifier = config.peerClassifier ?? (() => 'other');
+
+    // Use pool config if provided, otherwise fall back to legacy config or defaults
+    if (config.pools) {
+      this.pools = config.pools;
+    } else {
+      // Legacy mode: single pool with old config values
+      const maxConn = config.maxConnections ?? 6;
+      const satConn = config.satisfiedConnections ?? 3;
+      this.pools = {
+        follows: { maxConnections: 0, satisfiedConnections: 0 }, // No follows pool in legacy
+        other: { maxConnections: maxConn, satisfiedConnections: satConn },
+      };
+    }
+
     this.config = {
-      satisfiedConnections: config.satisfiedConnections ?? 3,
-      maxConnections: config.maxConnections ?? 6,
       helloInterval: config.helloInterval ?? 10000,
       messageTimeout: config.messageTimeout ?? 15000,
       requestTimeout: config.requestTimeout ?? 5000,
@@ -92,6 +126,41 @@ export class WebRTCStore implements Store {
   }
 
   /**
+   * Get pool counts
+   */
+  private getPoolCounts(): { follows: { connected: number; total: number }; other: { connected: number; total: number } } {
+    const counts = {
+      follows: { connected: 0, total: 0 },
+      other: { connected: 0, total: 0 },
+    };
+
+    for (const { peer, pool } of this.peers.values()) {
+      counts[pool].total++;
+      if (peer.isConnected) {
+        counts[pool].connected++;
+      }
+    }
+
+    return counts;
+  }
+
+  /**
+   * Check if we can accept a peer in a given pool
+   */
+  private canAcceptPeer(pool: PeerPool): boolean {
+    const counts = this.getPoolCounts();
+    return counts[pool].total < this.pools[pool].maxConnections;
+  }
+
+  /**
+   * Check if a pool is satisfied
+   */
+  private isPoolSatisfied(pool: PeerPool): boolean {
+    const counts = this.getPoolCounts();
+    return counts[pool].connected >= this.pools[pool].satisfiedConnections;
+  }
+
+  /**
    * Start the WebRTC store - connect to relays and begin peer discovery
    */
   start(): void {
@@ -99,6 +168,7 @@ export class WebRTCStore implements Store {
     this.running = true;
 
     this.log('Starting with peerId:', this.myPeerId.short());
+    this.log('Pool config:', this.pools);
 
     // Subscribe to signaling messages
     this.startSubscription();
@@ -142,7 +212,7 @@ export class WebRTCStore implements Store {
     }
 
     // Close all peer connections
-    for (const peer of this.peers.values()) {
+    for (const { peer } of this.peers.values()) {
       peer.close();
     }
     this.peers.clear();
@@ -236,9 +306,9 @@ export class WebRTCStore implements Store {
       await this.handleOffer(peerId, msg);
     } else {
       // answer or candidate
-      const peer = this.peers.get(peerIdStr);
-      if (peer) {
-        await peer.handleSignaling(msg, this.myPeerId.uuid);
+      const peerInfo = this.peers.get(peerIdStr);
+      if (peerInfo) {
+        await peerInfo.peer.handleSignaling(msg, this.myPeerId.uuid);
       }
     }
   }
@@ -251,21 +321,25 @@ export class WebRTCStore implements Store {
       return;
     }
 
-    // Check if we should connect
+    // Check if we already have this peer
     if (this.peers.has(peerId.toString())) {
-      return; // Already have this peer
+      return;
     }
 
-    // Limit total peers (including pending), not just connected
-    if (this.peers.size >= this.config.maxConnections) {
-      return; // At max peers
+    // Classify the peer
+    const pool = this.peerClassifier(senderPubkey);
+
+    // Check if we can accept this peer in their pool
+    if (!this.canAcceptPeer(pool)) {
+      this.log('Ignoring hello from', peerId.short(), '- pool', pool, 'is full');
+      return;
     }
 
-    this.log('Received hello from', peerId.short());
+    this.log('Received hello from', peerId.short(), 'pool:', pool);
 
     // Tie-breaking: lower UUID initiates
     if (this.myPeerId.uuid < peerUuid) {
-      await this.connectToPeer(peerId);
+      await this.connectToPeer(peerId, pool);
     }
   }
 
@@ -277,20 +351,23 @@ export class WebRTCStore implements Store {
 
     const peerIdStr = peerId.toString();
 
-    // Limit total peers
-    if (this.peers.size >= this.config.maxConnections && !this.peers.has(peerIdStr)) {
-      this.log('Rejecting offer - at max peers');
+    // Classify the peer
+    const pool = this.peerClassifier(peerId.pubkey);
+
+    // Check if we can accept (unless we already have this peer)
+    if (!this.peers.has(peerIdStr) && !this.canAcceptPeer(pool)) {
+      this.log('Rejecting offer from', peerId.short(), '- pool', pool, 'is full');
       return;
     }
 
     // Clean up existing connection if any
     const existing = this.peers.get(peerIdStr);
     if (existing) {
-      existing.close();
+      existing.peer.close();
       this.peers.delete(peerIdStr);
     }
 
-    this.log('Accepting offer from', peerId.short());
+    this.log('Accepting offer from', peerId.short(), 'pool:', pool);
 
     const peer = new Peer({
       peerId,
@@ -307,18 +384,18 @@ export class WebRTCStore implements Store {
       debug: this.config.debug,
     });
 
-    this.peers.set(peerIdStr, peer);
+    this.peers.set(peerIdStr, { peer, pool });
     await peer.handleSignaling(msg, this.myPeerId.uuid);
   }
 
-  private async connectToPeer(peerId: PeerId): Promise<void> {
+  private async connectToPeer(peerId: PeerId, pool: PeerPool): Promise<void> {
     const peerIdStr = peerId.toString();
 
     if (this.peers.has(peerIdStr)) {
       return;
     }
 
-    this.log('Initiating connection to', peerId.short());
+    this.log('Initiating connection to', peerId.short(), 'pool:', pool);
 
     const peer = new Peer({
       peerId,
@@ -335,7 +412,7 @@ export class WebRTCStore implements Store {
       debug: this.config.debug,
     });
 
-    this.peers.set(peerIdStr, peer);
+    this.peers.set(peerIdStr, { peer, pool });
     await peer.connect(this.myPeerId.uuid);
   }
 
@@ -392,13 +469,19 @@ export class WebRTCStore implements Store {
   private maybeSendHello(): void {
     if (!this.running) return;
 
-    const connectedCount = this.getConnectedCount();
-    if (connectedCount >= this.config.satisfiedConnections) {
-      this.log('Satisfied with', connectedCount, 'connections, not sending hello');
+    // Check if both pools are satisfied
+    const followsSatisfied = this.isPoolSatisfied('follows');
+    const otherSatisfied = this.isPoolSatisfied('other');
+
+    if (followsSatisfied && otherSatisfied) {
+      const counts = this.getPoolCounts();
+      this.log('Satisfied - follows:', counts.follows.connected, 'other:', counts.other.connected);
       return;
     }
 
-    this.log('Sending hello (have', connectedCount, 'connections)');
+    const counts = this.getPoolCounts();
+    this.log('Sending hello - follows:', counts.follows.connected, '/', this.pools.follows.satisfiedConnections,
+             'other:', counts.other.connected, '/', this.pools.other.satisfiedConnections);
     this.sendSignaling({
       type: 'hello',
       peerId: this.myPeerId.uuid,
@@ -409,7 +492,7 @@ export class WebRTCStore implements Store {
     const now = Date.now();
     const connectionTimeout = 15000; // 15 seconds to establish connection
 
-    for (const [peerIdStr, peer] of this.peers) {
+    for (const [peerIdStr, { peer }] of this.peers) {
       const state = peer.state;
       const isStale = state === 'new' && (now - peer.createdAt) > connectionTimeout;
 
@@ -427,20 +510,21 @@ export class WebRTCStore implements Store {
    */
   getConnectedCount(): number {
     return Array.from(this.peers.values())
-      .filter(p => p.isConnected).length;
+      .filter(({ peer }) => peer.isConnected).length;
   }
 
   /**
    * Get all peer statuses
    */
   getPeers(): PeerStatus[] {
-    return Array.from(this.peers.values()).map(p => ({
-      peerId: p.peerId,
-      pubkey: p.pubkey,
-      state: p.state,
-      direction: p.direction,
-      connectedAt: p.connectedAt,
-      isSelf: p.pubkey === this.myPeerId.pubkey,
+    return Array.from(this.peers.values()).map(({ peer, pool }) => ({
+      peerId: peer.peerId,
+      pubkey: peer.pubkey,
+      state: peer.state,
+      direction: peer.direction,
+      connectedAt: peer.connectedAt,
+      isSelf: peer.pubkey === this.myPeerId.pubkey,
+      pool,
     }));
   }
 
@@ -452,10 +536,26 @@ export class WebRTCStore implements Store {
   }
 
   /**
-   * Check if store is satisfied (has enough connections)
+   * Check if store is satisfied (has enough connections in all pools)
    */
   isSatisfied(): boolean {
-    return this.getConnectedCount() >= this.config.satisfiedConnections;
+    return this.isPoolSatisfied('follows') && this.isPoolSatisfied('other');
+  }
+
+  /**
+   * Update peer classifier (e.g., when social graph updates)
+   */
+  setPeerClassifier(classifier: PeerClassifier): void {
+    this.peerClassifier = classifier;
+    // Re-classify existing peers (they keep their connections, just update pool assignment)
+    for (const [peerIdStr, peerInfo] of this.peers) {
+      const newPool = classifier(peerInfo.peer.pubkey);
+      if (newPool !== peerInfo.pool) {
+        this.log('Reclassified peer', peerIdStr.slice(0, 16), 'from', peerInfo.pool, 'to', newPool);
+        peerInfo.pool = newPool;
+      }
+    }
+    this.emit({ type: 'update' });
   }
 
   // Store interface implementation
@@ -476,12 +576,19 @@ export class WebRTCStore implements Store {
       if (local) return local;
     }
 
-    // Try currently connected peers
+    // Try currently connected peers (prioritize follows pool)
     const triedPeers = new Set<string>();
-    const connectedPeers = Array.from(this.peers.values())
-      .filter(p => p.isConnected);
+    const allPeers = Array.from(this.peers.values())
+      .filter(({ peer }) => peer.isConnected);
 
-    for (const peer of connectedPeers) {
+    // Sort: follows first, then others
+    allPeers.sort((a, b) => {
+      if (a.pool === 'follows' && b.pool !== 'follows') return -1;
+      if (a.pool !== 'follows' && b.pool === 'follows') return 1;
+      return 0;
+    });
+
+    for (const { peer } of allPeers) {
       triedPeers.add(peer.peerId);
       const data = await peer.request(hash);
       if (data) {

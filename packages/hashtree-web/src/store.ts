@@ -7,7 +7,8 @@ import {
   HashTree,
   WebRTCStore,
 } from 'hashtree';
-import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter } from 'hashtree';
+import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClassifier } from 'hashtree';
+import { getSocialGraph, useSocialGraphStore } from './utils/socialGraph';
 
 // Store instances - using IndexedDB for persistence
 export const idbStore = new IndexedDBStore('hashtree-explorer');
@@ -97,6 +98,25 @@ export function decodeAsText(data: Uint8Array): string | null {
   return null;
 }
 
+/**
+ * Create peer classifier using social graph
+ * Returns 'follows' for users we follow or who follow us (distance <= 1)
+ * Returns 'other' for everyone else
+ */
+function createPeerClassifier(): PeerClassifier {
+  return (pubkey: string) => {
+    const graph = getSocialGraph();
+    if (!graph) return 'other';
+
+    const distance = graph.getFollowDistance(pubkey);
+    // Distance 0 = self, 1 = we follow them or they follow us
+    if (distance <= 1) {
+      return 'follows';
+    }
+    return 'other';
+  };
+}
+
 // Initialize WebRTC store with signer and pubkey
 export function initWebRTC(
   signer: EventSigner,
@@ -114,9 +134,13 @@ export function initWebRTC(
     encrypt,
     decrypt,
     localStore: idbStore,
-    satisfiedConnections: 3,
-    maxConnections: 6,
     debug: true,
+    // Pool-based peer management
+    peerClassifier: createPeerClassifier(),
+    pools: {
+      follows: { maxConnections: 20, satisfiedConnections: 10 },
+      other: { maxConnections: 10, satisfiedConnections: 5 },
+    },
   });
 
   _tree = new HashTree({ store: webrtcStore, chunkSize: 1024 });
@@ -125,6 +149,13 @@ export function initWebRTC(
     if (event.type === 'update') {
       useAppStore.getState().setPeerCount(webrtcStore?.getConnectedCount() ?? 0);
       useAppStore.getState().setPeers(webrtcStore?.getPeers() ?? []);
+    }
+  });
+
+  // Update peer classifier when social graph changes
+  useSocialGraphStore.subscribe(() => {
+    if (webrtcStore) {
+      webrtcStore.setPeerClassifier(createPeerClassifier());
     }
   });
 

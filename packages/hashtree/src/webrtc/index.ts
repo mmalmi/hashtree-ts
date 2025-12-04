@@ -11,4 +11,7 @@ export {
   type EventSigner,
   type EventEncrypter,
   type EventDecrypter,
+  type PeerPool,
+  type PeerClassifier,
+  type PoolConfig,
 } from './types.js';

@@ -6,6 +6,7 @@ import { useAppStore, formatBytes, updateStorageStats } from '../store';
 import { useNostrStore } from '../nostr';
 import { UserRow } from './user/UserRow';
 import { useTreeRoot } from '../hooks';
+import { useGraphSize, useIsRecrawling, useFollows } from '../utils/socialGraph';
 
 export function SettingsPage() {
   const peerList = useAppStore(s => s.peers);
@@ -15,6 +16,12 @@ export function SettingsPage() {
   const myPeerId = useAppStore(s => s.myPeerId);
   const relayList = useNostrStore(s => s.relays);
   const loggedIn = useNostrStore(s => s.isLoggedIn);
+  const myPubkey = useNostrStore(s => s.pubkey);
+
+  // Social graph stats
+  const graphSize = useGraphSize();
+  const isRecrawling = useIsRecrawling();
+  const myFollows = useFollows(myPubkey);
 
   // Fetch storage stats on mount
   useEffect(() => {
@@ -76,12 +83,17 @@ export function SettingsPage() {
             Peers ({peerCountVal})
             <span
               className="i-lucide-info text-sm cursor-help"
-              title="Peers are used to exchange data"
+              title="Peers are used to exchange data. Follows pool has priority."
             />
           </h3>
           {myPeerId && (
             <div className="text-xs text-muted mb-2 font-mono">
               Your ID: {myPeerId}
+            </div>
+          )}
+          {loggedIn && peerList.length > 0 && (
+            <div className="text-xs text-muted mb-2">
+              Follows: {peerList.filter(p => p.pool === 'follows' && p.state === 'connected').length}/20 &middot; Other: {peerList.filter(p => p.pool === 'other' && p.state === 'connected').length}/10
             </div>
           )}
           {!loggedIn ? (
@@ -106,7 +118,7 @@ export function SettingsPage() {
                   />
                   <UserRow
                     pubkey={peer.pubkey}
-                    description={peer.isSelf ? 'You' : peer.state}
+                    description={peer.isSelf ? 'You' : `${peer.state}${peer.pool === 'follows' ? ' (follow)' : ''}`}
                     avatarSize={32}
                     className="flex-1 min-w-0"
                   />
@@ -117,6 +129,30 @@ export function SettingsPage() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Social Graph */}
+        <div>
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3 flex items-center gap-2">
+            Social Graph
+            <span
+              className="i-lucide-info text-sm cursor-help"
+              title="Follow network used for trust indicators"
+            />
+            {isRecrawling && (
+              <span className="text-xs text-accent animate-pulse">crawling...</span>
+            )}
+          </h3>
+          <div className="bg-surface-2 rounded p-3 text-sm space-y-2">
+            <div className="flex justify-between">
+              <span className="text-muted">Users in graph</span>
+              <span className="text-text-1">{graphSize.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted">Following</span>
+              <span className="text-text-1">{myFollows.size.toLocaleString()}</span>
+            </div>
+          </div>
         </div>
 
         {/* Current Tree Stats */}
