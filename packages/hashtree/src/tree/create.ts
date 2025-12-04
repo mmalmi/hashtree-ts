@@ -16,6 +16,7 @@ export interface DirEntry {
   name: string;
   hash: Hash;
   size?: number;
+  isTree?: boolean;
 }
 
 /**
@@ -79,6 +80,7 @@ export async function putDirectory(
     hash: e.hash,
     name: e.name,
     size: e.size,
+    isTree: e.isTree,
   }));
 
   const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);

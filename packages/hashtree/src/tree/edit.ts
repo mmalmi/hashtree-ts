@@ -19,7 +19,7 @@ export async function setEntry(
   name: string,
   hash: Hash,
   size: number,
-  _isTree = false
+  isTree = false
 ): Promise<Hash> {
   const { store } = config;
   const dirHash = await resolvePathArray(store, rootHash, path);
@@ -30,9 +30,9 @@ export async function setEntry(
   const entries = await listDirectory(store, dirHash);
   const newEntries = entries
     .filter(e => e.name !== name)
-    .map(e => ({ name: e.name, hash: e.hash, size: e.size ?? 0 }));
+    .map(e => ({ name: e.name, hash: e.hash, size: e.size ?? 0, isTree: e.isTree }));
 
-  newEntries.push({ name, hash, size });
+  newEntries.push({ name, hash, size, isTree });
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -57,7 +57,7 @@ export async function removeEntry(
   const entries = await listDirectory(store, dirHash);
   const newEntries = entries
     .filter(e => e.name !== name)
-    .map(e => ({ name: e.name, hash: e.hash, size: e.size ?? 0 }));
+    .map(e => ({ name: e.name, hash: e.hash, size: e.size ?? 0, isTree: e.isTree }));
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -90,9 +90,9 @@ export async function renameEntry(
 
   const newEntries = entries
     .filter(e => e.name !== oldName)
-    .map(e => ({ name: e.name, hash: e.hash, size: e.size ?? 0 }));
+    .map(e => ({ name: e.name, hash: e.hash, size: e.size ?? 0, isTree: e.isTree }));
 
-  newEntries.push({ name: newName, hash: entry.hash, size: entry.size ?? 0 });
+  newEntries.push({ name: newName, hash: entry.hash, size: entry.size ?? 0, isTree: entry.isTree });
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -171,8 +171,8 @@ async function rebuildPath(
     const parentEntries = await listDirectory(store, parentHash);
     const newParentEntries: DirEntry[] = parentEntries.map(e =>
       e.name === childName
-        ? { name: e.name, hash: childHash, size: e.size ?? 0 }
-        : { name: e.name, hash: e.hash, size: e.size ?? 0 }
+        ? { name: e.name, hash: childHash, size: e.size ?? 0, isTree: e.isTree }
+        : { name: e.name, hash: e.hash, size: e.size ?? 0, isTree: e.isTree }
     );
 
     childHash = await putDirectory(config, newParentEntries);

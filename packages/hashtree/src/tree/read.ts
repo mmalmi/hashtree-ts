@@ -139,7 +139,8 @@ export async function listDirectory(store: Store, hash: Hash): Promise<TreeEntry
       continue;
     }
 
-    const childIsDir = await isDirectory(store, link.hash);
+    // Use stored isTree flag if available, otherwise check dynamically
+    const childIsDir = link.isTree ?? await isDirectory(store, link.hash);
     entries.push({
       name: link.name ?? toHex(link.hash),
       hash: link.hash,
