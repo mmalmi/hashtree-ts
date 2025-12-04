@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import type { TreeVisibility } from 'hashtree';
 import { useModals, closeCreateModal, closeRenameModal, closeForkModal, closeExtractModal, setModalInput, setCreateTreeVisibility, setExtractLocation, type ExtractLocation } from '../hooks/useModals';
-import { createFile, createFolder, createTree, renameEntry, forkTree, uploadExtractedFiles } from '../actions';
+import { createFile, createFolder, createTree, renameEntry, forkTree, uploadExtractedFiles, uploadSingleFile } from '../actions';
 import { getVisibilityInfo } from './VisibilityIcon';
 
 export function CreateModal() {
@@ -199,10 +199,11 @@ export function ForkModal() {
 export function ExtractModal() {
   const { showExtractModal, extractTarget, extractLocation } = useModals();
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isKeeping, setIsKeeping] = useState(false);
 
   if (!showExtractModal || !extractTarget) return null;
 
-  const { archiveName, files } = extractTarget;
+  const { archiveName, files, originalData } = extractTarget;
   const totalSize = files.reduce((sum, f) => sum + f.size, 0);
 
   // Get subdirectory name from archive (remove .zip extension)
@@ -221,11 +222,32 @@ export function ExtractModal() {
     }
   };
 
+  const handleKeepAsZip = async () => {
+    // If no original data (opened from preview), just close the modal
+    if (!originalData) {
+      closeExtractModal();
+      return;
+    }
+
+    setIsKeeping(true);
+    try {
+      await uploadSingleFile(archiveName, originalData);
+      closeExtractModal();
+    } catch (err) {
+      console.error('Failed to upload ZIP:', err);
+      alert('Failed to upload archive');
+    } finally {
+      setIsKeeping(false);
+    }
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
+
+  const isBusy = isExtracting || isKeeping;
 
   return (
     <ModalBase
@@ -262,6 +284,7 @@ export function ExtractModal() {
               <button
                 key={value}
                 onClick={() => setExtractLocation(value)}
+                disabled={isBusy}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded border ${
                   isSelected
                     ? 'border-accent bg-accent/10 text-accent'
@@ -278,16 +301,23 @@ export function ExtractModal() {
 
       <div className="flex gap-2">
         <button
-          onClick={closeExtractModal}
+          onClick={handleKeepAsZip}
           className="btn-ghost"
-          disabled={isExtracting}
+          disabled={isBusy}
         >
-          Keep as ZIP
+          {isKeeping ? (
+            <>
+              <span className="i-lucide-loader-2 animate-spin mr-1" />
+              Uploading...
+            </>
+          ) : (
+            'Keep as ZIP'
+          )}
         </button>
         <button
           onClick={handleExtract}
           className="btn-success"
-          disabled={isExtracting}
+          disabled={isBusy}
         >
           {isExtracting ? (
             <>

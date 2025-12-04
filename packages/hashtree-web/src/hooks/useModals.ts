@@ -20,6 +20,7 @@ interface ArchiveFile {
 interface ExtractTarget {
   archiveName: string;
   files: ArchiveFile[];
+  originalData?: Uint8Array; // Original ZIP data for "Keep as ZIP" option
 }
 
 type ExtractLocation = 'current' | 'subdir';
@@ -104,8 +105,8 @@ export function closeForkModal() {
   emit();
 }
 
-export function openExtractModal(archiveName: string, files: ArchiveFile[]) {
-  state = { ...state, showExtractModal: true, extractTarget: { archiveName, files }, extractLocation: 'current', modalInput: '' };
+export function openExtractModal(archiveName: string, files: ArchiveFile[], originalData?: Uint8Array) {
+  state = { ...state, showExtractModal: true, extractTarget: { archiveName, files, originalData }, extractLocation: 'current', modalInput: '' };
   emit();
 }
 

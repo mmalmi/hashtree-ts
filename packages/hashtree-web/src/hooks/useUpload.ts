@@ -171,7 +171,8 @@ export function useUpload() {
               size: f.data.length,
             }));
             setUploadProgress(null);
-            openExtractModal(file.name, archiveFiles);
+            // Pass original data so "Keep as ZIP" can upload the original file
+            openExtractModal(file.name, archiveFiles, data);
             // Don't continue with normal upload - the modal will handle it
             return;
           }

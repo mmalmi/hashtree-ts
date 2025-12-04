@@ -17,6 +17,7 @@ import {
   getTree,
 } from './store';
 import { getTreeRootSync } from './hooks/useTreeRoot';
+import { markFilesChanged } from './hooks/useRecentlyChanged';
 
 // Helper to get current rootCid from route via resolver cache
 function getCurrentRootCid(): CID | null {
@@ -456,6 +457,46 @@ export async function forkTree(dirCid: CID, name: string): Promise<boolean> {
     navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}`);
   }
   return success;
+}
+
+// Upload a single file (used for "Keep as ZIP" option)
+export async function uploadSingleFile(fileName: string, data: Uint8Array): Promise<void> {
+  const tree = getTree();
+  const route = parseRoute();
+  const currentPath = getCurrentPathFromUrl();
+
+  const { cid: fileCid, size } = await tree.putFile(data);
+
+  let rootCid = getCurrentRootCid();
+
+  if (rootCid) {
+    const newRootCid = await tree.setEntry(
+      rootCid,
+      currentPath,
+      fileName,
+      fileCid,
+      size
+    );
+    rootCid = newRootCid;
+    markFilesChanged(new Set([fileName]));
+  } else if (route.npub && route.treeName) {
+    // Virtual tree case - initialize and save to nostr
+    const result = await initVirtualTree([{ name: fileName, cid: fileCid, size }]);
+    if (result) {
+      rootCid = result;
+      markFilesChanged(new Set([fileName]));
+    }
+  } else {
+    // No tree context - create new encrypted tree
+    const result = await tree.putDirectory([{ name: fileName, cid: fileCid, size }]);
+    rootCid = result.cid;
+    markFilesChanged(new Set([fileName]));
+  }
+
+  if (rootCid) {
+    const keyHex = rootCid.key ? toHex(rootCid.key) : undefined;
+    await autosaveIfOwn(toHex(rootCid.hash), keyHex);
+  }
 }
 
 // Upload extracted files from an archive
