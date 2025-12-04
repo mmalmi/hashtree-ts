@@ -8,6 +8,7 @@ import { npubToPubkey } from '../nostr';
 import { LiveVideo, LiveVideoFromHash } from './LiveVideo';
 import { FolderActions } from './FolderActions';
 import { DosBoxViewer, isDosExecutable } from './DosBox';
+import { HtmlViewer, shouldUseHtmlViewer } from './HtmlViewer';
 import { ZipPreview } from './ZipPreview';
 import {
   formatBytes,
@@ -492,6 +493,14 @@ export function Viewer() {
             exeCid={entry.cid}
             directoryCid={currentDirCid}
             exeName={entry.name}
+          />
+        ) : isHtml && content && currentDirCid ? (
+          // HTML file with directory context - can load sibling resources
+          <HtmlViewer
+            key={toHex(entry.cid.hash)}
+            html={decodeAsText(content) || ''}
+            directoryCid={currentDirCid}
+            filename={entry.name}
           />
         ) : content ? (
           <ContentView data={content} filename={entry.name} onDownload={handleDownload} />
