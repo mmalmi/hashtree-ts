@@ -46,11 +46,32 @@ test.describe('WebRTC Request Forwarding', () => {
       }
     });
 
-    // Navigate all pages to the app
+    // Clear storage and navigate all pages to the app
+    // This prevents the app's own WebRTCStore from interfering with the test
+    await Promise.all([
+      contextA.clearCookies(),
+      contextB.clearCookies(),
+      contextC.clearCookies(),
+    ]);
+
     await Promise.all([
       pageA.goto('http://localhost:5173'),
       pageB.goto('http://localhost:5173'),
       pageC.goto('http://localhost:5173'),
+    ]);
+
+    // Clear localStorage to prevent auto-login which starts the app's WebRTCStore
+    await Promise.all([
+      pageA.evaluate(() => localStorage.clear()),
+      pageB.evaluate(() => localStorage.clear()),
+      pageC.evaluate(() => localStorage.clear()),
+    ]);
+
+    // Reload to apply the cleared state
+    await Promise.all([
+      pageA.reload(),
+      pageB.reload(),
+      pageC.reload(),
     ]);
 
     await Promise.all([
@@ -131,18 +152,20 @@ test.describe('WebRTC Request Forwarding', () => {
     // Wait for connections to establish
     console.log('\n=== Waiting for connections ===');
 
-    // Wait for A to connect to B
-    await pageA.waitForFunction(
-      () => (window as any).forwardingTestState?.connectedPeers > 0,
-      { timeout: 60000 }
-    );
+    // Wait for A to connect to B (poll every 500ms, up to 60s)
+    for (let i = 0; i < 120; i++) {
+      const aConnected = await pageA.evaluate(() => (window as any).forwardingTestState?.connectedPeers > 0);
+      if (aConnected) break;
+      await pageA.waitForTimeout(500);
+    }
     console.log('A connected to peers');
 
     // Wait for B to connect to both A and C
-    await pageB.waitForFunction(
-      () => (window as any).forwardingTestState?.connectedPeers >= 2,
-      { timeout: 60000 }
-    );
+    for (let i = 0; i < 120; i++) {
+      const bConnected = await pageB.evaluate(() => (window as any).forwardingTestState?.connectedPeers >= 2);
+      if (bConnected) break;
+      await pageB.waitForTimeout(500);
+    }
     console.log('B connected to multiple peers');
 
     // Now have A request the content by hash
