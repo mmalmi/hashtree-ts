@@ -7,7 +7,7 @@
  * render cycle. Components can subscribe to hash changes and update directly
  * (e.g., MediaSource append) without triggering re-renders.
  */
-import type { RefResolver, Hash } from '../types.js';
+import type { RefResolver, Hash, RefResolverListEntry } from '../types.js';
 import { fromHex, toHex } from '../types.js';
 
 // Nostr event structure (minimal)
@@ -43,16 +43,57 @@ interface SubscriptionEntry {
   latestCreatedAt: number;
 }
 
+import type { TreeVisibility } from '../visibility.js';
+
 /**
- * Parse hash and optional key from a nostr event
- * New format: hash and optional key stored in tags
+ * Parsed visibility info from a nostr event
  */
-function parseHashAndKey(event: NostrEvent): { hash: string; key?: string } | null {
+export interface ParsedTreeVisibility {
+  hash: string;
+  visibility: TreeVisibility;
+  /** Plaintext key (for public trees) */
+  key?: string;
+  /** Encrypted key (for unlisted trees) - decrypt with link key */
+  encryptedKey?: string;
+  /** Key ID (for unlisted trees) - identifies which link key to use */
+  keyId?: string;
+  /** Self-encrypted key (for private trees) - decrypt with NIP-04 */
+  selfEncryptedKey?: string;
+}
+
+/**
+ * Parse hash and visibility info from a nostr event
+ * Supports all visibility levels: public, unlisted, private
+ */
+function parseHashAndVisibility(event: NostrEvent): ParsedTreeVisibility | null {
   const hashTag = event.tags.find(t => t[0] === 'hash')?.[1];
   if (!hashTag) return null;
 
-  const keyTag = event.tags.find(t => t[0] === 'key')?.[1];
-  return { hash: hashTag, key: keyTag };
+  const key = event.tags.find(t => t[0] === 'key')?.[1];
+  const encryptedKey = event.tags.find(t => t[0] === 'encryptedKey')?.[1];
+  const keyId = event.tags.find(t => t[0] === 'keyId')?.[1];
+  const selfEncryptedKey = event.tags.find(t => t[0] === 'selfEncryptedKey')?.[1];
+
+  let visibility: TreeVisibility;
+  if (selfEncryptedKey) {
+    visibility = 'private';
+  } else if (encryptedKey) {
+    visibility = 'unlisted';
+  } else {
+    visibility = 'public';
+  }
+
+  return { hash: hashTag, visibility, key, encryptedKey, keyId, selfEncryptedKey };
+}
+
+/**
+ * Legacy parse function for backwards compatibility
+ * @deprecated Use parseHashAndVisibility instead
+ */
+function parseHashAndKey(event: NostrEvent): { hash: string; key?: string } | null {
+  const result = parseHashAndVisibility(event);
+  if (!result) return null;
+  return { hash: result.hash, key: result.key };
 }
 
 export interface NostrRefResolverConfig {
@@ -294,7 +335,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
      * Streams results as they arrive - returns unsubscribe function.
      * Caller decides when to stop listening.
      */
-    list(prefix: string, callback: (entries: Array<{ key: string; hash: Hash; encryptionKey?: Hash }>) => void): () => void {
+    list(prefix: string, callback: (entries: RefResolverListEntry[]) => void): () => void {
       const parts = prefix.split('/');
       if (parts.length === 0) {
         callback([]);
@@ -316,16 +357,22 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
         return () => {};
       }
 
-      // Track entries by d-tag
-      const entriesByDTag = new Map<string, { hash: string; key?: string; created_at: number }>();
+      // Track entries by d-tag with full visibility info
+      const entriesByDTag = new Map<string, ParsedTreeVisibility & { created_at: number }>();
 
       const emitCurrentState = () => {
-        const result: Array<{ key: string; hash: Hash; encryptionKey?: Hash }> = [];
+        const result: RefResolverListEntry[] = [];
         for (const [dTag, entry] of entriesByDTag) {
           result.push({
             key: `${npubStr}/${dTag}`,
             hash: fromHex(entry.hash),
+            // Legacy field for backwards compatibility
             encryptionKey: entry.key ? fromHex(entry.key) : undefined,
+            // New visibility fields
+            visibility: entry.visibility,
+            encryptedKey: entry.encryptedKey,
+            keyId: entry.keyId,
+            selfEncryptedKey: entry.selfEncryptedKey,
           });
         }
         callback(result);
@@ -341,14 +388,13 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           const dTag = event.tags.find(t => t[0] === 'd')?.[1];
           if (!dTag) return;
 
-          const hashAndKey = parseHashAndKey(event);
-          if (!hashAndKey) return;
+          const parsed = parseHashAndVisibility(event);
+          if (!parsed) return;
 
           const existing = entriesByDTag.get(dTag);
           if (!existing || (event.created_at || 0) > existing.created_at) {
             entriesByDTag.set(dTag, {
-              hash: hashAndKey.hash,
-              key: hashAndKey.key,
+              ...parsed,
               created_at: event.created_at || 0,
             });
             emitCurrentState();

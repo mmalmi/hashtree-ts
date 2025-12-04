@@ -10,6 +10,8 @@ export interface RouteInfo {
   path: string[];
   /** True when viewing a permalink (nhash route) */
   isPermalink: boolean;
+  /** Link key for unlisted trees (from ?k= param) */
+  linkKey: string | null;
 }
 
 /**
@@ -21,10 +23,17 @@ export interface RouteInfo {
  * - #/npub/profile
  */
 export function parseRoute(): RouteInfo {
-  // Get hash path, stripping query params
+  // Get hash path and query params
   const fullHash = window.location.hash.slice(2); // Remove #/
-  const hashPath = fullHash.split('?')[0]; // Strip query params
+  const [hashPath, queryString] = fullHash.split('?');
   const parts = hashPath.split('/').filter(Boolean).map(decodeURIComponent);
+
+  // Parse link key from query params (for unlisted trees)
+  let linkKey: string | null = null;
+  if (queryString) {
+    const params = new URLSearchParams(queryString);
+    linkKey = params.get('k');
+  }
 
   // nhash route: #/nhash1.../path...
   if (parts[0]?.startsWith('nhash1')) {
@@ -34,12 +43,13 @@ export function parseRoute(): RouteInfo {
       hash: parts[0], // Keep the nhash string, caller can decode
       path: parts.slice(1),
       isPermalink: true,
+      linkKey,
     };
   }
 
   // Special routes (no tree context)
   if (['settings', 'wallet'].includes(parts[0])) {
-    return { npub: null, treeName: null, hash: null, path: [], isPermalink: false };
+    return { npub: null, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
   }
 
   // User routes
@@ -48,7 +58,7 @@ export function parseRoute(): RouteInfo {
 
     // Special user routes (profile, follows, edit)
     if (['profile', 'follows', 'edit'].includes(parts[1])) {
-      return { npub, treeName: null, hash: null, path: [], isPermalink: false };
+      return { npub, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
     }
 
     // Tree route: #/npub/treeName/path...
@@ -61,15 +71,16 @@ export function parseRoute(): RouteInfo {
         hash: null,
         path: isStreamRoute ? [] : parts.slice(2),
         isPermalink: false,
+        linkKey,
       };
     }
 
     // User view: #/npub
-    return { npub, treeName: null, hash: null, path: [], isPermalink: false };
+    return { npub, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
   }
 
   // Home route
-  return { npub: null, treeName: null, hash: null, path: [], isPermalink: false };
+  return { npub: null, treeName: null, hash: null, path: [], isPermalink: false, linkKey: null };
 }
 
 /**

@@ -193,6 +193,24 @@ export function hashEquals(a: Hash, b: Hash): boolean {
 }
 
 /**
+ * Entry returned from RefResolver.list()
+ */
+export interface RefResolverListEntry {
+  key: string;
+  hash: Hash;
+  /** @deprecated Use visibility fields instead */
+  encryptionKey?: Hash;
+  /** Tree visibility: public, unlisted, or private */
+  visibility?: 'public' | 'unlisted' | 'private';
+  /** Encrypted key for unlisted trees - decrypt with link key from URL */
+  encryptedKey?: string;
+  /** Key ID for unlisted trees */
+  keyId?: string;
+  /** Self-encrypted key for private trees - decrypt with NIP-04 */
+  selfEncryptedKey?: string;
+}
+
+/**
  * RefResolver - Maps human-readable keys to merkle root hashes (refs)
  *
  * This abstraction allows different backends (Nostr, DNS, HTTP, local storage)
@@ -239,10 +257,10 @@ export interface RefResolver {
    * Callback fires on each new entry or update.
    *
    * @param prefix The prefix to watch (e.g., "npub1..." for all trees of a user)
-   * @param callback Called with updated list as entries arrive (includes optional encryption key)
+   * @param callback Called with updated list as entries arrive (includes visibility info)
    * @returns Unsubscribe function
    */
-  list?(prefix: string, callback: (entries: Array<{ key: string; hash: Hash; encryptionKey?: Hash }>) => void): () => void;
+  list?(prefix: string, callback: (entries: Array<RefResolverListEntry>) => void): () => void;
 
   /**
    * Stop the resolver and clean up resources

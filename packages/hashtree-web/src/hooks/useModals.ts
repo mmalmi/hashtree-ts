@@ -2,7 +2,7 @@
  * Modal state management using module-level store
  */
 import { useSyncExternalStore } from 'react';
-import type { CID } from 'hashtree';
+import type { CID, TreeVisibility } from 'hashtree';
 
 type ModalType = 'file' | 'folder' | 'tree';
 
@@ -25,6 +25,7 @@ interface ExtractTarget {
 interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
+  createTreeVisibility: TreeVisibility;
   showRenameModal: boolean;
   renameTarget: string; // Original name of item being renamed
   showForkModal: boolean;
@@ -38,6 +39,7 @@ interface ModalState {
 let state: ModalState = {
   showCreateModal: false,
   createModalType: 'file',
+  createTreeVisibility: 'public',
   showRenameModal: false,
   renameTarget: '',
   showForkModal: false,
@@ -64,12 +66,17 @@ function getSnapshot() {
 
 // Actions
 export function openCreateModal(type: ModalType) {
-  state = { ...state, showCreateModal: true, createModalType: type, modalInput: '' };
+  state = { ...state, showCreateModal: true, createModalType: type, createTreeVisibility: 'public', modalInput: '' };
   emit();
 }
 
 export function closeCreateModal() {
-  state = { ...state, showCreateModal: false, modalInput: '' };
+  state = { ...state, showCreateModal: false, createTreeVisibility: 'public', modalInput: '' };
+  emit();
+}
+
+export function setCreateTreeVisibility(visibility: TreeVisibility) {
+  state = { ...state, createTreeVisibility: visibility };
   emit();
 }
 
@@ -117,6 +124,7 @@ export function useModals() {
     ...modalState,
     openCreateModal,
     closeCreateModal,
+    setCreateTreeVisibility,
     openRenameModal,
     closeRenameModal,
     openForkModal,

@@ -19,6 +19,10 @@ import NDKCacheAdapterDexie from '@nostr-dev-kit/ndk-cache-dexie';
 import { initWebRTC, stopWebRTC } from './store';
 import type { EventSigner } from 'hashtree';
 import {
+  type TreeVisibility,
+  visibilityHex,
+} from 'hashtree';
+import {
   useAccountsStore,
   initAccountsStore,
   createAccountFromNsec,
@@ -42,14 +46,25 @@ const DEFAULT_RELAYS = [
 const STORAGE_KEY_NSEC = 'hashtree:nsec';
 const STORAGE_KEY_LOGIN_TYPE = 'hashtree:loginType';
 
+// Re-export TreeVisibility from hashtree lib
+export type { TreeVisibility } from 'hashtree';
+
 export interface HashTreeEvent {
   id: string;
   pubkey: string;
   name: string;
   /** Root hash (hex encoded) */
   rootHash: string;
-  /** Decryption key for encrypted trees (hex encoded, optional) */
+  /** Decryption key for encrypted trees (hex encoded) - present for public trees */
   rootKey?: string;
+  /** Encrypted key (hex) - present for unlisted trees, decrypt with link key */
+  encryptedKey?: string;
+  /** Key ID for unlisted trees - hash of link decryption key, allows key rotation */
+  keyId?: string;
+  /** Self-encrypted key (NIP-04) - present for private trees */
+  selfEncryptedKey?: string;
+  /** Computed visibility based on which tags are present */
+  visibility: TreeVisibility;
   created_at: number;
 }
 
@@ -372,28 +387,89 @@ export function logout() {
   localStorage.removeItem(STORAGE_KEY_NSEC);
 }
 
+// Re-export visibility hex helpers from hashtree lib
+export { visibilityHex as linkKeyUtils } from 'hashtree';
+
+/**
+ * Parse visibility from Nostr event tags
+ */
+export function parseVisibility(tags: string[][]): { visibility: TreeVisibility; rootKey?: string; encryptedKey?: string; keyId?: string; selfEncryptedKey?: string } {
+  const rootKey = tags.find(t => t[0] === 'key')?.[1];
+  const encryptedKey = tags.find(t => t[0] === 'encryptedKey')?.[1];
+  const keyId = tags.find(t => t[0] === 'keyId')?.[1];
+  const selfEncryptedKey = tags.find(t => t[0] === 'selfEncryptedKey')?.[1];
+
+  let visibility: TreeVisibility;
+  if (selfEncryptedKey) {
+    visibility = 'private';
+  } else if (encryptedKey) {
+    visibility = 'unlisted';
+  } else {
+    visibility = 'public';
+  }
+
+  return { visibility, rootKey, encryptedKey, keyId, selfEncryptedKey };
+}
+
+export interface SaveHashtreeOptions {
+  visibility?: TreeVisibility;
+  /** Link key for unlisted trees - if not provided, one will be generated */
+  linkKey?: string;
+}
+
 /**
  * Save/publish hashtree to relays
  * @param name - Tree name
  * @param rootHash - Root hash (hex encoded)
  * @param rootKey - Decryption key (hex encoded, optional for encrypted trees)
+ * @param options - Visibility options
+ * @returns Object with success status and linkKey (for unlisted trees)
  */
-export async function saveHashtree(name: string, rootHash: string, rootKey?: string): Promise<boolean> {
+export async function saveHashtree(
+  name: string,
+  rootHash: string,
+  rootKey?: string,
+  options: SaveHashtreeOptions = {}
+): Promise<{ success: boolean; linkKey?: string }> {
   const store = useNostrStore.getState();
-  if (!store.pubkey || !ndk.signer) return false;
+  if (!store.pubkey || !ndk.signer) return { success: false };
+
+  const visibility = options.visibility ?? 'public';
 
   try {
     const event = new NDKEvent(ndk);
     event.kind = 30078;
-    event.content = ''; // Content is empty, data stored in tags
+    event.content = '';
     event.tags = [
       ['d', name],
       ['l', 'hashtree'],
       ['hash', rootHash],
     ];
-    // Only add key tag if present (encrypted tree)
+
+    let linkKey: string | undefined;
+
     if (rootKey) {
-      event.tags.push(['key', rootKey]);
+      switch (visibility) {
+        case 'public':
+          // Plaintext key - anyone can access
+          event.tags.push(['key', rootKey]);
+          break;
+
+        case 'unlisted':
+          // Encrypt key with link key
+          linkKey = options.linkKey ?? visibilityHex.generateLinkKey();
+          const encryptedKey = await visibilityHex.encryptKeyForLink(rootKey, linkKey);
+          const keyId = await visibilityHex.computeKeyId(linkKey);
+          event.tags.push(['encryptedKey', encryptedKey]);
+          event.tags.push(['keyId', keyId]);
+          break;
+
+        case 'private':
+          // Encrypt key to self using NIP-04
+          const selfEncrypted = await nip04.encrypt(secretKey!, store.pubkey, rootKey);
+          event.tags.push(['selfEncryptedKey', selfEncrypted]);
+          break;
+      }
     }
 
     await event.publish();
@@ -404,15 +480,16 @@ export async function saveHashtree(name: string, rootHash: string, rootKey?: str
       useNostrStore.getState().setSelectedTree({
         ...currentSelected,
         rootHash,
-        rootKey,
+        rootKey: visibility === 'public' ? rootKey : undefined,
+        visibility,
         created_at: event.created_at || Math.floor(Date.now() / 1000),
       });
     }
 
-    return true;
+    return { success: true, linkKey };
   } catch (e) {
     console.error('Failed to save hashtree:', e);
-    return false;
+    return { success: false };
   }
 }
 

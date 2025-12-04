@@ -9,6 +9,7 @@ import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
 import { useNostrStore, pubkeyToNpub, npubToPubkey } from '../nostr';
 import { UserRow } from './user';
 import { FolderActions } from './FolderActions';
+import { VisibilityIcon } from './VisibilityIcon';
 import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirCid, useTrees, useDirectoryEntries, useTreeRoot } from '../hooks';
 import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
@@ -108,32 +109,35 @@ function buildEntryHref(
   currentNpubVal: string | null,
   currentTreeNameVal: string | null,
   currentPathVal: string[],
-  rootHashVal: Uint8Array | null
+  rootHashVal: Uint8Array | null,
+  linkKey: string | null
 ): string {
   const parts: string[] = [];
+  const suffix = linkKey ? `?k=${linkKey}` : '';
 
   if (currentNpubVal && currentTreeNameVal) {
     parts.push(currentNpubVal, currentTreeNameVal);
     parts.push(...currentPathVal);
     parts.push(entry.name);
-    return '/' + parts.map(encodeURIComponent).join('/');
+    return '/' + parts.map(encodeURIComponent).join('/') + suffix;
   } else if (rootHashVal) {
     // Use nhash format: /nhash1.../path/to/file
     const nhash = nhashEncode(toHex(rootHashVal));
     parts.push(nhash);
     parts.push(...currentPathVal);
     parts.push(entry.name);
-    return '/' + parts.map(encodeURIComponent).join('/');
+    return '/' + parts.map(encodeURIComponent).join('/') + suffix;
   }
 
   parts.push(...currentPathVal);
   parts.push(entry.name);
-  return '/' + parts.map(encodeURIComponent).join('/');
+  return '/' + parts.map(encodeURIComponent).join('/') + suffix;
 }
 
 // Build href for a tree (root of tree, no path)
-function buildTreeHref(ownerNpub: string, treeName: string): string {
-  return `/${encodeURIComponent(ownerNpub)}/${encodeURIComponent(treeName)}`;
+function buildTreeHref(ownerNpub: string, treeName: string, linkKey?: string): string {
+  const base = `/${encodeURIComponent(ownerNpub)}/${encodeURIComponent(treeName)}`;
+  return linkKey ? `${base}?k=${linkKey}` : base;
 }
 
 export function FileBrowser() {
@@ -156,6 +160,7 @@ export function FileBrowser() {
   const route = useRoute();
   const currentNpub = route.npub;
   const currentTreeName = route.treeName;
+  const routeLinkKey = route.linkKey;
 
   const viewedNpub = currentNpub;
   const inTreeView = !!currentTreeName || !!rootHash;
@@ -165,6 +170,7 @@ export function FileBrowser() {
   // Get trees from resolver subscription
   const targetNpub = viewedNpub || userNpub;
   const trees = useTrees(targetNpub);
+  const currentTree = currentTreeName ? trees.find(t => t.name === currentTreeName) : null;
   const dirHash = currentDirHash ? toHex(currentDirHash) : null;
   const { uploadFiles, uploadFilesWithPaths } = useUpload();
 
@@ -195,21 +201,22 @@ export function FileBrowser() {
   // Build href for a directory path using URL segments
   const buildDirHref = (path: string[]): string => {
     const parts: string[] = [];
+    const suffix = routeLinkKey ? `?k=${routeLinkKey}` : '';
 
     if (currentNpub && currentTreeName) {
       parts.push(currentNpub, currentTreeName);
       parts.push(...path);
-      return '/' + parts.map(encodeURIComponent).join('/');
+      return '/' + parts.map(encodeURIComponent).join('/') + suffix;
     } else if (rootHash) {
       // Use nhash format: /nhash1.../path
       const nhash = nhashEncode(toHex(rootHash));
       parts.push(nhash);
       parts.push(...path);
-      return '/' + parts.map(encodeURIComponent).join('/');
+      return '/' + parts.map(encodeURIComponent).join('/') + suffix;
     }
 
     parts.push(...path);
-    return '/' + parts.map(encodeURIComponent).join('/');
+    return '/' + parts.map(encodeURIComponent).join('/') + suffix;
   };
 
   // Build navigation items list: [.., ., ...entries]
@@ -256,7 +263,7 @@ export function FileBrowser() {
         const entryIndex = focusedIndex - specialItemCount;
         const entry = entries[entryIndex];
         if (entry) {
-          const href = buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootHash);
+          const href = buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootHash, routeLinkKey);
           navigateTo(href);
           setFocusedIndex(-1);
         }
@@ -300,12 +307,12 @@ export function FileBrowser() {
         } else {
           // File: navigate to it and clear focus
           setFocusedIndex(-1);
-          const href = buildEntryHref(newEntry, currentNpub, currentTreeName, currentPath, rootHash);
+          const href = buildEntryHref(newEntry, currentNpub, currentTreeName, currentPath, rootHash, routeLinkKey);
           navigateTo(href);
         }
       }
     }
-  }, [entries, focusedIndex, selectedIndex, selectedEntry, currentNpub, currentTreeName, currentPath, rootHash, navigateTo, canEdit, hasParent, navItemCount, specialItemCount]);
+  }, [entries, focusedIndex, selectedIndex, selectedEntry, currentNpub, currentTreeName, currentPath, rootHash, routeLinkKey, navigateTo, canEdit, hasParent, navItemCount, specialItemCount]);
 
   // Drag-and-drop state
   const [draggedItem, setDraggedItem] = useState<string | null>(null);
@@ -422,8 +429,9 @@ export function FileBrowser() {
   const [treeFocusedIndex, setTreeFocusedIndex] = useState<number>(-1);
 
   // Build tree list for navigation (home first, then others)
+  const homeTree = trees.find(t => t.name === 'home');
   const treeList = isOwnTrees
-    ? [{ name: 'home', key: 'home' }, ...trees.filter(t => t.name !== 'home')]
+    ? [homeTree ?? { name: 'home', key: 'home' }, ...trees.filter(t => t.name !== 'home')]
     : trees;
 
   // Handle keyboard navigation for tree list
@@ -437,7 +445,7 @@ export function FileBrowser() {
       e.preventDefault();
       const tree = treeList[treeFocusedIndex];
       if (tree) {
-        navigateTo(buildTreeHref(targetNpub!, tree.name));
+        navigateTo(buildTreeHref(targetNpub!, tree.name, 'linkKey' in tree ? tree.linkKey : undefined));
         setTreeFocusedIndex(-1);
       }
       return;
@@ -508,13 +516,16 @@ export function FileBrowser() {
           ) : treeList.map((tree, idx) => (
             <Link
               key={tree.key}
-              to={buildTreeHref(targetNpub!, tree.name)}
+              to={buildTreeHref(targetNpub!, tree.name, 'linkKey' in tree ? tree.linkKey : undefined)}
               className={`p-3 border-b border-surface-2 flex items-center gap-3 cursor-pointer no-underline text-text-1 min-w-0 ${
                 currentTreeName === tree.name ? 'bg-surface-2' : 'hover:bg-surface-1'
               } ${treeFocusedIndex === idx ? 'ring-2 ring-inset ring-accent' : ''}`}
             >
               <span className="shrink-0 i-lucide-folder text-warning" />
               <span className="truncate" title={tree.name}>{tree.name}</span>
+              {'visibility' in tree && (
+                <VisibilityIcon visibility={tree.visibility} className="ml-auto text-text-3" />
+              )}
             </Link>
           ))}
         </div>
@@ -591,10 +602,9 @@ export function FileBrowser() {
             !selectedEntry && focusedIndex < 0 ? 'bg-surface-2' : ''
           } ${focusedIndex === (hasParent ? 1 : 0) ? 'ring-2 ring-inset ring-accent' : ''}`}
         >
-          <span
-            className={`shrink-0 ${currentDirCid?.key ? 'i-lucide-lock' : 'i-lucide-globe'} text-text-2`}
-            title={currentDirCid?.key ? 'Encrypted' : 'Public'}
-          />
+          {currentTree && (
+            <VisibilityIcon visibility={currentTree.visibility} className="text-text-2" />
+          )}
           <span className={`shrink-0 ${isDirectory ? 'i-lucide-folder-open text-warning' : `${getFileIcon(currentDirName)} text-text-2`}`} />
           <span className="truncate">{currentDirName}</span>
         </Link>
@@ -607,7 +617,7 @@ export function FileBrowser() {
           entries.map((entry, idx) => (
             <Link
               key={entry.name}
-              to={buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootHash)}
+              to={buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootHash, routeLinkKey)}
               draggable={canEdit}
               onDragStart={(e) => handleDragStart(e, entry.name)}
               onDragEnd={handleDragEnd}

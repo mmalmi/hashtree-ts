@@ -17,6 +17,7 @@
     "@scure/bip39": "^2.0.0",
     "coco-cashu-core": "file:../../vendor/coco-cashu-core",
     "coco-cashu-indexeddb": "file:../../vendor/coco-cashu-indexeddb",
+    "dexie": "^4.2.1",
     "fflate": "^0.8.2",
     "hashtree": "workspace:*",
     "markdown-to-jsx": "^9.1.2",

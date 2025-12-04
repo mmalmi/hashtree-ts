@@ -15,6 +15,7 @@ export type {
   Store,
   StoreWithMeta,
   RefResolver,
+  RefResolverListEntry,
   // Legacy alias
   RefResolver as RootResolver,
 } from './types.js';
@@ -141,3 +142,13 @@ export {
   type NPathData,
   type DecodeResult,
 } from './nhash.js';
+
+// Tree visibility utilities (public/unlisted/private)
+export {
+  generateLinkKey,
+  computeKeyId,
+  encryptKeyForLink,
+  decryptKeyFromLink,
+  hex as visibilityHex,
+  type TreeVisibility,
+} from './visibility.js';

@@ -2,6 +2,7 @@ import { useNostrStore, npubToPubkey } from '../nostr';
 import { useRoute } from '../hooks';
 import { useTrees } from '../hooks/useTrees';
 import { UserRow } from './user';
+import { VisibilityIcon } from './VisibilityIcon';
 
 interface Props {
   onSelect: (rootHash: string, name: string, ownerNpub: string) => void;
@@ -59,11 +60,12 @@ export function TreeList({ onSelect, onNewTree }: Props) {
               <div
                 key={tree.key}
                 onClick={() => handleSelect(tree)}
-                className={`py-1.5 px-2 rounded-sm cursor-pointer text-sm ${
+                className={`py-1.5 px-2 rounded-sm cursor-pointer text-sm flex items-center gap-2 ${
                   selectedTreeName === tree.name ? 'bg-surface-2' : 'hover:bg-surface-2/50'
                 }`}
               >
-                {tree.name}
+                <span className="truncate">{tree.name}</span>
+                <VisibilityIcon visibility={tree.visibility} className="ml-auto text-text-3" />
               </div>
             ))}
           </div>

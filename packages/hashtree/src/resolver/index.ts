@@ -4,6 +4,7 @@
 export {
   createNostrRefResolver,
   type NostrRefResolverConfig,
+  type ParsedTreeVisibility,
   // Legacy aliases
   type NostrRefResolverConfig as NostrRootResolverConfig,
   type NostrEvent,

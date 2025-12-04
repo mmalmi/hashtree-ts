@@ -4,7 +4,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { nip19 } from 'nostr-tools';
 import type { NDKSubscription } from '@nostr-dev-kit/ndk';
-import { ndk, useNostrStore, type HashTreeEvent } from '../nostr';
+import type { TreeVisibility } from 'hashtree';
+import { ndk, useNostrStore, type HashTreeEvent, parseVisibility } from '../nostr';
 
 export interface FollowedTree extends HashTreeEvent {
   npub: string;
@@ -47,7 +48,8 @@ export function useFollowsTrees(): { trees: FollowedTree[]; loading: boolean; fo
       const rootHash = event.tags.find(t => t[0] === 'hash')?.[1];
       if (!rootHash) return;
 
-      const rootKey = event.tags.find(t => t[0] === 'key')?.[1];
+      // Parse visibility info
+      const visInfo = parseVisibility(event.tags);
 
       const key = `${event.pubkey}:${dTag}`;
       const existing = latestByKey.get(key);
@@ -59,7 +61,11 @@ export function useFollowsTrees(): { trees: FollowedTree[]; loading: boolean; fo
           npub: nip19.npubEncode(event.pubkey),
           name: dTag,
           rootHash,
-          rootKey,
+          rootKey: visInfo.rootKey,
+          visibility: visInfo.visibility,
+          encryptedKey: visInfo.encryptedKey,
+          keyId: visInfo.keyId,
+          selfEncryptedKey: visInfo.selfEncryptedKey,
           created_at: event.created_at || 0,
         });
         updateTrees();

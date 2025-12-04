@@ -2,8 +2,10 @@
  * TreeRow - shared row component for tree/file listings
  */
 import { Link } from 'react-router-dom';
+import type { TreeVisibility } from 'hashtree';
 import { navigate } from '../utils/navigate';
 import { Avatar, Name } from './user';
+import { VisibilityIcon } from './VisibilityIcon';
 
 export interface TreeRowProps {
   to: string;
@@ -14,6 +16,9 @@ export interface TreeRowProps {
   subtitle?: string;
   showAuthorName?: boolean;
   timestamp: number;
+  /** @deprecated Use visibility instead */
+  encrypted?: boolean;
+  visibility?: TreeVisibility;
 }
 
 export function TreeRow({
@@ -25,6 +30,8 @@ export function TreeRow({
   subtitle,
   showAuthorName,
   timestamp,
+  encrypted,
+  visibility,
 }: TreeRowProps) {
   const typeIconClass = icon === 'folder'
     ? 'i-lucide-folder text-warning'
@@ -58,6 +65,14 @@ export function TreeRow({
           </div>
         )}
       </div>
+      {visibility !== undefined ? (
+        <VisibilityIcon visibility={visibility} className="text-text-3" />
+      ) : encrypted !== undefined && (
+        <span
+          className={`shrink-0 ${encrypted ? 'i-lucide-lock' : 'i-lucide-globe'} text-text-3`}
+          title={encrypted ? 'Encrypted' : 'Public'}
+        />
+      )}
       <span className="text-xs text-text-3 shrink-0">
         {formatTimeAgo(timestamp)}
       </span>

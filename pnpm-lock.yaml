@@ -105,6 +105,9 @@ importers:
       coco-cashu-indexeddb:
         specifier: file:../../vendor/coco-cashu-indexeddb
         version: file:vendor/coco-cashu-indexeddb(coco-cashu-core@file:vendor/coco-cashu-core(typescript@5.9.3))(typescript@5.9.3)
+      dexie:
+        specifier: ^4.2.1
+        version: 4.2.1
       fflate:
         specifier: ^0.8.2
         version: 0.8.2

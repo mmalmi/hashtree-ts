@@ -1,27 +1,35 @@
-import { ReactNode, useState } from 'react';
-import { useModals, closeCreateModal, closeRenameModal, closeForkModal, closeExtractModal, setModalInput } from '../hooks/useModals';
+import { type ReactNode, useState } from 'react';
+import type { TreeVisibility } from 'hashtree';
+import { useModals, closeCreateModal, closeRenameModal, closeForkModal, closeExtractModal, setModalInput, setCreateTreeVisibility } from '../hooks/useModals';
 import { createFile, createFolder, createTree, renameEntry, forkTree, uploadExtractedFiles } from '../actions';
+import { getVisibilityInfo } from './VisibilityIcon';
 
 export function CreateModal() {
-  const { showCreateModal, createModalType, modalInput } = useModals();
+  const { showCreateModal, createModalType, createTreeVisibility, modalInput } = useModals();
+  const [isCreating, setIsCreating] = useState(false);
 
   if (!showCreateModal) return null;
 
   const isFolder = createModalType === 'folder';
   const isTree = createModalType === 'tree';
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const name = modalInput.trim();
-    if (!name) return;
+    if (!name || isCreating) return;
 
     if (isTree) {
-      createTree(name);
+      setIsCreating(true);
+      await createTree(name, createTreeVisibility);
+      setIsCreating(false);
+      // URL already updated with ?k= param for unlisted trees
+      closeCreateModal();
     } else if (isFolder) {
       createFolder(name);
+      closeCreateModal();
     } else {
       createFile(name, '');
+      closeCreateModal();
     }
-    closeCreateModal();
   };
 
   const title = isTree ? 'New Folder' : isFolder ? 'New Folder' : 'New File';
@@ -43,15 +51,57 @@ export function CreateModal() {
           if (e.key === 'Enter') handleSubmit();
         }}
       />
+
+      {/* Visibility picker for trees */}
+      {isTree && (
+        <div className="mt-4">
+          <label className="text-sm text-text-2 mb-2 block">Visibility</label>
+          <div className="flex gap-2">
+            {(['public', 'unlisted', 'private'] as TreeVisibility[]).map((vis) => {
+              const { icon, title } = getVisibilityInfo(vis);
+              const isSelected = createTreeVisibility === vis;
+              return (
+                <button
+                  key={vis}
+                  onClick={() => setCreateTreeVisibility(vis)}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded border ${
+                    isSelected
+                      ? 'border-accent bg-accent/10 text-accent'
+                      : 'border-surface-3 text-text-1 hover:border-surface-4 hover:bg-surface-2'
+                  }`}
+                  title={title}
+                >
+                  <span className={icon} />
+                  <span className="text-sm capitalize">{vis}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-text-3 mt-2">
+            {createTreeVisibility === 'public' && 'Anyone can browse this folder'}
+            {createTreeVisibility === 'unlisted' && 'Only accessible with a special link'}
+            {createTreeVisibility === 'private' && 'Only you can access this folder'}
+          </p>
+        </div>
+      )}
+
       <div className="flex gap-2 mt-4">
         <button
           onClick={closeCreateModal}
           className="btn-ghost"
+          disabled={isCreating}
         >
           Cancel
         </button>
-        <button onClick={handleSubmit} className="btn-success">
-          Create
+        <button onClick={handleSubmit} className="btn-success" disabled={isCreating}>
+          {isCreating ? (
+            <>
+              <span className="i-lucide-loader-2 animate-spin mr-1" />
+              Creating...
+            </>
+          ) : (
+            'Create'
+          )}
         </button>
       </div>
     </ModalBase>

@@ -16,7 +16,8 @@ import {
 import { saveFile, deleteEntry, selectFile } from '../actions';
 import { openRenameModal } from '../hooks/useModals';
 import { useNostrStore } from '../nostr';
-import { useSelectedFile, useRoute, useCurrentDirHash, useCurrentDirCid, useDirectoryEntries, useTreeRoot } from '../hooks';
+import { useSelectedFile, useRoute, useCurrentDirHash, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees } from '../hooks';
+import { VisibilityIcon } from './VisibilityIcon';
 import { useUpload } from '../hooks/useUpload';
 import { getResolverKey } from '../refResolver';
 import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
@@ -44,6 +45,11 @@ export function Viewer() {
   const currentTreeName = route.treeName;
   const userNpub = useNostrStore(s => s.npub);
   const isLoggedIn = useNostrStore(s => s.isLoggedIn);
+
+  // Get current tree for visibility info
+  const targetNpub = viewedNpub || userNpub;
+  const trees = useTrees(targetNpub);
+  const currentTree = currentTreeName ? trees.find(t => t.name === currentTreeName) : null;
 
   // Get filename from URL path directly (last segment)
   const urlFileName = route.path.length > 0 ? route.path[route.path.length - 1] : null;
@@ -296,11 +302,10 @@ export function Viewer() {
           ) : route.isPermalink && (
             <span className="i-lucide-hash text-accent shrink-0" />
           )}
-          {/* Encryption status icon */}
-          <span
-            className={`${rootCid?.key ? 'i-lucide-lock' : 'i-lucide-globe'} text-text-2 shrink-0`}
-            title={rootCid?.key ? 'Encrypted' : 'Public'}
-          />
+          {/* Visibility icon */}
+          {currentTree && (
+            <VisibilityIcon visibility={currentTree.visibility} className="text-text-2" />
+          )}
           {/* File type icon */}
           <span className={`${getFileIcon(entry?.name || urlFileName || '')} text-text-2 shrink-0`} />
           {entry?.name || urlFileName || ''}

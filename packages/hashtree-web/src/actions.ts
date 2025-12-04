@@ -520,8 +520,8 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
 
 // Create a new tree (top-level folder on nostr or local)
 // Creates encrypted trees by default
-export async function createTree(name: string): Promise<boolean> {
-  if (!name) return false;
+export async function createTree(name: string, visibility: import('hashtree').TreeVisibility = 'public'): Promise<{ success: boolean; linkKey?: string }> {
+  if (!name) return { success: false };
 
   const { saveHashtree } = await import('./nostr');
 
@@ -541,18 +541,25 @@ export async function createTree(name: string): Promise<boolean> {
       name,
       pubkey: nostrState.pubkey,
       rootHash: rootHex,
-      rootKey: keyHex,
+      rootKey: visibility === 'public' ? keyHex : undefined,
+      visibility,
       created_at: Math.floor(Date.now() / 1000),
     });
 
-    // Publish to nostr - resolver will pick up the update when we navigate
-    const success = await saveHashtree(name, rootHex, keyHex);
-    if (success) {
-      navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}`);
+    // Publish to nostr with visibility - resolver will pick up the update when we navigate
+    const result = await saveHashtree(name, rootHex, keyHex, { visibility });
+    if (result.success) {
+      // For unlisted trees, store link key locally and append to URL
+      if (result.linkKey) {
+        const { storeLinkKey } = await import('./hooks/useTrees');
+        await storeLinkKey(nostrState.npub, name, result.linkKey);
+      }
+      const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
+      navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}${linkKeyParam}`);
     }
-    return success;
+    return result;
   }
 
   // Not logged in - can't create trees without nostr
-  return false;
+  return { success: false };
 }

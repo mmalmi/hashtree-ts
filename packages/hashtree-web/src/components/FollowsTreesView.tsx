@@ -45,6 +45,7 @@ export function FollowsTreesView() {
             label={tree.name}
             showAuthorName
             timestamp={tree.created_at * 1000}
+            visibility={tree.visibility}
           />
         ))}
         </div>
