@@ -247,6 +247,10 @@ export function HtmlViewer({ html, directoryCid, filename }: HtmlViewerProps) {
     );
   }
 
+  // SECURITY: Only allow-scripts, NEVER add allow-same-origin!
+  // allow-same-origin would let untrusted HTML access our localStorage, cookies,
+  // IndexedDB, and make credentialed requests to our origin.
+  // With only allow-scripts: JS runs but iframe has opaque origin (no access to parent data).
   return (
     <iframe
       srcDoc={modifiedHtml}
