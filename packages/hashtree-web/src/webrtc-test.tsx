@@ -4,7 +4,7 @@
  * This module exposes the WebRTC test functionality to window for Playwright tests.
  */
 
-import { WebRTCStore, MemoryStore, sha256 } from 'hashtree';
+import { WebRTCStore, MemoryStore, sha256, nhashEncode } from 'hashtree';
 import { generateSecretKey, getPublicKey, finalizeEvent, nip04, type EventTemplate } from 'nostr-tools';
 
 function bytesToHex(bytes: Uint8Array): string {
@@ -25,11 +25,32 @@ interface TestResults {
   error?: string;
 }
 
+interface ForwardingTestOptions {
+  role: 'content-provider' | 'forwarder' | 'requester';
+  content?: string;
+  followPubkeys?: string[];
+  requestHash?: string;
+}
+
+interface ForwardingTestState {
+  pubkey: string;
+  contentHash?: string;
+  /** nhash URL for the content (bech32 encoded) */
+  contentNhash?: string;
+  connectedPeers: number;
+  peers: { pubkey: string; state: string }[];
+  addFollow: (pubkey: string) => void;
+  /** Request content by hash (hex string). Returns the content if found. */
+  requestContent: (hashHex?: string) => Promise<{ found: boolean; data?: string }>;
+}
+
 declare global {
   interface Window {
     runWebRTCTest: (nostaPubkey: string | null, testContentHash?: string | null) => Promise<TestResults>;
     runWebRTCTestWithContent: (testContent: string) => Promise<TestResults>;
+    runForwardingTest: (options: ForwardingTestOptions) => Promise<TestResults>;
     testResults?: TestResults;
+    forwardingTestState?: ForwardingTestState;
   }
 }
 
@@ -256,6 +277,157 @@ export function initWebRTCTest() {
       };
       window.testResults = results;
       return results;
+    }
+  };
+
+  // Forwarding test - for testing A -> B -> C content forwarding
+  window.runForwardingTest = async function(options: ForwardingTestOptions): Promise<TestResults> {
+    console.log(`Starting forwarding test as ${options.role}...`);
+
+    try {
+      const secretKey = generateSecretKey();
+      const pubkey = getPublicKey(secretKey);
+      console.log(`Our pubkey: ${pubkey.slice(0, 16)}...`);
+
+      const signer = async (event: EventTemplate) => finalizeEvent(event, secretKey);
+      const encrypt = async (pk: string, plaintext: string) => nip04.encrypt(secretKey, pk, plaintext);
+      const decrypt = async (pk: string, ciphertext: string) => nip04.decrypt(secretKey, pk, ciphertext);
+
+      // Track who we follow (for peer classification)
+      const follows = new Set<string>(options.followPubkeys || []);
+
+      // Create local store
+      const localStore = new MemoryStore();
+
+      // If content provider, store the content
+      let contentHashHex: string | undefined;
+      let contentNhash: string | undefined;
+      if (options.role === 'content-provider' && options.content) {
+        const contentBytes = new TextEncoder().encode(options.content);
+        const contentHash = await sha256(contentBytes);
+        await localStore.put(contentHash, contentBytes);
+        contentHashHex = bytesToHex(contentHash);
+        contentNhash = nhashEncode(contentHashHex);
+        console.log(`Stored content with hash: ${contentHashHex.slice(0, 16)}...`);
+        console.log(`Content nhash URL: /${contentNhash}`);
+      }
+
+      // Peer classifier - returns 'follows' for peers we follow, 'other' for others
+      const peerClassifier = (peerPubkey: string) => {
+        return follows.has(peerPubkey) ? 'follows' : 'other';
+      };
+
+      const store = new WebRTCStore({
+        signer,
+        pubkey,
+        encrypt,
+        decrypt,
+        localStore,
+        relays: ['wss://temp.iris.to'],
+        helloInterval: 2000,
+        debug: true,
+        peerClassifier,
+        pools: {
+          // Only connect to follows, not random peers
+          follows: { maxConnections: 5, satisfiedConnections: 2 },
+          other: { maxConnections: 0, satisfiedConnections: 0 },
+        },
+      });
+
+      const results: TestResults = {
+        pubkey,
+        connectedPeers: 0,
+        peers: [],
+        connectedToNosta: false,
+        contentHash: contentHashHex,
+      };
+
+      // Set up state for external access
+      let requestHashToGet = options.requestHash;
+      window.forwardingTestState = {
+        pubkey,
+        contentHash: contentHashHex,
+        contentNhash,
+        connectedPeers: 0,
+        peers: [],
+        addFollow: (newPubkey: string) => {
+          console.log(`Adding follow: ${newPubkey.slice(0, 16)}...`);
+          follows.add(newPubkey);
+          // Update classifier so new connections are accepted
+          store.setPeerClassifier((peerPubkey: string) => {
+            return follows.has(peerPubkey) ? 'follows' : 'other';
+          });
+        },
+        requestContent: async (hashHex?: string) => {
+          const hashToGet = hashHex || requestHashToGet;
+          if (!hashToGet) {
+            return { found: false };
+          }
+          console.log(`Requesting content: ${hashToGet.slice(0, 16)}...`);
+          try {
+            const hashBytes = new Uint8Array(hashToGet.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+            const data = await store.get(hashBytes);
+            if (data) {
+              const textDecoder = new TextDecoder();
+              const dataStr = textDecoder.decode(data);
+              console.log(`*** GOT CONTENT: "${dataStr}" ***`);
+              return { found: true, data: dataStr };
+            }
+            return { found: false };
+          } catch (err) {
+            console.log(`Request error: ${err}`);
+            return { found: false };
+          }
+        },
+      };
+
+      const updatePeerState = () => {
+        const peers = store.getPeers();
+        window.forwardingTestState!.connectedPeers = store.getConnectedCount();
+        window.forwardingTestState!.peers = peers.map(p => ({
+          pubkey: p.pubkey.slice(0, 16),
+          state: p.state,
+        }));
+      };
+
+      store.on((event) => {
+        if (event.type === 'peer-connected') {
+          console.log(`CONNECTED to peer: ${event.peerId.slice(0, 20)}...`);
+          updatePeerState();
+        } else if (event.type === 'peer-disconnected') {
+          console.log(`DISCONNECTED from peer: ${event.peerId.slice(0, 20)}...`);
+          updatePeerState();
+        } else if (event.type === 'update') {
+          updatePeerState();
+        }
+      });
+
+      console.log('Starting store...');
+      await store.start();
+
+      // Wait for test to complete (controlled externally)
+      // Keep running for up to 2 minutes
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        results.connectedPeers = store.getConnectedCount();
+        results.peers = store.getPeers().map(p => ({
+          pubkey: p.pubkey.slice(0, 16),
+          state: p.state,
+        }));
+      }
+
+      await store.stop();
+      return results;
+    } catch (err) {
+      const error = String(err);
+      console.log(`Error: ${error}`);
+      return {
+        pubkey: '',
+        connectedPeers: 0,
+        peers: [],
+        connectedToNosta: false,
+        error,
+      };
     }
   };
 
