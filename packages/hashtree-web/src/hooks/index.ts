@@ -7,3 +7,4 @@ export { useDirectoryEntries } from './useDirectoryEntries';
 export { useStats } from './useStats';
 export { useRecents, addRecent, clearRecents } from './useRecents';
 export type { RecentItem } from './useRecents';
+export { useTreeRoot, getTreeRootSync } from './useTreeRoot';

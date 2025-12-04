@@ -1,10 +1,10 @@
 import { toHex } from 'hashtree';
-import { useAppStore, formatBytes } from '../store';
-import { useStats } from '../hooks';
+import { formatBytes } from '../store';
+import { useStats, useTreeRoot } from '../hooks';
 
 export function Stats() {
   const stats = useStats();
-  const rootCidVal = useAppStore(s => s.rootCid);
+  const rootCidVal = useTreeRoot();
 
   return (
     <div className="flex items-center gap-4 text-sm">

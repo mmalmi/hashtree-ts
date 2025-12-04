@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, DragEvent, KeyboardEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toHex, nhashEncode } from 'hashtree';
-import { useAppStore, formatBytes } from '../store';
+import { formatBytes } from '../store';
 import { deleteEntry, moveEntry, moveToParent } from '../actions';
 import { openCreateModal } from '../hooks/useModals';
 import { useUpload } from '../hooks/useUpload';
@@ -9,7 +9,7 @@ import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
 import { useNostrStore, pubkeyToNpub, npubToPubkey } from '../nostr';
 import { UserRow } from './user';
 import { FolderActions } from './FolderActions';
-import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirCid, useTrees, useDirectoryEntries } from '../hooks';
+import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirCid, useTrees, useDirectoryEntries, useTreeRoot } from '../hooks';
 import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
 // Get icon class based on file extension
@@ -137,8 +137,8 @@ function buildTreeHref(ownerNpub: string, treeName: string): string {
 }
 
 export function FileBrowser() {
-  // Use zustand hooks with selectors for reactive updates
-  const rootCid = useAppStore(s => s.rootCid);
+  // Get rootCid from URL via resolver (no app state needed)
+  const rootCid = useTreeRoot();
   const rootHash = rootCid?.hash ?? null;
   const currentDirCid = useCurrentDirCid();
   const currentDirHash = currentDirCid?.hash ?? null;

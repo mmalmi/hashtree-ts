@@ -5,12 +5,13 @@ import { nip19 } from 'nostr-tools';
 import { useAppStore, formatBytes, updateStorageStats } from '../store';
 import { useNostrStore } from '../nostr';
 import { UserRow } from './user/UserRow';
+import { useTreeRoot } from '../hooks';
 
 export function SettingsPage() {
   const peerList = useAppStore(s => s.peers);
   const peerCountVal = useAppStore(s => s.peerCount);
   const statsVal = useAppStore(s => s.stats);
-  const rootCidVal = useAppStore(s => s.rootCid);
+  const rootCidVal = useTreeRoot();
   const myPeerId = useAppStore(s => s.myPeerId);
   const relayList = useNostrStore(s => s.relays);
   const loggedIn = useNostrStore(s => s.isLoggedIn);

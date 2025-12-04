@@ -6,7 +6,8 @@
  */
 import { useSyncExternalStore, useCallback } from 'react';
 import { toHex, nhashEncode } from 'hashtree';
-import { useAppStore, getTree } from '../store';
+import type { CID } from 'hashtree';
+import { getTree } from '../store';
 import { autosaveIfOwn, saveHashtree, useNostrStore } from '../nostr';
 import { navigate } from '../utils/navigate';
 import { getCurrentPathFromUrl, parseRoute } from '../utils/route';
@@ -16,6 +17,7 @@ import { openExtractModal, type ArchiveFile } from './useModals';
 import { isArchiveFile, extractArchive } from '../utils/compression';
 import { nip19 } from 'nostr-tools';
 import type { FileWithPath } from '../utils/directory';
+import { getTreeRootSync } from './useTreeRoot';
 
 // Upload progress type
 export interface UploadProgress {
@@ -97,9 +99,11 @@ export function useUpload() {
     const route = parseRoute();
     const dirPath = getCurrentPathFromUrl();
 
+    // Get current rootCid from resolver - track locally for multi-file uploads
+    let currentRootCid: CID | null = getTreeRootSync(route.npub, route.treeName);
+
     // Check if we need to initialize a new tree (virtual directory case)
-    const appState = useAppStore.getState();
-    let needsTreeInit = !appState.rootCid?.hash && route.npub && route.treeName;
+    let needsTreeInit = !currentRootCid?.hash && route.npub && route.treeName;
     let isOwnTree = false;
     let routePubkey: string | null = null;
 
@@ -182,24 +186,22 @@ export function useUpload() {
       uploadedFileNames.push(file.name);
 
       // Add file to tree immediately after upload completes
-      const currentAppState = useAppStore.getState();
-
-      if (currentAppState.rootCid?.hash) {
+      if (currentRootCid?.hash) {
         // Add to existing tree - setEntry handles encryption based on rootCid.key
         const newRootCid = await tree.setEntry(
-          currentAppState.rootCid,
+          currentRootCid,
           dirPath,
           file.name,
           fileCid,
           size
         );
-        currentAppState.setRootCid(newRootCid);
+        currentRootCid = newRootCid;
         // Mark this file as changed for pulse effect
         markFilesChanged(new Set([file.name]));
       } else if (needsTreeInit) {
         // First file in a new virtual directory - create encrypted tree
         const { cid: newRootCid } = await tree.putDirectory([{ name: file.name, cid: fileCid, size }]);
-        currentAppState.setRootCid(newRootCid);
+        currentRootCid = newRootCid;
         markFilesChanged(new Set([file.name]));
 
         if (isOwnTree && routePubkey) {
@@ -220,7 +222,7 @@ export function useUpload() {
       } else {
         // No existing tree and not a virtual directory - create new encrypted root
         const { cid: newRootCid } = await tree.putDirectory([{ name: file.name, cid: fileCid, size }]);
-        currentAppState.setRootCid(newRootCid);
+        currentRootCid = newRootCid;
         markFilesChanged(new Set([file.name]));
         if (i === 0) {
           navigate('/');
@@ -229,10 +231,9 @@ export function useUpload() {
     }
 
     // Autosave after all uploads complete (single save instead of per-file)
-    const finalAppState = useAppStore.getState();
-    if (finalAppState.rootCid?.hash) {
-      const keyHex = finalAppState.rootCid.key ? toHex(finalAppState.rootCid.key) : undefined;
-      await autosaveIfOwn(toHex(finalAppState.rootCid.hash), keyHex);
+    if (currentRootCid?.hash) {
+      const keyHex = currentRootCid.key ? toHex(currentRootCid.key) : undefined;
+      await autosaveIfOwn(toHex(currentRootCid.hash), keyHex);
     }
 
     setUploadProgress(null);
@@ -274,9 +275,11 @@ export function useUpload() {
     const route = parseRoute();
     const dirPath = getCurrentPathFromUrl();
 
+    // Get current rootCid from resolver - track locally for multi-file uploads
+    let currentRootCid: CID | null = getTreeRootSync(route.npub, route.treeName);
+
     // Check if we need to initialize a new tree
-    const appState = useAppStore.getState();
-    let needsTreeInit = !appState.rootCid?.hash && route.npub && route.treeName;
+    let needsTreeInit = !currentRootCid?.hash && route.npub && route.treeName;
     let isOwnTree = false;
     let routePubkey: string | null = null;
 
@@ -346,20 +349,18 @@ export function useUpload() {
       uploadedFileNames.push(relativePath);
 
       // Add file to tree
-      const currentAppState = useAppStore.getState();
-
       try {
-        if (currentAppState.rootCid?.hash) {
+        if (currentRootCid?.hash) {
           // Add to existing tree with full path - setEntry handles encryption based on rootCid.key
           // and creates intermediate directories automatically
           const newRootCid = await tree.setEntry(
-            currentAppState.rootCid,
+            currentRootCid,
             fullDirPath,
             fileName,
             fileCid,
             size
           );
-          currentAppState.setRootCid(newRootCid);
+          currentRootCid = newRootCid;
 
           // Mark this file as changed for pulse effect (use just filename for display in current dir)
           if (fileDirPath.length === 0) {
@@ -378,7 +379,7 @@ export function useUpload() {
             size
           );
 
-          currentAppState.setRootCid(newRootCid);
+          currentRootCid = newRootCid;
 
           if (isOwnTree && routePubkey) {
             const hashHex = toHex(newRootCid.hash);
@@ -407,7 +408,7 @@ export function useUpload() {
             size
           );
 
-          currentAppState.setRootCid(newRootCid);
+          currentRootCid = newRootCid;
           if (i === 0) {
             navigate('/');
           }
@@ -419,10 +420,9 @@ export function useUpload() {
     }
 
     // Autosave after all uploads complete
-    const finalAppState = useAppStore.getState();
-    if (finalAppState.rootCid?.hash) {
-      const keyHex = finalAppState.rootCid.key ? toHex(finalAppState.rootCid.key) : undefined;
-      await autosaveIfOwn(toHex(finalAppState.rootCid.hash), keyHex);
+    if (currentRootCid?.hash) {
+      const keyHex = currentRootCid.key ? toHex(currentRootCid.key) : undefined;
+      await autosaveIfOwn(toHex(currentRootCid.hash), keyHex);
     }
 
     setUploadProgress(null);

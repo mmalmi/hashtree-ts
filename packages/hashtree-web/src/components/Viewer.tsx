@@ -9,7 +9,6 @@ import { LiveVideo, LiveVideoFromHash } from './LiveVideo';
 import { StreamView } from './stream';
 import { FolderActions } from './FolderActions';
 import {
-  useAppStore,
   formatBytes,
   decodeAsText,
   getTree,
@@ -17,7 +16,7 @@ import {
 import { saveFile, deleteEntry, selectFile } from '../actions';
 import { openRenameModal } from '../hooks/useModals';
 import { useNostrStore } from '../nostr';
-import { useSelectedFile, useRoute, useCurrentDirHash, useCurrentDirCid, useDirectoryEntries } from '../hooks';
+import { useSelectedFile, useRoute, useCurrentDirHash, useCurrentDirCid, useDirectoryEntries, useTreeRoot } from '../hooks';
 import { useUpload } from '../hooks/useUpload';
 import { getResolverKey } from '../refResolver';
 import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
@@ -36,7 +35,7 @@ function useDebounce<T extends (...args: unknown[]) => unknown>(fn: T, delay: nu
 export function Viewer() {
   const navigate = useNavigate();
   const location = useLocation();
-  const rootCid = useAppStore(s => s.rootCid);
+  const rootCid = useTreeRoot();
   const currentDirCid = useCurrentDirCid();
   const { entries } = useDirectoryEntries(currentDirCid);
 
@@ -414,7 +413,7 @@ export function Viewer() {
               resolverKey={getResolverKey(viewedNpub, currentTreeName)}
               filePath={[...currentPath, entry.name]}
               mimeType={mimeType}
-              initialCid={useAppStore.getState().rootCid}
+              initialCid={rootCid}
             />
           ) : (
             // Direct hash access (no resolver)
@@ -623,7 +622,7 @@ function isLikelyTextFile(filename?: string): boolean {
 }
 
 function DirectoryActions() {
-  const rootCid = useAppStore(s => s.rootCid);
+  const rootCid = useTreeRoot();
   const rootHash = rootCid?.hash ?? null;
   const currentDirCid = useCurrentDirCid();
   const currentDirHash = currentDirCid?.hash ?? null;

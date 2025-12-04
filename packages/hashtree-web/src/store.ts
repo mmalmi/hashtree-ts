@@ -6,9 +6,8 @@ import {
   IndexedDBStore,
   HashTree,
   WebRTCStore,
-  cid,
 } from 'hashtree';
-import type { CID, PeerStatus, EventSigner, EventEncrypter, EventDecrypter } from 'hashtree';
+import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter } from 'hashtree';
 
 // Store instances - using IndexedDB for persistence
 export const idbStore = new IndexedDBStore('hashtree-explorer');
@@ -32,9 +31,8 @@ export interface StorageStats {
 }
 
 // App state store
+// Note: rootCid is now derived from URL via useTreeRoot hook (see hooks/useTreeRoot.ts)
 interface AppState {
-  rootCid: CID | null;
-
   // WebRTC state
   peerCount: number;
   peers: PeerStatus[];
@@ -44,7 +42,6 @@ interface AppState {
   stats: StorageStats;
 
   // Actions
-  setRootCid: (cid: CID | null) => void;
   setPeerCount: (count: number) => void;
   setPeers: (peers: PeerStatus[]) => void;
   setMyPeerId: (id: string | null) => void;
@@ -52,13 +49,11 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  rootCid: null,
   peerCount: 0,
   peers: [],
   myPeerId: null,
   stats: { items: 0, bytes: 0 },
 
-  setRootCid: (rootCid) => set({ rootCid }),
   setPeerCount: (count) => set({ peerCount: count }),
   setPeers: (peers) => set({ peers }),
   setMyPeerId: (id) => set({ myPeerId: id }),

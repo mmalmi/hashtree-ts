@@ -3,11 +3,11 @@ import { toHex, cid } from 'hashtree';
 import type { Hash, StreamWriter } from 'hashtree';
 import {
   getTree,
-  useAppStore,
 } from '../../store';
 import { autosaveIfOwn, useNostrStore } from '../../nostr';
 import { navigate } from '../../utils/navigate';
-import { getCurrentPathFromUrl } from '../../utils/route';
+import { getCurrentPathFromUrl, parseRoute } from '../../utils/route';
+import { getTreeRootSync } from '../../hooks/useTreeRoot';
 
 // Generate default stream filename
 export function getDefaultFilename(): string {
@@ -210,7 +210,8 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
     }
 
     const currentState = getSnapshot();
-    const appState = useAppStore.getState();
+    const route = parseRoute();
+    const rootCid = getTreeRootSync(route.npub, route.treeName);
     const filename = `${currentState.streamFilename}.webm`;
 
     const tree = getTree();
@@ -228,14 +229,15 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       return;
     }
 
-    if (appState.rootCid) {
+    if (rootCid) {
       const currentPath = getCurrentPathFromUrl();
-      const newRootCid = await tree.setEntry(appState.rootCid, currentPath, filename, cid(fileHash), fileSize);
-      appState.setRootCid(newRootCid);
+      const newRootCid = await tree.setEntry(rootCid, currentPath, filename, cid(fileHash), fileSize);
+      // Publish to nostr - resolver will pick up the update
       await autosaveIfOwn(toHex(newRootCid.hash));
     } else {
+      // Create new tree - will be picked up by resolver via autosaveIfOwn
       const newRootCid = (await tree.putDirectory([{ name: filename, cid: cid(fileHash), size: fileSize }], { public: true })).cid;
-      appState.setRootCid(newRootCid);
+      await autosaveIfOwn(toHex(newRootCid.hash));
     }
   }, 3000);
 
@@ -283,15 +285,17 @@ export async function stopRecording(): Promise<void> {
   }
 
   if (fileHash && fileSize) {
-    const appState = useAppStore.getState();
-    if (appState.rootCid) {
+    const route = parseRoute();
+    const rootCid = getTreeRootSync(route.npub, route.treeName);
+    if (rootCid) {
       const currentPath = getCurrentPathFromUrl();
-      const newRootCid = await tree.setEntry(appState.rootCid, currentPath, filename, cid(fileHash), fileSize);
-      appState.setRootCid(newRootCid);
+      const newRootCid = await tree.setEntry(rootCid, currentPath, filename, cid(fileHash), fileSize);
+      // Publish to nostr - resolver will pick up the update
       await autosaveIfOwn(toHex(newRootCid.hash));
     } else {
+      // Create new tree - will be picked up by resolver via autosaveIfOwn
       const newRootCid = (await tree.putDirectory([{ name: filename, cid: cid(fileHash), size: fileSize }], { public: true })).cid;
-      appState.setRootCid(newRootCid);
+      await autosaveIfOwn(toHex(newRootCid.hash));
       navigate('/');
     }
   }

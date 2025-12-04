@@ -3,8 +3,9 @@
  * For encrypted trees, resolves through the path collecting keys at each level
  */
 import { useState, useEffect } from 'react';
-import { useAppStore, getTree } from '../store';
+import { getTree } from '../store';
 import { useCurrentPath } from './useCurrentPath';
+import { useTreeRoot } from './useTreeRoot';
 import type { CID, Hash } from 'hashtree';
 
 export function useCurrentDirHash(): Hash | null {
@@ -13,7 +14,7 @@ export function useCurrentDirHash(): Hash | null {
 }
 
 export function useCurrentDirCid(): CID | null {
-  const rootCid = useAppStore(s => s.rootCid);
+  const rootCid = useTreeRoot();
   const currentPath = useCurrentPath();
   const [dirCid, setDirCid] = useState<CID | null>(null);
 

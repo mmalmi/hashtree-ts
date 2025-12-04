@@ -24,7 +24,6 @@ import {
 } from './components';
 import { EditProfilePage } from './components/EditProfilePage';
 import {
-  useAppStore,
   getTree,
 } from './store';
 import { markFilesChanged } from './hooks/useRecentlyChanged';
@@ -134,11 +133,8 @@ function HomeRoute() {
       return;
     }
 
-    const appStore = useAppStore.getState();
-    const nostrStore = useNostrStore.getState();
-
-    appStore.setRootCid(null);
-    nostrStore.setSelectedTree(null);
+    // Clear selected tree when on home route
+    useNostrStore.getState().setSelectedTree(null);
   }, [npub, isNewUser, navigate]);
 
   // Show FileBrowser on left, Recents+Follows on right (desktop) or just FileBrowser (mobile)
@@ -167,11 +163,8 @@ function UserRouteInner() {
 
   useEffect(() => {
     if (!npub) return;
-    const appStore = useAppStore.getState();
-    const nostrStore = useNostrStore.getState();
-
-    appStore.setRootCid(null);
-    nostrStore.setSelectedTree(null);
+    // Clear selected tree when viewing user's tree list
+    useNostrStore.getState().setSelectedTree(null);
   }, [npub]);
 
   if (!npub) return null;
@@ -197,11 +190,8 @@ function FollowsRouteInner() {
 
   useEffect(() => {
     if (!npub) return;
-    const appStore = useAppStore.getState();
-    const nostrStore = useNostrStore.getState();
-
-    appStore.setRootCid(null);
-    nostrStore.setSelectedTree(null);
+    // Clear selected tree when viewing follows
+    useNostrStore.getState().setSelectedTree(null);
   }, [npub]);
 
   if (!npub) return null;
@@ -214,11 +204,8 @@ function ProfileRouteInner() {
 
   useEffect(() => {
     if (!npub) return;
-    const appStore = useAppStore.getState();
-    const nostrStore = useNostrStore.getState();
-
-    appStore.setRootCid(null);
-    nostrStore.setSelectedTree(null);
+    // Clear selected tree when viewing profile
+    useNostrStore.getState().setSelectedTree(null);
   }, [npub]);
 
   if (!npub) return null;
@@ -338,8 +325,7 @@ function NHashView({ nhash }: { nhash: string }) {
     useNostrStore.getState().setSelectedTree(null);
 
     try {
-      const decoded = nhashDecode(nhash);
-      loadFromHash(decoded.hash);
+      nhashDecode(nhash); // Validate nhash
 
       // Determine type from URL path using extension heuristic
       const lastSegment = route.path.length > 0 ? route.path[route.path.length - 1] : null;
@@ -398,11 +384,8 @@ function NPathView({ npath }: { npath: string }) {
 function UserView({ npub }: { npub: string | undefined }) {
   useEffect(() => {
     if (!npub) return;
-    const appStore = useAppStore.getState();
-    const nostrStore = useNostrStore.getState();
-
-    appStore.setRootCid(null);
-    nostrStore.setSelectedTree(null);
+    // Clear selected tree when viewing user
+    useNostrStore.getState().setSelectedTree(null);
   }, [npub]);
 
   if (!npub) return null;
@@ -461,8 +444,8 @@ export function App() {
             oldHashes.set(e.name, toHex(e.cid.hash));
           }
 
-          // Update rootHash with key
-          loadFromHashWithKey(selectedTree.rootHash, selectedTree.rootKey);
+          // Note: rootCid is now derived from URL via useTreeRoot hook
+          // The resolver subscription will automatically provide the new rootCid
 
           // Fetch new entries to compare
           const newRootHash = fromHex(selectedTree.rootHash);
@@ -543,7 +526,7 @@ export function App() {
   );
 }
 
-async function loadFromNostr(npubStr: string, treeName: string, pathParts: string[]) {
+async function loadFromNostr(npubStr: string, treeName: string, _pathParts: string[]) {
   try {
     // Resolve the tree's root hash via resolver
     const { getRefResolver, getResolverKey } = await import('./refResolver');
@@ -554,12 +537,13 @@ async function loadFromNostr(npubStr: string, treeName: string, pathParts: strin
       const pubkey = npubToPubkey(npubStr);
 
       // Subscribe to get both hash and key, and live updates
+      // The useTreeRoot hook in components will automatically pick up updates from the resolver
       resolver.subscribe(key, (hash, encryptionKey) => {
         if (hash) {
           const hashHex = toHex(hash);
           const keyHex = encryptionKey ? toHex(encryptionKey) : undefined;
 
-          // Update selectedTree with hash AND key
+          // Update selectedTree with hash AND key for live update detection
           if (pubkey) {
             const currentSelected = useNostrStore.getState().selectedTree;
             // Only update if this is for the current tree
@@ -574,9 +558,8 @@ async function loadFromNostr(npubStr: string, treeName: string, pathParts: strin
               });
             }
           }
-
-          // Load with key for encrypted trees
-          loadFromHashWithKey(hashHex, keyHex);
+          // Note: rootCid is now derived from URL via useTreeRoot hook
+          // No need to call loadFromHashWithKey
         }
       });
     }
@@ -592,20 +575,4 @@ function npubToPubkey(npubStr: string): string | null {
     if (type === 'npub') return data as string;
   } catch {}
   return null;
-}
-
-// Set rootCid with optional key - hooks will re-fetch entries automatically
-function loadFromHashWithKey(rootHex: string, keyHex?: string) {
-  try {
-    const hash = fromHex(rootHex);
-    const key = keyHex ? fromHex(keyHex) : undefined;
-    useAppStore.getState().setRootCid(cid(hash, key));
-  } catch {
-    // Invalid hex format - silently ignore
-  }
-}
-
-// Set rootCid (public, no key) - hooks will re-fetch entries automatically
-function loadFromHash(rootHex: string) {
-  loadFromHashWithKey(rootHex);
 }
