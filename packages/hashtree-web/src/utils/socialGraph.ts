@@ -421,6 +421,15 @@ export function useGraphSize(): number {
 }
 
 /**
+ * Get users at a specific follow distance (non-hook, for use outside React)
+ * Distance 1 = direct follows, Distance 2 = follows of follows, etc.
+ */
+export function getUsersByFollowDistance(distance: number): Set<string> {
+  if (!instance) return new Set();
+  return instance.getUsersByFollowDistance(distance);
+}
+
+/**
  * Hook to check if the graph is currently recrawling
  */
 export function useIsRecrawling(): boolean {
