@@ -433,11 +433,21 @@ export function FileBrowser() {
   // Tree list keyboard navigation
   const [treeFocusedIndex, setTreeFocusedIndex] = useState<number>(-1);
 
-  // Build tree list for navigation (home first, then others)
-  const homeTree = trees.find(t => t.name === 'home');
-  const treeList = isOwnTrees
-    ? [homeTree ?? { name: 'home', key: 'home' }, ...trees.filter(t => t.name !== 'home')]
+  // Build tree list for navigation (public first, then link, private, others)
+  // Priority order for default folders: public, link, private
+  const defaultFolderOrder = ['public', 'link', 'private'];
+  const sortedTrees = isOwnTrees
+    ? [...trees].sort((a, b) => {
+        const aIdx = defaultFolderOrder.indexOf(a.name);
+        const bIdx = defaultFolderOrder.indexOf(b.name);
+        // Default folders come first in order, non-defaults at end
+        if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx;
+        if (aIdx >= 0) return -1;
+        if (bIdx >= 0) return 1;
+        return a.name.localeCompare(b.name);
+      })
     : trees;
+  const treeList = sortedTrees;
 
   // Handle keyboard navigation for tree list
   const handleTreeListKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {

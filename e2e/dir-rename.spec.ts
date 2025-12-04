@@ -2,12 +2,16 @@ import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, waitForNewUserRedirect } from './test-utils.js';
 
 test.describe('Directory rename', () => {
+  // Increase timeout for all tests since new user setup now creates 3 default folders
+  test.setTimeout(30000);
   test('should rename a subdirectory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await waitForNewUserRedirect(page);
 
-    // Now we're in the user's home folder, which starts empty
+    // Now we're in the user's public folder, which starts empty
+    // Wait for the Folder button to be available (may take a moment for UI to settle)
+    await expect(page.getByRole('button', { name: 'Folder' })).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
     // Create a subdirectory - use the Folder button in the toolbar
@@ -67,10 +71,10 @@ test.describe('Directory rename', () => {
     await page.goto('/');
     await waitForNewUserRedirect(page);
 
-    // Now we're in the user's home folder (which is a root tree)
+    // Now we're in the user's public folder (which is a root tree)
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
-    // Should NOT see a Rename button for root directory (home folder)
+    // Should NOT see a Rename button for root directory (public folder)
     // The "Folder" button should exist (for creating subfolders) but not Rename
     await expect(page.getByRole('button', { name: 'Folder' })).toBeVisible();
     await expect(page.locator('button:has-text("Rename")')).not.toBeVisible();
@@ -81,7 +85,7 @@ test.describe('Directory rename', () => {
     await page.goto('/');
     await waitForNewUserRedirect(page);
 
-    // Now we're in the user's home folder, which starts empty
+    // Now we're in the user's public folder, which starts empty
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
     // Create a subdirectory - use visible button with folder-plus icon
@@ -109,7 +113,7 @@ test.describe('Directory rename', () => {
     await page.click('button:has-text("Delete"):visible');
 
     // Wait for navigation to complete
-    await page.waitForURL(/\/home$/, { timeout: 10000 });
+    await page.waitForURL(/\/public$/, { timeout: 10000 });
 
     // Should show empty directory in parent
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });

@@ -39,9 +39,9 @@ async function clearStorageAndReload(page: Page) {
   await page.waitForTimeout(500);
 }
 
-// Helper to wait for new user redirect to home folder
+// Helper to wait for new user redirect to public folder
 async function waitForNewUserRedirect(page: Page) {
-  await page.waitForURL(/\/#\/npub.*\/home/, { timeout: 10000 });
+  await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 15000 });
   await expect(page.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
 }
 
@@ -74,10 +74,10 @@ test.describe('nhash file permalinks', () => {
     // Wait for app to initialize
     await page1.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
 
-    // Wait for new user redirect to home folder
+    // Wait for new user redirect to public folder
     await waitForNewUserRedirect(page1);
 
-    // Create a new tree for testing (more reliable than using home folder)
+    // Create a new tree for testing (more reliable than using public folder)
     await createAndEnterTree(page1, 'permalink-test');
 
     // Create a file using File button
@@ -197,7 +197,7 @@ test.describe('nhash file permalinks', () => {
     // Wait for app to initialize
     await page1.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
 
-    // Wait for new user redirect to home folder
+    // Wait for new user redirect to public folder
     await waitForNewUserRedirect(page1);
 
     // Create a new tree for testing

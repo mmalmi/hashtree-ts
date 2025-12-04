@@ -119,17 +119,32 @@ function ExplorerLayout({ children }: { children: React.ReactNode }) {
 }
 
 // Route: Home (no npub, no tree)
-// Redirects newly generated users to their home folder, shows recents for returning users
+// Creates default folders for new users (public, link, private), shows recents for returning users
 function HomeRoute() {
   const navigate = useNavigate();
   const npub = useNostrStore(s => s.npub);
   const isNewUser = useNostrStore(s => s.isNewUser);
 
   useEffect(() => {
-    // Redirect newly generated users to their home folder
+    // Create default folders for newly generated users
     if (npub && isNewUser) {
       useNostrStore.getState().setIsNewUser(false);
-      navigate(`/${npub}/home`, { replace: true });
+
+      // Create the three default folders with corresponding visibility
+      const createDefaultFolders = async () => {
+        const { createTree } = await import('./actions');
+
+        // Create folders in sequence: public, link (unlisted), private
+        // Use skipNavigation=true for first two to avoid navigation issues
+        await createTree('public', 'public', true);
+        await createTree('link', 'unlisted', true);
+        await createTree('private', 'private', true);
+
+        // Navigate to the public folder
+        navigate(`/${npub}/public`, { replace: true });
+      };
+
+      createDefaultFolders();
       return;
     }
 

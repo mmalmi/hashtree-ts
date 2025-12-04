@@ -11,6 +11,9 @@ import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
 
 test.describe('Unlisted Tree Visibility', () => {
+  // Increase timeout for all tests since new user setup now creates 3 default folders
+  test.setTimeout(60000);
+
   test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
 
@@ -34,14 +37,16 @@ test.describe('Unlisted Tree Visibility', () => {
     // App auto-generates key on first visit, wait for header to appear
     await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
 
-    // New users get auto-redirected to their home folder - wait for that
+    // New users get auto-redirected to their public folder - wait for that
     await waitForNewUserRedirect(page);
   });
 
   test('should create unlisted tree with ?k= param in URL', async ({ page }) => {
     // Go to user's tree list
     await page.locator(myTreesButtonSelector).click();
-    await page.waitForTimeout(300);
+
+    // Wait for tree list to load with New Folder button
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
 
     // Click New Folder button
     await page.getByRole('button', { name: 'New Folder' }).click();

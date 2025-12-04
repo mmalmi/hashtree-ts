@@ -8,11 +8,13 @@ import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Helper to create tree via modal and navigate into it
-// NOTE: Since new users start in /home, we navigate to root first to create a NEW tree
+// NOTE: Since new users start in /public, we navigate to root first to create a NEW tree
 async function createAndEnterTree(page: any, name: string) {
   // Go to user's tree list first
   await page.locator(myTreesButtonSelector).click();
-  await page.waitForTimeout(300);
+
+  // Wait for tree list to load with New Folder button
+  await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
 
   await page.getByRole('button', { name: 'New Folder' }).click();
   await page.locator('input[placeholder="Folder name..."]').fill(name);
@@ -33,6 +35,8 @@ async function uploadTempFile(page: any, name: string, content: string | Buffer)
 }
 
 test.describe('Hashtree Explorer', () => {
+  // Increase timeout for all tests since new user setup now creates 3 default folders
+  test.setTimeout(30000);
   test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
 
@@ -56,14 +60,14 @@ test.describe('Hashtree Explorer', () => {
     // App auto-generates key on first visit, wait for header to appear
     await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
 
-    // New users get auto-redirected to their home folder - wait for that
+    // New users get auto-redirected to their public folder - wait for that
     await waitForNewUserRedirect(page);
   });
 
   test('should display header and initial state', async ({ page }) => {
     // Header shows app name "Hashtree"
     await expect(page.locator('header').getByText('Hashtree').first()).toBeVisible({ timeout: 5000 });
-    // New users are redirected to their home folder - shows "Empty directory" or folder actions
+    // New users are redirected to their public folder - shows "Empty directory" or folder actions
     await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
   });
 
@@ -173,7 +177,7 @@ test.describe('Hashtree Explorer', () => {
     // Verify updated content
     await expect(page.locator('pre')).toHaveText('Updated content');
 
-    // Navigate to home
+    // Navigate to homepage
     await page.getByRole('link', { name: 'Hashtree' }).click();
     await page.waitForTimeout(500);
 

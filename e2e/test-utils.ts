@@ -19,10 +19,11 @@ export function setupPageErrorHandler(page: any) {
 
 /**
  * Wait for new user redirect to complete.
- * New users get redirected to /{npub}/home automatically.
+ * New users get three default folders created (public, link, private)
+ * and are redirected to /{npub}/public automatically.
  */
 export async function waitForNewUserRedirect(page: any) {
-  await page.waitForURL(/\/#\/npub.*\/home/, { timeout: 10000 });
+  await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 15000 });
   await expect(page.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
 }
 

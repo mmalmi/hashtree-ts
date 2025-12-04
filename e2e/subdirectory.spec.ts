@@ -8,6 +8,9 @@ import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
 
 test.describe('Subdirectory Creation', () => {
+  // Increase timeout for all tests since new user setup now creates 3 default folders
+  test.setTimeout(30000);
+
   test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
 
@@ -32,7 +35,9 @@ test.describe('Subdirectory Creation', () => {
   test('subdirectory in public tree should show as folder with folder icon', async ({ page }) => {
     // Go to tree list
     await page.locator(myTreesButtonSelector).click();
-    await page.waitForTimeout(300);
+
+    // Wait for tree list to load with New Folder button
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
 
     // Create a public tree (default visibility)
     await page.getByRole('button', { name: 'New Folder' }).click();
@@ -66,7 +71,9 @@ test.describe('Subdirectory Creation', () => {
   test('clicking subdirectory in public tree should navigate into it', async ({ page }) => {
     // Go to tree list
     await page.locator(myTreesButtonSelector).click();
-    await page.waitForTimeout(300);
+
+    // Wait for tree list to load with New Folder button
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
 
     // Create a public tree
     await page.getByRole('button', { name: 'New Folder' }).click();
@@ -98,7 +105,9 @@ test.describe('Subdirectory Creation', () => {
     // TODO: File/Folder buttons not showing when inside subdirectory - separate bug
     // Go to tree list
     await page.locator(myTreesButtonSelector).click();
-    await page.waitForTimeout(300);
+
+    // Wait for tree list to load with New Folder button
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
 
     // Create a public tree
     await page.getByRole('button', { name: 'New Folder' }).click();
@@ -155,6 +164,9 @@ test.describe('Subdirectory Creation', () => {
     // Go to tree list
     await page.locator(myTreesButtonSelector).click();
 
+    // Wait for tree list to load with New Folder button
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
+
     // Create a public tree
     await page.getByRole('button', { name: 'New Folder' }).click();
     await page.locator('input[placeholder="Folder name..."]').fill('public-buttons-test');
@@ -180,7 +192,9 @@ test.describe('Subdirectory Creation', () => {
   test('subdirectory in unlisted tree should show as folder', async ({ page }) => {
     // Go to tree list
     await page.locator(myTreesButtonSelector).click();
-    await page.waitForTimeout(300);
+
+    // Wait for tree list to load with New Folder button
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
 
     // Create an unlisted tree
     await page.getByRole('button', { name: 'New Folder' }).click();
@@ -212,7 +226,9 @@ test.describe('Subdirectory Creation', () => {
   test('subdirectory in private tree should show as folder', async ({ page }) => {
     // Go to tree list
     await page.locator(myTreesButtonSelector).click();
-    await page.waitForTimeout(300);
+
+    // Wait for tree list to load with New Folder button
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
 
     // Create a private tree
     await page.getByRole('button', { name: 'New Folder' }).click();

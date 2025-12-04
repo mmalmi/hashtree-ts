@@ -594,7 +594,8 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
 
 // Create a new tree (top-level folder on nostr or local)
 // Creates encrypted trees by default
-export async function createTree(name: string, visibility: import('hashtree').TreeVisibility = 'public'): Promise<{ success: boolean; linkKey?: string }> {
+// Set skipNavigation=true to create without navigating (for batch creation)
+export async function createTree(name: string, visibility: import('hashtree').TreeVisibility = 'public', skipNavigation = false): Promise<{ success: boolean; linkKey?: string }> {
   if (!name) return { success: false };
 
   const { saveHashtree } = await import('./nostr');
@@ -609,16 +610,18 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
 
   // If logged in, publish to nostr
   if (nostrState.isLoggedIn && nostrState.npub && nostrState.pubkey) {
-    // Set selectedTree BEFORE saving so updates work
-    useNostrStore.getState().setSelectedTree({
-      id: '', // Will be set by actual nostr event
-      name,
-      pubkey: nostrState.pubkey,
-      rootHash: rootHex,
-      rootKey: visibility === 'public' ? keyHex : undefined,
-      visibility,
-      created_at: Math.floor(Date.now() / 1000),
-    });
+    // Set selectedTree BEFORE saving so updates work (only if we're navigating)
+    if (!skipNavigation) {
+      useNostrStore.getState().setSelectedTree({
+        id: '', // Will be set by actual nostr event
+        name,
+        pubkey: nostrState.pubkey,
+        rootHash: rootHex,
+        rootKey: visibility === 'public' ? keyHex : undefined,
+        visibility,
+        created_at: Math.floor(Date.now() / 1000),
+      });
+    }
 
     // Publish to nostr with visibility - resolver will pick up the update when we navigate
     const result = await saveHashtree(name, rootHex, keyHex, { visibility });
@@ -628,8 +631,10 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
         const { storeLinkKey } = await import('./hooks/useTrees');
         await storeLinkKey(nostrState.npub, name, result.linkKey);
       }
-      const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
-      navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}${linkKeyParam}`);
+      if (!skipNavigation) {
+        const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
+        navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}${linkKeyParam}`);
+      }
     }
     return result;
   }
