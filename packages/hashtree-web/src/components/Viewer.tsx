@@ -53,9 +53,12 @@ export function Viewer() {
   const trees = useTrees(targetNpub);
   const currentTree = currentTreeName ? trees.find(t => t.name === currentTreeName) : null;
 
-  // Get filename from URL path directly (last segment)
-  const urlFileName = route.path.length > 0 ? route.path[route.path.length - 1] : null;
-  const currentPath = route.path.slice(0, -1); // Directory path excludes filename
+  // Get filename from URL path - only if last segment looks like a file (has extension)
+  // This matches the logic in useCurrentPath hook
+  const lastSegment = route.path.length > 0 ? route.path[route.path.length - 1] : null;
+  const looksLikeFile = lastSegment ? /\.[a-zA-Z0-9]+$/.test(lastSegment) : false;
+  const urlFileName = looksLikeFile ? lastSegment : null;
+  const currentPath = looksLikeFile ? route.path.slice(0, -1) : route.path;
 
   // Find entry in current entries list (for metadata like hash)
   const entryFromStore = useMemo(() => {

@@ -151,57 +151,30 @@ test.describe('Subdirectory Creation', () => {
     await expect(level3FolderIcon).toBeVisible();
   });
 
-  test.skip('can create files inside subdirectory of public tree', async ({ page }) => {
-    // TODO: File/Folder buttons not showing when inside subdirectory - separate bug
+  test('File/Folder buttons visible inside subdirectory of public tree', async ({ page }) => {
     // Go to tree list
     await page.locator(myTreesButtonSelector).click();
-    await page.waitForTimeout(300);
 
     // Create a public tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('public-files');
+    await page.locator('input[placeholder="Folder name..."]').fill('public-buttons-test');
     await page.getByRole('button', { name: 'Create' }).click();
-    await page.waitForTimeout(1000);
 
     // Create a subfolder
     await page.getByRole('button', { name: /Folder/ }).first().click();
-    await page.locator('input[placeholder="Folder name..."]').fill('docs');
+    await page.locator('input[placeholder="Folder name..."]').fill('subdir');
     await page.getByRole('button', { name: 'Create' }).click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
-    // Navigate into docs folder
-    await page.locator('a:has-text("docs")').click();
-    await page.waitForTimeout(1000);
+    // Navigate into subfolder
+    await page.locator('a:has-text("subdir")').click();
 
     // Wait for the folder to load - should show Empty directory
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
 
-    // Create a file inside
-    await page.getByRole('button', { name: /File/ }).first().click({ timeout: 10000 });
-    await page.locator('input[placeholder="File name..."]').fill('readme.txt');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await page.waitForTimeout(1000);
-
-    // Type content and save
-    await expect(page.locator('textarea')).toBeVisible({ timeout: 10000 });
-    await page.locator('textarea').fill('Hello from subdirectory!');
-    await page.getByRole('button', { name: 'Save' }).click();
-    await page.waitForTimeout(1000);
-
-    // Exit edit mode
-    await page.getByRole('button', { name: 'Done' }).click();
-    await page.waitForTimeout(1000);
-
-    // Navigate back up
-    await page.locator('a:has-text("..")').first().click();
-    await page.waitForTimeout(1000);
-
-    // Navigate into docs again
-    await page.locator('a:has-text("docs")').click();
-    await page.waitForTimeout(1000);
-
-    // File should still be there
-    await expect(page.locator('a:has-text("readme.txt")')).toBeVisible({ timeout: 10000 });
+    // CRITICAL: File and Folder buttons should be visible inside subdirectory
+    await expect(page.getByRole('button', { name: 'File' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Folder' })).toBeVisible({ timeout: 5000 });
   });
 
   test('subdirectory in unlisted tree should show as folder', async ({ page }) => {
