@@ -130,9 +130,12 @@ export const ndk = new NDK({
 // Connect on init
 ndk.connect().catch(console.error);
 
-// Restore session immediately at module load (before React renders)
+// Restore session after module initialization completes
+// Using queueMicrotask to avoid circular import issues with store.ts
 // This ensures WebRTCStore is ready when components start fetching
-restoreSession().catch(console.error);
+queueMicrotask(() => {
+  restoreSession().catch(console.error);
+});
 
 /**
  * Unified sign function - works with both nsec and extension login
