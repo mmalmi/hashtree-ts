@@ -56,6 +56,13 @@ export interface DataResponse {
   // data sent as binary after JSON header
 }
 
+// Forwarded data - when we receive data that a peer requested
+export interface DataPush {
+  type: 'push';
+  hash: string;
+  // data sent as binary after JSON header
+}
+
 export interface DataHave {
   type: 'have';
   hashes: string[];
@@ -71,7 +78,7 @@ export interface RootUpdate {
   hash: string;
 }
 
-export type DataMessage = DataRequest | DataResponse | DataHave | DataWant | RootUpdate;
+export type DataMessage = DataRequest | DataResponse | DataPush | DataHave | DataWant | RootUpdate;
 
 // Signer function type (compatible with window.nostr.signEvent)
 export type EventSigner = (event: {

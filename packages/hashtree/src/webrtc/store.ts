@@ -15,6 +15,7 @@
  */
 import { SimplePool, type Event } from 'nostr-tools';
 import type { Store, Hash } from '../types.js';
+import { toHex, fromHex } from '../types.js';
 import {
   PeerId,
   generateUuid,
@@ -380,6 +381,7 @@ export class WebRTCStore implements Store {
         this.emit({ type: 'update' });
         this.fetchWantedHashes(peer);
       },
+      onForwardRequest: (hash, exclude) => this.forwardRequest(hash, exclude),
       requestTimeout: this.config.requestTimeout,
       debug: this.config.debug,
     });
@@ -408,6 +410,7 @@ export class WebRTCStore implements Store {
         this.emit({ type: 'update' });
         this.fetchWantedHashes(peer);
       },
+      onForwardRequest: (hash, exclude) => this.forwardRequest(hash, exclude),
       requestTimeout: this.config.requestTimeout,
       debug: this.config.debug,
     });
@@ -420,6 +423,54 @@ export class WebRTCStore implements Store {
     this.peers.delete(peerIdStr);
     this.emit({ type: 'peer-disconnected', peerId: peerIdStr });
     this.emit({ type: 'update' });
+  }
+
+  /**
+   * Forward a request to other peers (excluding the requester)
+   * Called by Peer when it receives a request it can't fulfill locally
+   */
+  private async forwardRequest(hashHex: string, excludePeerId: string): Promise<Uint8Array | null> {
+    // Try all connected peers except the one who requested
+    const otherPeers = Array.from(this.peers.values())
+      .filter(({ peer }) => peer.isConnected && peer.peerId !== excludePeerId);
+
+    // Sort: follows first
+    otherPeers.sort((a, b) => {
+      if (a.pool === 'follows' && b.pool !== 'follows') return -1;
+      if (a.pool !== 'follows' && b.pool === 'follows') return 1;
+      return 0;
+    });
+
+    const hash = fromHex(hashHex);
+    for (const { peer } of otherPeers) {
+      const data = await peer.request(hash);
+      if (data) {
+        // Store locally for future requests
+        if (this.config.localStore) {
+          await this.config.localStore.put(hash, data);
+        }
+        return data;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Send data to all peers who have requested this hash
+   * Called when we receive data that peers may be waiting for
+   */
+  sendToInterestedPeers(hashHex: string, data: Uint8Array): number {
+    let sendCount = 0;
+    for (const { peer } of this.peers.values()) {
+      if (peer.isConnected && peer.sendData(hashHex, data)) {
+        sendCount++;
+      }
+    }
+    if (sendCount > 0) {
+      this.log('Sent data to', sendCount, 'interested peers for hash:', hashHex.slice(0, 16));
+    }
+    return sendCount;
   }
 
   private async sendSignaling(msg: SignalingMessage, recipientPubkey?: string): Promise<void> {
@@ -578,12 +629,16 @@ export class WebRTCStore implements Store {
   // Store interface implementation
 
   async put(hash: Hash, data: Uint8Array): Promise<boolean> {
-    // WebRTC store is read-only from network
     // Write to local store if available
-    if (this.config.localStore) {
-      return this.config.localStore.put(hash, data);
-    }
-    return false;
+    const success = this.config.localStore
+      ? await this.config.localStore.put(hash, data)
+      : false;
+
+    // Send to any peers who have requested this hash
+    const hashHex = toHex(hash);
+    this.sendToInterestedPeers(hashHex, data);
+
+    return success;
   }
 
   async get(hash: Hash): Promise<Uint8Array | null> {

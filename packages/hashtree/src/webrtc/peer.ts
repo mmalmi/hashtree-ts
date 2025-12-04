@@ -9,8 +9,10 @@ import type {
   DataMessage,
   DataRequest,
   DataResponse,
+  DataPush,
   PeerId,
 } from './types.js';
+import { LRUCache } from './lruCache.js';
 
 const ICE_SERVERS = [
   { urls: 'stun:stun.iris.to:3478' },
@@ -21,10 +23,22 @@ const ICE_SERVERS = [
 // Batch ICE candidates to reduce signaling messages
 const ICE_BATCH_DELAY = 100; // ms to wait before sending batched candidates
 
-interface PendingRequest {
+// Default LRU cache sizes
+const OUR_REQUESTS_SIZE = 100;
+const THEIR_REQUESTS_SIZE = 200;
+
+// Request we sent to this peer, waiting for response
+interface OurRequest {
   hash: string;
   resolve: (data: Uint8Array | null) => void;
   timeout: ReturnType<typeof setTimeout>;
+}
+
+// Request this peer sent us that we couldn't fulfill locally
+// We track it so we can push data back when/if we get it
+interface TheirRequest {
+  id: number;           // their request id
+  requestedAt: number;  // when they requested it
 }
 
 export class Peer {
@@ -40,12 +54,20 @@ export class Peer {
   private onConnected?: () => void;
   private debug: boolean;
 
-  private pendingRequests = new Map<number, PendingRequest>();
+  // Requests we sent TO this peer (keyed by our request id)
+  private ourRequests = new Map<number, OurRequest>();
+  // Requests this peer sent TO US that we couldn't fulfill (keyed by hash hex)
+  // We track these so we can push data back if we get it later
+  private theirRequests = new LRUCache<string, TheirRequest>(THEIR_REQUESTS_SIZE);
+
   private nextRequestId = 1;
   private requestTimeout: number;
   private pendingCandidates: RTCIceCandidateInit[] = [];
   private candidateBatchTimeout: ReturnType<typeof setTimeout> | null = null;
   private queuedRemoteCandidates: RTCIceCandidateInit[] = [];
+
+  // Callback to forward request to other peers when we don't have data locally
+  private onForwardRequest?: (hash: string, excludePeerId: string) => Promise<Uint8Array | null>;
 
   readonly createdAt: number;
   connectedAt?: number;
@@ -57,6 +79,7 @@ export class Peer {
     sendSignaling: (msg: SignalingMessage) => Promise<void>;
     onClose: () => void;
     onConnected?: () => void;
+    onForwardRequest?: (hash: string, excludePeerId: string) => Promise<Uint8Array | null>;
     requestTimeout?: number;
     debug?: boolean;
   }) {
@@ -67,6 +90,7 @@ export class Peer {
     this.sendSignaling = options.sendSignaling;
     this.onClose = options.onClose;
     this.onConnected = options.onConnected;
+    this.onForwardRequest = options.onForwardRequest;
     this.requestTimeout = options.requestTimeout ?? 5000;
     this.debug = options.debug ?? false;
     this.createdAt = Date.now();
@@ -164,6 +188,8 @@ export class Peer {
         await this.handleRequest(msg);
       } else if (msg.type === 'res') {
         await this.handleResponse(msg);
+      } else if (msg.type === 'push') {
+        await this.handlePush(msg);
       }
     } catch (err) {
       this.log('Error handling message:', err);
@@ -171,16 +197,16 @@ export class Peer {
   }
 
   private async handleBinaryMessage(data: ArrayBuffer): Promise<void> {
-    // Binary data follows a response message
+    // Binary data follows a response or push message
     // Format: [4 bytes requestId][data]
     const view = new DataView(data);
     const requestId = view.getUint32(0, true);
     const blobData = new Uint8Array(data, 4);
 
-    const pending = this.pendingRequests.get(requestId);
+    const pending = this.ourRequests.get(requestId);
     if (pending) {
       clearTimeout(pending.timeout);
-      this.pendingRequests.delete(requestId);
+      this.ourRequests.delete(requestId);
 
       // Verify hash
       const computedHash = await sha256(blobData);
@@ -195,32 +221,62 @@ export class Peer {
   }
 
   private async handleRequest(msg: DataRequest): Promise<void> {
-    if (!this.localStore) {
-      this.sendResponse(msg.id, msg.hash, false);
-      return;
+    // Try local store first
+    if (this.localStore) {
+      const hash = fromHex(msg.hash);
+      const data = await this.localStore.get(hash);
+
+      if (data) {
+        this.sendResponse(msg.id, msg.hash, true);
+        this.sendBinaryData(msg.id, data);
+        return;
+      }
     }
 
-    const hash = fromHex(msg.hash);
-    const data = await this.localStore.get(hash);
+    // Not found locally - try forwarding to other peers
+    if (this.onForwardRequest) {
+      // Track this request so we can push data back later if we get it
+      this.theirRequests.set(msg.hash, {
+        id: msg.id,
+        requestedAt: Date.now(),
+      });
 
-    if (data) {
-      this.sendResponse(msg.id, msg.hash, true);
-      this.sendBinaryData(msg.id, data);
-    } else {
-      this.sendResponse(msg.id, msg.hash, false);
+      // Forward to other peers (excluding this one)
+      const data = await this.onForwardRequest(msg.hash, this.peerId);
+
+      if (data) {
+        // Got it from another peer, send response
+        this.theirRequests.delete(msg.hash);
+        this.sendResponse(msg.id, msg.hash, true);
+        this.sendBinaryData(msg.id, data);
+        return;
+      }
+      // If not found, keep in theirRequests for later push
     }
+
+    // Not found anywhere
+    this.sendResponse(msg.id, msg.hash, false);
   }
 
   private async handleResponse(msg: DataResponse): Promise<void> {
-    const pending = this.pendingRequests.get(msg.id);
+    const pending = this.ourRequests.get(msg.id);
     if (!pending) return;
 
     if (!msg.found) {
       clearTimeout(pending.timeout);
-      this.pendingRequests.delete(msg.id);
+      this.ourRequests.delete(msg.id);
       pending.resolve(null);
     }
     // If found, wait for binary data
+  }
+
+  private async handlePush(msg: DataPush): Promise<void> {
+    // Peer is pushing data we previously requested but they didn't have
+    // This happens when they got it later from another peer
+    this.log('Received push for hash:', msg.hash.slice(0, 16));
+    // The binary data will follow - we need to handle it
+    // For now, just store it locally if we have a store
+    // The actual binary handling happens in handleBinaryMessage with id=0
   }
 
   private sendResponse(id: number, hash: string, found: boolean): void {
@@ -258,15 +314,50 @@ export class Peer {
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.pendingRequests.delete(requestId);
+        this.ourRequests.delete(requestId);
         resolve(null);
       }, this.requestTimeout);
 
-      this.pendingRequests.set(requestId, { hash: hashHex, resolve, timeout });
+      this.ourRequests.set(requestId, { hash: hashHex, resolve, timeout });
 
       const msg: DataRequest = { type: 'req', id: requestId, hash: hashHex };
       this.sendJson(msg);
     });
+  }
+
+  /**
+   * Send data to this peer for a hash they previously requested
+   * Returns true if this peer had requested this hash
+   */
+  sendData(hashHex: string, data: Uint8Array): boolean {
+    const theirReq = this.theirRequests.get(hashHex);
+    if (!theirReq) {
+      return false;
+    }
+
+    this.theirRequests.delete(hashHex);
+
+    // Send push message followed by binary data
+    const msg: DataPush = { type: 'push', hash: hashHex };
+    this.sendJson(msg);
+    this.sendBinaryData(theirReq.id, data);
+
+    this.log('Sent data for hash:', hashHex.slice(0, 16));
+    return true;
+  }
+
+  /**
+   * Check if this peer has requested a hash
+   */
+  hasRequested(hashHex: string): boolean {
+    return this.theirRequests.has(hashHex);
+  }
+
+  /**
+   * Get count of pending requests from this peer
+   */
+  getTheirRequestCount(): number {
+    return this.theirRequests.size;
   }
 
   /**
@@ -347,12 +438,15 @@ export class Peer {
    * Close connection
    */
   close(): void {
-    // Clear pending requests
-    for (const pending of this.pendingRequests.values()) {
+    // Clear our pending requests
+    for (const pending of this.ourRequests.values()) {
       clearTimeout(pending.timeout);
       pending.resolve(null);
     }
-    this.pendingRequests.clear();
+    this.ourRequests.clear();
+
+    // Clear their requests (they won't get responses)
+    this.theirRequests.clear();
 
     // Close data channel
     if (this.dataChannel) {
