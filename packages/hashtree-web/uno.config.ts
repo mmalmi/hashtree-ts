@@ -115,6 +115,11 @@ export default defineConfig({
     ['animate-pulse-bg', {
       animation: 'pulse-bg 3s ease-in-out infinite',
     }],
+    // Hide scrollbar while keeping scroll functionality
+    ['scrollbar-hide', {
+      '-ms-overflow-style': 'none',
+      'scrollbar-width': 'none',
+    }],
   ],
   preflights: [
     {
@@ -122,6 +127,9 @@ export default defineConfig({
         @keyframes pulse-bg {
           0%, 100% { background-color: transparent; }
           50% { background-color: rgba(88, 166, 255, 0.08); }
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
         }
       `,
     },

@@ -130,10 +130,10 @@ export function MobileSearch() {
     return (
       <button
         onClick={() => setExpanded(true)}
-        className="p-2 text-text-2 hover:text-text-1 hover:bg-surface-2 rounded-full transition-colors md:hidden"
+        className="text-text-2 hover:text-text-1 bg-transparent border-none cursor-pointer md:hidden"
         title="Search"
       >
-        <span className="i-lucide-search text-lg" />
+        <span className="i-lucide-search" />
       </button>
     );
   }
@@ -154,9 +154,9 @@ export function MobileSearch() {
       </div>
       <button
         onClick={() => { setExpanded(false); setValue(''); }}
-        className="ml-2 p-2 text-text-2 hover:text-text-1"
+        className="ml-2 text-text-2 hover:text-text-1 bg-transparent border-none cursor-pointer"
       >
-        <span className="i-lucide-x text-lg" />
+        <span className="i-lucide-x" />
       </button>
     </div>
   );

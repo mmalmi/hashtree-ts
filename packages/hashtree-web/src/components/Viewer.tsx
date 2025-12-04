@@ -41,6 +41,7 @@ export function Viewer() {
   const rootCid = useTreeRoot();
   const currentDirCid = useCurrentDirCid();
   const { entries } = useDirectoryEntries(currentDirCid);
+  const [copied, setCopied] = useState(false);
 
   const route = useRoute();
   const viewedNpub = route.npub;
@@ -281,12 +282,36 @@ export function Viewer() {
     }
   };
 
+  const handleCopyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error('Failed to copy:', e);
+    }
+  }, []);
+
+  const handleShare = useCallback(async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ url: window.location.href });
+        return;
+      } catch (e) {
+        if ((e as Error).name !== 'AbortError') {
+          console.error('Share failed:', e);
+        }
+      }
+    }
+    handleCopyLink();
+  }, [handleCopyLink]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
       {/* Header - only show when file selected and not fullscreen */}
       {(entry || urlFileName) && !isFullscreen && (
-        <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center justify-between bg-surface-1">
-          <span className="font-medium flex items-center gap-2">
+        <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center bg-surface-1 overflow-x-auto">
+          <span className="font-medium flex items-center gap-2 shrink-0">
             {(entry || urlFileName) && (
             <button
               onClick={() => {
@@ -325,7 +350,7 @@ export function Viewer() {
         </span>
 
         {entry && !isEditing && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto shrink-0">
             <button
               onClick={handleDownload}
               className="btn-ghost"
@@ -349,6 +374,26 @@ export function Viewer() {
             >
               <span className="i-lucide-maximize text-base" />
             </button>
+            <button
+              onClick={handleCopyLink}
+              className="btn-ghost"
+              title="Copy link"
+            >
+              {copied ? (
+                <span className="i-lucide-check text-success text-base" />
+              ) : (
+                <span className="i-lucide-link text-base" />
+              )}
+            </button>
+            {typeof navigator !== 'undefined' && navigator.share && (
+              <button
+                onClick={handleShare}
+                className="btn-ghost"
+                title="Share"
+              >
+                <span className="i-lucide-share text-base" />
+              </button>
+            )}
             {canEdit && (
               <>
                 <button onClick={() => openRenameModal(entry?.name)} className="btn-ghost">Rename</button>
@@ -383,7 +428,7 @@ export function Viewer() {
         )}
 
         {isEditing && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto shrink-0">
             <label className="flex items-center gap-1 text-xs text-text-2 cursor-pointer">
               <input
                 type="checkbox"
