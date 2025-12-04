@@ -16,9 +16,18 @@ export function useRoute(): RouteInfo {
     const parts = hashPath.split('/').filter(Boolean).map(decodeURIComponent);
 
     // Parse link key from query params (for unlisted trees)
-    const params = new URLSearchParams(location.search);
-    const linkKey = params.get('k');
-
+    // With HashRouter, params are part of the hash: /#/path?k=xxx
+    // React Router's location.search should contain this, but as a fallback
+    // we also parse from the raw hash
+    let linkKey = new URLSearchParams(location.search).get('k');
+    if (!linkKey) {
+      const hashPart = window.location.hash;
+      const qIdx = hashPart.indexOf('?');
+      if (qIdx !== -1) {
+        const hashSearch = hashPart.slice(qIdx + 1);
+        linkKey = new URLSearchParams(hashSearch).get('k');
+      }
+    }
     // nhash route: /nhash1.../path... (path in URL segments, not encoded in nhash)
     if (parts[0] && isNHash(parts[0])) {
       try {

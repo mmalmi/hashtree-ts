@@ -107,8 +107,8 @@ async function decryptEncryptionKey(
       if (decryptedHex) {
         return fromHex(decryptedHex);
       }
-    } catch (e) {
-      console.error('Failed to decrypt link key:', e);
+    } catch {
+      // Decryption failed - wrong key or corrupted data
     }
   }
 

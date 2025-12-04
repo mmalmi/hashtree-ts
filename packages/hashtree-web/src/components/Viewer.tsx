@@ -463,6 +463,22 @@ export function Viewer() {
             autoFocus={editContent === ''}
             className="w-full h-full min-h-300px input font-mono text-sm resize-y"
           />
+        ) : isVideo && mimeType && urlFileName ? (
+          // Video: render immediately based on filename, don't wait for entry to load
+          // This prevents remounting when merkle root changes during livestream
+          viewedNpub && currentTreeName ? (
+            // Use resolver subscription for live updates
+            <LiveVideo
+              key={videoKeyRef.current}
+              resolverKey={getResolverKey(viewedNpub, currentTreeName)}
+              filePath={[...currentPath, urlFileName]}
+              mimeType={mimeType}
+              initialCid={rootCid}
+            />
+          ) : entry ? (
+            // Direct hash access (no resolver) - need entry for CID
+            <LiveVideoFromHash cid={entry.cid} mimeType={mimeType} />
+          ) : null
         ) : !entry ? (
           <DirectoryActions />
         ) : loading ? (
@@ -476,20 +492,6 @@ export function Viewer() {
             directoryCid={currentDirCid}
             exeName={entry.name}
           />
-        ) : isVideo && mimeType ? (
-          viewedNpub && currentTreeName ? (
-            // Use resolver subscription for live updates
-            <LiveVideo
-              key={videoKeyRef.current}
-              resolverKey={getResolverKey(viewedNpub, currentTreeName)}
-              filePath={[...currentPath, entry.name]}
-              mimeType={mimeType}
-              initialCid={rootCid}
-            />
-          ) : (
-            // Direct hash access (no resolver)
-            <LiveVideoFromHash cid={entry.cid} mimeType={mimeType} />
-          )
         ) : content ? (
           <ContentView data={content} filename={entry.name} onDownload={handleDownload} />
         ) : null}

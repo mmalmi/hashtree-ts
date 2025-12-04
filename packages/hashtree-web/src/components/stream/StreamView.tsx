@@ -193,12 +193,17 @@ function StreamControls({ videoRef, onCancel }: { videoRef: { current: HTMLVideo
 function ShareLink() {
   const { isRecording, streamFilename } = useStreamState();
   const selectedTree = useNostrStore(s => s.selectedTree);
+  const route = useRoute();
 
   if (!isRecording) return null;
 
-  if (selectedTree) {
+  if (selectedTree && route.npub && route.treeName) {
     const filename = `${streamFilename}.webm`;
-    const shareUrl = `${window.location.href}/${encodeURIComponent(filename)}`;
+    // Build URL from route path, excluding /stream suffix (which is the stream view route, not a directory)
+    const basePath = `${route.npub}/${route.treeName}`;
+    const pathWithoutStream = route.path.filter(p => p !== 'stream');
+    const dirPath = pathWithoutStream.length > 0 ? `/${pathWithoutStream.join('/')}` : '';
+    const shareUrl = `${window.location.origin}/#/${basePath}${dirPath}/${encodeURIComponent(filename)}`;
     return (
       <div className="p-3 bg-surface-1 rounded text-sm">
         <div className="text-muted mb-1">Share link:</div>

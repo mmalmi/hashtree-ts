@@ -9,7 +9,7 @@ import { useRecentlyChanged } from '../hooks/useRecentlyChanged';
 import { useNostrStore, pubkeyToNpub, npubToPubkey } from '../nostr';
 import { UserRow } from './user';
 import { FolderActions } from './FolderActions';
-import { VisibilityIcon } from './VisibilityIcon';
+import { VisibilityIcon, LinkLockIcon } from './VisibilityIcon';
 import { useSelectedFile, useRoute, useCurrentPath, useCurrentDirCid, useTrees, useDirectoryEntries, useTreeRoot } from '../hooks';
 import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
@@ -621,10 +621,7 @@ export function FileBrowser() {
           <div className="p-8 text-center">
             <div className="inline-flex items-center justify-center mb-4">
               {currentTree.visibility === 'unlisted' ? (
-                <span className="relative inline-block">
-                  <span className="i-lucide-link text-3xl text-text-3" />
-                  <span className="i-lucide-lock absolute -bottom-0 -right-2 text-lg text-text-3" />
-                </span>
+                <LinkLockIcon className="text-3xl text-text-3" />
               ) : (
                 <span className="i-lucide-lock text-3xl text-text-3" />
               )}

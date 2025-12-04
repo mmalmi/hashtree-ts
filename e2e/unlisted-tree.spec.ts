@@ -223,35 +223,34 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(page.locator('pre')).toHaveText('This is secret content!');
   });
 
-  test('should access unlisted tree from fresh browser with link', { timeout: 60000 }, async ({ page, browser }) => {
+  test('should access unlisted tree from fresh browser with link', async ({ page, browser }) => {
     // Go to user's tree list
     await page.locator(myTreesButtonSelector).click();
-    await page.waitForTimeout(300);
 
     // Create an unlisted tree
     await page.getByRole('button', { name: 'New Folder' }).click();
     await page.locator('input[placeholder="Folder name..."]').fill('unlisted-share');
     await page.getByRole('button', { name: /unlisted/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
-    await page.waitForTimeout(1000);
+
+    // Wait for tree to be created
+    await expect(page.getByText('Empty directory')).toBeVisible();
 
     // Create a file with content
     await page.getByRole('button', { name: /File/ }).first().click();
     await page.locator('input[placeholder="File name..."]').fill('shared.txt');
     await page.getByRole('button', { name: 'Create' }).click();
-    await page.waitForTimeout(500);
 
     // Type content and save
+    await expect(page.locator('textarea')).toBeVisible();
     await page.locator('textarea').fill('Shared secret content');
     await page.getByRole('button', { name: 'Save' }).click();
-    await page.waitForTimeout(2000); // Wait longer for save
 
     // Exit edit mode so content is saved properly
     await page.getByRole('button', { name: 'Done' }).click();
-    await page.waitForTimeout(1000);
 
     // Verify content is visible in view mode
-    await expect(page.locator('pre')).toHaveText('Shared secret content', { timeout: 5000 });
+    await expect(page.locator('pre')).toHaveText('Shared secret content');
 
     // Get the URL (should not have &edit=1 now)
     const shareUrl = page.url();
@@ -271,12 +270,15 @@ test.describe('Unlisted Tree Visibility', () => {
     const fileUrl = `http://localhost:5173/#/${npub}/${treeName}/shared.txt?k=${kParam}`;
     await page2.goto(fileUrl);
 
-    // Wait for the file to appear and content to load
-    await page2.waitForTimeout(5000);
+    // Should NOT see "Link Required" - the key should work
+    await expect(page2.getByText('Link Required')).not.toBeVisible();
 
     // Verify the file is visible in the second browser
     // The content should be decrypted using the linkKey from the URL
-    await expect(page2.locator('text="shared.txt"').first()).toBeVisible({ timeout: 5000 });
+    await expect(page2.locator('text="shared.txt"').first()).toBeVisible();
+
+    // Verify the content is decrypted and visible
+    await expect(page2.locator('text="Shared secret content"')).toBeVisible();
 
     await context2.close();
   });
