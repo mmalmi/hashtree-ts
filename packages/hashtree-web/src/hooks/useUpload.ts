@@ -293,6 +293,94 @@ export function useUpload() {
       isOwnTree = routePubkey === nostrStore.pubkey;
     }
 
+    // Collect all unique directory paths that need to be created
+    const dirsToCreate = new Set<string>();
+    for (const { relativePath } of filesWithPaths) {
+      const pathParts = relativePath.split('/');
+      pathParts.pop(); // Remove filename
+      // Add all parent paths
+      for (let i = 1; i <= pathParts.length; i++) {
+        dirsToCreate.add(pathParts.slice(0, i).join('/'));
+      }
+    }
+
+    // Sort directories by depth (shallowest first)
+    const sortedDirs = Array.from(dirsToCreate).sort((a, b) =>
+      a.split('/').length - b.split('/').length
+    );
+
+    // Create directories first (before processing files)
+    const createdDirs = new Set<string>();
+
+    // Helper to ensure directory exists
+    const ensureDir = async (dirPathStr: string) => {
+      if (createdDirs.has(dirPathStr)) return;
+
+      const parts = dirPathStr.split('/');
+      const dirName = parts.pop()!;
+      const parentPath = [...dirPath, ...parts];
+
+      // Create empty directory
+      const { cid: emptyDirCid } = await tree.putDirectory([]);
+
+      if (currentRootCid?.hash) {
+        const newRootCid = await tree.setEntry(
+          currentRootCid,
+          parentPath,
+          dirName,
+          emptyDirCid,
+          0,
+          true // isTree
+        );
+        currentRootCid = newRootCid;
+      } else if (needsTreeInit) {
+        const { cid: rootCidVal } = await tree.putDirectory([]);
+        const newRootCid = await tree.setEntry(
+          rootCidVal,
+          parentPath,
+          dirName,
+          emptyDirCid,
+          0,
+          true
+        );
+        currentRootCid = newRootCid;
+
+        if (isOwnTree && routePubkey) {
+          const hashHex = toHex(newRootCid.hash);
+          const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
+          await saveHashtree(route.treeName!, hashHex, keyHex);
+          useNostrStore.getState().setSelectedTree({
+            id: '',
+            name: route.treeName!,
+            pubkey: routePubkey,
+            rootHash: hashHex,
+            rootKey: keyHex,
+            created_at: Math.floor(Date.now() / 1000),
+          });
+        }
+        needsTreeInit = false;
+      } else {
+        const { cid: rootCidVal } = await tree.putDirectory([]);
+        const newRootCid = await tree.setEntry(
+          rootCidVal,
+          parentPath,
+          dirName,
+          emptyDirCid,
+          0,
+          true
+        );
+        currentRootCid = newRootCid;
+      }
+
+      createdDirs.add(dirPathStr);
+    };
+
+    // Create all directories first
+    for (const dir of sortedDirs) {
+      if (checkCancelled()) return;
+      await ensureDir(dir);
+    }
+
     for (let i = 0; i < filesWithPaths.length; i++) {
       // Check for cancellation at start of each file
       if (checkCancelled()) return;
@@ -349,11 +437,9 @@ export function useUpload() {
 
       uploadedFileNames.push(relativePath);
 
-      // Add file to tree
+      // Add file to tree (directories already exist)
       try {
         if (currentRootCid?.hash) {
-          // Add to existing tree with full path - setEntry handles encryption based on rootCid.key
-          // and creates intermediate directories automatically
           const newRootCid = await tree.setEntry(
             currentRootCid,
             fullDirPath,
@@ -366,52 +452,6 @@ export function useUpload() {
           // Mark this file as changed for pulse effect (use just filename for display in current dir)
           if (fileDirPath.length === 0) {
             markFilesChanged(new Set([fileName]));
-          }
-        } else if (needsTreeInit) {
-          // First file in a new virtual directory - create encrypted tree
-          const { cid: rootCidVal } = await tree.putDirectory([]);
-
-          // Use setEntry to add nested directories and file
-          const newRootCid = await tree.setEntry(
-            rootCidVal,
-            fullDirPath,
-            fileName,
-            fileCid,
-            size
-          );
-
-          currentRootCid = newRootCid;
-
-          if (isOwnTree && routePubkey) {
-            const hashHex = toHex(newRootCid.hash);
-            const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
-            await saveHashtree(route.treeName!, hashHex, keyHex);
-            useNostrStore.getState().setSelectedTree({
-              id: '',
-              name: route.treeName!,
-              pubkey: routePubkey,
-              rootHash: hashHex,
-              rootKey: keyHex,
-              created_at: Math.floor(Date.now() / 1000),
-            });
-          }
-          needsTreeInit = false;
-        } else {
-          // No existing tree - create new encrypted root with this file
-          const { cid: rootCidVal } = await tree.putDirectory([]);
-
-          // Use setEntry to add nested directories and file
-          const newRootCid = await tree.setEntry(
-            rootCidVal,
-            fullDirPath,
-            fileName,
-            fileCid,
-            size
-          );
-
-          currentRootCid = newRootCid;
-          if (i === 0) {
-            navigate('/');
           }
         }
       } catch (err) {
