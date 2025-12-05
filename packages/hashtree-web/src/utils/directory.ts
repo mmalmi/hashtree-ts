@@ -3,18 +3,37 @@
  * Supports both webkitdirectory file inputs and drag-and-drop directories
  */
 
+import {
+  parseGitignore,
+  filterByGitignore,
+  DEFAULT_IGNORE_PATTERNS,
+  type GitignorePattern,
+} from './gitignore';
+
 export interface FileWithPath {
   file: File;
   /** Relative path from the dropped/selected directory root */
   relativePath: string;
 }
 
+export interface DirectoryReadResult {
+  files: FileWithPath[];
+  /** If a .gitignore was found at the root of the directory */
+  hasGitignore: boolean;
+  /** Parsed gitignore patterns (if found) */
+  gitignorePatterns: GitignorePattern[] | null;
+  /** Root directory name */
+  rootDirName: string | null;
+}
+
 /**
  * Read files from a FileList that was selected via input[webkitdirectory]
  * Files already have webkitRelativePath set by the browser
  */
-export function readFilesFromWebkitDirectory(files: FileList): FileWithPath[] {
+export function readFilesFromWebkitDirectory(files: FileList): DirectoryReadResult {
   const result: FileWithPath[] = [];
+  let gitignoreFile: File | null = null;
+  let rootDirName: string | null = null;
 
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
@@ -24,10 +43,64 @@ export function readFilesFromWebkitDirectory(files: FileList): FileWithPath[] {
     // We want to keep that structure
     const relativePath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
 
+    // Extract root directory name from first file
+    if (!rootDirName && relativePath.includes('/')) {
+      rootDirName = relativePath.split('/')[0];
+    }
+
+    // Check for .gitignore at root level (e.g., "mydir/.gitignore")
+    const pathParts = relativePath.split('/');
+    if (pathParts.length === 2 && pathParts[1] === '.gitignore') {
+      gitignoreFile = file;
+    }
+
     result.push({ file, relativePath });
   }
 
-  return result;
+  return {
+    files: result,
+    hasGitignore: gitignoreFile !== null,
+    gitignorePatterns: null, // Will be populated after reading file content
+    rootDirName,
+  };
+}
+
+/**
+ * Read and parse .gitignore content from a file
+ */
+export async function parseGitignoreFromFile(file: File): Promise<GitignorePattern[]> {
+  const content = await file.text();
+  return parseGitignore(content);
+}
+
+/**
+ * Find .gitignore file in a list of files (at root level)
+ */
+export function findGitignoreFile(files: FileWithPath[], rootDirName: string | null): FileWithPath | null {
+  // Look for .gitignore at the root of the uploaded directory
+  // Path would be like "mydir/.gitignore" or just ".gitignore"
+  return files.find(f => {
+    const parts = f.relativePath.split('/');
+    if (rootDirName) {
+      // webkitdirectory: "rootDir/.gitignore"
+      return parts.length === 2 && parts[0] === rootDirName && parts[1] === '.gitignore';
+    } else {
+      // drag-and-drop single dir: "dirName/.gitignore"
+      return parts.length === 2 && parts[1] === '.gitignore';
+    }
+  }) || null;
+}
+
+/**
+ * Apply gitignore filtering to files
+ */
+export function applyGitignoreFilter(
+  files: FileWithPath[],
+  patterns: GitignorePattern[],
+  includeDefaults = true
+): { included: FileWithPath[]; excluded: FileWithPath[] } {
+  const allPatterns = includeDefaults ? [...DEFAULT_IGNORE_PATTERNS, ...patterns] : patterns;
+  return filterByGitignore(files, allPatterns);
 }
 
 /**
@@ -89,8 +162,9 @@ async function readEntry(entry: FileSystemEntry, basePath: string): Promise<File
  * Read files from drag-and-drop DataTransfer, supporting directories
  * Uses webkitGetAsEntry() for directory access
  */
-export async function readFilesFromDataTransfer(dataTransfer: DataTransfer): Promise<FileWithPath[]> {
+export async function readFilesFromDataTransfer(dataTransfer: DataTransfer): Promise<DirectoryReadResult> {
   const results: FileWithPath[] = [];
+  let rootDirName: string | null = null;
 
   // Check if we have the directory-capable API
   if (dataTransfer.items) {
@@ -100,6 +174,10 @@ export async function readFilesFromDataTransfer(dataTransfer: DataTransfer): Pro
 
       const entry = item.webkitGetAsEntry?.();
       if (entry) {
+        // Track root directory name for single directory drops
+        if (entry.isDirectory && !rootDirName) {
+          rootDirName = entry.name;
+        }
         // Use entry API for potentially directory support
         const files = await readEntry(entry, entry.name);
         results.push(...files);
@@ -121,7 +199,15 @@ export async function readFilesFromDataTransfer(dataTransfer: DataTransfer): Pro
     }
   }
 
-  return results;
+  // Check for .gitignore at root
+  const gitignoreFileEntry = findGitignoreFile(results, rootDirName);
+
+  return {
+    files: results,
+    hasGitignore: gitignoreFileEntry !== null,
+    gitignorePatterns: null,
+    rootDirName,
+  };
 }
 
 /**

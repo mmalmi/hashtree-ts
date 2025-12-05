@@ -8,6 +8,7 @@ import {
   RenameModal,
   ForkModal,
   ExtractModal,
+  GitignoreModal,
   NostrLogin,
   ConnectivityIndicator,
   SearchInput,
@@ -507,6 +508,7 @@ export function App() {
         <RenameModal />
         <ForkModal />
         <ExtractModal />
+        <GitignoreModal />
       </div>
     </HashRouter>
   );

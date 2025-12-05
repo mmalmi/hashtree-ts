@@ -13,11 +13,13 @@ import { navigate } from '../utils/navigate';
 import { getCurrentPathFromUrl, parseRoute } from '../utils/route';
 import { clearFileSelection } from '../actions';
 import { markFilesChanged } from './useRecentlyChanged';
-import { openExtractModal, type ArchiveFile } from './useModals';
+import { openExtractModal, openGitignoreModal, type ArchiveFile } from './useModals';
 import { isArchiveFile, extractArchive } from '../utils/compression';
 import { nip19 } from 'nostr-tools';
-import type { FileWithPath } from '../utils/directory';
+import type { FileWithPath, DirectoryReadResult } from '../utils/directory';
+import { findGitignoreFile, parseGitignoreFromFile, applyGitignoreFilter } from '../utils/directory';
 import { getTreeRootSync } from './useTreeRoot';
+import { useSettingsStore } from '../stores/settings';
 
 // Upload progress type
 export interface UploadProgress {
@@ -434,5 +436,76 @@ export function useUpload() {
     setUploadProgress(null);
   }, []);
 
-  return { uploadProgress: progress, uploadFiles, uploadFilesWithPaths, cancelUpload };
+  /**
+   * Upload a directory with gitignore support
+   * Checks for .gitignore at root and handles filtering based on user preference
+   */
+  const uploadDirectory = useCallback(async (result: DirectoryReadResult): Promise<void> => {
+    const { files, hasGitignore, rootDirName } = result;
+
+    if (files.length === 0) return;
+
+    const { gitignoreBehavior } = useSettingsStore.getState().upload;
+    const dirName = rootDirName || 'directory';
+
+    // If no .gitignore, just upload all files
+    if (!hasGitignore) {
+      await uploadFilesWithPaths(files);
+      return;
+    }
+
+    // If user chose to always skip gitignore, upload all
+    if (gitignoreBehavior === 'never') {
+      await uploadFilesWithPaths(files);
+      return;
+    }
+
+    // Find and parse the .gitignore file
+    const gitignoreFileEntry = findGitignoreFile(files, rootDirName);
+    if (!gitignoreFileEntry) {
+      // .gitignore detection was wrong, just upload all
+      await uploadFilesWithPaths(files);
+      return;
+    }
+
+    const patterns = await parseGitignoreFromFile(gitignoreFileEntry.file);
+    const { included, excluded } = applyGitignoreFilter(files, patterns);
+
+    // If nothing would be excluded, just upload all
+    if (excluded.length === 0) {
+      await uploadFilesWithPaths(files);
+      return;
+    }
+
+    // If user chose to always use gitignore, filter and upload
+    if (gitignoreBehavior === 'always') {
+      await uploadFilesWithPaths(included);
+      return;
+    }
+
+    // Ask the user (behavior === 'ask')
+    // Show modal and wait for decision via Promise
+    return new Promise<void>((resolve) => {
+      openGitignoreModal({
+        allFiles: files,
+        includedFiles: included,
+        excludedFiles: excluded,
+        dirName,
+        onDecision: async (useGitignore, rememberGlobally) => {
+          // If user checked "remember", update global setting
+          if (rememberGlobally) {
+            useSettingsStore.getState().setUploadSettings({
+              gitignoreBehavior: useGitignore ? 'always' : 'never',
+            });
+          }
+
+          const filesToUpload = useGitignore ? included : files;
+          await uploadFilesWithPaths(filesToUpload);
+          resolve();
+        },
+      });
+    });
+  }, [uploadFilesWithPaths]);
+
+  return { uploadProgress: progress, uploadFiles, uploadFilesWithPaths, uploadDirectory, cancelUpload };
 }

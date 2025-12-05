@@ -3,6 +3,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { CID, TreeVisibility } from 'hashtree';
+import type { FileWithPath } from '../utils/directory';
 
 type ModalType = 'file' | 'folder' | 'tree';
 
@@ -25,6 +26,19 @@ interface ExtractTarget {
 
 type ExtractLocation = 'current' | 'subdir';
 
+interface GitignoreTarget {
+  /** All files from the directory */
+  allFiles: FileWithPath[];
+  /** Files that would be included (not ignored) */
+  includedFiles: FileWithPath[];
+  /** Files that would be excluded (ignored) */
+  excludedFiles: FileWithPath[];
+  /** Root directory name */
+  dirName: string;
+  /** Callback when user makes a decision */
+  onDecision: (useGitignore: boolean, rememberGlobally: boolean) => void;
+}
+
 interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
@@ -36,6 +50,8 @@ interface ModalState {
   showExtractModal: boolean;
   extractTarget: ExtractTarget | null;
   extractLocation: ExtractLocation;
+  showGitignoreModal: boolean;
+  gitignoreTarget: GitignoreTarget | null;
   modalInput: string;
 }
 
@@ -51,6 +67,8 @@ let state: ModalState = {
   showExtractModal: false,
   extractTarget: null,
   extractLocation: 'subdir',
+  showGitignoreModal: false,
+  gitignoreTarget: null,
   modalInput: '',
 };
 
@@ -120,6 +138,16 @@ export function setExtractLocation(location: ExtractLocation) {
   emit();
 }
 
+export function openGitignoreModal(target: GitignoreTarget) {
+  state = { ...state, showGitignoreModal: true, gitignoreTarget: target };
+  emit();
+}
+
+export function closeGitignoreModal() {
+  state = { ...state, showGitignoreModal: false, gitignoreTarget: null };
+  emit();
+}
+
 export function setModalInput(input: string) {
   state = { ...state, modalInput: input };
   emit();
@@ -142,8 +170,10 @@ export function useModals() {
     openExtractModal,
     closeExtractModal,
     setExtractLocation,
+    openGitignoreModal,
+    closeGitignoreModal,
     setModalInput,
   };
 }
 
-export type { ArchiveFile, ExtractTarget, ExtractLocation };
+export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget };

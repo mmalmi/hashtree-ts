@@ -34,7 +34,7 @@ function suggestForkName(dirName: string, existingTreeNames: string[]): string {
 }
 
 export function FolderActions({ dirCid, canEdit, compact = false }: FolderActionsProps) {
-  const { uploadFiles, uploadFilesWithPaths } = useUpload();
+  const { uploadFiles, uploadDirectory } = useUpload();
   const route = useRoute();
   const userNpub = useNostrStore(s => s.npub);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -144,8 +144,8 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
                 onChange={(e) => {
                   const input = e.target as HTMLInputElement;
                   if (input.files && input.files.length > 0) {
-                    const filesWithPaths = readFilesFromWebkitDirectory(input.files);
-                    uploadFilesWithPaths(filesWithPaths);
+                    const result = readFilesFromWebkitDirectory(input.files);
+                    uploadDirectory(result);
                   }
                   input.value = '';
                 }}

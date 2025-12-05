@@ -7,7 +7,7 @@ import { useNostrStore } from '../nostr';
 import { UserRow } from './user/UserRow';
 import { useTreeRoot } from '../hooks';
 import { useGraphSize, useIsRecrawling, useFollows } from '../utils/socialGraph';
-import { useSettingsStore, DEFAULT_POOL_SETTINGS } from '../stores/settings';
+import { useSettingsStore, DEFAULT_POOL_SETTINGS, type GitignoreBehavior } from '../stores/settings';
 
 export function SettingsPage() {
   const peerList = useAppStore(s => s.peers);
@@ -29,6 +29,10 @@ export function SettingsPage() {
   const poolsLoaded = useSettingsStore(s => s.poolsLoaded);
   const setPoolSettings = useSettingsStore(s => s.setPoolSettings);
   const resetPoolSettings = useSettingsStore(s => s.resetPoolSettings);
+
+  // Upload settings
+  const uploadSettings = useSettingsStore(s => s.upload);
+  const setUploadSettings = useSettingsStore(s => s.setUploadSettings);
 
   // Fetch storage stats on mount
   useEffect(() => {
@@ -240,6 +244,52 @@ export function SettingsPage() {
             </div>
           </div>
         )}
+
+        {/* Upload Settings */}
+        <div>
+          <h3 className="text-xs font-medium text-muted uppercase tracking-wide mb-3 flex items-center gap-2">
+            Upload Settings
+            <span
+              className="i-lucide-info text-sm cursor-help"
+              title="Configure how directory uploads are handled"
+            />
+          </h3>
+          <div className="bg-surface-2 rounded p-3 space-y-3">
+            <div>
+              <div className="text-sm text-text-1 mb-2">.gitignore handling</div>
+              <p className="text-xs text-muted mb-3">
+                When uploading a directory with a .gitignore file, how should ignored files be handled?
+              </p>
+              <div className="space-y-2">
+                {([
+                  { value: 'ask', label: 'Ask each time', desc: 'Show a prompt when .gitignore is detected' },
+                  { value: 'always', label: 'Always skip ignored', desc: 'Automatically skip files matching .gitignore' },
+                  { value: 'never', label: 'Upload everything', desc: 'Ignore .gitignore and upload all files' },
+                ] as { value: GitignoreBehavior; label: string; desc: string }[]).map(({ value, label, desc }) => (
+                  <label
+                    key={value}
+                    className={`flex items-start gap-3 p-2 rounded cursor-pointer ${
+                      uploadSettings.gitignoreBehavior === value ? 'bg-accent/10' : 'hover:bg-surface-3'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="gitignoreBehavior"
+                      value={value}
+                      checked={uploadSettings.gitignoreBehavior === value}
+                      onChange={() => setUploadSettings({ gitignoreBehavior: value })}
+                      className="mt-0.5 accent-accent"
+                    />
+                    <div>
+                      <div className="text-sm text-text-1">{label}</div>
+                      <div className="text-xs text-muted">{desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* Current Tree Stats */}
         <div>

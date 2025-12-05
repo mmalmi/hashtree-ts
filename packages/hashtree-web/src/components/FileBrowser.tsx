@@ -174,7 +174,7 @@ export function FileBrowser() {
   const targetNpub = viewedNpub || userNpub;
   const trees = useTrees(targetNpub);
   const currentTree = currentTreeName ? trees.find(t => t.name === currentTreeName) : null;
-  const { uploadFiles, uploadFilesWithPaths } = useUpload();
+  const { uploadFiles, uploadDirectory } = useUpload();
 
   const navigateTo = useNavigate();
 
@@ -375,9 +375,9 @@ export function FileBrowser() {
 
     // Check if this drop contains directories - use the directory-aware reader
     if (hasDirectoryItems(dataTransfer) || dataTransfer.items?.length > 0) {
-      const filesWithPaths = await readFilesFromDataTransfer(dataTransfer);
-      if (filesWithPaths.length > 0) {
-        await uploadFilesWithPaths(filesWithPaths);
+      const result = await readFilesFromDataTransfer(dataTransfer);
+      if (result.files.length > 0) {
+        await uploadDirectory(result);
         return;
       }
     }
