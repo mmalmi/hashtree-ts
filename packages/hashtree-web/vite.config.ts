@@ -15,6 +15,8 @@ export default defineConfig({
       globals: {
         Buffer: true,
       },
+      // Prevent interference with ES module imports (fixes @scure/base bech32 issue)
+      protocolImports: false,
     }),
     visualizer({
       open: false,
