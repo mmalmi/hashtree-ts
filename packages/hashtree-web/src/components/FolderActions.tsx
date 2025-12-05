@@ -117,7 +117,7 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
       )}
       {canEdit && (
         <>
-          <label className={`btn-success cursor-pointer ${btnClass}`}>
+          <label className={`btn-success cursor-pointer ${btnClass}`} title="Add files">
             <span className="i-lucide-plus" />
             Add
             <input
@@ -134,8 +134,8 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
 
           {hasDirectorySupport && (
             <label className={`btn-ghost cursor-pointer ${btnClass}`} title="Add a folder with all its contents">
-              <span className="i-lucide-folder-plus" />
-              Add Dir
+              <span className="i-lucide-folder-up" />
+              Add Folder
               <input
                 ref={dirInputRef}
                 type="file"
@@ -156,12 +156,12 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
 
           <button onClick={() => openCreateModal('file')} className={`btn-ghost ${btnClass}`}>
             <span className="i-lucide-file-plus" />
-            File
+            New File
           </button>
 
           <button onClick={() => openCreateModal('folder')} className={`btn-ghost ${btnClass}`}>
             <span className="i-lucide-folder-plus" />
-            Folder
+            New Folder
           </button>
 
           {streamUrl && (

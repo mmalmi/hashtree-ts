@@ -20,7 +20,7 @@ export function DirectoryActions() {
   const currentTreeName = route.treeName;
   const userNpub = useNostrStore(s => s.npub);
   const isLoggedIn = useNostrStore(s => s.isLoggedIn);
-  const { uploadProgress, uploadFiles, cancelUpload } = useUpload();
+  const { uploadFiles } = useUpload();
 
   // Get current tree for visibility info
   const targetNpub = viewedNpub || userNpub;
@@ -117,37 +117,12 @@ export function DirectoryActions() {
       {hasTreeContext && canEdit && !readmeContent && (
         <div
           className={`flex-1 mx-3 mb-3 flex items-center justify-center cursor-pointer transition-colors border border-surface-3 rounded-lg ${isDraggingOver ? 'bg-surface-1/50' : 'hover:bg-surface-1/50'}`}
-          onClick={uploadProgress ? undefined : openFilePicker}
+          onClick={openFilePicker}
         >
-          {uploadProgress ? (
-            <div className="flex flex-col items-center text-text-2 w-64">
-              <span className="i-lucide-loader-2 text-4xl mb-3 animate-spin text-accent" />
-              <span className="text-sm mb-2 truncate max-w-full">{uploadProgress.fileName}</span>
-              <div className="w-full h-2 bg-surface-2 rounded overflow-hidden">
-                <div
-                  className="h-full bg-accent transition-all"
-                  style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
-                />
-              </div>
-              <span className="text-xs mt-1 text-text-3">
-                {uploadProgress.current} / {uploadProgress.total}
-              </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  cancelUpload();
-                }}
-                className="mt-3 btn-ghost text-xs px-3 py-1 text-danger hover:bg-danger/10"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center text-text-3">
-              <span className="i-lucide-plus text-4xl mb-2" />
-              <span className="text-sm">Drop or click to add</span>
-            </div>
-          )}
+          <div className="flex flex-col items-center text-text-3">
+            <span className="i-lucide-plus text-4xl mb-2" />
+            <span className="text-sm">Drop or click to add</span>
+          </div>
           <input
             ref={fileInputRef}
             type="file"

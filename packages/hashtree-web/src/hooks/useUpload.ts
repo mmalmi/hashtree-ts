@@ -11,7 +11,6 @@ import { getTree } from '../store';
 import { autosaveIfOwn, saveHashtree, useNostrStore } from '../nostr';
 import { navigate } from '../utils/navigate';
 import { getCurrentPathFromUrl, parseRoute } from '../utils/route';
-import { clearFileSelection } from '../actions';
 import { markFilesChanged } from './useRecentlyChanged';
 import { openExtractModal, openGitignoreModal, type ArchiveFile } from './useModals';
 import { isArchiveFile, extractArchive } from '../utils/compression';
@@ -89,9 +88,6 @@ export function useUpload() {
 
     // Reset cancellation flag at start
     uploadCancelled = false;
-
-    // Clear selected file so upload indicator is visible (updates URL)
-    clearFileSelection();
 
     // Convert FileList to array immediately to prevent it from being cleared
     const filesArray = Array.from(files);
@@ -273,9 +269,6 @@ export function useUpload() {
 
     // Reset cancellation flag at start
     uploadCancelled = false;
-
-    // Clear selected file so upload indicator is visible
-    clearFileSelection();
 
     const total = filesWithPaths.length;
     const uploadedFileNames: string[] = [];

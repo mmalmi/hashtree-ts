@@ -22,6 +22,7 @@ import {
   RecentsView,
   FollowsTreesView,
   UsersPage,
+  UploadToast,
 } from './components';
 import { EditProfilePage } from './components/EditProfilePage';
 import {
@@ -509,6 +510,7 @@ export function App() {
         <ForkModal />
         <ExtractModal />
         <GitignoreModal />
+        <UploadToast />
       </div>
     </HashRouter>
   );

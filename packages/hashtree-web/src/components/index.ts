@@ -16,3 +16,4 @@ export { RecentsView } from './RecentsView';
 export { FollowsTreesView } from './FollowsTreesView';
 export { UsersPage } from './UsersPage';
 export { Toolbar } from './Toolbar';
+export { UploadToast } from './UploadToast';
