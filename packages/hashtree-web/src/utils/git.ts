@@ -86,20 +86,33 @@ export async function getLog(rootCid: CID, options?: { depth?: number }) {
   const fs = createGitFS(rootCid);
   const dir = '/';
 
-  const commits = await git.log({
-    fs,
-    dir,
-    depth: options?.depth ?? 20,
-  });
+  try {
+    const commits = await git.log({
+      fs,
+      dir,
+      depth: options?.depth ?? 20,
+    });
 
-  return commits.map(commit => ({
-    oid: commit.oid,
-    message: commit.commit.message,
-    author: commit.commit.author.name,
-    email: commit.commit.author.email,
-    timestamp: commit.commit.author.timestamp,
-    parent: commit.commit.parent,
-  }));
+    if (!commits || !Array.isArray(commits)) {
+      return [];
+    }
+
+    return commits.map(commit => ({
+      oid: commit.oid,
+      message: commit.commit.message,
+      author: commit.commit.author.name,
+      email: commit.commit.author.email,
+      timestamp: commit.commit.author.timestamp,
+      parent: commit.commit.parent,
+    }));
+  } catch (err) {
+    // Handle cases where repo has no commits or invalid refs
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('Could not find') || message.includes('NotFoundError')) {
+      return [];
+    }
+    throw err;
+  }
 }
 
 /**
@@ -111,10 +124,13 @@ export async function getBranches(rootCid: CID) {
   const fs = createGitFS(rootCid);
   const dir = '/';
 
-  const branches = await git.listBranches({ fs, dir });
-  const currentBranch = await git.currentBranch({ fs, dir });
-
-  return { branches, currentBranch };
+  try {
+    const branches = await git.listBranches({ fs, dir });
+    const currentBranch = await git.currentBranch({ fs, dir });
+    return { branches: branches ?? [], currentBranch: currentBranch ?? null };
+  } catch {
+    return { branches: [], currentBranch: null };
+  }
 }
 
 /**
