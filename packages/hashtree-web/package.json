@@ -23,6 +23,7 @@
     "emulators-ui": "^0.73.9",
     "fflate": "^0.8.2",
     "hashtree": "workspace:*",
+    "isomorphic-git": "^1.35.1",
     "markdown-to-jsx": "^9.1.2",
     "minidenticons": "^4.2.1",
     "nostr-social-graph": "^1.0.33",
