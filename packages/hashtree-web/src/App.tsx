@@ -9,6 +9,7 @@ import {
   ForkModal,
   ExtractModal,
   GitignoreModal,
+  GitHistoryModal,
   NostrLogin,
   ConnectivityIndicator,
   SearchInput,
@@ -510,6 +511,7 @@ export function App() {
         <ForkModal />
         <ExtractModal />
         <GitignoreModal />
+        <GitHistoryModal />
         <Toast />
       </div>
     </HashRouter>

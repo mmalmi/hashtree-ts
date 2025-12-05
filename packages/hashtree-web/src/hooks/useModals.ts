@@ -39,6 +39,10 @@ interface GitignoreTarget {
   onDecision: (useGitignore: boolean, rememberGlobally: boolean) => void;
 }
 
+interface GitHistoryTarget {
+  dirCid: CID;
+}
+
 interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
@@ -52,6 +56,8 @@ interface ModalState {
   extractLocation: ExtractLocation;
   showGitignoreModal: boolean;
   gitignoreTarget: GitignoreTarget | null;
+  showGitHistoryModal: boolean;
+  gitHistoryTarget: GitHistoryTarget | null;
   modalInput: string;
 }
 
@@ -69,6 +75,8 @@ let state: ModalState = {
   extractLocation: 'subdir',
   showGitignoreModal: false,
   gitignoreTarget: null,
+  showGitHistoryModal: false,
+  gitHistoryTarget: null,
   modalInput: '',
 };
 
@@ -148,6 +156,16 @@ export function closeGitignoreModal() {
   emit();
 }
 
+export function openGitHistoryModal(dirCid: CID) {
+  state = { ...state, showGitHistoryModal: true, gitHistoryTarget: { dirCid } };
+  emit();
+}
+
+export function closeGitHistoryModal() {
+  state = { ...state, showGitHistoryModal: false, gitHistoryTarget: null };
+  emit();
+}
+
 export function setModalInput(input: string) {
   state = { ...state, modalInput: input };
   emit();
@@ -172,8 +190,10 @@ export function useModals() {
     setExtractLocation,
     openGitignoreModal,
     closeGitignoreModal,
+    openGitHistoryModal,
+    closeGitHistoryModal,
     setModalInput,
   };
 }
 
-export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget };
+export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget };

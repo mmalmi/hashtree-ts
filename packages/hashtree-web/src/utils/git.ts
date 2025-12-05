@@ -1,10 +1,31 @@
 /**
  * Git utilities using isomorphic-git with hashtree storage
+ * All imports are lazy-loaded to avoid bundling ~100KB until needed
  */
-import git from 'isomorphic-git';
-import http from 'isomorphic-git/http/web';
 import type { CID } from 'hashtree';
-import { createGitFS } from './git-fs';
+
+// Lazy-loaded modules
+let gitModule: typeof import('isomorphic-git') | null = null;
+let httpModule: typeof import('isomorphic-git/http/web') | null = null;
+
+async function getGit() {
+  if (!gitModule) {
+    gitModule = await import('isomorphic-git');
+  }
+  return gitModule.default;
+}
+
+async function getHttp() {
+  if (!httpModule) {
+    httpModule = await import('isomorphic-git/http/web');
+  }
+  return httpModule.default;
+}
+
+async function getGitFS() {
+  const { createGitFS } = await import('./git-fs');
+  return createGitFS;
+}
 
 export interface CloneOptions {
   url: string;
@@ -27,6 +48,8 @@ export interface CloneResult {
  * Clone a git repository into hashtree storage
  */
 export async function cloneRepo(options: CloneOptions): Promise<CloneResult> {
+  const [git, http, createGitFS] = await Promise.all([getGit(), getHttp(), getGitFS()]);
+
   const { url, ref, depth, onProgress } = options;
   const fs = createGitFS();
   const dir = '/';
@@ -58,6 +81,8 @@ export async function cloneRepo(options: CloneOptions): Promise<CloneResult> {
  * Get commit log for a repository
  */
 export async function getLog(rootCid: CID, options?: { depth?: number }) {
+  const [git, createGitFS] = await Promise.all([getGit(), getGitFS()]);
+
   const fs = createGitFS(rootCid);
   const dir = '/';
 
@@ -81,6 +106,8 @@ export async function getLog(rootCid: CID, options?: { depth?: number }) {
  * Get list of branches
  */
 export async function getBranches(rootCid: CID) {
+  const [git, createGitFS] = await Promise.all([getGit(), getGitFS()]);
+
   const fs = createGitFS(rootCid);
   const dir = '/';
 
@@ -94,6 +121,8 @@ export async function getBranches(rootCid: CID) {
  * Get diff between two commits or working tree
  */
 export async function getDiff(rootCid: CID, commitHash1: string, commitHash2?: string) {
+  const [git, createGitFS] = await Promise.all([getGit(), getGitFS()]);
+
   const fs = createGitFS(rootCid);
   const dir = '/';
 
@@ -134,8 +163,10 @@ export async function getDiff(rootCid: CID, commitHash1: string, commitHash2?: s
 
 /**
  * Check if a directory contains a .git folder (is a git repo)
+ * This check is lightweight - doesn't load isomorphic-git
  */
 export async function isGitRepo(rootCid: CID): Promise<boolean> {
+  const createGitFS = await getGitFS();
   const fs = createGitFS(rootCid);
 
   try {
@@ -154,6 +185,8 @@ export async function getFileAtCommit(
   filepath: string,
   commitHash: string
 ): Promise<Uint8Array | null> {
+  const [git, createGitFS] = await Promise.all([getGit(), getGitFS()]);
+
   const fs = createGitFS(rootCid);
   const dir = '/';
 
@@ -173,7 +206,7 @@ export async function getFileAtCommit(
 /**
  * Get blame information for a file
  */
-export async function getBlame(rootCid: CID, filepath: string) {
+export async function getBlame(_rootCid: CID, _filepath: string) {
   // isomorphic-git doesn't have built-in blame
   // Would need to walk commit history and check each line
   // For now, return null - can implement later if needed
