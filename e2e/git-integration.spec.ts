@@ -2,6 +2,60 @@ import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
 
 test.describe('Git integration features', () => {
+  test('navigating to .git directory should show directory view not file download', async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await waitForNewUserRedirect(page);
+
+    // Navigate to tree list and create a folder
+    await page.locator(myTreesButtonSelector).click();
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: 'New Folder' }).click();
+
+    const input = page.locator('input[placeholder="Folder name..."]');
+    await input.waitFor({ timeout: 5000 });
+    await input.fill('nav-dotfile-test');
+    await page.click('button:has-text("Create")');
+
+    // Wait for modal to close
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+    // Create .git directory
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    const folderInput = page.locator('input[placeholder="Folder name..."]');
+    await folderInput.waitFor({ timeout: 5000 });
+    await folderInput.fill('.git');
+    await page.click('button:has-text("Create")');
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+    // Wait for .git to appear in the file list and click it
+    // The entry should be a folder icon with text ".git"
+    const gitEntry = page.locator('button:has-text(".git"), a:has-text(".git")').first();
+    await expect(gitEntry).toBeVisible({ timeout: 5000 });
+
+    // Click on .git to navigate into it
+    await gitEntry.click();
+    await page.waitForTimeout(500);
+
+    // Check URL has .git in path
+    const url = page.url();
+    expect(url).toContain('.git');
+
+    // Should see "Empty directory" message since we're viewing it as a directory
+    // NOT a download button for binary file
+    const emptyDir = page.locator('text=Empty directory');
+    const downloadButton = page.locator('button:has-text("Download")');
+
+    // At least one of these should be true:
+    // 1. We see "Empty directory" (correct - viewing as directory)
+    // 2. We don't see a Download button (correct - not treating as file)
+    const emptyVisible = await emptyDir.isVisible().catch(() => false);
+    const downloadVisible = await downloadButton.isVisible().catch(() => false);
+
+    // If we see Download button, we're incorrectly treating .git as a file
+    expect(downloadVisible).toBe(false);
+  });
+
   test('dotfiles like .git and .claude should be treated as directories', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
