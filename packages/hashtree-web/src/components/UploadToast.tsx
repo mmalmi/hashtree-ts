@@ -18,7 +18,7 @@ export function UploadToast() {
       className="pointer-events-none flex justify-center"
       style={{ position: 'fixed', bottom: '1rem', left: '1rem', right: '1rem', zIndex: 9999 }}
     >
-      <div className="pointer-events-auto bg-accent/15 border border-accent/30 rounded-lg shadow-lg p-3 max-w-sm w-full">
+      <div className="pointer-events-auto bg-surface-1 border border-accent rounded-lg shadow-lg p-3 max-w-sm w-full">
         {/* Header with filename and cancel */}
         <div className="flex items-center gap-2 mb-2">
           <span className="i-lucide-loader-2 animate-spin text-accent shrink-0" />

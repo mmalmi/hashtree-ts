@@ -134,7 +134,7 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
 
           {hasDirectorySupport && (
             <label className={`btn-ghost cursor-pointer ${btnClass}`} title="Add a folder with all its contents">
-              <span className="i-lucide-folder-up" />
+              <span className="i-lucide-plus" />
               Add Folder
               <input
                 ref={dirInputRef}
