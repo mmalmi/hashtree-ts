@@ -113,7 +113,7 @@ export function usePathType(): PathTypeInfo {
           }
           setLoading(false);
         }
-      } catch (err) {
+      } catch {
         // Resolution failed - fall back to heuristic
         if (!cancelled) {
           setResolved(heuristicGuess);

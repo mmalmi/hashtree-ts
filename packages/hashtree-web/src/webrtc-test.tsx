@@ -343,7 +343,7 @@ export function initWebRTCTest() {
       };
 
       // Set up state for external access
-      let requestHashToGet = options.requestHash;
+      const requestHashToGet = options.requestHash;
       window.forwardingTestState = {
         pubkey,
         contentHash: contentHashHex,
