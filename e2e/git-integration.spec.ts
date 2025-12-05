@@ -461,39 +461,73 @@ test.describe('Git integration features', () => {
         }
 
         // Add files
+        let objectFilePath = '';
+        let objectFileOriginalSize = 0;
         for (const file of files) {
           const parts = file.path.split('/');
           const name = parts.pop()!;
           const data = new Uint8Array(file.content);
           const { cid: fileCid, size } = await tree.putFile(data);
           rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, false);
+          // Track first git object file for verification
+          if (file.path.includes('.git/objects/') && !file.path.endsWith('/info') && !file.path.endsWith('/pack')) {
+            if (!objectFilePath) {
+              objectFilePath = file.path;
+              objectFileOriginalSize = data.length;
+            }
+          }
+        }
+
+        // Verify round-trip of a git object file
+        let verifyInfo = '';
+        if (objectFilePath) {
+          const result = await tree.resolvePath(rootCid, objectFilePath);
+          if (result) {
+            const readBack = await tree.readFile(result.cid);
+            if (readBack) {
+              verifyInfo = `Object file ${objectFilePath}: original=${objectFileOriginalSize} bytes, readBack=${readBack.length} bytes`;
+              if (objectFileOriginalSize !== readBack.length) {
+                verifyInfo += ` MISMATCH!`;
+              }
+            } else {
+              verifyInfo = `Object file ${objectFilePath}: readFile returned null`;
+            }
+          } else {
+            verifyInfo = `Object file ${objectFilePath}: resolvePath returned null`;
+          }
         }
 
         // Test getLog
         const { getLog } = await import('/src/utils/git.ts');
 
         try {
-          const commits = await getLog(rootCid);
+          const result = await getLog(rootCid, { debug: true }) as any;
+          const commits = result.commits || result;
+          const debug = result.debug || [];
           return {
             success: true,
-            commitCount: commits.length,
-            commits: commits.map(c => ({
-              message: c.message.trim(),
-              author: c.author
-            })),
-            error: null
+            commitCount: Array.isArray(commits) ? commits.length : 0,
+            commits: Array.isArray(commits) ? commits.map((c: any) => ({
+              message: c.message?.trim() || '',
+              author: c.author || ''
+            })) : [],
+            error: null,
+            debug,
+            verifyInfo
           };
         } catch (err) {
           return {
             success: false,
             commitCount: 0,
             commits: [],
-            error: err instanceof Error ? err.message : String(err)
+            error: err instanceof Error ? err.message : String(err),
+            debug: []
           };
         }
       }, { files: allFiles, dirs: allDirs });
 
       // Verify we got commits
+      console.log('Git history result:', JSON.stringify(result, null, 2));
       expect(result.success).toBe(true);
       expect(result.error).toBeNull();
       expect(result.commitCount).toBeGreaterThanOrEqual(2);
