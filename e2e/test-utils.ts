@@ -5,14 +5,15 @@
 import { expect } from '@playwright/test';
 
 /**
- * Filter out rate-limit errors from relay.
- * Some relays rate-limit nostr events, but temp.iris.to does not.
- * These errors are irrelevant to the tests.
+ * Filter out noisy errors from relays that are irrelevant to tests.
+ * - rate-limited: Some relays rate-limit nostr events
+ * - pow: Some relays require Proof of Work on events (e.g., "pow: 28 bits needed")
  */
 export function setupPageErrorHandler(page: any) {
   page.on('pageerror', (err: Error) => {
-    if (!err.message.includes('rate-limited')) {
-      console.log('Page error:', err.message);
+    const msg = err.message;
+    if (!msg.includes('rate-limited') && !msg.includes('pow:') && !msg.includes('bits needed')) {
+      console.log('Page error:', msg);
     }
   });
 }
