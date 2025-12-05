@@ -197,12 +197,9 @@ export function filterByGitignore<T extends { relativePath: string }>(
 }
 
 /**
- * Common patterns to always ignore (like .git)
+ * Common patterns to always ignore
  */
 export const DEFAULT_IGNORE_PATTERNS = parseGitignore(`
-# Always ignore .git directory
-.git/
-
 # Common OS files
 .DS_Store
 Thumbs.db
