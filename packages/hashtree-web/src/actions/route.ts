@@ -1,0 +1,58 @@
+/**
+ * Route helper functions for actions
+ */
+import { navigate } from '../utils/navigate';
+import { parseRoute } from '../utils/route';
+import type { CID } from 'hashtree';
+import { getTreeRootSync } from '../hooks/useTreeRoot';
+
+// Helper to get current rootCid from route via resolver cache
+export function getCurrentRootCid(): CID | null {
+  const route = parseRoute();
+  return getTreeRootSync(route.npub, route.treeName);
+}
+
+// Build route URL, preserving linkKey if present
+export function buildRouteUrl(npub: string | null, treeName: string | null, path: string[], fileName?: string, linkKey?: string | null): string {
+  const parts: string[] = [];
+
+  if (npub && treeName) {
+    parts.push(npub, treeName);
+  }
+
+  parts.push(...path);
+
+  if (fileName) {
+    parts.push(fileName);
+  }
+
+  let url = '/' + parts.map(encodeURIComponent).join('/');
+  if (linkKey) {
+    url += `?k=${linkKey}`;
+  }
+  return url;
+}
+
+// Get current directory path from URL (excludes file if selected)
+export function getCurrentPathFromUrl(): string[] {
+  const route = parseRoute();
+  const urlPath = route.path;
+  if (urlPath.length === 0) return [];
+
+  // Check if last segment looks like a file (has extension)
+  const lastSegment = urlPath[urlPath.length - 1];
+  const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(lastSegment);
+  return looksLikeFile ? urlPath.slice(0, -1) : urlPath;
+}
+
+// Update URL to reflect current state
+export function updateRoute(fileName?: string, options?: { edit?: boolean }) {
+  const route = parseRoute();
+  const currentPath = getCurrentPathFromUrl();
+  let url = buildRouteUrl(route.npub, route.treeName, currentPath, fileName, route.linkKey);
+  if (options?.edit) {
+    // Append edit param, preserving existing query string
+    url += url.includes('?') ? '&edit=1' : '?edit=1';
+  }
+  navigate(url);
+}

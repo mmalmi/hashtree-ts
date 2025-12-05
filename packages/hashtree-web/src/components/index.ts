@@ -1,6 +1,6 @@
 export { FileBrowser } from './FileBrowser';
-export { Viewer } from './Viewer';
-export { CreateModal, RenameModal, ForkModal, ExtractModal, GitignoreModal } from './Modal';
+export { Viewer } from './viewer';
+export { CreateModal, RenameModal, ForkModal, ExtractModal, GitignoreModal } from './modals';
 export { NostrLogin } from './NostrLogin';
 export { ConnectivityIndicator } from './ConnectivityIndicator';
 export { SearchInput, MobileSearch } from './SearchInput';

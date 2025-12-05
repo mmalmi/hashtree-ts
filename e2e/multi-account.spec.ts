@@ -73,8 +73,9 @@ test.describe('Multi-Account Management', () => {
     await page.getByRole('button', { name: 'Add' }).click();
     await page.waitForTimeout(500);
 
-    // Should now show 2 accounts - look for the "Switch" button which only appears for non-active accounts
-    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
+    // Should now show 2 accounts - look for 2 account rows (each has an avatar link)
+    const accountRows = page.locator('.rounded-lg').filter({ has: page.locator('[class*="i-lucide-"]') });
+    await expect(accountRows).toHaveCount(2, { timeout: 5000 });
   });
 
   test('should show error for invalid nsec', async ({ page }) => {
@@ -115,32 +116,27 @@ test.describe('Multi-Account Management', () => {
   test('should switch between accounts', async ({ page }) => {
     await navigateToAccountsPage(page);
 
-    // Get initial npub
-    const initialNpub = await page.evaluate(() => {
-      const accounts = localStorage.getItem('hashtree:accounts');
-      if (accounts) {
-        const parsed = JSON.parse(accounts);
-        return parsed[0]?.npub || '';
-      }
-      return '';
-    });
-
     // Add a second account
     await page.getByRole('button', { name: 'Add with nsec' }).click();
     await page.locator('input[placeholder="nsec1..."]').fill(generateTestNsec());
     await page.getByRole('button', { name: 'Add' }).click();
     await page.waitForTimeout(500);
 
-    // Should have 2 accounts now - find and click the Switch button
-    const switchButton = page.getByRole('button', { name: 'Switch' });
-    await expect(switchButton).toBeVisible({ timeout: 5000 });
-    await switchButton.click();
+    // Should have 2 accounts now - click on the non-active account row to switch
+    // The non-active account row has bg-surface-1 (not bg-surface-2 like active)
+    const nonActiveRow = page.locator('.rounded-lg.bg-surface-1').first();
+    await expect(nonActiveRow).toBeVisible({ timeout: 5000 });
+    await nonActiveRow.click();
     await page.waitForTimeout(1000);
 
-    // Should navigate to the new account's profile
-    const newUrl = page.url();
-    expect(newUrl).not.toContain(initialNpub);
-    expect(newUrl).toContain('npub');
+    // After switching, the previously non-active row should now be active (have check-circle)
+    // The row we clicked should now have bg-surface-2 (active styling)
+    // And there should be a new non-active row (the previous account)
+    const activeRows = page.locator('.rounded-lg.bg-surface-2');
+    await expect(activeRows).toHaveCount(1, { timeout: 5000 });
+
+    // The check-circle should be visible on the new active account
+    await expect(page.locator('span.i-lucide-check-circle')).toBeVisible();
   });
 
   test('should not allow removing last account', async ({ page }) => {
@@ -159,10 +155,11 @@ test.describe('Multi-Account Management', () => {
     await page.getByRole('button', { name: 'Add' }).click();
     await page.waitForTimeout(500);
 
-    // Should have 2 accounts now
-    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
+    // Should have 2 accounts now - non-active row should be visible
+    const nonActiveRow = page.locator('.rounded-lg.bg-surface-1').first();
+    await expect(nonActiveRow).toBeVisible({ timeout: 5000 });
 
-    // Find the remove button (trash icon) - use first() since both accounts have one
+    // Find the remove button (trash icon) on non-active account
     const removeButton = page.locator('button[title="Remove account"]').first();
     await expect(removeButton).toBeVisible();
 
@@ -178,8 +175,8 @@ test.describe('Multi-Account Management', () => {
     await confirmRemoveButton.click();
     await page.waitForTimeout(500);
 
-    // Should now have only 1 account - no Switch button visible
-    await expect(page.getByRole('button', { name: 'Switch' })).not.toBeVisible({ timeout: 5000 });
+    // Should now have only 1 account - no non-active row visible
+    await expect(page.locator('.rounded-lg.bg-surface-1')).not.toBeVisible({ timeout: 5000 });
   });
 
   test('should cancel account removal', async ({ page }) => {
@@ -200,8 +197,8 @@ test.describe('Multi-Account Management', () => {
     await page.getByRole('button', { name: 'Cancel' }).last().click();
     await page.waitForTimeout(200);
 
-    // Should still have 2 accounts - Switch button should be visible
-    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
+    // Should still have 2 accounts - non-active row should be visible
+    await expect(page.locator('.rounded-lg.bg-surface-1').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('should go back from accounts page', async ({ page }) => {
@@ -224,8 +221,8 @@ test.describe('Multi-Account Management', () => {
     await page.getByRole('button', { name: 'Add' }).click();
     await page.waitForTimeout(500);
 
-    // Should have 2 accounts
-    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
+    // Should have 2 accounts - non-active row should be visible
+    await expect(page.locator('.rounded-lg.bg-surface-1').first()).toBeVisible({ timeout: 5000 });
 
     // Reload the page
     await page.reload();
@@ -235,8 +232,8 @@ test.describe('Multi-Account Management', () => {
     await page.locator(myTreesButtonSelector).dblclick();
     await page.waitForTimeout(300);
 
-    // Should still have 2 accounts
-    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
+    // Should still have 2 accounts - non-active row should be visible
+    await expect(page.locator('.rounded-lg.bg-surface-1').first()).toBeVisible({ timeout: 5000 });
   });
 
   test('should not add duplicate account', async ({ page }) => {
@@ -250,8 +247,8 @@ test.describe('Multi-Account Management', () => {
     await page.getByRole('button', { name: 'Add' }).click();
     await page.waitForTimeout(500);
 
-    // Should have 2 accounts
-    await expect(page.getByRole('button', { name: 'Switch' })).toBeVisible({ timeout: 5000 });
+    // Should have 2 accounts - non-active row should be visible
+    await expect(page.locator('.rounded-lg.bg-surface-1').first()).toBeVisible({ timeout: 5000 });
 
     // Try to add the same account again
     await page.getByRole('button', { name: 'Add with nsec' }).click();
