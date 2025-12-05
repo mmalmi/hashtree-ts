@@ -104,6 +104,15 @@ export function applyGitignoreFilter(
 }
 
 /**
+ * Apply only default ignore patterns (.git, .DS_Store, etc.)
+ */
+export function applyDefaultIgnoreFilter(
+  files: FileWithPath[]
+): { included: FileWithPath[]; excluded: FileWithPath[] } {
+  return filterByGitignore(files, DEFAULT_IGNORE_PATTERNS);
+}
+
+/**
  * Check if a DataTransfer contains directory items
  */
 export function hasDirectoryItems(dataTransfer: DataTransfer): boolean {

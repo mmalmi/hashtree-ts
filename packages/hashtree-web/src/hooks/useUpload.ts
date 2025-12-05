@@ -16,7 +16,7 @@ import { openExtractModal, openGitignoreModal, type ArchiveFile } from './useMod
 import { isArchiveFile, extractArchive } from '../utils/compression';
 import { nip19 } from 'nostr-tools';
 import type { FileWithPath, DirectoryReadResult } from '../utils/directory';
-import { findGitignoreFile, parseGitignoreFromFile, applyGitignoreFilter } from '../utils/directory';
+import { findGitignoreFile, parseGitignoreFromFile, applyGitignoreFilter, applyDefaultIgnoreFilter } from '../utils/directory';
 import { getTreeRootSync } from './useTreeRoot';
 import { useSettingsStore } from '../stores/settings';
 import { toast } from '../stores/toast';
@@ -483,32 +483,36 @@ export function useUpload() {
     const { gitignoreBehavior } = useSettingsStore.getState().upload;
     const dirName = rootDirName || 'directory';
 
-    // If no .gitignore, just upload all files
+    // Always apply default ignore patterns (.git, .DS_Store, etc.)
+    const { included: defaultFiltered } = applyDefaultIgnoreFilter(files);
+
+    // If no .gitignore, upload with defaults applied
     if (!hasGitignore) {
-      await uploadFilesWithPaths(files);
+      await uploadFilesWithPaths(defaultFiltered);
       return;
     }
 
-    // If user chose to always skip gitignore, upload all
+    // If user chose to always skip gitignore, upload with defaults only
     if (gitignoreBehavior === 'never') {
-      await uploadFilesWithPaths(files);
+      await uploadFilesWithPaths(defaultFiltered);
       return;
     }
 
     // Find and parse the .gitignore file
     const gitignoreFileEntry = findGitignoreFile(files, rootDirName);
     if (!gitignoreFileEntry) {
-      // .gitignore detection was wrong, just upload all
-      await uploadFilesWithPaths(files);
+      // .gitignore detection was wrong, upload with defaults only
+      await uploadFilesWithPaths(defaultFiltered);
       return;
     }
 
     const patterns = await parseGitignoreFromFile(gitignoreFileEntry.file);
+    // applyGitignoreFilter includes default patterns, so .git etc. are filtered
     const { included, excluded } = applyGitignoreFilter(files, patterns);
 
-    // If nothing would be excluded, just upload all
+    // If nothing would be excluded beyond defaults, just upload
     if (excluded.length === 0) {
-      await uploadFilesWithPaths(files);
+      await uploadFilesWithPaths(included);
       return;
     }
 
