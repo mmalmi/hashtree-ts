@@ -33,6 +33,7 @@ import { markFilesChanged } from './hooks/useRecentlyChanged';
 import { nip19 } from 'nostr-tools';
 import { useNostrStore } from './nostr';
 import { useRoute, addRecent } from './hooks';
+import { looksLikeFile } from './utils/route';
 import { useWalletStore, initWallet } from './wallet';
 
 // Wallet link with balance
@@ -318,13 +319,13 @@ function NHashView({ nhash }: { nhash: string }) {
 
       // Determine type from URL path using extension heuristic
       const lastSegment = route.path.length > 0 ? route.path[route.path.length - 1] : null;
-      const looksLikeFile = lastSegment ? /\.[a-zA-Z0-9]+$/.test(lastSegment) : false;
+      const isFile = lastSegment ? looksLikeFile(lastSegment) : false;
       const label = lastSegment || nhash.slice(0, 12) + '...';
       const fullPath = route.path.length > 0 ? `/${nhash}/${route.path.join('/')}` : `/${nhash}`;
 
       // Track as recent with file or dir icon (not hash/link icon)
       addRecent({
-        type: looksLikeFile ? 'file' : 'dir',
+        type: isFile ? 'file' : 'dir',
         label,
         path: fullPath,
       });
@@ -410,8 +411,8 @@ export function App() {
 
           // Derive current directory path from URL (exclude file if last segment looks like a file)
           const lastSegment = filePath[filePath.length - 1];
-          const looksLikeFile = lastSegment && /\.[a-zA-Z0-9]+$/.test(lastSegment);
-          const currentDirPath = looksLikeFile ? filePath.slice(0, -1) : filePath;
+          const isFile = lastSegment && looksLikeFile(lastSegment);
+          const currentDirPath = isFile ? filePath.slice(0, -1) : filePath;
 
           // Get encryption key from selectedTree
           const encKey = selectedTree.rootKey ? fromHex(selectedTree.rootKey) : undefined;

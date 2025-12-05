@@ -2,7 +2,7 @@
  * Route helper functions for actions
  */
 import { navigate } from '../utils/navigate';
-import { parseRoute } from '../utils/route';
+import { parseRoute, looksLikeFile } from '../utils/route';
 import type { CID } from 'hashtree';
 import { getTreeRootSync } from '../hooks/useTreeRoot';
 
@@ -41,8 +41,7 @@ export function getCurrentPathFromUrl(): string[] {
 
   // Check if last segment looks like a file (has extension)
   const lastSegment = urlPath[urlPath.length - 1];
-  const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(lastSegment);
-  return looksLikeFile ? urlPath.slice(0, -1) : urlPath;
+  return looksLikeFile(lastSegment) ? urlPath.slice(0, -1) : urlPath;
 }
 
 // Update URL to reflect current state

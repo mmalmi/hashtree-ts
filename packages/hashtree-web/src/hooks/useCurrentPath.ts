@@ -7,6 +7,7 @@
  */
 import { useMemo } from 'react';
 import { useRoute } from './useRoute';
+import { looksLikeFile } from '../utils/route';
 
 /**
  * Get current directory path from URL
@@ -21,11 +22,7 @@ export function useCurrentPath(): string[] {
 
     const lastSegment = urlPath[urlPath.length - 1];
 
-    // Check if last segment looks like a file (has extension)
-    // Common file extensions - if it has a dot followed by alphanumeric chars, it's a file
-    const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(lastSegment);
-
-    if (looksLikeFile) {
+    if (looksLikeFile(lastSegment)) {
       return urlPath.slice(0, -1);
     }
 

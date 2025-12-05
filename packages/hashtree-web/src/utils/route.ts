@@ -3,6 +3,16 @@
  * Parses URL hash to extract route info without needing React Router context
  */
 
+/**
+ * Check if a path segment looks like a file (has extension)
+ * Dotfiles like .git, .claude are NOT considered files
+ * Examples: "file.txt" -> true, ".git" -> false, "README.md" -> true
+ */
+export function looksLikeFile(segment: string): boolean {
+  // Must have at least one char before the dot
+  return /[^/]\.[a-zA-Z0-9]+$/.test(segment);
+}
+
 /** CID in hex format for routing (hash + optional key) */
 export interface RouteCid {
   hash: string;
@@ -106,8 +116,7 @@ export function getCurrentPathFromUrl(): string[] {
   const urlPath = route.path;
   if (urlPath.length === 0) return [];
 
-  // Check if last segment looks like a file (has extension)
+  // Check if last segment looks like a file (has extension, not just dotfile like .git)
   const lastSegment = urlPath[urlPath.length - 1];
-  const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(lastSegment);
-  return looksLikeFile ? urlPath.slice(0, -1) : urlPath;
+  return looksLikeFile(lastSegment) ? urlPath.slice(0, -1) : urlPath;
 }
