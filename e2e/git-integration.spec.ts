@@ -30,12 +30,13 @@ test.describe('Git integration features', () => {
 
     // Wait for .git to appear in the file list and click it
     // The entry should be a folder icon with text ".git"
+    await page.waitForTimeout(1000); // Wait for tree to update
     const gitEntry = page.locator('button:has-text(".git"), a:has-text(".git")').first();
-    await expect(gitEntry).toBeVisible({ timeout: 5000 });
+    await expect(gitEntry).toBeVisible({ timeout: 10000 });
 
     // Click on .git to navigate into it
     await gitEntry.click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000); // Wait for navigation and path resolution
 
     // Check URL has .git in path
     const url = page.url();

@@ -14,8 +14,7 @@ import { decodeAsText, getTree } from '../../store';
 import { saveFile, deleteEntry, selectFile } from '../../actions';
 import { openRenameModal } from '../../hooks/useModals';
 import { useNostrStore } from '../../nostr';
-import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees } from '../../hooks';
-import { looksLikeFile } from '../../utils/route';
+import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees, usePathType } from '../../hooks';
 import { VisibilityIcon, LinkLockIcon } from '../VisibilityIcon';
 import { getResolverKey } from '../../refResolver';
 import { useRecentlyChanged } from '../../hooks/useRecentlyChanged';
@@ -43,12 +42,9 @@ export function Viewer() {
   const trees = useTrees(targetNpub);
   const currentTree = currentTreeName ? trees.find(t => t.name === currentTreeName) : null;
 
-  // Get filename from URL path - only if last segment looks like a file (has extension)
-  // This matches the logic in useCurrentPath hook
-  const lastSegment = route.path.length > 0 ? route.path[route.path.length - 1] : null;
-  const isFile = lastSegment ? looksLikeFile(lastSegment) : false;
-  const urlFileName = isFile ? lastSegment : null;
-  const currentPath = isFile ? route.path.slice(0, -1) : route.path;
+  // Get filename from URL path - uses hashtree to determine if last segment is file or directory
+  const { isFile, dirPath, fileName: urlFileName } = usePathType();
+  const currentPath = dirPath;
 
   // Find entry in current entries list (for metadata like hash)
   const entryFromStore = useMemo(() => {

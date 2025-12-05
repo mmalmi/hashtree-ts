@@ -1,6 +1,7 @@
 export { useSelectedFile } from './useSelectedFile';
 export { useRoute } from './useRoute';
 export { useCurrentPath } from './useCurrentPath';
+export { usePathType } from './usePathType';
 export { useCurrentDirHash, useCurrentDirCid } from './useCurrentDirHash';
 export { useTrees } from './useTrees';
 export { useDirectoryEntries } from './useDirectoryEntries';
