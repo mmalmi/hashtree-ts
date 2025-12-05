@@ -19,6 +19,7 @@ import type { FileWithPath, DirectoryReadResult } from '../utils/directory';
 import { findGitignoreFile, parseGitignoreFromFile, applyGitignoreFilter } from '../utils/directory';
 import { getTreeRootSync } from './useTreeRoot';
 import { useSettingsStore } from '../stores/settings';
+import { toast } from '../stores/toast';
 
 // Upload progress type
 export interface UploadProgress {
@@ -456,6 +457,7 @@ export function useUpload() {
         }
       } catch (err) {
         console.error(`Failed to add file ${relativePath}:`, err);
+        toast.error(`Failed to add ${relativePath}`);
         // Continue with next file instead of stopping entirely
       }
     }
