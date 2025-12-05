@@ -242,4 +242,62 @@ test.describe('Git integration features', () => {
     expect(result.patterns).not.toContain('.git/');
     expect(result.patterns).not.toContain('.git');
   });
+
+  test('git history modal should handle repos without commits gracefully', async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await waitForNewUserRedirect(page);
+
+    // Test getLog with a minimal .git structure that has no actual commits
+    const result = await page.evaluate(async () => {
+      const { getTree } = await import('/src/store.ts');
+      const tree = getTree();
+
+      // Create minimal .git structure with HEAD pointing to non-existent ref
+      const headContent = new TextEncoder().encode('ref: refs/heads/main\n');
+      const { cid: headCid } = await tree.putFile(headContent);
+      const { cid: emptyDir } = await tree.putDirectory([]);
+
+      // Build .git/refs/heads (empty - no actual branch files)
+      let { cid: headsDir } = await tree.putDirectory([]);
+
+      // Build .git/refs directory
+      let { cid: refsDir } = await tree.putDirectory([]);
+      refsDir = await tree.setEntry(refsDir, [], 'heads', headsDir, 0, true);
+
+      // Build .git directory
+      let { cid: gitDir } = await tree.putDirectory([]);
+      gitDir = await tree.setEntry(gitDir, [], 'HEAD', headCid, headContent.length, false);
+      gitDir = await tree.setEntry(gitDir, [], 'refs', refsDir, 0, true);
+      gitDir = await tree.setEntry(gitDir, [], 'objects', emptyDir, 0, true);
+
+      // Build root with .git directory
+      let { cid: rootCid } = await tree.putDirectory([]);
+      rootCid = await tree.setEntry(rootCid, [], '.git', gitDir, 0, true);
+
+      // Try to get log - should not throw, should return empty array
+      const { getLog } = await import('/src/utils/git.ts');
+
+      try {
+        const commits = await getLog(rootCid);
+        return {
+          success: true,
+          commits,
+          error: null
+        };
+      } catch (err) {
+        return {
+          success: false,
+          commits: null,
+          error: err instanceof Error ? err.message : String(err)
+        };
+      }
+    });
+
+    // getLog should succeed and return empty array (not throw)
+    expect(result.success).toBe(true);
+    expect(result.commits).toEqual([]);
+    expect(result.error).toBeNull();
+  });
+
 });

@@ -97,14 +97,16 @@ export async function getLog(rootCid: CID, options?: { depth?: number }) {
       return [];
     }
 
-    return commits.map(commit => ({
-      oid: commit.oid,
-      message: commit.commit.message,
-      author: commit.commit.author.name,
-      email: commit.commit.author.email,
-      timestamp: commit.commit.author.timestamp,
-      parent: commit.commit.parent,
-    }));
+    return commits
+      .filter(commit => commit && commit.oid && commit.commit)
+      .map(commit => ({
+        oid: commit.oid,
+        message: commit.commit.message ?? '',
+        author: commit.commit.author?.name ?? 'Unknown',
+        email: commit.commit.author?.email ?? '',
+        timestamp: commit.commit.author?.timestamp ?? 0,
+        parent: commit.commit.parent ?? [],
+      }));
   } catch (err) {
     // Handle cases where repo has no commits or invalid refs
     const message = err instanceof Error ? err.message : String(err);
