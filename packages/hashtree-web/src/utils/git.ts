@@ -110,7 +110,6 @@ export async function getLog(rootCid: CID, options?: { depth?: number }) {
   } catch (err) {
     // Handle cases where repo has no commits or invalid refs
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[getLog] Error:', message);
     if (message.includes('Could not find') || message.includes('NotFoundError')) {
       return [];
     }

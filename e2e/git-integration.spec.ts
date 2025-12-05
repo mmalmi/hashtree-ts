@@ -375,6 +375,136 @@ test.describe('Git integration features', () => {
     }
   });
 
+  test('git history should return commits from uploaded git repo', async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await waitForNewUserRedirect(page);
+
+    // Create a real git repo with commits using CLI
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { execSync } = await import('child_process');
+    const os = await import('os');
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-history-test-'));
+
+    try {
+      // Initialize git repo and create commits
+      execSync('git init', { cwd: tmpDir });
+      execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+      execSync('git config user.name "Test User"', { cwd: tmpDir });
+
+      // Create first commit
+      await fs.writeFile(path.join(tmpDir, 'README.md'), '# Test Repo\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Initial commit"', { cwd: tmpDir });
+
+      // Create second commit
+      await fs.writeFile(path.join(tmpDir, 'file.txt'), 'Hello World\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Add file.txt"', { cwd: tmpDir });
+
+      // Read all files and directories from the git repo
+      interface FileEntry { type: 'file'; path: string; content: number[]; }
+      interface DirEntry { type: 'dir'; path: string; }
+      type Entry = FileEntry | DirEntry;
+
+      const getAllEntries = async (dir: string, base = ''): Promise<Entry[]> => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const result: Entry[] = [];
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          const relativePath = base ? `${base}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            // Add the directory itself
+            result.push({ type: 'dir', path: relativePath });
+            // Recursively get contents
+            result.push(...await getAllEntries(fullPath, relativePath));
+          } else {
+            const content = await fs.readFile(fullPath);
+            result.push({ type: 'file', path: relativePath, content: Array.from(content) });
+          }
+        }
+        return result;
+      };
+
+      const allEntries = await getAllEntries(tmpDir);
+      const allFiles = allEntries.filter((e): e is FileEntry => e.type === 'file');
+      const allDirs = allEntries.filter((e): e is DirEntry => e.type === 'dir').map(d => d.path);
+
+      // Upload and test getLog
+      const result = await page.evaluate(async ({ files, dirs }) => {
+        const { getTree } = await import('/src/store.ts');
+        const tree = getTree();
+
+        // Create root directory
+        let { cid: rootCid } = await tree.putDirectory([]);
+
+        // Collect all directory paths from both explicit dirs and parent dirs of files
+        const dirPaths = new Set<string>(dirs);
+        for (const file of files) {
+          const parts = file.path.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            dirPaths.add(parts.slice(0, i).join('/'));
+          }
+        }
+        const sortedDirs = Array.from(dirPaths).sort((a, b) =>
+          a.split('/').length - b.split('/').length
+        );
+
+        // Create directories (including empty ones)
+        for (const dir of sortedDirs) {
+          const parts = dir.split('/');
+          const name = parts.pop()!;
+          const { cid: emptyDir } = await tree.putDirectory([]);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, true);
+        }
+
+        // Add files
+        for (const file of files) {
+          const parts = file.path.split('/');
+          const name = parts.pop()!;
+          const data = new Uint8Array(file.content);
+          const { cid: fileCid, size } = await tree.putFile(data);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, false);
+        }
+
+        // Test getLog
+        const { getLog } = await import('/src/utils/git.ts');
+
+        try {
+          const commits = await getLog(rootCid);
+          return {
+            success: true,
+            commitCount: commits.length,
+            commits: commits.map(c => ({
+              message: c.message.trim(),
+              author: c.author
+            })),
+            error: null
+          };
+        } catch (err) {
+          return {
+            success: false,
+            commitCount: 0,
+            commits: [],
+            error: err instanceof Error ? err.message : String(err)
+          };
+        }
+      }, { files: allFiles, dirs: allDirs });
+
+      // Verify we got commits
+      expect(result.success).toBe(true);
+      expect(result.error).toBeNull();
+      expect(result.commitCount).toBeGreaterThanOrEqual(2);
+      expect(result.commits.some((c: {message: string}) => c.message.includes('Initial commit'))).toBe(true);
+      expect(result.commits.some((c: {message: string}) => c.message.includes('Add file.txt'))).toBe(true);
+
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   test('git history modal should handle repos without commits gracefully', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');

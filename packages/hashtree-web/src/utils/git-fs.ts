@@ -120,7 +120,8 @@ export class HashTreeFS {
     return currentRoot;
   }
 
-  private parsePath(filepath: string): string[] {
+  private parsePath(filepath: string | null | undefined): string[] {
+    if (!filepath) return [];
     return filepath.split('/').filter(Boolean);
   }
 
@@ -129,7 +130,11 @@ export class HashTreeFS {
   /**
    * Read file contents
    */
-  async readFile(filepath: string, options?: { encoding?: string }): Promise<Uint8Array | string> {
+  async readFile(filepath: string | null | undefined, options?: { encoding?: string }): Promise<Uint8Array | string> {
+    if (!filepath) {
+      throw new Error('ENOENT: no such file or directory, open \'null\'');
+    }
+
     // Check pending writes first
     if (this.pendingFiles.has(filepath)) {
       const data = this.pendingFiles.get(filepath)!;
@@ -146,7 +151,8 @@ export class HashTreeFS {
     const parts = this.parsePath(filepath);
     let cid = this.rootCid;
 
-    for (const part of parts.slice(0, -1)) {
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
       const resolved = await this.tree.resolvePath(cid, part);
       if (!resolved) {
         throw new Error(`ENOENT: no such file or directory, open '${filepath}'`);
@@ -164,7 +170,6 @@ export class HashTreeFS {
     if (!data) {
       throw new Error(`ENOENT: no such file or directory, open '${filepath}'`);
     }
-
     if (options?.encoding === 'utf8') {
       return new TextDecoder().decode(data);
     }
@@ -313,7 +318,17 @@ export class HashTreeFS {
       throw new Error(`ENOENT: no such file or directory, stat '${filepath}'`);
     }
 
-    return createStats(resolved.isTree, resolved.size);
+    // resolvePath returns { cid, isTree } - we need to get size for files
+    let size = 0;
+    if (!resolved.isTree) {
+      try {
+        size = await this.tree.getSize(resolved.cid.hash);
+      } catch {
+        // Size lookup failed, use 0
+      }
+    }
+
+    return createStats(resolved.isTree, size);
   }
 
   /**
@@ -372,9 +387,20 @@ export class HashTreeFS {
 export function createGitFS(rootCid?: CID) {
   const htfs = new HashTreeFS(rootCid);
 
+  // Wrap readFile to ensure it works with isomorphic-git's FileSystem wrapper
+  const wrappedReadFile = async (filepath: string | null | undefined, options?: { encoding?: string }): Promise<Uint8Array | string> => {
+    const result = await htfs.readFile(filepath, options);
+    if (typeof result === 'string') {
+      return result;
+    }
+    // Convert result to a fresh Uint8Array
+    // This ensures compatibility with isomorphic-git's Buffer.from()
+    return new Uint8Array(result);
+  };
+
   return {
     promises: {
-      readFile: htfs.readFile.bind(htfs),
+      readFile: wrappedReadFile,
       writeFile: htfs.writeFile.bind(htfs),
       unlink: htfs.unlink.bind(htfs),
       readdir: htfs.readdir.bind(htfs),

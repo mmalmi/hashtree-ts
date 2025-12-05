@@ -2,12 +2,20 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import UnoCSS from 'unocss/vite';
 import { visualizer } from 'rollup-plugin-visualizer';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [
     UnoCSS(),
     react(),
+    // Required for isomorphic-git which uses Node.js Buffer
+    nodePolyfills({
+      include: ['buffer'],
+      globals: {
+        Buffer: true,
+      },
+    }),
     visualizer({
       open: false,
       gzipSize: true,
