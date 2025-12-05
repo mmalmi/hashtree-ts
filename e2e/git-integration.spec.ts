@@ -243,6 +243,138 @@ test.describe('Git integration features', () => {
     expect(result.patterns).not.toContain('.git');
   });
 
+  test('git repo structure is preserved when uploading .git directory', async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await waitForNewUserRedirect(page);
+
+    // Create a real git repo with commits using CLI
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { execSync } = await import('child_process');
+    const os = await import('os');
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-test-'));
+
+    try {
+      // Initialize git repo and create commits
+      execSync('git init', { cwd: tmpDir });
+      execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+      execSync('git config user.name "Test User"', { cwd: tmpDir });
+
+      // Create first commit
+      await fs.writeFile(path.join(tmpDir, 'README.md'), '# Test Repo\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Initial commit"', { cwd: tmpDir });
+
+      // Create second commit
+      await fs.writeFile(path.join(tmpDir, 'file.txt'), 'Hello World\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Add file.txt"', { cwd: tmpDir });
+
+      // Read all files from the git repo to inject via page.evaluate
+      const getAllFiles = async (dir: string, base = ''): Promise<Array<{path: string, content: number[]}>> => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const files: Array<{path: string, content: number[]}> = [];
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          const relativePath = base ? `${base}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            files.push(...await getAllFiles(fullPath, relativePath));
+          } else {
+            const content = await fs.readFile(fullPath);
+            files.push({ path: relativePath, content: Array.from(content) });
+          }
+        }
+        return files;
+      };
+
+      const allFiles = await getAllFiles(tmpDir);
+
+      // Inject files directly via tree API
+      const result = await page.evaluate(async (files) => {
+        const { getTree } = await import('/src/store.ts');
+        const tree = getTree();
+
+        // Create root directory
+        let { cid: rootCid } = await tree.putDirectory([]);
+
+        // Collect all directory paths and sort by depth
+        const dirPaths = new Set<string>();
+        for (const file of files) {
+          const parts = file.path.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            dirPaths.add(parts.slice(0, i).join('/'));
+          }
+        }
+        const sortedDirs = Array.from(dirPaths).sort((a, b) =>
+          a.split('/').length - b.split('/').length
+        );
+
+        // Create directories
+        for (const dir of sortedDirs) {
+          const parts = dir.split('/');
+          const name = parts.pop()!;
+          const { cid: emptyDir } = await tree.putDirectory([]);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, true);
+        }
+
+        // Add files
+        for (const file of files) {
+          const parts = file.path.split('/');
+          const name = parts.pop()!;
+          const data = new Uint8Array(file.content);
+          const { cid: fileCid, size } = await tree.putFile(data);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, false);
+        }
+
+        // Verify .git structure was preserved
+        const entries = await tree.listDirectory(rootCid);
+        const hasGit = entries.some(e => e.name === '.git' && e.isTree);
+
+        if (!hasGit) {
+          return { error: 'No .git directory found', hasGit: false };
+        }
+
+        // Check HEAD points to a valid ref
+        const headRes = await tree.resolvePath(rootCid, '.git/HEAD');
+        const headContent = headRes ? new TextDecoder().decode((await tree.readFile(headRes.cid))!) : '';
+
+        // Check refs directory exists
+        const refsRes = await tree.resolvePath(rootCid, '.git/refs/heads');
+        const refEntries = refsRes ? (await tree.listDirectory(refsRes.cid)).map(e => e.name) : [];
+
+        // Check objects directory has content (2-char subdirs like 30, a8, etc)
+        const objectsRes = await tree.resolvePath(rootCid, '.git/objects');
+        const objectDirs = objectsRes
+          ? (await tree.listDirectory(objectsRes.cid))
+              .filter(e => e.isTree && e.name.length === 2)
+              .map(e => e.name)
+          : [];
+
+        return {
+          error: null,
+          hasGit,
+          headContent: headContent.trim(),
+          refEntries,
+          objectDirCount: objectDirs.length,
+          fileCount: files.length
+        };
+      }, allFiles);
+
+      // Verify git structure is intact
+      expect(result.error).toBeNull();
+      expect(result.hasGit).toBe(true);
+      expect(result.headContent).toMatch(/^ref: refs\/heads\//); // HEAD points to a branch
+      expect(result.refEntries.length).toBeGreaterThan(0); // At least one branch
+      expect(result.objectDirCount).toBeGreaterThan(0); // Objects were stored
+      expect(result.fileCount).toBeGreaterThan(10); // A real git repo has many files
+
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   test('git history modal should handle repos without commits gracefully', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
