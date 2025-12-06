@@ -22,6 +22,7 @@ import { useDelayedLoading } from '../../hooks/useDelayedLoading';
 import { ContentView } from './ContentView';
 import { DirectoryActions } from './DirectoryActions';
 import { getMimeType, getFileIcon, isLikelyTextFile, useDebounce } from './utils';
+import { NavButton } from '../NavButton';
 
 /** Save button with stable width */
 function SaveButton({ saved, onClick }: { saved: boolean; onClick: () => void }) {
@@ -348,20 +349,18 @@ export function Viewer() {
         <div className="shrink-0 px-3 py-2 border-b border-surface-3 flex flex-wrap items-center gap-2 bg-surface-1">
           <span className="font-medium flex items-center gap-2 shrink-0">
             {(entry || urlFileName) && (
-            <button
-              onClick={() => {
-                // Navigate to directory (remove file from URL)
-                const parts: string[] = [];
-                if (viewedNpub && currentTreeName) {
-                  parts.push(viewedNpub, currentTreeName, ...currentPath);
-                }
-                navigate('/' + parts.map(encodeURIComponent).join('/'));
-              }}
-              className="bg-transparent border-none text-text-1 cursor-pointer p-1 lg:hidden"
-            >
-              <span className="i-lucide-chevron-left text-lg" />
-            </button>
-          )}
+              <NavButton
+                onClick={() => {
+                  // Navigate to directory (remove file from URL)
+                  const parts: string[] = [];
+                  if (viewedNpub && currentTreeName) {
+                    parts.push(viewedNpub, currentTreeName, ...currentPath);
+                  }
+                  navigate('/' + parts.map(encodeURIComponent).join('/'));
+                }}
+                className="lg:hidden"
+              />
+            )}
           {/* Show avatar (for npub routes) or hash icon (for nhash routes) */}
           {viewedNpub ? (
             <Link to={`/${viewedNpub}/profile`} className="shrink-0">

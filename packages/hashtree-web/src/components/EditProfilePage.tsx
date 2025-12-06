@@ -5,6 +5,7 @@ import { useProfile, invalidateProfile } from '../hooks/useProfile';
 import { useNostrStore, ndk } from '../nostr';
 import { nip19 } from 'nostr-tools';
 import { NDKEvent } from '@nostr-dev-kit/ndk';
+import { NavButton } from './NavButton';
 
 export function EditProfilePage() {
   const { npub } = useParams<{ npub: string }>();
@@ -111,13 +112,7 @@ export function EditProfilePage() {
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0 overflow-y-auto">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-surface-1 border-b border-surface-3 px-4 py-3 flex items-center gap-3">
-        <button
-          onClick={handleCancel}
-          className="btn-ghost p-2"
-          disabled={saving}
-        >
-          <span className="i-lucide-arrow-left" />
-        </button>
+        <NavButton onClick={handleCancel} disabled={saving} />
         <h1 className="text-lg font-semibold flex-1">Edit Profile</h1>
         <button
           onClick={handleSave}

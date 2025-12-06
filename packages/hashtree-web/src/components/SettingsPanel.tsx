@@ -5,6 +5,7 @@ import { nip19 } from 'nostr-tools';
 import { useAppStore, formatBytes, updateStorageStats } from '../store';
 import { useNostrStore } from '../nostr';
 import { UserRow } from './user/UserRow';
+import { NavButton } from './NavButton';
 import { useTreeRoot } from '../hooks';
 import { useGraphSize, useIsRecrawling, useFollows } from '../utils/socialGraph';
 import { useSettingsStore, DEFAULT_POOL_SETTINGS, type GitignoreBehavior } from '../stores/settings';
@@ -55,12 +56,7 @@ export function SettingsPage() {
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
       {/* Header */}
       <div className="h-12 px-4 flex items-center gap-3 border-b border-surface-3 bg-surface-1 shrink-0">
-        <button
-          onClick={() => navigate('/')}
-          className="bg-transparent border-none text-text-2 cursor-pointer p-1 hover:bg-surface-2 rounded"
-        >
-          <span className="i-lucide-arrow-left text-lg" />
-        </button>
+        <NavButton onClick={() => navigate('/')} />
         <span className="font-semibold text-text-1">Settings</span>
       </div>
 

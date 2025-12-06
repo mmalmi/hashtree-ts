@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { navigate } from '../utils/navigate';
 import { Avatar, Name } from './user';
+import { NavButton } from './NavButton';
 import { useNostrStore, loginWithNsec, loginWithExtension, generateNewKey } from '../nostr';
 import {
   useAccountsStore,
@@ -147,13 +148,7 @@ export function UsersPage() {
     <div className="flex-1 flex flex-col bg-surface-0 overflow-y-auto">
       {/* Header */}
       <div className="flex items-center gap-3 p-4 border-b border-surface-3">
-        <button
-          onClick={handleBack}
-          className="btn-ghost p-2"
-          title="Back"
-        >
-          <span className="i-lucide-arrow-left text-lg" />
-        </button>
+        <NavButton onClick={handleBack} title="Back" />
         <h1 className="text-xl font-bold text-text-1 m-0">Users</h1>
       </div>
 
