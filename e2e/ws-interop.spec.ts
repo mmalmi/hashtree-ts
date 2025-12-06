@@ -31,6 +31,11 @@ class TestWsClient {
     timeout: ReturnType<typeof setTimeout>;
   }>();
   private nextRequestId = 1;
+  private name: string;
+
+  constructor(name = 'TestWsClient') {
+    this.name = name;
+  }
 
   async connect(url: string): Promise<boolean> {
     return new Promise((resolve) => {
@@ -45,13 +50,13 @@ class TestWsClient {
 
         this.ws.onopen = () => {
           clearTimeout(timeout);
-          console.log('[TestWsClient] Connected');
+          console.log(`[${this.name}] Connected`);
           resolve(true);
         };
 
         this.ws.onerror = (err) => {
           clearTimeout(timeout);
-          console.log('[TestWsClient] Error:', err);
+          console.log(`[${this.name}] Error:`, err);
           resolve(false);
         };
 
@@ -90,7 +95,7 @@ class TestWsClient {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(requestId);
-        console.log('[TestWsClient] Request timeout for', hashHex.slice(0, 16));
+        console.log(`[${this.name}] Request timeout for`, hashHex.slice(0, 16));
         resolve(null);
       }, timeoutMs);
 
@@ -98,14 +103,14 @@ class TestWsClient {
 
       const msg = { type: 'req', id: requestId, hash: hashHex };
       this.ws!.send(JSON.stringify(msg));
-      console.log('[TestWsClient] Sent request:', msg);
+      console.log(`[${this.name}] Sent request:`, msg);
     });
   }
 
-  private handleJsonMessage(data: string): void {
+  protected handleJsonMessage(data: string): void {
     try {
       const msg = JSON.parse(data);
-      console.log('[TestWsClient] Received JSON:', msg);
+      console.log(`[${this.name}] Received JSON:`, msg);
 
       if (msg.type === 'res') {
         const pending = this.pendingRequests.get(msg.id);
@@ -117,17 +122,17 @@ class TestWsClient {
         // If found=true, wait for binary data
       }
     } catch (err) {
-      console.log('[TestWsClient] Error parsing JSON:', err);
+      console.log(`[${this.name}] Error parsing JSON:`, err);
     }
   }
 
-  private handleBinaryMessage(data: ArrayBuffer): void {
+  protected handleBinaryMessage(data: ArrayBuffer): void {
     // Parse: [4-byte LE request_id][payload]
     const view = new DataView(data);
     const requestId = view.getUint32(0, true); // little-endian
     const payload = new Uint8Array(data, 4);
 
-    console.log('[TestWsClient] Received binary:', requestId, 'bytes:', payload.length);
+    console.log(`[${this.name}] Received binary:`, requestId, 'bytes:', payload.length);
 
     const pending = this.pendingRequests.get(requestId);
     if (!pending) return;
@@ -140,8 +145,85 @@ class TestWsClient {
     if (computedHash === pending.hash) {
       pending.resolve(payload);
     } else {
-      console.log('[TestWsClient] Hash mismatch:', computedHash, 'expected:', pending.hash);
+      console.log(`[${this.name}] Hash mismatch:`, computedHash, 'expected:', pending.hash);
       pending.resolve(null);
+    }
+  }
+
+  protected getWs(): WebSocket | null {
+    return this.ws;
+  }
+
+  protected getName(): string {
+    return this.name;
+  }
+}
+
+/**
+ * WebSocket client that can also serve data (respond to requests)
+ * Used to simulate a browser that has content and can serve it to others
+ */
+class ServingWsClient extends TestWsClient {
+  // Local storage: hash -> data
+  private localData = new Map<string, Uint8Array>();
+
+  constructor(name = 'ServingClient') {
+    super(name);
+  }
+
+  /**
+   * Add data to local storage
+   */
+  addData(data: Uint8Array): string {
+    const hash = createHash('sha256').update(data).digest('hex');
+    this.localData.set(hash, data);
+    console.log(`[${this.getName()}] Added data with hash:`, hash.slice(0, 16));
+    return hash;
+  }
+
+  protected handleJsonMessage(data: string): void {
+    try {
+      const msg = JSON.parse(data);
+      console.log(`[${this.getName()}] Received JSON:`, msg);
+
+      if (msg.type === 'req') {
+        // Server is forwarding a request to us - check if we have the data
+        this.handleRequest(msg.id, msg.hash);
+      } else if (msg.type === 'res') {
+        // Response to our own request
+        const pending = (this as any).pendingRequests.get(msg.id);
+        if (pending && !msg.found) {
+          clearTimeout(pending.timeout);
+          (this as any).pendingRequests.delete(msg.id);
+          pending.resolve(null);
+        }
+      }
+    } catch (err) {
+      console.log(`[${this.getName()}] Error parsing JSON:`, err);
+    }
+  }
+
+  private handleRequest(id: number, hash: string): void {
+    const ws = this.getWs();
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+    const data = this.localData.get(hash);
+    if (data) {
+      console.log(`[${this.getName()}] Serving data for hash:`, hash.slice(0, 16));
+
+      // Send found response
+      ws.send(JSON.stringify({ type: 'res', id, hash, found: true }));
+
+      // Send binary data: [4-byte LE id][data]
+      const packet = new Uint8Array(4 + data.length);
+      const view = new DataView(packet.buffer);
+      view.setUint32(0, id, true); // little-endian
+      packet.set(data, 4);
+      ws.send(packet.buffer);
+    } else {
+      console.log(`[${this.getName()}] Don't have hash:`, hash.slice(0, 16));
+      // Send not found response
+      ws.send(JSON.stringify({ type: 'res', id, hash, found: false }));
     }
   }
 }
@@ -297,5 +379,85 @@ test.describe('hashtree-rs WebSocket Integration', () => {
     expect(response.id).toBe(requestId);
     expect(response.hash).toBe(testHash);
     expect(response.found).toBe(false);
+  });
+
+  test('WebSocket relay: Browser B gets file from Browser A via Rust server', async () => {
+    // This test verifies end-to-end peer-to-peer relay through the server:
+    // 1. Browser A (ServingWsClient) connects and has some data
+    // 2. Browser B (TestWsClient) connects and requests that data
+    // 3. Server forwards request to A, gets response, relays to B
+    // 4. B receives the data successfully
+
+    // Browser A: has content to serve
+    const browserA = new ServingWsClient('BrowserA');
+    const connectedA = await browserA.connect(RUST_SERVER_URL);
+    expect(connectedA).toBe(true);
+
+    // Add some test data to Browser A
+    const testContent = new TextEncoder().encode('Hello from Browser A! This is test content for relay.');
+    const contentHash = browserA.addData(testContent);
+    console.log('Test content hash:', contentHash);
+
+    // Give server time to register Browser A
+    await new Promise(r => setTimeout(r, 100));
+
+    // Browser B: wants to get the content
+    const browserB = new TestWsClient('BrowserB');
+    const connectedB = await browserB.connect(RUST_SERVER_URL);
+    expect(connectedB).toBe(true);
+
+    // Browser B requests the data (which only Browser A has)
+    // Server should forward to A, get response, and relay to B
+    console.log('Browser B requesting data from Browser A via server relay...');
+    const receivedData = await browserB.request(contentHash, 5000);
+
+    // Verify B received the correct data
+    expect(receivedData).not.toBeNull();
+    if (receivedData) {
+      const receivedText = new TextDecoder().decode(receivedData);
+      console.log('Browser B received:', receivedText);
+      expect(receivedText).toBe('Hello from Browser A! This is test content for relay.');
+    }
+
+    // Clean up
+    browserA.close();
+    browserB.close();
+  });
+
+  test('WebSocket relay: Multiple browsers can serve different content', async () => {
+    // Test with 3 browsers: A has file1, B has file2, C requests both
+
+    // Browser A
+    const browserA = new ServingWsClient('BrowserA');
+    await browserA.connect(RUST_SERVER_URL);
+    const file1 = new TextEncoder().encode('File 1 content from A');
+    const hash1 = browserA.addData(file1);
+
+    // Browser B
+    const browserB = new ServingWsClient('BrowserB');
+    await browserB.connect(RUST_SERVER_URL);
+    const file2 = new TextEncoder().encode('File 2 content from B');
+    const hash2 = browserB.addData(file2);
+
+    await new Promise(r => setTimeout(r, 100));
+
+    // Browser C requests both files
+    const browserC = new TestWsClient('BrowserC');
+    await browserC.connect(RUST_SERVER_URL);
+
+    // Request file 1 (from A)
+    const received1 = await browserC.request(hash1, 5000);
+    expect(received1).not.toBeNull();
+    expect(new TextDecoder().decode(received1!)).toBe('File 1 content from A');
+
+    // Request file 2 (from B)
+    const received2 = await browserC.request(hash2, 5000);
+    expect(received2).not.toBeNull();
+    expect(new TextDecoder().decode(received2!)).toBe('File 2 content from B');
+
+    // Clean up
+    browserA.close();
+    browserB.close();
+    browserC.close();
   });
 });
