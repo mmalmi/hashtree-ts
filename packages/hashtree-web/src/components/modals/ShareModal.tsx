@@ -52,18 +52,18 @@ export function ShareModal() {
 
   return (
     <div
-      className="fixed inset-0 bg-black/70 flex-center z-1000"
+      className="fixed inset-0 bg-black/70 flex-center z-1000 overflow-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) closeShareModal();
       }}
     >
-      <div className="bg-surface-1 sm:rounded-lg overflow-hidden w-screen sm:w-80 sm:max-w-sm sm:border border-surface-3">
+      <div className="bg-surface-1 sm:rounded-lg overflow-auto w-screen sm:w-96 sm:border border-surface-3 max-h-full my-auto">
         {/* QR Code - click to close */}
         <div className="cursor-pointer" onClick={closeShareModal}>
           {qrDataUrl ? (
-            <img src={qrDataUrl} alt="QR Code" className="w-full bg-white" />
+            <img src={qrDataUrl} alt="QR Code" className="w-full max-h-screen object-contain bg-white" />
           ) : (
-            <div className="w-full aspect-square bg-surface-2 flex-center">
+            <div className="w-full aspect-square max-h-screen bg-surface-2 flex-center">
               <span className="i-lucide-loader-2 animate-spin text-2xl text-text-3" />
             </div>
           )}

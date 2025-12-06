@@ -9,9 +9,9 @@ import { Avatar } from '../user';
 import { npubToPubkey } from '../../nostr';
 import { LiveVideo, LiveVideoFromHash } from '../LiveVideo';
 import { DosBoxViewer, isDosExecutable } from '../DosBox';
-import { HtmlViewer, shouldUseHtmlViewer } from '../HtmlViewer';
+import { HtmlViewer } from '../HtmlViewer';
 import { decodeAsText, getTree } from '../../store';
-import { saveFile, deleteEntry, selectFile } from '../../actions';
+import { saveFile, deleteEntry } from '../../actions';
 import { openRenameModal, openShareModal } from '../../hooks/useModals';
 import { useNostrStore } from '../../nostr';
 import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees, usePathType } from '../../hooks';
@@ -57,7 +57,7 @@ export function Viewer() {
   const currentTree = currentTreeName ? trees.find(t => t.name === currentTreeName) : null;
 
   // Get filename from URL path - uses hashtree to determine if last segment is file or directory
-  const { isFile, dirPath, fileName: urlFileName } = usePathType();
+  const { dirPath, fileName: urlFileName } = usePathType();
   const currentPath = dirPath;
 
   // Find entry in current entries list (for metadata like hash)
