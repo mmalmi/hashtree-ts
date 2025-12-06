@@ -17,9 +17,9 @@ export function NostrLogin() {
   const [nsecInput, setNsecInput] = useState('');
   const [error, setError] = useState('');
 
-  const goToMyTrees = () => {
+  const goToProfile = () => {
     if (!npub) return;
-    navigate(`/${npub}`);
+    navigate(`/${npub}/profile`);
   };
 
   const handleExtensionLogin = async () => {
@@ -50,14 +50,14 @@ export function NostrLogin() {
     generateNewKey();
   };
 
-  // Logged in: just show avatar that links to user's trees (double-click for accounts)
+  // Logged in: just show avatar that links to profile (double-click for accounts)
   if (isLoggedIn && pubkey) {
     return (
       <button
-        onClick={goToMyTrees}
+        onClick={goToProfile}
         onDoubleClick={() => navigate('/users')}
         className="bg-transparent border-none cursor-pointer p-0 hover:opacity-80"
-        title="My Trees (double-click for users)"
+        title="My Profile (double-click for users)"
       >
         <Avatar key={pubkey} pubkey={pubkey} size={32} />
       </button>
