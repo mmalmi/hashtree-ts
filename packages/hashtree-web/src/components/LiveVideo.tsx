@@ -295,7 +295,9 @@ export const LiveVideo = memo(function LiveVideo({
   }, []);
 
   const src = useFallback ? fallbackUrl : undefined;
-  if (useFallback && !fallbackUrl) return null;
+  if (useFallback && !fallbackUrl) {
+    return null;
+  }
 
   return (
     <div className="w-full h-full flex items-center justify-center">

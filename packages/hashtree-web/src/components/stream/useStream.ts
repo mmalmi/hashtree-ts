@@ -218,8 +218,8 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
     let fileCid: CID | undefined, fileSize: number | undefined;
     if (currentState.persistStream && currentState.streamWriter) {
       const result = await currentState.streamWriter.finalize();
-      // StreamWriter returns hash only - wrap in CID (no encryption for persist mode yet)
-      fileCid = cid(result.hash);
+      // StreamWriter returns { hash, size, key? } - use key for encrypted CID
+      fileCid = cid(result.hash, result.key);
       fileSize = result.size;
     } else if (!currentState.persistStream && recentChunks.length > 0) {
       const combined = concatChunks(recentChunks);
@@ -277,8 +277,8 @@ export async function stopRecording(): Promise<void> {
   let fileCid: CID | undefined, fileSize: number | undefined;
   if (currentState.persistStream && currentState.streamWriter) {
     const result = await currentState.streamWriter.finalize();
-    // StreamWriter returns hash only - wrap in CID (no encryption for persist mode yet)
-    fileCid = cid(result.hash);
+    // StreamWriter returns { hash, size, key? } - use key for encrypted CID
+    fileCid = cid(result.hash, result.key);
     fileSize = result.size;
   } else if (!currentState.persistStream && recentChunks.length > 0) {
     const combined = concatChunks(recentChunks);
