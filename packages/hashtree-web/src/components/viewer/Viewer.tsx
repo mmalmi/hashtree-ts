@@ -134,6 +134,7 @@ export function Viewer() {
   const isFullscreen = searchParams.get('fullscreen') === '1';
   const [editContent, setEditContent] = useState('');
   const [autoSave, setAutoSave] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   // Helper to update URL query params
   const setUrlParam = useCallback((param: string, value: boolean) => {
@@ -259,7 +260,11 @@ export function Viewer() {
 
   const handleSave = async () => {
     const newData = await saveFile(entry?.name, editContent);
-    if (newData) setContent(newData);
+    if (newData) {
+      setContent(newData);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
   };
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -427,10 +432,15 @@ export function Viewer() {
                 onChange={(e) => { setAutoSave(e.target.checked); }}
                 className="cursor-pointer"
               />
-              Auto
+              Autosave
             </label>
             <button onClick={handleSave} className="btn-success">
-              Save
+              {saved ? (
+                <>
+                  <span className="i-lucide-check" />
+                  Saved
+                </>
+              ) : 'Save'}
             </button>
             <button onClick={() => { setIsEditing(false); }} className="btn-ghost">
               Done

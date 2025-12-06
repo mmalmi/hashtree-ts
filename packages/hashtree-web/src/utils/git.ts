@@ -540,6 +540,101 @@ class GitObjectReader {
 
     return { branches, currentBranch };
   }
+
+  /**
+   * Parse a git tree object into entries
+   * Tree format: repeated [mode SP name NUL sha1]
+   */
+  parseTree(data: Uint8Array): Array<{ mode: string; name: string; sha: string; isTree: boolean }> {
+    const entries: Array<{ mode: string; name: string; sha: string; isTree: boolean }> = [];
+    let pos = 0;
+
+    while (pos < data.length) {
+      // Read mode (until space)
+      let modeEnd = pos;
+      while (modeEnd < data.length && data[modeEnd] !== 0x20) modeEnd++;
+      const mode = new TextDecoder().decode(data.slice(pos, modeEnd));
+      pos = modeEnd + 1;
+
+      // Read name (until null)
+      let nameEnd = pos;
+      while (nameEnd < data.length && data[nameEnd] !== 0) nameEnd++;
+      const name = new TextDecoder().decode(data.slice(pos, nameEnd));
+      pos = nameEnd + 1;
+
+      // Read 20-byte SHA
+      const shaBytes = data.slice(pos, pos + 20);
+      const sha = bytesToHex(shaBytes);
+      pos += 20;
+
+      // Mode 40000 = tree, others are blobs
+      const isTree = mode === '40000';
+
+      entries.push({ mode, name, sha, isTree });
+    }
+
+    return entries;
+  }
+
+  /**
+   * Recursively build a hashtree directory from a git tree
+   */
+  async buildTreeFromGitTree(
+    treeSha: string,
+    hashtree: HashTree,
+    onProgress?: (file: string) => void
+  ): Promise<CID> {
+    const obj = await this.readObject(treeSha);
+    if (!obj || obj.type !== 'tree') {
+      throw new Error(`Failed to read git tree: ${treeSha}`);
+    }
+
+    const entries = this.parseTree(obj.data);
+    const dirEntries: Array<{ name: string; cid: CID; size: number; isTree: boolean }> = [];
+
+    for (const entry of entries) {
+      if (entry.isTree) {
+        // Recursively build subdirectory
+        const subCid = await this.buildTreeFromGitTree(entry.sha, hashtree, onProgress);
+        dirEntries.push({ name: entry.name, cid: subCid, size: 0, isTree: true });
+      } else {
+        // Read blob and store in hashtree
+        const blobObj = await this.readObject(entry.sha);
+        if (!blobObj || blobObj.type !== 'blob') {
+          console.warn(`Failed to read blob: ${entry.sha}`);
+          continue;
+        }
+
+        if (onProgress) onProgress(entry.name);
+
+        const { cid, size } = await hashtree.putFile(blobObj.data);
+        dirEntries.push({ name: entry.name, cid, size, isTree: false });
+      }
+    }
+
+    // Create directory from entries
+    const { cid } = await hashtree.putDirectory(
+      dirEntries.map(e => ({
+        name: e.name,
+        cid: e.cid,
+        size: e.size,
+        isTree: e.isTree,
+      }))
+    );
+
+    return cid;
+  }
+
+  /**
+   * Get the tree SHA from a commit
+   */
+  async getCommitTree(commitSha: string): Promise<string | null> {
+    const obj = await this.readObject(commitSha);
+    if (!obj || obj.type !== 'commit') return null;
+
+    const parsed = this.parseCommit(obj.data);
+    return parsed?.tree || null;
+  }
 }
 
 // Helper functions for pack file parsing
@@ -792,4 +887,64 @@ export async function getBlame(_rootCid: CID, _filepath: string) {
   // git blame would need to be implemented
   // For now, return null
   return null;
+}
+
+/**
+ * Checkout a specific commit - builds a new hashtree directory from the commit's tree
+ * Returns the new root CID containing the files at that commit
+ */
+export async function checkoutCommit(
+  rootCid: CID,
+  commitSha: string,
+  onProgress?: (file: string) => void
+): Promise<CID> {
+  const tree = getTree();
+
+  // Find .git directory
+  const gitDirResult = await tree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || !gitDirResult.isTree) {
+    throw new Error('Not a git repository');
+  }
+
+  const reader = new GitObjectReader(tree, gitDirResult.cid);
+
+  // Get the tree SHA from the commit
+  const treeSha = await reader.getCommitTree(commitSha);
+  if (!treeSha) {
+    throw new Error(`Failed to read commit: ${commitSha}`);
+  }
+
+  // Build the directory from the git tree
+  const contentCid = await reader.buildTreeFromGitTree(treeSha, tree, onProgress);
+
+  // Now we need to combine the content with the .git directory
+  // Get the current entries and replace everything except .git
+  const currentEntries = await tree.listDirectory(rootCid);
+  const gitEntry = currentEntries.find(e => e.name === '.git');
+
+  if (!gitEntry) {
+    throw new Error('.git directory not found');
+  }
+
+  // Get entries from the checked out content
+  const contentEntries = await tree.listDirectory(contentCid);
+
+  // Build final directory: checked out content + .git
+  const finalEntries = [
+    ...contentEntries.map(e => ({
+      name: e.name,
+      cid: e.cid,
+      size: e.size,
+      isTree: e.isTree,
+    })),
+    {
+      name: '.git',
+      cid: gitEntry.cid,
+      size: gitEntry.size,
+      isTree: true,
+    },
+  ];
+
+  const { cid: finalCid } = await tree.putDirectory(finalEntries);
+  return finalCid;
 }

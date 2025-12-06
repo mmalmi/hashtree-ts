@@ -596,4 +596,329 @@ test.describe('Git integration features', () => {
     expect(result.error).toBeNull();
   });
 
+  test('checkout commit should restore files from that commit', async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await waitForNewUserRedirect(page);
+
+    // Import Node.js modules
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { execSync } = await import('child_process');
+    const os = await import('os');
+
+    // Create a git repo with two commits, checkout the first commit
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-checkout-test-'));
+
+    try {
+      // Initialize git repo
+      execSync('git init', { cwd: tmpDir });
+      execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+      execSync('git config user.name "Test User"', { cwd: tmpDir });
+
+      // First commit: create initial file
+      await fs.writeFile(path.join(tmpDir, 'file.txt'), 'Version 1\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Initial commit"', { cwd: tmpDir });
+
+      // Get first commit SHA
+      const firstCommit = execSync('git rev-parse HEAD', { cwd: tmpDir }).toString().trim();
+
+      // Second commit: modify file and add another
+      await fs.writeFile(path.join(tmpDir, 'file.txt'), 'Version 2\n');
+      await fs.writeFile(path.join(tmpDir, 'file2.txt'), 'New file\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Second commit"', { cwd: tmpDir });
+
+      // Read all files
+      interface FileEntry { type: 'file'; path: string; content: number[]; }
+      interface DirEntry { type: 'dir'; path: string; }
+      type Entry = FileEntry | DirEntry;
+
+      const getAllEntries = async (dir: string, base = ''): Promise<Entry[]> => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const result: Entry[] = [];
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          const relativePath = base ? `${base}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            result.push({ type: 'dir', path: relativePath });
+            result.push(...await getAllEntries(fullPath, relativePath));
+          } else {
+            const content = await fs.readFile(fullPath);
+            result.push({ type: 'file', path: relativePath, content: Array.from(content) });
+          }
+        }
+        return result;
+      };
+
+      const allEntries = await getAllEntries(tmpDir);
+      const allFiles = allEntries.filter((e): e is FileEntry => e.type === 'file');
+      const allDirs = allEntries.filter((e): e is DirEntry => e.type === 'dir').map(d => d.path);
+
+      // Upload repo and test checkoutCommit
+      const result = await page.evaluate(async ({ files, dirs, commitSha }) => {
+        const { getTree } = await import('/src/store.ts');
+        const tree = getTree();
+
+        // Create root directory and upload all files
+        let { cid: rootCid } = await tree.putDirectory([]);
+
+        // Create directories
+        const dirPaths = new Set<string>(dirs);
+        for (const file of files) {
+          const parts = file.path.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            dirPaths.add(parts.slice(0, i).join('/'));
+          }
+        }
+        const sortedDirs = Array.from(dirPaths).sort((a, b) =>
+          a.split('/').length - b.split('/').length
+        );
+
+        for (const dir of sortedDirs) {
+          const parts = dir.split('/');
+          const name = parts.pop()!;
+          const { cid: emptyDir } = await tree.putDirectory([]);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, true);
+        }
+
+        // Add files
+        for (const file of files) {
+          const parts = file.path.split('/');
+          const name = parts.pop()!;
+          const data = new Uint8Array(file.content);
+          const { cid: fileCid, size } = await tree.putFile(data);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, false);
+        }
+
+        // List files before checkout (should have both file.txt and file2.txt)
+        const entriesBefore = await tree.listDirectory(rootCid);
+        const filesBefore = entriesBefore.filter(e => !e.isTree && e.name !== '.git').map(e => e.name);
+
+        // Read file.txt content before checkout
+        const file1Before = await tree.resolvePath(rootCid, 'file.txt');
+        const file1ContentBefore = file1Before ? new TextDecoder().decode(await tree.readFile(file1Before.cid) || new Uint8Array()) : '';
+
+        // Test checkoutCommit
+        const { checkoutCommit } = await import('/src/utils/git.ts');
+
+        try {
+          const newRootCid = await checkoutCommit(rootCid, commitSha);
+
+          // List files after checkout (should only have file.txt, no file2.txt)
+          const entriesAfter = await tree.listDirectory(newRootCid);
+          const filesAfter = entriesAfter.filter(e => !e.isTree && e.name !== '.git').map(e => e.name);
+
+          // Read file.txt content after checkout
+          const file1After = await tree.resolvePath(newRootCid, 'file.txt');
+          const file1ContentAfter = file1After ? new TextDecoder().decode(await tree.readFile(file1After.cid) || new Uint8Array()) : '';
+
+          // Check if file2.txt exists
+          const file2After = await tree.resolvePath(newRootCid, 'file2.txt');
+
+          return {
+            success: true,
+            filesBefore: filesBefore.sort(),
+            filesAfter: filesAfter.sort(),
+            file1ContentBefore,
+            file1ContentAfter,
+            file2ExistsAfter: file2After !== null,
+            error: null
+          };
+        } catch (err) {
+          return {
+            success: false,
+            filesBefore: [],
+            filesAfter: [],
+            file1ContentBefore: '',
+            file1ContentAfter: '',
+            file2ExistsAfter: true,
+            error: err instanceof Error ? err.message : String(err)
+          };
+        }
+      }, { files: allFiles, dirs: allDirs, commitSha: firstCommit });
+
+      console.log('Checkout result:', JSON.stringify(result, null, 2));
+      expect(result.success).toBe(true);
+      expect(result.error).toBeNull();
+
+      // Before checkout: both files should exist, file.txt should be "Version 2"
+      expect(result.filesBefore).toContain('file.txt');
+      expect(result.filesBefore).toContain('file2.txt');
+      expect(result.file1ContentBefore.trim()).toBe('Version 2');
+
+      // After checkout to first commit: only file.txt should exist, content should be "Version 1"
+      expect(result.filesAfter).toContain('file.txt');
+      expect(result.file2ExistsAfter).toBe(false);
+      expect(result.file1ContentAfter.trim()).toBe('Version 1');
+
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('checkout commit should return a valid directory CID that can be listed', async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await waitForNewUserRedirect(page);
+
+    // Import Node.js modules
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { execSync } = await import('child_process');
+    const os = await import('os');
+
+    // Create a git repo with two commits
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-checkout-cid-test-'));
+
+    try {
+      // Initialize git repo
+      execSync('git init', { cwd: tmpDir });
+      execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+      execSync('git config user.name "Test User"', { cwd: tmpDir });
+
+      // First commit
+      await fs.writeFile(path.join(tmpDir, 'file.txt'), 'Version 1\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Initial commit"', { cwd: tmpDir });
+
+      // Get first commit SHA
+      const firstCommit = execSync('git rev-parse HEAD', { cwd: tmpDir }).toString().trim();
+
+      // Second commit
+      await fs.writeFile(path.join(tmpDir, 'file.txt'), 'Version 2\n');
+      await fs.writeFile(path.join(tmpDir, 'file2.txt'), 'New file\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Second commit"', { cwd: tmpDir });
+
+      // Read all files
+      interface FileEntry { type: 'file'; path: string; content: number[]; }
+      interface DirEntry { type: 'dir'; path: string; }
+      type Entry = FileEntry | DirEntry;
+
+      const getAllEntries = async (dir: string, base = ''): Promise<Entry[]> => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const result: Entry[] = [];
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          const relativePath = base ? `${base}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            result.push({ type: 'dir', path: relativePath });
+            result.push(...await getAllEntries(fullPath, relativePath));
+          } else {
+            const content = await fs.readFile(fullPath);
+            result.push({ type: 'file', path: relativePath, content: Array.from(content) });
+          }
+        }
+        return result;
+      };
+
+      const allEntries = await getAllEntries(tmpDir);
+      const allFiles = allEntries.filter((e): e is FileEntry => e.type === 'file');
+      const allDirs = allEntries.filter((e): e is DirEntry => e.type === 'dir').map(d => d.path);
+
+      // Upload and test checkoutCommit returns a listable directory
+      const result = await page.evaluate(async ({ files, dirs, commitSha }) => {
+        const { getTree } = await import('/src/store.ts');
+        const tree = getTree();
+
+        // Create root directory and upload all files
+        let { cid: rootCid } = await tree.putDirectory([]);
+
+        // Create directories
+        const dirPaths = new Set<string>(dirs);
+        for (const file of files) {
+          const parts = file.path.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            dirPaths.add(parts.slice(0, i).join('/'));
+          }
+        }
+        const sortedDirs = Array.from(dirPaths).sort((a, b) =>
+          a.split('/').length - b.split('/').length
+        );
+
+        for (const dir of sortedDirs) {
+          const parts = dir.split('/');
+          const name = parts.pop()!;
+          const { cid: emptyDir } = await tree.putDirectory([]);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, true);
+        }
+
+        // Add files
+        for (const file of files) {
+          const parts = file.path.split('/');
+          const name = parts.pop()!;
+          const data = new Uint8Array(file.content);
+          const { cid: fileCid, size } = await tree.putFile(data);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, false);
+        }
+
+        // Test checkoutCommit
+        const { checkoutCommit } = await import('/src/utils/git.ts');
+
+        try {
+          const newRootCid = await checkoutCommit(rootCid, commitSha);
+
+          // CRITICAL: Verify the returned CID is a valid directory that can be listed
+          let canListDirectory = false;
+          let entries: string[] = [];
+          let listError: string | null = null;
+
+          try {
+            const dirEntries = await tree.listDirectory(newRootCid);
+            canListDirectory = true;
+            entries = dirEntries.map(e => `${e.name}${e.isTree ? '/' : ''}`);
+          } catch (err) {
+            canListDirectory = false;
+            listError = err instanceof Error ? err.message : String(err);
+          }
+
+          // Also verify the entries are correct (should have file.txt and .git, but NOT file2.txt)
+          const hasFileTxt = entries.includes('file.txt');
+          const hasFile2Txt = entries.includes('file2.txt');
+          const hasGitDir = entries.includes('.git/');
+
+          return {
+            success: true,
+            canListDirectory,
+            listError,
+            entries,
+            hasFileTxt,
+            hasFile2Txt,
+            hasGitDir,
+            error: null
+          };
+        } catch (err) {
+          return {
+            success: false,
+            canListDirectory: false,
+            listError: null,
+            entries: [],
+            hasFileTxt: false,
+            hasFile2Txt: false,
+            hasGitDir: false,
+            error: err instanceof Error ? err.message : String(err)
+          };
+        }
+      }, { files: allFiles, dirs: allDirs, commitSha: firstCommit });
+
+      console.log('Checkout CID test result:', JSON.stringify(result, null, 2));
+      expect(result.success).toBe(true);
+      expect(result.error).toBeNull();
+
+      // The key assertion: the returned CID MUST be a listable directory
+      expect(result.canListDirectory).toBe(true);
+      expect(result.listError).toBeNull();
+
+      // Verify correct entries
+      expect(result.hasFileTxt).toBe(true);
+      expect(result.hasFile2Txt).toBe(false); // file2.txt was added in second commit
+      expect(result.hasGitDir).toBe(true);
+
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
 });
