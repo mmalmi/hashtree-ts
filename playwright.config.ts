@@ -1,5 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
+/**
+ * Playwright E2E test configuration.
+ *
+ * The webServer config below automatically starts the dev server before tests.
+ * No need to manually run `pnpm dev` first - just run `pnpm test:e2e`.
+ */
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,

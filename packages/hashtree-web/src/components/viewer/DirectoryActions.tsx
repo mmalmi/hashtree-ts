@@ -108,9 +108,10 @@ export function DirectoryActions() {
 
   // If this is a .yjs directory, render the YjsDocument viewer
   // Use a key based on document identity (npub + treeName + path) to force remount when navigating
-  // between different documents. We also verify the rootCid exists to ensure we have the correct tree data
-  // (prevents loading stale entries from a previous tree during navigation).
-  if (isYjsDoc && currentDirCid && rootCid) {
+  // between different documents.
+  // Note: We don't require rootCid here - YjsDocument handles its own loading state.
+  // This prevents the component from remounting when rootCid updates (which causes loading spinner).
+  if (isYjsDoc && currentDirCid) {
     const docKey = `${viewedNpub || userNpub || 'local'}/${route.treeName || ''}/${currentPath.join('/')}`;
     return <YjsDocument key={docKey} dirCid={currentDirCid} entries={entries} />;
   }

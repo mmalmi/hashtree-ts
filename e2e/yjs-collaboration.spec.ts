@@ -63,7 +63,7 @@ async function createDocument(page: Page, name: string) {
 // Helper to type content in the editor
 async function typeInEditor(page: Page, content: string) {
   const editor = page.locator('.ProseMirror');
-  await expect(editor).toBeVisible({ timeout: 15000 });  // Increased timeout for slow document loading
+  await expect(editor).toBeVisible({ timeout: 5000 });
   await editor.click();
   await page.keyboard.type(content);
   await page.waitForTimeout(500);
@@ -80,13 +80,14 @@ async function waitForSave(page: Page) {
 // Note: This assumes we're viewing the YjsDocument (inside the document folder)
 async function setEditors(page: Page, npubs: string[]) {
   // Click the collaborators button (users icon) in the toolbar
-  const collabButton = page.locator('button[title="Manage editors"]');
+  // The button shows either "Manage editors" (own tree) or "View editors" (other's tree)
+  const collabButton = page.locator('button[title="Manage editors"], button[title="View editors"]').first();
   await expect(collabButton).toBeVisible({ timeout: 5000 });
   await collabButton.click();
   await page.waitForTimeout(500);
 
-  // Wait for the modal to appear
-  const modal = page.locator('h2:has-text("Manage Editors")');
+  // Wait for the modal to appear - heading says "Manage Editors" or "Editors" depending on mode
+  const modal = page.locator('h2:has-text("Editors")');
   await expect(modal).toBeVisible({ timeout: 5000 });
 
   // Add each npub

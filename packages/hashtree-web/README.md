@@ -28,10 +28,8 @@ Early prototype:
 
 ```bash
 # From repo root
-npm run dev:example
-
-# Run E2E tests
-npm run test:e2e
+pnpm dev            # Run dev server
+pnpm test:e2e       # Run E2E tests (auto-starts dev server)
 ```
 
 ## Why here?

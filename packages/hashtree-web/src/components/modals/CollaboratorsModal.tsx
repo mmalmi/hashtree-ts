@@ -185,6 +185,23 @@ export function CollaboratorsModal() {
 
   if (!showCollaboratorsModal || !collaboratorsTarget) return null;
 
+  const validateNpub = (input: string): string | null => {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+
+    // Validate npub format
+    if (!trimmed.startsWith('npub1') || trimmed.length !== 63) {
+      return null;
+    }
+
+    // Check for duplicates
+    if (npubs.includes(trimmed)) {
+      return null;
+    }
+
+    return trimmed;
+  };
+
   const validateAndPrepareAdd = (input: string): string | null => {
     const trimmed = input.trim();
     if (!trimmed) return null;
@@ -203,6 +220,12 @@ export function CollaboratorsModal() {
 
     return trimmed;
   };
+
+  // Auto-detect valid npub as user types
+  const detectedNpub = useMemo(() => {
+    if (pendingNpub) return null; // Don't detect if we already have a pending one
+    return validateNpub(newNpub);
+  }, [newNpub, npubs, pendingNpub]);
 
   const handlePrepareAdd = () => {
     const validated = validateAndPrepareAdd(newNpub);
@@ -335,7 +358,7 @@ export function CollaboratorsModal() {
               </div>
             )}
 
-            {/* Pending user preview */}
+            {/* Pending user preview (from QR scan or search) */}
             {pendingNpub && !isReadOnly && (
               <div className="space-y-2">
                 <label className="text-sm font-medium">Add this editor?</label>
@@ -343,6 +366,22 @@ export function CollaboratorsModal() {
                   npub={pendingNpub}
                   onConfirm={handleConfirmAdd}
                   onCancel={() => setPendingNpub(null)}
+                />
+              </div>
+            )}
+
+            {/* Auto-detected npub preview (from typing) */}
+            {detectedNpub && !pendingNpub && !isReadOnly && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Add this editor?</label>
+                <UserPreview
+                  npub={detectedNpub}
+                  onConfirm={() => {
+                    setNpubs([...npubs, detectedNpub]);
+                    setNewNpub('');
+                    setError(null);
+                  }}
+                  onCancel={() => setNewNpub('')}
                 />
               </div>
             )}
