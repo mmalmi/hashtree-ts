@@ -23,6 +23,21 @@ import { ContentView } from './ContentView';
 import { DirectoryActions } from './DirectoryActions';
 import { getMimeType, getFileIcon, isLikelyTextFile, useDebounce } from './utils';
 
+/** Save button with stable width */
+function SaveButton({ saved, onClick }: { saved: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="btn-success relative">
+      <span className="invisible flex items-center gap-1">
+        <span className="i-lucide-check" />
+        Saved
+      </span>
+      <span className="absolute inset-0 flex items-center justify-center gap-1">
+        {saved ? <><span className="i-lucide-check" />Saved</> : 'Save'}
+      </span>
+    </button>
+  );
+}
+
 export function Viewer() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -424,14 +439,7 @@ export function Viewer() {
               />
               Autosave
             </label>
-            <button onClick={handleSave} className="btn-success min-w-16">
-              {saved ? (
-                <>
-                  <span className="i-lucide-check" />
-                  Saved
-                </>
-              ) : 'Save'}
-            </button>
+            <SaveButton saved={saved} onClick={handleSave} />
             <button onClick={() => { setIsEditing(false); }} className="btn-ghost">
               Done
             </button>
