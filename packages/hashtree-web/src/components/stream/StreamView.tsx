@@ -16,6 +16,7 @@ import {
   setStreamFilename,
   setPersistStream,
 } from './useStream';
+import { openShareModal } from '../../hooks/useModals';
 
 export function StreamView() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -61,6 +62,18 @@ export function StreamView() {
     navigate(`${filePath}?${params}`, { replace: true });
   };
 
+  // Get shareable viewer URL (current URL without ?stream=1)
+  const getViewerUrl = () => {
+    return window.location.href
+      .replace(/[&?]stream=1/, '')
+      .replace(/\?$/, '');
+  };
+
+  const handleShare = () => {
+    const viewerUrl = getViewerUrl();
+    openShareModal(viewerUrl);
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
       {/* Header */}
@@ -75,11 +88,18 @@ export function StreamView() {
             </span>
           )}
         </span>
-        {!isRecording && (
-          <button onClick={handleClose} className="btn-ghost">
-            <span className="i-lucide-x" />
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {isRecording && (
+            <button onClick={handleShare} className="btn-ghost" title="Share viewer link">
+              <span className="i-lucide-share" />
+            </button>
+          )}
+          {!isRecording && (
+            <button onClick={handleClose} className="btn-ghost">
+              <span className="i-lucide-x" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -99,7 +119,6 @@ export function StreamView() {
         )}
 
         <StreamControls videoRef={videoRef} onCancel={handleClose} onStartRecording={handleStartRecording} />
-        <ShareLink linkKey={linkKey} />
       </div>
     </div>
   );
@@ -216,34 +235,3 @@ function StreamControls({ videoRef, onCancel, onStartRecording }: {
   );
 }
 
-function ShareLink({ linkKey }: { linkKey: string | null }) {
-  const { isRecording } = useStreamState();
-
-  if (!isRecording) return null;
-
-  // The current URL (with stream=1) is the owner's view
-  // For viewers, we just remove the stream=1 param - same file path with ?k= for unlisted
-  const currentUrl = window.location.href;
-  // Remove stream=1 from URL to get viewer URL
-  const viewerUrl = currentUrl
-    .replace(/[&?]stream=1/, '')
-    .replace(/\?$/, ''); // Clean up trailing ? if it was the only param
-
-  return (
-    <div className="p-3 bg-surface-1 rounded text-sm">
-      <div className="text-muted mb-1">Share this link with viewers:</div>
-      <div className="flex gap-2 items-start">
-        <a href={viewerUrl} target="_blank" className="text-accent break-all flex-1">
-          {viewerUrl}
-        </a>
-        <button
-          onClick={() => navigator.clipboard.writeText(viewerUrl)}
-          className="btn-ghost shrink-0"
-          title="Copy link"
-        >
-          <span className="i-lucide-copy" />
-        </button>
-      </div>
-    </div>
-  );
-}
