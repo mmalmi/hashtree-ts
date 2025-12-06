@@ -11,7 +11,7 @@
  *
  * Components use this instead of reading rootCid from global app state.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { fromHex, cid, visibilityHex } from 'hashtree';
 import type { CID, SubscribeVisibilityInfo, Hash } from 'hashtree';
 import { useRoute } from './useRoute';
@@ -154,6 +154,11 @@ export function useTreeRoot(): CID | null {
   const route = useRoute();
   const [rootCid, setRootCid] = useState<CID | null>(null);
 
+  // Use ref to always have the current linkKey available in callbacks
+  // This prevents stale closure issues when the resolver fires multiple times
+  const linkKeyRef = useRef<string | null>(route.linkKey);
+  linkKeyRef.current = route.linkKey;
+
   useEffect(() => {
     // For permalinks (nhash routes), use CID from route (already decoded)
     if (route.isPermalink && route.cid) {
@@ -175,12 +180,14 @@ export function useTreeRoot(): CID | null {
     // The effect cleanup will handle unsubscribing when deps change
     console.log('[useTreeRoot] Subscribing to resolver:', resolverKey, 'with linkKey:', route.linkKey);
     const unsubscribe = subscribeToResolver(resolverKey, async (hash, encryptionKey, visibilityInfo) => {
+      // Use ref to get current linkKey value, avoiding stale closure
+      const currentLinkKey = linkKeyRef.current;
       console.log('[useTreeRoot] Resolver callback:', {
         hasHash: !!hash,
         hasEncryptionKey: !!encryptionKey,
         visibility: visibilityInfo?.visibility,
         hasEncryptedKey: !!visibilityInfo?.encryptedKey,
-        linkKey: route.linkKey,
+        linkKey: currentLinkKey,
       });
       if (!hash) {
         setRootCid(null);
@@ -188,7 +195,7 @@ export function useTreeRoot(): CID | null {
       }
 
       // Decrypt the encryption key based on visibility and available keys
-      const decryptedKey = await decryptEncryptionKey(visibilityInfo, encryptionKey, route.linkKey);
+      const decryptedKey = await decryptEncryptionKey(visibilityInfo, encryptionKey, currentLinkKey);
 
       // Cache the decrypted key for sync access (used by getTreeRootSync)
       if (decryptedKey) {

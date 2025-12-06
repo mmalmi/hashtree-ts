@@ -282,8 +282,13 @@ test.describe('Unlisted Tree Visibility', () => {
     // The content should be decrypted using the linkKey from the URL
     await expect(page2.locator('text="shared.txt"').first()).toBeVisible();
 
-    // Verify the content is decrypted and visible
-    await expect(page2.locator('text="Shared secret content"')).toBeVisible();
+    // Verify the content is decrypted and visible (may take time to fetch from network)
+    await expect(page2.locator('text="Shared secret content"')).toBeVisible({ timeout: 10000 });
+
+    // Wait 5 seconds and verify content is still visible (not replaced by "Link Required")
+    await page2.waitForTimeout(5000);
+    await expect(page2.getByText('Link Required')).not.toBeVisible();
+    await expect(page2.locator('text="Shared secret content"')).toBeVisible({ timeout: 5000 });
 
     await context2.close();
   });

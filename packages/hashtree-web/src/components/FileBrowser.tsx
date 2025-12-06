@@ -159,7 +159,6 @@ export function FileBrowser() {
   const route = useRoute();
   const currentNpub = route.npub;
   const currentTreeName = route.treeName;
-  const routeLinkKey = route.linkKey;
 
   const viewedNpub = currentNpub;
   const inTreeView = !!currentTreeName || !!rootHash;
@@ -175,6 +174,10 @@ export function FileBrowser() {
   const trees = useTrees(targetNpub);
   const currentTree = currentTreeName ? trees.find(t => t.name === currentTreeName) : null;
   const { uploadFiles, uploadDirectory } = useUpload();
+
+  // Effective link key: prefer URL param, fallback to stored key from tree list
+  // This ensures the key is preserved during navigation within unlisted trees
+  const routeLinkKey = route.linkKey ?? (currentTree && 'linkKey' in currentTree ? currentTree.linkKey : null) ?? null;
 
   const navigateTo = useNavigate();
 
