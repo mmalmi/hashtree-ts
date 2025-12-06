@@ -560,5 +560,13 @@ export async function autosaveIfOwn(rootHash: string, rootKey?: string): Promise
     visibility,
     linkKey,
   });
+
+  // Update local cache for subsequent saves from other documents
+  if (result.success && store.npub) {
+    const { updateLocalRootCacheHex } = await import('./treeRootCache');
+    console.log(`[autosaveIfOwn] Updating local cache: ${store.npub.slice(0, 16)}.../${store.selectedTree.name} -> ${rootHash.slice(0, 16)}...`);
+    updateLocalRootCacheHex(store.npub, store.selectedTree.name, rootHash);
+  }
+
   return result.success;
 }

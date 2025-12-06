@@ -146,6 +146,9 @@ export class IndexedDBStore implements Store {
   }
 
   async get(hash: Hash): Promise<Uint8Array | null> {
+    // Guard against undefined hash
+    if (!hash) return null;
+
     const key = toHex(hash);
 
     // Check pending writes first

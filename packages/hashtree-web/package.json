@@ -16,6 +16,12 @@
     "@nostr-dev-kit/ndk-cache-dexie": "^2.6.44",
     "@scure/base": "^2.0.0",
     "@scure/bip39": "^2.0.0",
+    "@tiptap/extension-collaboration": "^3.13.0",
+    "@tiptap/extension-collaboration-cursor": "^2.26.2",
+    "@tiptap/extension-placeholder": "^3.13.0",
+    "@tiptap/pm": "^3.13.0",
+    "@tiptap/react": "^3.13.0",
+    "@tiptap/starter-kit": "^3.13.0",
     "coco-cashu-core": "file:../../vendor/coco-cashu-core",
     "coco-cashu-indexeddb": "file:../../vendor/coco-cashu-indexeddb",
     "dexie": "^4.2.1",
@@ -31,6 +37,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-router-dom": "^7.6.1",
+    "yjs": "^13.6.27",
     "zustand": "^5.0.8"
   },
   "devDependencies": {

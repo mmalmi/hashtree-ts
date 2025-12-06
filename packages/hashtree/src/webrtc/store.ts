@@ -699,6 +699,9 @@ export class WebRTCStore implements Store {
   }
 
   async get(hash: Hash): Promise<Uint8Array | null> {
+    // Guard against undefined hash
+    if (!hash) return null;
+
     // Try local store first
     if (this.config.localStore) {
       const local = await this.config.localStore.get(hash);

@@ -4,18 +4,21 @@
 import { useState } from 'react';
 import type { TreeVisibility } from 'hashtree';
 import { useModals, closeCreateModal, setModalInput, setCreateTreeVisibility } from '../../hooks/useModals';
-import { createFile, createFolder, createTree } from '../../actions';
+import { createFile, createFolder, createTree, createDocument } from '../../actions';
 import { getVisibilityInfo, VisibilityIcon } from '../VisibilityIcon';
 import { ModalBase, ModalInput, ModalButtons } from './ModalBase';
+import { useRoute } from '../../hooks';
 
 export function CreateModal() {
   const { showCreateModal, createModalType, createTreeVisibility, modalInput } = useModals();
   const [isCreating, setIsCreating] = useState(false);
+  const route = useRoute();
 
   if (!showCreateModal) return null;
 
   const isFolder = createModalType === 'folder';
   const isTree = createModalType === 'tree';
+  const isDocument = createModalType === 'document';
 
   const handleSubmit = async () => {
     const name = modalInput.trim();
@@ -26,6 +29,15 @@ export function CreateModal() {
       await createTree(name, createTreeVisibility);
       setIsCreating(false);
       closeCreateModal();
+    } else if (isDocument) {
+      // Create a document folder with .yjs config file inside
+      await createDocument(name);
+      closeCreateModal();
+      // Navigate into the new document folder
+      if (route.npub && route.treeName) {
+        const newPath = [...route.path, name].map(encodeURIComponent).join('/');
+        window.location.hash = `/${route.npub}/${route.treeName}/${newPath}`;
+      }
     } else if (isFolder) {
       createFolder(name);
       closeCreateModal();
@@ -35,8 +47,8 @@ export function CreateModal() {
     }
   };
 
-  const title = isTree ? 'New Folder' : isFolder ? 'New Folder' : 'New File';
-  const placeholder = isTree || isFolder ? 'Folder name...' : 'File name...';
+  const title = isTree ? 'New Folder' : isDocument ? 'New Document' : isFolder ? 'New Folder' : 'New File';
+  const placeholder = isDocument ? 'Document name...' : (isTree || isFolder ? 'Folder name...' : 'File name...');
 
   return (
     <ModalBase title={title} onClose={closeCreateModal}>

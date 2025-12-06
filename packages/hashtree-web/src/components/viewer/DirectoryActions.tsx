@@ -1,20 +1,23 @@
 /**
  * DirectoryActions - empty state with upload zone and README display
+ * Also handles special directory types like .yjs documents
  */
 import { useState, useEffect, useRef } from 'react';
 import Markdown from 'markdown-to-jsx';
 import { getTree, decodeAsText } from '../../store';
 import { selectFile } from '../../actions';
 import { useNostrStore } from '../../nostr';
-import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees } from '../../hooks';
+import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees, useCurrentPath } from '../../hooks';
 import { FolderActions } from '../FolderActions';
 import { useUpload } from '../../hooks/useUpload';
+import { YjsDocument } from '../YjsDocument';
 
 export function DirectoryActions() {
   const rootCid = useTreeRoot();
   const rootHash = rootCid?.hash ?? null;
   const currentDirCid = useCurrentDirCid();
   const { entries } = useDirectoryEntries(currentDirCid);
+  const currentPath = useCurrentPath();
   const route = useRoute();
   const viewedNpub = route.npub;
   const currentTreeName = route.treeName;
@@ -33,6 +36,10 @@ export function DirectoryActions() {
   const [readmeContent, setReadmeContent] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Check if current directory contains a .yjs file (indicates Yjs document directory)
+  const yjsConfigFile = entries.find(e => e.name === '.yjs' && !e.isTree);
+  const isYjsDoc = !!yjsConfigFile;
 
   const openFilePicker = () => {
     fileInputRef.current?.click();
@@ -98,6 +105,11 @@ export function DirectoryActions() {
     });
     return () => { cancelled = true; };
   }, [entries]);
+
+  // If this is a .yjs directory, render the YjsDocument viewer
+  if (isYjsDoc && currentDirCid) {
+    return <YjsDocument dirCid={currentDirCid} entries={entries} />;
+  }
 
   return (
     <div

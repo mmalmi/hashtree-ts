@@ -10,6 +10,7 @@ import { nip19 } from 'nostr-tools';
 import { idbStore, getTree } from '../store';
 import { autosaveIfOwn } from '../nostr';
 import { getCurrentRootCid, getCurrentPathFromUrl } from './route';
+import { updateLocalRootCache } from '../treeRootCache';
 
 // Helper to initialize a virtual tree (when rootCid is null but we're in a tree route)
 export async function initVirtualTree(entries: { name: string; cid: CID; size: number; isTree?: boolean }[]): Promise<CID | null> {
@@ -53,6 +54,11 @@ export async function initVirtualTree(entries: { name: string; cid: CID; size: n
     created_at: Math.floor(Date.now() / 1000),
   });
 
+  // Update local cache for subsequent saves
+  if (nostrStore.npub) {
+    updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid.hash);
+  }
+
   return newRootCid;
 }
 
@@ -82,6 +88,48 @@ export async function createFolder(name: string) {
   } else {
     // Initialize virtual tree with this folder
     await initVirtualTree([{ name, cid: emptyDirCid, size: 0, isTree: true }]);
+  }
+}
+
+// Create new Yjs document folder (folder with .yjs config file)
+export async function createDocument(name: string) {
+  if (!name) return;
+
+  const rootCid = getCurrentRootCid();
+  const tree = getTree();
+  const currentPath = getCurrentPathFromUrl();
+
+  // Create .yjs config file (empty - no collaborators by default)
+  const yjsContent = new TextEncoder().encode('');
+  const yjsFileCid = await tree.putFile(yjsContent);
+
+  // Create directory with .yjs file inside
+  const { cid: docDirCid } = await tree.putDirectory([
+    { name: '.yjs', cid: yjsFileCid, size: 0, isTree: false }
+  ]);
+
+  if (rootCid) {
+    // Add to existing tree
+    const newRootCid = await tree.setEntry(
+      rootCid,
+      currentPath,
+      name,
+      docDirCid,
+      0,
+      true
+    );
+    // Publish to nostr
+    await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+
+    // Update local cache for subsequent saves
+    const route = parseRoute();
+    const nostrStore = useNostrStore.getState();
+    if (nostrStore.npub && route.treeName) {
+      updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid.hash);
+    }
+  } else {
+    // Initialize virtual tree with this document folder
+    await initVirtualTree([{ name, cid: docDirCid, size: 0, isTree: true }]);
   }
 }
 

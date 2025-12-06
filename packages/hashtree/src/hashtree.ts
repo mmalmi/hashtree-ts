@@ -142,10 +142,24 @@ export class HashTree {
   }
 
   async isTree(id: CID): Promise<boolean> {
+    if (!id?.hash) return false;
     return read.isTree(this.store, id.hash);
   }
 
   async isDirectory(id: CID): Promise<boolean> {
+    if (!id?.hash) return false;
+    // For encrypted directories, we need to decrypt to check the node type
+    if (id.key) {
+      try {
+        // Try to get the tree node (will decrypt and validate)
+        const node = await getTreeNodeEncrypted(this.store, id.hash, id.key);
+        if (!node) return false;
+        // Check if it's a directory (has named entries)
+        return node.links.some(l => l.name !== undefined && !l.name.startsWith('_'));
+      } catch {
+        return false;
+      }
+    }
     return read.isDirectory(this.store, id.hash);
   }
 

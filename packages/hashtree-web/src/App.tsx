@@ -11,6 +11,7 @@ import {
   GitignoreModal,
   GitHistoryModal,
   ShareModal,
+  CollaboratorsModal,
   NostrLogin,
   ConnectivityIndicator,
   SearchInput,
@@ -388,63 +389,68 @@ export function App() {
         const isNewRootHash = lastRootHashRef.current !== null && lastRootHashRef.current !== selectedTree.rootHash;
 
         if (isNewRootHash) {
-          // Derive viewed file from URL (selection is now URL-based)
-          const hashPath = window.location.hash.slice(2); // Remove #/
-          const pathParts = hashPath.split('/').filter(Boolean).map(decodeURIComponent);
-          // Skip npub/treeName or h/hash prefix (2 segments), rest is file path
-          const filePath = pathParts.length >= 2 ? pathParts.slice(2) : [];
+          // LIVE indicator comparison - wrap in try-catch since it's non-critical
+          try {
+            // Derive viewed file from URL (selection is now URL-based)
+            const hashPath = window.location.hash.slice(2); // Remove #/
+            const pathParts = hashPath.split('/').filter(Boolean).map(decodeURIComponent);
+            // Skip npub/treeName or h/hash prefix (2 segments), rest is file path
+            const filePath = pathParts.length >= 2 ? pathParts.slice(2) : [];
 
-          // Derive current directory path from URL (exclude file if last segment looks like a file)
-          const lastSegment = filePath[filePath.length - 1];
-          const isFile = lastSegment && looksLikeFile(lastSegment);
-          const currentDirPath = isFile ? filePath.slice(0, -1) : filePath;
+            // Derive current directory path from URL (exclude file if last segment looks like a file)
+            const lastSegment = filePath[filePath.length - 1];
+            const isFile = lastSegment && looksLikeFile(lastSegment);
+            const currentDirPath = isFile ? filePath.slice(0, -1) : filePath;
 
-          // Get encryption key from selectedTree
-          const encKey = selectedTree.rootKey ? fromHex(selectedTree.rootKey) : undefined;
+            // Get encryption key from selectedTree
+            const encKey = selectedTree.rootKey ? fromHex(selectedTree.rootKey) : undefined;
 
-          // Fetch old entries before update for LIVE indicator comparison
-          const tree = getTree();
-          const oldRootHash = fromHex(lastRootHashRef.current!);
-          let oldDirCid = cid(oldRootHash, encKey);
-          for (const part of currentDirPath) {
-            const resolved = await tree.resolvePath(oldDirCid, part);
-            if (resolved) oldDirCid = resolved.cid;
-            else break;
-          }
-          const oldEntries = await tree.listDirectory(oldDirCid).catch(() => []);
-
-          // Build map of old entry hashes
-          const oldHashes = new Map<string, string>();
-          for (const e of oldEntries) {
-            oldHashes.set(e.name, toHex(e.cid.hash));
-          }
-
-          // Note: rootCid is now derived from URL via useTreeRoot hook
-          // The resolver subscription will automatically provide the new rootCid
-
-          // Fetch new entries to compare
-          const newRootHash = fromHex(selectedTree.rootHash);
-          let newDirCid = cid(newRootHash, encKey);
-          for (const part of currentDirPath) {
-            const resolved = await tree.resolvePath(newDirCid, part);
-            if (resolved) newDirCid = resolved.cid;
-            else break;
-          }
-          const newEntries = await tree.listDirectory(newDirCid).catch(() => []);
-
-          // Find all changed or new files and update recentlyChangedFiles
-          const changedFiles = new Set<string>();
-          for (const e of newEntries) {
-            const oldHash = oldHashes.get(e.name);
-            const newHash = toHex(e.cid.hash);
-            // Include both changed files (hash differs) and new files (no old hash)
-            if (!oldHash || oldHash !== newHash) {
-              changedFiles.add(e.name);
+            // Fetch old entries before update for LIVE indicator comparison
+            const tree = getTree();
+            const oldRootHash = fromHex(lastRootHashRef.current!);
+            let oldDirCid = cid(oldRootHash, encKey);
+            for (const part of currentDirPath) {
+              const resolved = await tree.resolvePath(oldDirCid, part);
+              if (resolved) oldDirCid = resolved.cid;
+              else break;
             }
-          }
+            const oldEntries = await tree.listDirectory(oldDirCid).catch(() => []);
 
-          if (changedFiles.size > 0) {
-            markFilesChanged(changedFiles);
+            // Build map of old entry hashes
+            const oldHashes = new Map<string, string>();
+            for (const e of oldEntries) {
+              oldHashes.set(e.name, toHex(e.cid.hash));
+            }
+
+            // Note: rootCid is now derived from URL via useTreeRoot hook
+            // The resolver subscription will automatically provide the new rootCid
+
+            // Fetch new entries to compare
+            const newRootHash = fromHex(selectedTree.rootHash);
+            let newDirCid = cid(newRootHash, encKey);
+            for (const part of currentDirPath) {
+              const resolved = await tree.resolvePath(newDirCid, part);
+              if (resolved) newDirCid = resolved.cid;
+              else break;
+            }
+            const newEntries = await tree.listDirectory(newDirCid).catch(() => []);
+
+            // Find all changed or new files and update recentlyChangedFiles
+            const changedFiles = new Set<string>();
+            for (const e of newEntries) {
+              const oldHash = oldHashes.get(e.name);
+              const newHash = toHex(e.cid.hash);
+              // Include both changed files (hash differs) and new files (no old hash)
+              if (!oldHash || oldHash !== newHash) {
+                changedFiles.add(e.name);
+              }
+            }
+
+            if (changedFiles.size > 0) {
+              markFilesChanged(changedFiles);
+            }
+          } catch {
+            // Ignore errors in LIVE indicator comparison - non-critical feature
           }
         }
         lastRootHashRef.current = selectedTree.rootHash;
@@ -498,6 +504,7 @@ export function App() {
         <GitignoreModal />
         <GitHistoryModal />
         <ShareModal />
+        <CollaboratorsModal />
         <Toast />
       </div>
     </HashRouter>

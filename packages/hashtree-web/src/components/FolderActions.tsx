@@ -98,7 +98,7 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
   return (
     <div className="flex flex-row flex-wrap items-center gap-2">
       {/* Share and permalink first */}
-      {dirCid && (
+      {dirCid?.hash && (
         <>
           <button
             onClick={() => {
@@ -171,6 +171,11 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
           <button onClick={() => openCreateModal('folder')} className={`btn-ghost ${btnClass}`}>
             <span className="i-lucide-folder-plus" />
             New Folder
+          </button>
+
+          <button onClick={() => openCreateModal('document')} className={`btn-ghost ${btnClass}`} title="Create a new collaborative document">
+            <span className="i-lucide-file-text" />
+            New Document
           </button>
 
           {streamUrl && (

@@ -5,7 +5,7 @@ import { useSyncExternalStore } from 'react';
 import type { CID, TreeVisibility } from 'hashtree';
 import type { FileWithPath } from '../utils/directory';
 
-type ModalType = 'file' | 'folder' | 'tree';
+type ModalType = 'file' | 'folder' | 'tree' | 'document';
 
 interface ForkTarget {
   dirCid: CID;
@@ -43,6 +43,13 @@ interface GitHistoryTarget {
   dirCid: CID;
 }
 
+interface CollaboratorsTarget {
+  /** Current list of collaborator npubs */
+  npubs: string[];
+  /** Callback to save changes */
+  onSave: (npubs: string[]) => void;
+}
+
 
 interface ModalState {
   showCreateModal: boolean;
@@ -61,6 +68,8 @@ interface ModalState {
   gitHistoryTarget: GitHistoryTarget | null;
   showShareModal: boolean;
   shareUrl: string | null;
+  showCollaboratorsModal: boolean;
+  collaboratorsTarget: CollaboratorsTarget | null;
   modalInput: string;
 }
 
@@ -82,6 +91,8 @@ let state: ModalState = {
   gitHistoryTarget: null,
   showShareModal: false,
   shareUrl: null,
+  showCollaboratorsModal: false,
+  collaboratorsTarget: null,
   modalInput: '',
 };
 
@@ -181,6 +192,16 @@ export function closeShareModal() {
   emit();
 }
 
+export function openCollaboratorsModal(npubs: string[], onSave: (npubs: string[]) => void) {
+  state = { ...state, showCollaboratorsModal: true, collaboratorsTarget: { npubs, onSave } };
+  emit();
+}
+
+export function closeCollaboratorsModal() {
+  state = { ...state, showCollaboratorsModal: false, collaboratorsTarget: null };
+  emit();
+}
+
 export function setModalInput(input: string) {
   state = { ...state, modalInput: input };
   emit();
@@ -209,8 +230,10 @@ export function useModals() {
     closeGitHistoryModal,
     openShareModal,
     closeShareModal,
+    openCollaboratorsModal,
+    closeCollaboratorsModal,
     setModalInput,
   };
 }
 
-export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget };
+export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, CollaboratorsTarget };

@@ -110,7 +110,7 @@ export function Viewer() {
     }
 
     // For permalinks without path, check if rootCid itself is a file
-    if (route.isPermalink && !urlFileName && rootCid) {
+    if (route.isPermalink && !urlFileName && rootCid?.hash) {
       let cancelled = false;
       const tree = getTree();
       tree.isDirectory(rootCid).then(isDir => {
@@ -132,7 +132,7 @@ export function Viewer() {
 
     // For permalinks with path, check if rootCid itself is a file (not a directory)
     // In that case, the path is just the filename for display purposes
-    if (route.isPermalink) {
+    if (route.isPermalink && rootCid?.hash) {
       tree.isDirectory(rootCid).then(isDir => {
         if (!cancelled && !isDir) {
           // The rootCid is the file itself, use urlFileName for display
@@ -141,7 +141,7 @@ export function Viewer() {
           // It's a directory, resolve the path within it
           const fullPath = [...currentPath, urlFileName].join('/');
           tree.resolvePath(rootCid, fullPath).then(async result => {
-            if (!cancelled && result) {
+            if (!cancelled && result?.cid?.hash) {
               const isFileDir = await tree.isDirectory(result.cid);
               if (!cancelled && !isFileDir) {
                 setResolvedEntry({ name: urlFileName, cid: result.cid });
@@ -150,11 +150,11 @@ export function Viewer() {
           });
         }
       });
-    } else {
+    } else if (!route.isPermalink) {
       // Non-permalink: resolve path normally
       const fullPath = [...currentPath, urlFileName].join('/');
       tree.resolvePath(rootCid, fullPath).then(async result => {
-        if (!cancelled && result) {
+        if (!cancelled && result?.cid?.hash) {
           const isDir = await tree.isDirectory(result.cid);
           if (!cancelled && !isDir) {
             setResolvedEntry({ name: urlFileName, cid: result.cid });
@@ -438,13 +438,15 @@ export function Viewer() {
               Download
             </button>
             {/* Permalink to this specific file's hash (includes key if encrypted) */}
-            <Link
-              to={`/${nhashEncode({ hash: toHex(entry.cid.hash), decryptKey: entry.cid.key ? toHex(entry.cid.key) : undefined })}/${encodeURIComponent(entry.name)}`}
-              className="btn-ghost no-underline"
-              title={toHex(entry.cid.hash)}
-            >
-              Permalink
-            </Link>
+            {entry.cid?.hash && (
+              <Link
+                to={`/${nhashEncode({ hash: toHex(entry.cid.hash), decryptKey: entry.cid.key ? toHex(entry.cid.key) : undefined })}/${encodeURIComponent(entry.name)}`}
+                className="btn-ghost no-underline"
+                title={toHex(entry.cid.hash)}
+              >
+                Permalink
+              </Link>
+            )}
             <button
               onClick={() => setIsFullscreen(true)}
               className="btn-ghost"
@@ -574,7 +576,7 @@ export function Viewer() {
               <span className="text-sm">{loadProgress}%</span>
             </div>
           ) : null
-        ) : isDosExe && currentDirCid ? (
+        ) : isDosExe && currentDirCid && entry?.cid?.hash ? (
           // DOS executable - show DOSBox viewer
           // Key on CID hash to prevent remounting when layout changes (fullscreen toggle)
           <DosBoxViewer
@@ -583,7 +585,7 @@ export function Viewer() {
             directoryCid={currentDirCid}
             exeName={entry.name}
           />
-        ) : isHtml && content && currentDirCid ? (
+        ) : isHtml && content && currentDirCid && entry?.cid?.hash ? (
           // HTML file with directory context - can load sibling resources
           <HtmlViewer
             key={toHex(entry.cid.hash)}

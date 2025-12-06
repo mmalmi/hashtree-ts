@@ -33,6 +33,7 @@ export async function getTreeNode(store: Store, hash: Hash): Promise<TreeNode | 
  * Check if hash points to a tree node
  */
 export async function isTree(store: Store, hash: Hash): Promise<boolean> {
+  if (!hash) return false;
   const data = await store.get(hash);
   if (!data) return false;
   return isTreeNode(data);
@@ -42,6 +43,7 @@ export async function isTree(store: Store, hash: Hash): Promise<boolean> {
  * Check if hash points to a directory (tree with named links)
  */
 export async function isDirectory(store: Store, hash: Hash): Promise<boolean> {
+  if (!hash) return false;
   const data = await store.get(hash);
   if (!data) return false;
   return isDirectoryNode(data);
@@ -51,6 +53,7 @@ export async function isDirectory(store: Store, hash: Hash): Promise<boolean> {
  * Read a complete file (reassemble chunks if needed)
  */
 export async function readFile(store: Store, hash: Hash): Promise<Uint8Array | null> {
+  if (!hash) return null;
   const data = await store.get(hash);
   if (!data) return null;
 
