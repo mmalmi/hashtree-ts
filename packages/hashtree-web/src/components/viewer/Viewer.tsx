@@ -14,6 +14,7 @@ import { decodeAsText, getTree } from '../../store';
 import { saveFile, deleteEntry } from '../../actions';
 import { openRenameModal, openShareModal } from '../../hooks/useModals';
 import { useNostrStore } from '../../nostr';
+import { useSettingsStore } from '../../stores/settings';
 import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees, usePathType } from '../../hooks';
 import { VisibilityIcon, LinkLockIcon } from '../VisibilityIcon';
 import { getResolverKey } from '../../refResolver';
@@ -149,7 +150,8 @@ export function Viewer() {
   const isEditing = searchParams.get('edit') === '1';
   const isFullscreen = searchParams.get('fullscreen') === '1';
   const [editContent, setEditContent] = useState('');
-  const [autoSave, setAutoSave] = useState(false);
+  const autoSave = useSettingsStore((s) => s.editor.autoSave);
+  const setAutoSave = useSettingsStore((s) => s.setEditorSettings);
   const [saved, setSaved] = useState(false);
 
   // Helper to update URL query params
@@ -458,7 +460,7 @@ export function Viewer() {
               <input
                 type="checkbox"
                 checked={autoSave}
-                onChange={(e) => { setAutoSave(e.target.checked); }}
+                onChange={(e) => { setAutoSave({ autoSave: e.target.checked }); }}
                 className="cursor-pointer"
               />
               Autosave

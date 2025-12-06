@@ -33,6 +33,17 @@ export const DEFAULT_UPLOAD_SETTINGS: UploadSettings = {
   gitignoreBehavior: 'ask',
 };
 
+// Editor settings
+export interface EditorSettings {
+  /** Whether to auto-save changes while editing */
+  autoSave: boolean;
+}
+
+// Default editor settings
+export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
+  autoSave: true,
+};
+
 // Dexie database for settings persistence
 class SettingsDB extends Dexie {
   settings!: Table<{ key: string; value: unknown }>;
@@ -67,10 +78,14 @@ export interface SettingsState {
   // Upload settings
   upload: UploadSettings;
 
+  // Editor settings
+  editor: EditorSettings;
+
   // Actions
   setPoolSettings: (pools: Partial<PoolSettings>) => void;
   resetPoolSettings: () => void;
   setUploadSettings: (upload: Partial<UploadSettings>) => void;
+  setEditorSettings: (editor: Partial<EditorSettings>) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -93,6 +108,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   // Upload settings
   upload: DEFAULT_UPLOAD_SETTINGS,
 
+  // Editor settings
+  editor: DEFAULT_EDITOR_SETTINGS,
+
   setPoolSettings: (pools) => {
     const current = get().pools;
     const updated = { ...current, ...pools };
@@ -112,14 +130,22 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ upload: updated });
     db.settings.put({ key: 'upload', value: updated }).catch(console.error);
   },
+
+  setEditorSettings: (editor) => {
+    const current = get().editor;
+    const updated = { ...current, ...editor };
+    set({ editor: updated });
+    db.settings.put({ key: 'editor', value: updated }).catch(console.error);
+  },
 }));
 
 // Load settings from Dexie on startup
 async function loadSettings() {
   try {
-    const [poolsRow, uploadRow] = await Promise.all([
+    const [poolsRow, uploadRow, editorRow] = await Promise.all([
       db.settings.get('pools'),
       db.settings.get('upload'),
+      db.settings.get('editor'),
     ]);
 
     const updates: Partial<SettingsState> = { poolsLoaded: true };
@@ -138,6 +164,13 @@ async function loadSettings() {
       const upload = uploadRow.value as UploadSettings;
       updates.upload = {
         gitignoreBehavior: upload.gitignoreBehavior ?? DEFAULT_UPLOAD_SETTINGS.gitignoreBehavior,
+      };
+    }
+
+    if (editorRow?.value) {
+      const editor = editorRow.value as EditorSettings;
+      updates.editor = {
+        autoSave: editor.autoSave ?? DEFAULT_EDITOR_SETTINGS.autoSave,
       };
     }
 
