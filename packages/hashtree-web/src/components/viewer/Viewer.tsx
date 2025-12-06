@@ -455,14 +455,14 @@ export function Viewer() {
       )}
 
       {/* Content */}
-      <div className={`flex-1 overflow-auto ${isVideo || isImage || isHtml || isDosExe ? '' : 'p-4'}`}>
+      <div className={`flex-1 ${isEditing ? 'overflow-hidden p-4' : `overflow-auto ${isVideo || isImage || isHtml || isDosExe ? '' : 'p-4'}`}`}>
         {/* Show textarea immediately if in edit mode with a filename (even before entry loads) */}
         {isEditing && urlFileName ? (
           <textarea
             value={editContent}
             onChange={handleInput}
             autoFocus={editContent === ''}
-            className="w-full h-full min-h-300px input font-mono text-sm resize-y"
+            className="w-full h-full input font-mono text-sm resize-none"
           />
         ) : isVideo && mimeType && urlFileName ? (
           // Video: render immediately based on filename, don't wait for entry to load
