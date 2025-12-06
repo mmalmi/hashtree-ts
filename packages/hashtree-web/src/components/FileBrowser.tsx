@@ -501,10 +501,13 @@ export function FileBrowser() {
           ) : (
             <span className="text-sm text-text-2">Folders</span>
           )}
-          {/* Mobile share button */}
+          {/* Share button - shares tree list URL for the displayed user */}
           <button
-            onClick={() => openShareModal(window.location.href)}
-            className="lg:hidden ml-auto btn-ghost p-1.5"
+            onClick={() => {
+              const base = window.location.origin + window.location.pathname + '#';
+              openShareModal(base + (headerNpub ? `/${headerNpub}` : '/'));
+            }}
+            className="ml-auto btn-ghost p-1.5"
             title="Share"
           >
             <span className="i-lucide-share" />

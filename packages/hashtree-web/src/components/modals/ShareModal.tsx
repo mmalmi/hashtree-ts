@@ -57,32 +57,34 @@ export function ShareModal() {
         if (e.target === e.currentTarget) closeShareModal();
       }}
     >
-      <div className="bg-surface-1 rounded-lg p-4 w-72 border border-surface-3">
+      <div className="bg-surface-1 sm:rounded-lg overflow-hidden w-screen sm:w-80 sm:max-w-sm sm:border border-surface-3">
         {/* QR Code - click to close */}
-        <div className="mb-4 cursor-pointer" onClick={closeShareModal}>
+        <div className="cursor-pointer" onClick={closeShareModal}>
           {qrDataUrl ? (
-            <img src={qrDataUrl} alt="QR Code" className="w-full rounded bg-white p-2" />
+            <img src={qrDataUrl} alt="QR Code" className="w-full bg-white" />
           ) : (
-            <div className="w-full aspect-square rounded bg-surface-2 flex-center">
+            <div className="w-full aspect-square bg-surface-2 flex-center">
               <span className="i-lucide-loader-2 animate-spin text-2xl text-text-3" />
             </div>
           )}
         </div>
 
         {/* URL with copy */}
-        <div className="bg-surface-2 rounded p-3 mb-4">
+        <div className="bg-surface-2 p-3 m-4 mb-2 rounded">
           <CopyText text={shareUrl} truncate={80} className="text-sm" />
         </div>
 
         {/* Native share button */}
         {typeof navigator !== 'undefined' && 'share' in navigator && (
-          <button
-            onClick={handleNativeShare}
-            className="btn-ghost w-full flex items-center justify-center gap-2"
-          >
-            <span className="i-lucide-share" />
-            Share via...
-          </button>
+          <div className="px-4 pb-4 pt-2">
+            <button
+              onClick={handleNativeShare}
+              className="btn-ghost w-full flex items-center justify-center gap-2"
+            >
+              <span className="i-lucide-share" />
+              Share via...
+            </button>
+          </div>
         )}
       </div>
     </div>

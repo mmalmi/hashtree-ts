@@ -8,7 +8,7 @@ import type { CID } from 'hashtree';
 import { openCreateModal, openRenameModal, openForkModal, openShareModal } from '../hooks/useModals';
 import { useUpload } from '../hooks/useUpload';
 import { useRoute, useTrees } from '../hooks';
-import { deleteCurrentFolder } from '../actions';
+import { deleteCurrentFolder, buildRouteUrl } from '../actions';
 import { useNostrStore } from '../nostr';
 import { getTree } from '../store';
 import { createZipFromDirectory, downloadBlob } from '../utils/compression';
@@ -96,7 +96,12 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
       {dirCid && (
         <>
           <button
-            onClick={() => openShareModal(window.location.href)}
+            onClick={() => {
+              // Share directory URL (without any selected file)
+              const base = window.location.origin + window.location.pathname + '#';
+              const dirPath = buildRouteUrl(route.npub, route.treeName, route.path, undefined, route.linkKey);
+              openShareModal(base + dirPath);
+            }}
             className={`btn-ghost ${btnClass}`}
             title="Share"
           >
@@ -133,7 +138,7 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
 
           {hasDirectorySupport && (
             <label tabIndex={0} className={`btn-ghost cursor-pointer ${btnClass}`} title="Add a folder with all its contents" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}>
-              <span className="i-lucide-folder-plus" />
+              <span className="i-lucide-plus" />
               Add Folder
               <input
                 ref={dirInputRef}

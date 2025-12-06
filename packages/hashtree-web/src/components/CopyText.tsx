@@ -33,13 +33,13 @@ export function CopyText({ text, displayText, truncate, className = '' }: CopyTe
   return (
     <button
       onClick={handleCopy}
-      className={`flex items-center gap-1 text-text-2 hover:text-text-1 bg-transparent border-none cursor-pointer p-0 ${className}`}
+      className={`inline text-text-2 hover:text-text-1 bg-transparent border-none cursor-pointer p-0 text-left ${className}`}
       title="Copy"
     >
       {copied ? (
-        <span className="i-lucide-check text-success text-xs shrink-0" />
+        <span className="i-lucide-check text-success text-xs mr-1 inline-block align-middle" />
       ) : (
-        <span className="i-lucide-copy text-xs shrink-0" />
+        <span className="i-lucide-copy text-xs mr-1 inline-block align-middle" />
       )}
       <span className="font-mono break-all">{display}</span>
     </button>

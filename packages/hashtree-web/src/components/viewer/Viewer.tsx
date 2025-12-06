@@ -319,11 +319,33 @@ export function Viewer() {
     openShareModal(url);
   }, []);
 
+  // Navigate to parent directory on Escape (when not editing)
+  useEffect(() => {
+    if (!entry && !urlFileName) return; // Only when viewing a file
+    if (isEditing) return; // Don't navigate when editing
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Blur current element so FileBrowser can take focus
+        (document.activeElement as HTMLElement)?.blur();
+        // Navigate to parent directory
+        const parts: string[] = [];
+        if (viewedNpub && currentTreeName) {
+          parts.push(viewedNpub, currentTreeName, ...currentPath);
+        }
+        navigate('/' + parts.map(encodeURIComponent).join('/'));
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [entry, urlFileName, isEditing, viewedNpub, currentTreeName, currentPath, navigate]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
       {/* Header - only show when file selected and not fullscreen */}
       {(entry || urlFileName) && !isFullscreen && (
-        <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center bg-surface-1 overflow-x-auto">
+        <div className="shrink-0 px-3 py-2 border-b border-surface-3 flex flex-wrap items-center gap-2 bg-surface-1">
           <span className="font-medium flex items-center gap-2 shrink-0">
             {(entry || urlFileName) && (
             <button
@@ -367,7 +389,7 @@ export function Viewer() {
         </span>
 
         {entry && !isEditing && (
-          <div className="flex items-center gap-2 ml-auto shrink-0">
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
             <button
               onClick={handleDownload}
               className="btn-ghost"
@@ -432,7 +454,7 @@ export function Viewer() {
         )}
 
         {isEditing && (
-          <div className="flex items-center gap-2 ml-auto shrink-0">
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
             <label className="flex items-center gap-1 text-xs text-text-2 cursor-pointer">
               <input
                 type="checkbox"
