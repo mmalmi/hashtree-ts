@@ -652,7 +652,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
             className="btn-ghost flex items-center gap-1 px-2 py-1 text-sm"
             title="Share document"
           >
-            <span className="i-lucide-share-2" />
+            <span className="i-lucide-share" />
           </button>
           {/* Collaborators button (show for all, read-only for viewers) */}
           <button

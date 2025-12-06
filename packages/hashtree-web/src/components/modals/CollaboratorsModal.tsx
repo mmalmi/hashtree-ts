@@ -183,6 +183,20 @@ export function CollaboratorsModal() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [showCollaboratorsModal, showQRScanner, pendingNpub]);
 
+  // Auto-detect valid npub as user types
+  // Must be defined before early return to maintain consistent hook order
+  const detectedNpub = useMemo(() => {
+    if (!showCollaboratorsModal || !collaboratorsTarget) return null;
+    if (pendingNpub) return null; // Don't detect if we already have a pending one
+
+    // Inline validation logic to avoid closure issues
+    const trimmed = newNpub.trim();
+    if (!trimmed) return null;
+    if (!trimmed.startsWith('npub1') || trimmed.length !== 63) return null;
+    if (npubs.includes(trimmed)) return null;
+    return trimmed;
+  }, [showCollaboratorsModal, collaboratorsTarget, newNpub, npubs, pendingNpub]);
+
   if (!showCollaboratorsModal || !collaboratorsTarget) return null;
 
   const validateNpub = (input: string): string | null => {
@@ -220,12 +234,6 @@ export function CollaboratorsModal() {
 
     return trimmed;
   };
-
-  // Auto-detect valid npub as user types
-  const detectedNpub = useMemo(() => {
-    if (pendingNpub) return null; // Don't detect if we already have a pending one
-    return validateNpub(newNpub);
-  }, [newNpub, npubs, pendingNpub]);
 
   const handlePrepareAdd = () => {
     const validated = validateAndPrepareAdd(newNpub);

@@ -95,17 +95,15 @@ async function setEditors(page: Page, npubs: string[]) {
     const input = page.locator('input[placeholder="npub1..."]');
     await input.fill(npub);
 
-    // Click Add button to show preview
-    const addButton = page.getByRole('button', { name: 'Add' });
-    await addButton.click();
-    await page.waitForTimeout(300);
+    // Wait for auto-detection to show preview with "Add User" button, then click it
+    // The detectedNpub useMemo auto-shows the UserPreview when a valid npub is typed
+    await page.waitForTimeout(500);
 
-    // Wait for preview and click confirm
-    const confirmButton = page.locator('button:has-text("Add User"), button:has-text("Add ")');
-    if (await confirmButton.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await confirmButton.click();
-      await page.waitForTimeout(300);
-    }
+    // Click the "Add User" or "Add <name>" confirm button from the preview
+    const confirmButton = page.locator('button.btn-success').filter({ hasText: /^Add/ }).first();
+    await expect(confirmButton).toBeVisible({ timeout: 3000 });
+    await confirmButton.click();
+    await page.waitForTimeout(300);
   }
 
   // Save
