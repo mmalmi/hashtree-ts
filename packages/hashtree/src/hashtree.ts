@@ -10,6 +10,7 @@
 import { Store, Hash, CID, TreeNode, NodeType, Link, toHex, cid } from './types.js';
 import { decodeTreeNode, isTreeNode, encodeAndHash } from './codec.js';
 import { sha256 } from './hash.js';
+import { encryptChk, type EncryptionKey } from './crypto.js';
 import * as create from './tree/create.js';
 import * as read from './tree/read.js';
 import * as edit from './tree/edit.js';
@@ -353,9 +354,10 @@ export class HashTree {
   /**
    * Create a streaming file writer for incremental appends
    * Useful for writing large files chunk by chunk (e.g., video recording)
+   * @param options - { public?: boolean } - if true, create without encryption
    */
-  createStream(): StreamWriter {
-    return new StreamWriter(this.store, this.chunkSize, this.maxLinks);
+  createStream(options?: { public?: boolean }): StreamWriter {
+    return new StreamWriter(this.store, this.chunkSize, this.maxLinks, options?.public ?? false);
   }
 }
 
@@ -363,24 +365,29 @@ export class HashTree {
  * StreamWriter - supports incremental file appends
  *
  * Created via HashTree.createStream()
+ *
+ * All chunks are CHK encrypted by default (same as putFile).
+ * Use createStream({ public: true }) for unencrypted streaming.
  */
 export class StreamWriter {
   private store: Store;
   private chunkSize: number;
   private maxLinks: number;
+  private isPublic: boolean;
 
   // Current partial chunk being built
   private buffer: Uint8Array;
   private bufferOffset: number = 0;
 
-  // Completed chunks
+  // Completed chunks (with encryption keys for tree building when encrypted)
   private chunks: Link[] = [];
   private totalSize: number = 0;
 
-  constructor(store: Store, chunkSize: number, maxLinks: number) {
+  constructor(store: Store, chunkSize: number, maxLinks: number, isPublic: boolean = false) {
     this.store = store;
     this.chunkSize = chunkSize;
     this.maxLinks = maxLinks;
+    this.isPublic = isPublic;
     this.buffer = new Uint8Array(this.chunkSize);
   }
 
@@ -408,64 +415,94 @@ export class StreamWriter {
   }
 
   /**
-   * Flush current buffer as a chunk
+   * Flush current buffer as a chunk (encrypted or plaintext based on mode)
    */
   private async flushChunk(): Promise<void> {
     if (this.bufferOffset === 0) return;
 
     const chunk = this.buffer.slice(0, this.bufferOffset);
-    const hash = await sha256(chunk);
-    await this.store.put(hash, new Uint8Array(chunk));
 
-    this.chunks.push({ hash, size: chunk.length });
+    if (this.isPublic) {
+      // Public mode: store plaintext
+      const hash = await sha256(chunk);
+      await this.store.put(hash, chunk);
+      this.chunks.push({ hash, size: chunk.length });
+    } else {
+      // Encrypted mode: CHK encrypt the chunk
+      const { ciphertext, key } = await encryptChk(chunk);
+      const hash = await sha256(ciphertext);
+      await this.store.put(hash, ciphertext);
+      this.chunks.push({ hash, size: ciphertext.length, key });
+    }
+
     this.bufferOffset = 0;
   }
 
   /**
-   * Get current root hash without finalizing
+   * Get current root CID without finalizing
    * Useful for checkpoints (e.g., live streaming)
+   * Returns CID with key for encrypted streams, CID without key for public streams
    */
-  async currentRoot(): Promise<Hash | null> {
+  async currentRoot(): Promise<CID | null> {
     if (this.chunks.length === 0 && this.bufferOffset === 0) {
       return null;
     }
 
-    // Temporarily flush buffer
+    // Temporarily store buffer without modifying state
     const tempChunks = [...this.chunks];
     if (this.bufferOffset > 0) {
       const chunk = this.buffer.slice(0, this.bufferOffset);
-      const hash = await sha256(chunk);
-      await this.store.put(hash, new Uint8Array(chunk));
-      tempChunks.push({ hash, size: chunk.length });
+
+      if (this.isPublic) {
+        const hash = await sha256(chunk);
+        await this.store.put(hash, chunk);
+        tempChunks.push({ hash, size: chunk.length });
+      } else {
+        const { ciphertext, key } = await encryptChk(chunk);
+        const hash = await sha256(ciphertext);
+        await this.store.put(hash, ciphertext);
+        tempChunks.push({ hash, size: ciphertext.length, key });
+      }
     }
 
     return this.buildTreeFromChunks(tempChunks, this.totalSize);
   }
 
   /**
-   * Finalize the stream and return root hash
+   * Finalize the stream and return root CID
+   * For encrypted streams: returns { hash, size, key }
+   * For public streams: returns { hash, size } (key is undefined)
    */
-  async finalize(): Promise<{ hash: Hash; size: number }> {
+  async finalize(): Promise<{ hash: Hash; size: number; key?: EncryptionKey }> {
     // Flush remaining buffer
     await this.flushChunk();
 
     if (this.chunks.length === 0) {
-      // Empty stream - return hash of empty data
-      const emptyHash = await sha256(new Uint8Array(0));
-      await this.store.put(emptyHash, new Uint8Array(0));
-      return { hash: emptyHash, size: 0 };
+      // Empty stream
+      if (this.isPublic) {
+        const emptyData = new Uint8Array(0);
+        const hash = await sha256(emptyData);
+        await this.store.put(hash, emptyData);
+        return { hash, size: 0 };
+      } else {
+        const { ciphertext, key } = await encryptChk(new Uint8Array(0));
+        const hash = await sha256(ciphertext);
+        await this.store.put(hash, ciphertext);
+        return { hash, size: 0, key };
+      }
     }
 
-    const hash = await this.buildTreeFromChunks(this.chunks, this.totalSize);
-    return { hash, size: this.totalSize };
+    const result = await this.buildTreeFromChunks(this.chunks, this.totalSize);
+    return { hash: result.hash, size: this.totalSize, key: result.key };
   }
 
   /**
    * Build balanced tree from chunks
    */
-  private async buildTreeFromChunks(chunks: Link[], totalSize: number): Promise<Hash> {
+  private async buildTreeFromChunks(chunks: Link[], totalSize: number): Promise<CID> {
+    // Single chunk - return its hash (and key if encrypted)
     if (chunks.length === 1) {
-      return chunks[0].hash;
+      return cid(chunks[0].hash, chunks[0].key);
     }
 
     if (chunks.length <= this.maxLinks) {
@@ -474,9 +511,19 @@ export class StreamWriter {
         links: chunks,
         totalSize,
       };
-      const { data, hash } = await encodeAndHash(node);
-      await this.store.put(hash, data);
-      return hash;
+      const { data, hash: nodeHash } = await encodeAndHash(node);
+
+      if (this.isPublic) {
+        // Public mode: store plaintext tree node
+        await this.store.put(nodeHash, data);
+        return { hash: nodeHash };
+      } else {
+        // Encrypted mode: CHK encrypt the tree node
+        const { ciphertext, key } = await encryptChk(data);
+        const hash = await sha256(ciphertext);
+        await this.store.put(hash, ciphertext);
+        return cid(hash, key);
+      }
     }
 
     // Build intermediate level
@@ -490,10 +537,17 @@ export class StreamWriter {
         links: batch,
         totalSize: batchSize,
       };
-      const { data, hash } = await encodeAndHash(node);
-      await this.store.put(hash, data);
+      const { data, hash: nodeHash } = await encodeAndHash(node);
 
-      subTrees.push({ hash, size: batchSize });
+      if (this.isPublic) {
+        await this.store.put(nodeHash, data);
+        subTrees.push({ hash: nodeHash, size: batchSize });
+      } else {
+        const { ciphertext, key } = await encryptChk(data);
+        const hash = await sha256(ciphertext);
+        await this.store.put(hash, ciphertext);
+        subTrees.push({ hash, size: batchSize, key });
+      }
     }
 
     return this.buildTreeFromChunks(subTrees, totalSize);

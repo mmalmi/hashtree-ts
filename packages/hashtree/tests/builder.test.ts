@@ -184,10 +184,10 @@ describe('StreamWriter via createStream()', () => {
       await stream.append(new Uint8Array([4, 5]));
       await stream.append(new Uint8Array([6, 7, 8, 9]));
 
-      const { hash, size } = await stream.finalize();
+      const { hash, size, key } = await stream.finalize();
 
       expect(size).toBe(9);
-      const data = await tree.readFile({ hash });
+      const data = await tree.readFile(cid(hash, key));
       expect(data).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]));
     });
 
@@ -200,10 +200,10 @@ describe('StreamWriter via createStream()', () => {
       await stream.append(new Uint8Array(8).fill(2));
       await stream.append(new Uint8Array(10).fill(3));
 
-      const { hash, size } = await stream.finalize();
+      const { hash, size, key } = await stream.finalize();
       expect(size).toBe(25);
 
-      const data = await tree.readFile({ hash });
+      const data = await tree.readFile(cid(hash, key));
       expect(data!.length).toBe(25);
       expect(data![0]).toBe(1);
       expect(data![7]).toBe(2);
@@ -229,7 +229,7 @@ describe('StreamWriter via createStream()', () => {
   });
 
   describe('currentRoot', () => {
-    it('should return current root without finalizing', async () => {
+    it('should return current root CID without finalizing', async () => {
       const stream = new HashTree({ store, chunkSize: 100 }).createStream();
 
       await stream.append(new Uint8Array([1, 2, 3]));
@@ -238,8 +238,8 @@ describe('StreamWriter via createStream()', () => {
       await stream.append(new Uint8Array([4, 5, 6]));
       const root2 = await stream.currentRoot();
 
-      // Roots should be different
-      expect(toHex(root1!)).not.toBe(toHex(root2!));
+      // Roots should be different (CID now includes hash + key)
+      expect(toHex(root1!.hash)).not.toBe(toHex(root2!.hash));
 
       // Can still finalize
       const { hash } = await stream.finalize();
@@ -256,10 +256,10 @@ describe('StreamWriter via createStream()', () => {
   describe('finalize', () => {
     it('should handle empty stream', async () => {
       const stream = new HashTree({ store }).createStream();
-      const { hash, size } = await stream.finalize();
+      const { hash, size, key } = await stream.finalize();
 
       expect(size).toBe(0);
-      const data = await tree.readFile({ hash });
+      const data = await tree.readFile(cid(hash, key));
       expect(data).toEqual(new Uint8Array(0));
     });
 
@@ -275,11 +275,11 @@ describe('StreamWriter via createStream()', () => {
         await stream.append(chunk);
       }
 
-      const { hash, size } = await stream.finalize();
+      const { hash, size, key } = await stream.finalize();
       expect(size).toBe(2000);
 
       // Verify can read back
-      const data = await tree.readFile({ hash });
+      const data = await tree.readFile(cid(hash, key));
       expect(data!.length).toBe(2000);
       expect(data![0]).toBe(0);
       expect(data![100]).toBe(1);

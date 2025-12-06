@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { HashTree } from '../src/hashtree.js';
 import { MemoryStore } from '../src/store/memory.js';
-import { toHex } from '../src/types.js';
+import { toHex, cid, type CID } from '../src/types.js';
 
 describe('StreamWriter - Streaming scenarios', () => {
   let store: MemoryStore;
@@ -18,7 +18,7 @@ describe('StreamWriter - Streaming scenarios', () => {
   });
 
   describe('incremental root updates', () => {
-    it('should provide updated root hash after each chunk', async () => {
+    it('should provide updated root CID after each chunk', async () => {
       const stream = new HashTree({ store, chunkSize: 100 }).createStream();
 
       await stream.append(new Uint8Array([1, 2, 3]));
@@ -30,24 +30,24 @@ describe('StreamWriter - Streaming scenarios', () => {
       await stream.append(new Uint8Array([7, 8, 9]));
       const root3 = await stream.currentRoot();
 
-      // Each addition should produce different root
-      expect(toHex(root1!)).not.toBe(toHex(root2!));
-      expect(toHex(root2!)).not.toBe(toHex(root3!));
+      // Each addition should produce different root (CID now includes key)
+      expect(toHex(root1!.hash)).not.toBe(toHex(root2!.hash));
+      expect(toHex(root2!.hash)).not.toBe(toHex(root3!.hash));
 
-      // All intermediate roots should be readable
-      const data1 = await tree.readFile({ hash: root1! });
+      // All intermediate roots should be readable with their keys
+      const data1 = await tree.readFile(root1!);
       expect(data1).toEqual(new Uint8Array([1, 2, 3]));
 
-      const data2 = await tree.readFile({ hash: root2! });
+      const data2 = await tree.readFile(root2!);
       expect(data2).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6]));
 
-      const data3 = await tree.readFile({ hash: root3! });
+      const data3 = await tree.readFile(root3!);
       expect(data3).toEqual(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9]));
     });
 
     it('should allow reading partial stream at any point', async () => {
       const stream = new HashTree({ store, chunkSize: 100 }).createStream();
-      const checkpoints: Uint8Array[] = [];
+      const checkpoints: CID[] = [];
 
       for (let i = 0; i < 5; i++) {
         const chunk = new Uint8Array(20).fill(i);
@@ -56,9 +56,9 @@ describe('StreamWriter - Streaming scenarios', () => {
         checkpoints.push(root!);
       }
 
-      // Each checkpoint should be independently readable
+      // Each checkpoint should be independently readable with its key
       for (let i = 0; i < checkpoints.length; i++) {
-        const data = await tree.readFile({ hash: checkpoints[i] });
+        const data = await tree.readFile(checkpoints[i]);
         expect(data!.length).toBe((i + 1) * 20);
         expect(data![i * 20]).toBe(i);
       }
@@ -73,7 +73,7 @@ describe('StreamWriter - Streaming scenarios', () => {
       const stream = streamTree.createStream();
 
       const videoChunks = [];
-      const publishedRoots = [];
+      const publishedRoots: CID[] = [];
 
       // Simulate 5 seconds of video
       for (let second = 0; second < 5; second++) {
@@ -89,16 +89,16 @@ describe('StreamWriter - Streaming scenarios', () => {
         publishedRoots.push(root!);
       }
 
-      // Final root
-      const { hash, size } = await stream.finalize();
+      // Final root - finalize returns { hash, size, key }
+      const { hash, size, key } = await stream.finalize();
       expect(size).toBe(5 * 100 * 1024);
 
-      // Viewer joining at second 3 should be able to read data
-      const partialData = await tree.readFile({ hash: publishedRoots[2] });
+      // Viewer joining at second 3 should be able to read data with key
+      const partialData = await tree.readFile(publishedRoots[2]);
       expect(partialData!.length).toBe(3 * 100 * 1024);
 
-      // Full stream should contain all data
-      const fullData = await tree.readFile({ hash });
+      // Full stream should contain all data (use CID with key)
+      const fullData = await tree.readFile(cid(hash, key));
       expect(fullData!.length).toBe(5 * 100 * 1024);
     });
 
@@ -111,10 +111,10 @@ describe('StreamWriter - Streaming scenarios', () => {
         await stream.append(chunk);
       }
 
-      const { hash, size } = await stream.finalize();
+      const { hash, size, key } = await stream.finalize();
       expect(size).toBe(5000);
 
-      const data = await tree.readFile({ hash });
+      const data = await tree.readFile(cid(hash, key));
       expect(data!.length).toBe(5000);
     });
   });
@@ -127,15 +127,16 @@ describe('StreamWriter - Streaming scenarios', () => {
       for (let i = 0; i < 10; i++) {
         await stream.append(new Uint8Array(50).fill(i));
       }
-      const { hash } = await stream.finalize();
+      const { hash, key } = await stream.finalize();
+      const fileCid = cid(hash, key);
 
       // Multiple readers can read independently
       const reader1 = new HashTree({ store });
       const reader2 = new HashTree({ store });
 
       const [data1, data2] = await Promise.all([
-        reader1.readFile({ hash }),
-        reader2.readFile({ hash }),
+        reader1.readFile(fileCid),
+        reader2.readFile(fileCid),
       ]);
 
       expect(data1).toEqual(data2);
@@ -151,10 +152,10 @@ describe('StreamWriter - Streaming scenarios', () => {
         await stream.append(new Uint8Array([i]));
       }
 
-      const { hash, size } = await stream.finalize();
+      const { hash, size, key } = await stream.finalize();
       expect(size).toBe(25);
 
-      const data = await tree.readFile({ hash });
+      const data = await tree.readFile(cid(hash, key));
       expect(data!.length).toBe(25);
       for (let i = 0; i < 25; i++) {
         expect(data![i]).toBe(i);
@@ -174,8 +175,8 @@ describe('StreamWriter - Streaming scenarios', () => {
       expect(stream.stats.buffered).toBe(0);
       expect(stream.stats.totalSize).toBe(500);
 
-      const { hash } = await stream.finalize();
-      const data = await tree.readFile({ hash });
+      const { hash, key } = await stream.finalize();
+      const data = await tree.readFile(cid(hash, key));
       expect(data!.length).toBe(500);
     });
 
@@ -194,8 +195,8 @@ describe('StreamWriter - Streaming scenarios', () => {
       expect(stream.stats.chunks).toBe(10);
       expect(stream.stats.totalSize).toBe(1000);
 
-      const { hash } = await stream.finalize();
-      const data = await tree.readFile({ hash });
+      const { hash, key } = await stream.finalize();
+      const data = await tree.readFile(cid(hash, key));
       expect(data).toEqual(bigData);
     });
 
@@ -208,10 +209,10 @@ describe('StreamWriter - Streaming scenarios', () => {
       await stream.append(new Uint8Array([5])); // 1 byte
       await stream.append(new Uint8Array(46).fill(6)); // 46 bytes
 
-      const { hash, size } = await stream.finalize();
+      const { hash, size, key } = await stream.finalize();
       expect(size).toBe(300);
 
-      const data = await tree.readFile({ hash });
+      const data = await tree.readFile(cid(hash, key));
       expect(data![0]).toBe(1);
       expect(data![3]).toBe(4);
       expect(data![253]).toBe(5);
@@ -240,10 +241,10 @@ describe('StreamWriter - Streaming scenarios', () => {
         await stream.append(chunk);
       }
 
-      const { hash, size } = await stream.finalize();
+      const { hash, size, key } = await stream.finalize();
       expect(size).toBe(maxChunks * chunkSize);
 
-      const data = await tree.readFile({ hash });
+      const data = await tree.readFile(cid(hash, key));
       // Should contain chunks 7, 8, 9
       expect(data![0]).toBe(7);
       expect(data![100]).toBe(8);
