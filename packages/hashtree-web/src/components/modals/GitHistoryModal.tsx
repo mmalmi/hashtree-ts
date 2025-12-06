@@ -108,7 +108,7 @@ export function GitHistoryModal() {
 
           {!loading && !error && commits.length > 0 && (
             <div className="space-y-3">
-              {commits.map((commit, index) => (
+              {commits.map((commit) => (
                 <div
                   key={commit.oid}
                   className="relative pl-6 pb-3 border-l-2 border-surface-3 last:border-transparent"

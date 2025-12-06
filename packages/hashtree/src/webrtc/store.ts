@@ -43,11 +43,6 @@ const DEFAULT_RELAYS = [
 const WEBRTC_KIND = 30078; // KIND_APP_DATA - same as iris-client
 const WEBRTC_TAG = 'webrtc';
 
-// Default pool configuration
-const DEFAULT_POOLS: { follows: PoolConfig; other: PoolConfig } = {
-  follows: { maxConnections: 10, satisfiedConnections: 5 },
-  other: { maxConnections: 5, satisfiedConnections: 2 },
-};
 
 // Pending request with callbacks
 interface WantedHash {

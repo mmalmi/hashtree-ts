@@ -127,7 +127,7 @@ export function SettingsPage() {
                     pubkey={peer.pubkey}
                     description={peer.isSelf ? 'You' : `${peer.state}${peer.pool === 'follows' ? ' (follow)' : ''}`}
                     avatarSize={32}
-                    showBadge={!peer.isSelf}
+                    showBadge
                     className="flex-1 min-w-0"
                   />
                   <span className="text-xs text-muted font-mono shrink-0">

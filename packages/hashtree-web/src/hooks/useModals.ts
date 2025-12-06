@@ -43,9 +43,6 @@ interface GitHistoryTarget {
   dirCid: CID;
 }
 
-interface ShareTarget {
-  url: string;
-}
 
 interface ModalState {
   showCreateModal: boolean;

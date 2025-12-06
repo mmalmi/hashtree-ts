@@ -23,8 +23,7 @@ const ICE_SERVERS = [
 // Batch ICE candidates to reduce signaling messages
 const ICE_BATCH_DELAY = 100; // ms to wait before sending batched candidates
 
-// Default LRU cache sizes
-const OUR_REQUESTS_SIZE = 100;
+// Default LRU cache size
 const THEIR_REQUESTS_SIZE = 200;
 
 // Request we sent to this peer, waiting for response

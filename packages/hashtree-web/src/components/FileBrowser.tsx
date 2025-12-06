@@ -496,7 +496,7 @@ export function FileBrowser() {
         <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center gap-2 bg-surface-1">
           {headerPubkey ? (
             <Link to={`/${headerNpub}/profile`} className="no-underline min-w-0">
-              <UserRow pubkey={headerPubkey} avatarSize={24} showBadge={!isOwnTrees} className="min-w-0" />
+              <UserRow pubkey={headerPubkey} avatarSize={24} showBadge className="min-w-0" />
             </Link>
           ) : (
             <span className="text-sm text-text-2">Folders</span>
@@ -573,7 +573,7 @@ export function FileBrowser() {
       {viewedNpub && (
         <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center gap-2 bg-surface-1">
           <Link to={`/${viewedNpub}/profile`} className="no-underline min-w-0">
-            <UserRow pubkey={npubToPubkey(viewedNpub) || viewedNpub} avatarSize={24} showBadge={!isOwnTrees} className="min-w-0" />
+            <UserRow pubkey={npubToPubkey(viewedNpub) || viewedNpub} avatarSize={24} showBadge className="min-w-0" />
           </Link>
         </div>
       )}

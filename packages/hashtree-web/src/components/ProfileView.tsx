@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { navigate } from '../utils/navigate';
 import { useProfile } from '../hooks/useProfile';
 import { useFollows, followPubkey, unfollowPubkey } from '../hooks/useFollows';
-import { Avatar, Name, FollowedBy } from './user';
+import { Avatar, Name, FollowedBy, Badge } from './user';
 import { CopyText } from './CopyText';
 import { nip19 } from 'nostr-tools';
 import { useNostrStore } from '../nostr';
@@ -63,7 +63,7 @@ export function ProfileView({ npub }: Props) {
 
       {/* Profile header */}
       <div className="px-4 pb-4 -mt-12 relative">
-        {/* Avatar - no badge here, social context shown below in stats */}
+        {/* Avatar */}
         <div className="mb-3">
           <Avatar pubkey={pubkeyHex} size={80} className="border-4 border-surface-0" />
         </div>
@@ -74,7 +74,16 @@ export function ProfileView({ npub }: Props) {
             <h1 className="text-xl font-bold text-text-1 m-0 truncate">
               <Name pubkey={pubkeyHex} />
             </h1>
-            {followsMe && !isOwnProfile && (
+            {isOwnProfile ? (
+              <span className="shrink-0 text-xs text-blue-500 flex items-center gap-1">
+                <Badge pubKeyHex={pubkeyHex} size="sm" /> You
+              </span>
+            ) : isFollowing ? (
+              <span className="shrink-0 text-xs text-blue-500 flex items-center gap-1">
+                <Badge pubKeyHex={pubkeyHex} size="sm" /> Following
+              </span>
+            ) : null}
+            {!isOwnProfile && followsMe && (
               <span className="shrink-0 text-xs bg-surface-2 text-text-2 px-2 py-0.5 rounded">
                 Follows you
               </span>

@@ -271,13 +271,9 @@ class GitObjectReader {
       // Read type and size (variable-length encoding)
       let byte = packData[pos++];
       const type = (byte >> 4) & 0x7;
-      let size = byte & 0xf;
-      let shift = 4;
-
+      // Skip size bytes (variable-length encoding, we just need to advance pos)
       while (byte & 0x80) {
         byte = packData[pos++];
-        size |= (byte & 0x7f) << shift;
-        shift += 7;
       }
 
       if (type === OBJ_OFS_DELTA) {

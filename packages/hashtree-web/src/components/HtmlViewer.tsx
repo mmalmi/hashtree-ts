@@ -124,7 +124,7 @@ function inlineResources(html: string, files: DirectoryFile[]): string {
   // Inline <link rel="stylesheet" href="..."> as <style>content</style>
   result = result.replace(
     /<link([^>]*)rel\s*=\s*["']stylesheet["']([^>]*)href\s*=\s*["']([^"']+)["']([^>]*)>/gi,
-    (match, before1, before2, href, after) => {
+    (match, _before1, _before2, href, _after) => {
       const cleanHref = href.replace(/^\.?\//, '').toLowerCase();
       const file = fileMap.get(cleanHref);
       if (file && file.mimeType === 'text/css') {
@@ -138,7 +138,7 @@ function inlineResources(html: string, files: DirectoryFile[]): string {
   // Also handle href before rel
   result = result.replace(
     /<link([^>]*)href\s*=\s*["']([^"']+)["']([^>]*)rel\s*=\s*["']stylesheet["']([^>]*)>/gi,
-    (match, before1, href, before2, after) => {
+    (match, _before1, href, _before2, _after) => {
       const cleanHref = href.replace(/^\.?\//, '').toLowerCase();
       const file = fileMap.get(cleanHref);
       if (file && file.mimeType === 'text/css') {

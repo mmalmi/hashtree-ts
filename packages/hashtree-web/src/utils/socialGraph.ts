@@ -35,7 +35,6 @@ const db = new SocialGraphDB();
 // Social graph instance
 let instance: SocialGraph;
 let isInitialized = false;
-let isLoaded = false;
 let resolveLoaded: ((value: boolean) => void) | null = null;
 
 // Promise that resolves when graph is loaded
@@ -140,7 +139,6 @@ export async function initializeSocialGraph() {
     instance.setRoot(DEFAULT_SOCIAL_GRAPH_ROOT);
   }
 
-  isLoaded = true;
   resolveLoaded?.(true);
 }
 

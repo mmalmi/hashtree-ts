@@ -37,17 +37,21 @@ export function FollowedBy({ pubkey, className = '' }: Props) {
 
   // No friends follow this user
   if (total === 0) {
+    // Distance 1 = we follow them, already shown in header as "Following"
     if (followDistance === 1) {
+      return null;
+    }
+    if (followDistance === 2) {
       return (
         <div className={`text-sm text-text-2 ${className}`}>
-          Followed by you
+          Not followed by anyone you follow
         </div>
       );
     }
-    if (followDistance <= 3) {
+    if (followDistance === 3) {
       return (
         <div className={`text-sm text-text-2 ${className}`}>
-          {followDistance === 3 ? 'Followed by friends of friends' : 'Not followed by anyone you follow'}
+          Followed by friends of friends
         </div>
       );
     }
