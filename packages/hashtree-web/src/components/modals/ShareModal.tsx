@@ -20,6 +20,20 @@ export function ShareModal() {
     generateQrCode(shareUrl).then(setQrDataUrl);
   }, [showShareModal, shareUrl]);
 
+  // Handle Escape key to close modal
+  useEffect(() => {
+    if (!showShareModal) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        closeShareModal();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showShareModal]);
+
   if (!showShareModal || !shareUrl) return null;
 
   const handleCopyLink = async () => {
