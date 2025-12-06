@@ -70,7 +70,7 @@ test.describe('Multi-Account Management', () => {
 
     // Enter a valid test nsec
     await nsecInput.fill(generateTestNsec());
-    await page.getByRole('button', { name: 'Add' }).click();
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.waitForTimeout(500);
 
     // Should now show 2 accounts - look for 2 account rows (each has an avatar link)

@@ -39,9 +39,17 @@ async function clearStorageAndReload(page: Page) {
   await page.waitForTimeout(500);
 }
 
-// Helper to wait for new user redirect to public folder
+// Helper to wait for new user setup and navigate to public folder
 async function waitForNewUserRedirect(page: Page) {
-  await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 15000 });
+  // Wait for the public folder link to appear in the tree list (indicates setup complete)
+  const publicLink = page.getByRole('link', { name: 'public' }).first();
+  await expect(publicLink).toBeVisible({ timeout: 15000 });
+
+  // Click into the public folder
+  await publicLink.click();
+
+  // Wait for navigation to complete and folder actions to be visible
+  await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
   await expect(page.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
 }
 

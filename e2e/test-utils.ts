@@ -19,12 +19,21 @@ export function setupPageErrorHandler(page: any) {
 }
 
 /**
- * Wait for new user redirect to complete.
+ * Wait for new user setup to complete and navigate to public folder.
  * New users get three default folders created (public, link, private)
- * and are redirected to /{npub}/public automatically.
+ * but no longer get auto-redirected. This function waits for setup,
+ * then clicks into the public folder for tests that need it.
  */
 export async function waitForNewUserRedirect(page: any) {
-  await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 15000 });
+  // Wait for the public folder link to appear in the tree list (indicates setup complete)
+  const publicLink = page.getByRole('link', { name: 'public' }).first();
+  await expect(publicLink).toBeVisible({ timeout: 15000 });
+
+  // Click into the public folder
+  await publicLink.click();
+
+  // Wait for navigation to complete and folder actions to be visible
+  await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
   await expect(page.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
 }
 

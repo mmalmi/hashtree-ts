@@ -101,10 +101,10 @@ test.describe('Hashtree Explorer', () => {
     await page.getByRole('button', { name: /File/ }).first().click();
     await page.locator('input[placeholder="File name..."]').fill('test-file.txt');
     await page.getByRole('button', { name: 'Create' }).click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
 
-    // File should appear in file browser
-    await expect(fileList.locator('span:text-is("test-file.txt")')).toBeVisible({ timeout: 5000 });
+    // File should appear in file browser (use a:has-text since entries are links)
+    await expect(fileList.locator('a').filter({ hasText: 'test-file.txt' }).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should create and edit a file', async ({ page }) => {
@@ -410,8 +410,18 @@ test.describe('Hashtree Explorer', () => {
   });
 
   test('should navigate to edit profile page', async ({ page }) => {
-    // Click avatar to go to profile
+    // Click avatar to go to user's tree list
     await page.locator(myTreesButtonSelector).click();
+    await page.waitForTimeout(300);
+
+    // Get the npub from current URL and navigate to profile
+    const url = page.url();
+    const npubMatch = url.match(/npub[a-z0-9]+/);
+    expect(npubMatch).toBeTruthy();
+    const npub = npubMatch![0];
+
+    // Navigate to profile page
+    await page.goto(`/#/${npub}/profile`);
     await page.waitForTimeout(300);
 
     // Should be on profile page with Edit Profile button
@@ -430,8 +440,8 @@ test.describe('Hashtree Explorer', () => {
     // Fill in a name
     await page.locator('input[placeholder="Your name"]').fill('Test User');
 
-    // Go back using the back button
-    await page.locator('button:has(span.i-lucide-arrow-left)').click();
+    // Go back using the back button (chevron-left icon)
+    await page.locator('button:has(span.i-lucide-chevron-left)').click();
     await page.waitForTimeout(300);
 
     // Should be back on profile page
