@@ -221,9 +221,8 @@ class ServingWsClient extends TestWsClient {
       packet.set(data, 4);
       ws.send(packet.buffer);
     } else {
-      console.log(`[${this.getName()}] Don't have hash:`, hash.slice(0, 16));
-      // Send not found response
-      ws.send(JSON.stringify({ type: 'res', id, hash, found: false }));
+      // Don't have it - stay silent, let server timeout and try next peer
+      console.log(`[${this.getName()}] Don't have hash:`, hash.slice(0, 16), '(silent)');
     }
   }
 }

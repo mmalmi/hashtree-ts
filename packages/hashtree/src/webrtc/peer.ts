@@ -238,8 +238,11 @@ export class Peer {
       // If not found, keep in theirRequests for later push
     }
 
-    // Not found anywhere
-    this.sendResponse(msg.id, msg.hash, false);
+    // Not found anywhere - stay silent, let requester timeout.
+    // We don't send "not found" responses because:
+    // 1. We may forward the request to our peers and get it later (then push it)
+    // 2. Saves bandwidth - requester will timeout and try next peer
+    // The request is tracked in theirRequests so we can push data if we get it later
   }
 
   private async handleResponse(msg: DataResponse): Promise<void> {

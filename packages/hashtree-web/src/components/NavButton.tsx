@@ -16,11 +16,11 @@ export function NavButton({ onClick, icon = 'back', title, className = '', disab
   return (
     <button
       onClick={onClick}
-      className={`bg-transparent border-none text-text-2 cursor-pointer p-1 hover:bg-surface-2 rounded disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      className={`btn-ghost ${className}`}
       title={title}
       disabled={disabled}
     >
-      <span className={`${iconClass} text-lg`} />
+      <span className={`${iconClass} text-base`} />
     </button>
   );
 }

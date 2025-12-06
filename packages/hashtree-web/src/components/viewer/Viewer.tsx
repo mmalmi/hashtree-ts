@@ -345,27 +345,42 @@ export function Viewer() {
     openShareModal(url);
   }, []);
 
-  // Navigate to parent directory on Escape (when not editing)
+  // Keyboard navigation (when not editing)
   useEffect(() => {
     if (!entry && !urlFileName) return; // Only when viewing a file
     if (isEditing) return; // Don't navigate when editing
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        // Blur current element so FileBrowser can take focus
+      const key = e.key.toLowerCase();
+
+      // Escape or h: back to directory
+      if (key === 'escape' || key === 'h') {
+        e.preventDefault();
         (document.activeElement as HTMLElement)?.blur();
-        // Navigate to parent directory
         const parts: string[] = [];
         if (viewedNpub && currentTreeName) {
           parts.push(viewedNpub, currentTreeName, ...currentPath);
         }
-        navigate('/' + parts.map(encodeURIComponent).join('/'));
+        navigate('/' + parts.map(encodeURIComponent).join('/') + location.search);
+        return;
+      }
+
+      // j/k/ArrowLeft/ArrowRight: prev/next file
+      if ((key === 'j' || key === 'arrowright') && nextFile) {
+        e.preventDefault();
+        navigateToFile(nextFile.name);
+        return;
+      }
+      if ((key === 'k' || key === 'arrowleft') && prevFile) {
+        e.preventDefault();
+        navigateToFile(prevFile.name);
+        return;
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [entry, urlFileName, isEditing, viewedNpub, currentTreeName, currentPath, navigate]);
+  }, [entry, urlFileName, isEditing, viewedNpub, currentTreeName, currentPath, navigate, location.search, prevFile, nextFile, navigateToFile]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
@@ -376,35 +391,16 @@ export function Viewer() {
             {(entry || urlFileName) && (
               <NavButton
                 onClick={() => {
-                  // Navigate to directory (remove file from URL)
+                  // Navigate to directory (remove file from URL), preserve query params like ?k=
                   const parts: string[] = [];
                   if (viewedNpub && currentTreeName) {
                     parts.push(viewedNpub, currentTreeName, ...currentPath);
                   }
-                  navigate('/' + parts.map(encodeURIComponent).join('/'));
+                  navigate('/' + parts.map(encodeURIComponent).join('/') + location.search);
                 }}
                 className="lg:hidden"
               />
             )}
-          {/* Prev/Next file navigation - mobile only, wraps around */}
-          {filesOnly.length > 1 && prevFile && nextFile && (
-            <div className="flex items-center lg:hidden">
-              <button
-                onClick={() => navigateToFile(prevFile.name)}
-                className="p-1 text-text-2 hover:text-text-1"
-                title={`Previous: ${prevFile.name}`}
-              >
-                <span className="i-lucide-chevron-left text-lg" />
-              </button>
-              <button
-                onClick={() => navigateToFile(nextFile.name)}
-                className="p-1 text-text-2 hover:text-text-1"
-                title={`Next: ${nextFile.name}`}
-              >
-                <span className="i-lucide-chevron-right text-lg" />
-              </button>
-            </div>
-          )}
           {/* Show avatar (for npub routes) or hash icon (for nhash routes) */}
           {viewedNpub ? (
             <Link to={`/${viewedNpub}/profile`} className="shrink-0">
@@ -479,17 +475,36 @@ export function Viewer() {
                   onClick={() => {
                     if (confirm(`Delete ${entry.name}?`)) {
                       deleteEntry(entry.name);
-                      // Navigate back to directory
+                      // Navigate back to directory, preserve query params like ?k=
                       const parts: string[] = [];
                       if (viewedNpub && currentTreeName) {
                         parts.push(viewedNpub, currentTreeName, ...currentPath);
                       }
-                      navigate('/' + parts.map(encodeURIComponent).join('/'));
+                      navigate('/' + parts.map(encodeURIComponent).join('/') + location.search);
                     }
                   }}
                   className="btn-ghost text-danger"
                 >
                   Delete
+                </button>
+              </>
+            )}
+            {/* Prev/Next file navigation - mobile only, wraps around */}
+            {filesOnly.length > 1 && prevFile && nextFile && (
+              <>
+                <button
+                  onClick={() => navigateToFile(prevFile.name)}
+                  className="btn-ghost lg:hidden"
+                  title={`Previous: ${prevFile.name}`}
+                >
+                  <span className="i-lucide-chevron-left text-base" />
+                </button>
+                <button
+                  onClick={() => navigateToFile(nextFile.name)}
+                  className="btn-ghost lg:hidden"
+                  title={`Next: ${nextFile.name}`}
+                >
+                  <span className="i-lucide-chevron-right text-base" />
                 </button>
               </>
             )}
