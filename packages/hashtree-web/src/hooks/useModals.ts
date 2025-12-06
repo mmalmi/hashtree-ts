@@ -43,6 +43,10 @@ interface GitHistoryTarget {
   dirCid: CID;
 }
 
+interface ShareTarget {
+  url: string;
+}
+
 interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
@@ -58,6 +62,8 @@ interface ModalState {
   gitignoreTarget: GitignoreTarget | null;
   showGitHistoryModal: boolean;
   gitHistoryTarget: GitHistoryTarget | null;
+  showShareModal: boolean;
+  shareUrl: string | null;
   modalInput: string;
 }
 
@@ -77,6 +83,8 @@ let state: ModalState = {
   gitignoreTarget: null,
   showGitHistoryModal: false,
   gitHistoryTarget: null,
+  showShareModal: false,
+  shareUrl: null,
   modalInput: '',
 };
 
@@ -166,6 +174,16 @@ export function closeGitHistoryModal() {
   emit();
 }
 
+export function openShareModal(url: string) {
+  state = { ...state, showShareModal: true, shareUrl: url };
+  emit();
+}
+
+export function closeShareModal() {
+  state = { ...state, showShareModal: false, shareUrl: null };
+  emit();
+}
+
 export function setModalInput(input: string) {
   state = { ...state, modalInput: input };
   emit();
@@ -192,6 +210,8 @@ export function useModals() {
     closeGitignoreModal,
     openGitHistoryModal,
     closeGitHistoryModal,
+    openShareModal,
+    closeShareModal,
     setModalInput,
   };
 }

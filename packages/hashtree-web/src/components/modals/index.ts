@@ -8,3 +8,4 @@ export { ForkModal } from './ForkModal';
 export { ExtractModal } from './ExtractModal';
 export { GitignoreModal } from './GitignoreModal';
 export { GitHistoryModal } from './GitHistoryModal';
+export { ShareModal } from './ShareModal';

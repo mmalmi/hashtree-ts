@@ -12,7 +12,7 @@ import { DosBoxViewer, isDosExecutable } from '../DosBox';
 import { HtmlViewer, shouldUseHtmlViewer } from '../HtmlViewer';
 import { decodeAsText, getTree } from '../../store';
 import { saveFile, deleteEntry, selectFile } from '../../actions';
-import { openRenameModal } from '../../hooks/useModals';
+import { openRenameModal, openShareModal } from '../../hooks/useModals';
 import { useNostrStore } from '../../nostr';
 import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees, usePathType } from '../../hooks';
 import { VisibilityIcon, LinkLockIcon } from '../VisibilityIcon';
@@ -29,7 +29,6 @@ export function Viewer() {
   const rootCid = useTreeRoot();
   const currentDirCid = useCurrentDirCid();
   const { entries } = useDirectoryEntries(currentDirCid);
-  const [copied, setCopied] = useState(false);
 
   const route = useRoute();
   const viewedNpub = route.npub;
@@ -274,29 +273,9 @@ export function Viewer() {
     }
   };
 
-  const handleCopyLink = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      console.error('Failed to copy:', e);
-    }
+  const handleShare = useCallback(() => {
+    openShareModal(window.location.href);
   }, []);
-
-  const handleShare = useCallback(async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({ url: window.location.href });
-        return;
-      } catch (e) {
-        if ((e as Error).name !== 'AbortError') {
-          console.error('Share failed:', e);
-        }
-      }
-    }
-    handleCopyLink();
-  }, [handleCopyLink]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
@@ -371,25 +350,12 @@ export function Viewer() {
               <span className="i-lucide-maximize text-base" />
             </button>
             <button
-              onClick={handleCopyLink}
+              onClick={handleShare}
               className="btn-ghost"
-              title="Copy link"
+              title="Share"
             >
-              {copied ? (
-                <span className="i-lucide-check text-success text-base" />
-              ) : (
-                <span className="i-lucide-link text-base" />
-              )}
+              <span className="i-lucide-share text-base" />
             </button>
-            {typeof navigator !== 'undefined' && navigator.share && (
-              <button
-                onClick={handleShare}
-                className="btn-ghost"
-                title="Share"
-              >
-                <span className="i-lucide-share text-base" />
-              </button>
-            )}
             {canEdit && (
               <>
                 <button onClick={() => openRenameModal(entry?.name)} className="btn-ghost">Rename</button>

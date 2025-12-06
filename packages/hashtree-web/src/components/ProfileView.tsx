@@ -6,6 +6,7 @@ import { Avatar, Name, FollowedBy } from './user';
 import { nip19 } from 'nostr-tools';
 import { useNostrStore } from '../nostr';
 import { useFollowsMe, useFollowers } from '../utils/socialGraph';
+import { openShareModal } from '../hooks/useModals';
 
 interface Props {
   npub: string;
@@ -114,6 +115,13 @@ export function ProfileView({ npub }: Props) {
                 {followLoading ? '...' : isFollowing ? 'Unfollow' : 'Follow'}
               </button>
             )}
+            <button
+              onClick={() => openShareModal(window.location.href)}
+              className="btn-ghost"
+              title="Share"
+            >
+              <span className="i-lucide-share text-base" />
+            </button>
           </div>
         </div>
 

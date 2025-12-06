@@ -5,7 +5,7 @@ import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { nhashEncode, toHex } from 'hashtree';
 import type { CID } from 'hashtree';
-import { openCreateModal, openRenameModal, openForkModal } from '../hooks/useModals';
+import { openCreateModal, openRenameModal, openForkModal, openShareModal } from '../hooks/useModals';
 import { useUpload } from '../hooks/useUpload';
 import { useRoute, useTrees } from '../hooks';
 import { deleteCurrentFolder } from '../actions';
@@ -115,6 +115,14 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
           >
             <span className={isDownloading ? "i-lucide-loader-2 animate-spin" : "i-lucide-archive"} />
             {isDownloading ? 'Zipping...' : 'ZIP'}
+          </button>
+          <button
+            onClick={() => openShareModal(window.location.href)}
+            className={`btn-ghost ${btnClass}`}
+            title="Share"
+          >
+            <span className="i-lucide-share" />
+            Share
           </button>
           {/* Git info */}
           {gitInfo.isRepo && (
