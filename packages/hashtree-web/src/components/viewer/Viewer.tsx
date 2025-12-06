@@ -313,7 +313,10 @@ export function Viewer() {
   };
 
   const handleShare = useCallback(() => {
-    openShareModal(window.location.href);
+    // Strip ?edit=1 or &edit=1 from hash when sharing
+    let url = window.location.href;
+    url = url.replace(/[?&]edit=1/, '');
+    openShareModal(url);
   }, []);
 
   return (
@@ -442,6 +445,9 @@ export function Viewer() {
             <SaveButton saved={saved} onClick={handleSave} />
             <button onClick={() => { setIsEditing(false); }} className="btn-ghost">
               Done
+            </button>
+            <button onClick={handleShare} className="btn-ghost" title="Share">
+              <span className="i-lucide-share text-base" />
             </button>
           </div>
         )}
