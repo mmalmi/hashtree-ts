@@ -7,11 +7,14 @@ import { useRef, useCallback } from 'react';
 
 export function useDebounce<T extends (...args: unknown[]) => unknown>(fn: T, delay: number): T {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Store latest fn in ref to avoid stale closures
+  const fnRef = useRef(fn);
+  fnRef.current = fn;
 
   return useCallback((...args: Parameters<T>) => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => fn(...args), delay);
-  }, [fn, delay]) as T;
+    timeoutRef.current = setTimeout(() => fnRef.current(...args), delay);
+  }, [delay]) as T;
 }
 
 export function getMimeType(filename?: string): string | null {
