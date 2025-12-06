@@ -400,7 +400,7 @@ export function Viewer() {
               />
               Autosave
             </label>
-            <button onClick={handleSave} className="btn-success">
+            <button onClick={handleSave} className="btn-success min-w-16">
               {saved ? (
                 <>
                   <span className="i-lucide-check" />
