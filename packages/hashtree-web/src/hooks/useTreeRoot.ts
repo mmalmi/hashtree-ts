@@ -11,7 +11,7 @@
  *
  * Components use this instead of reading rootCid from global app state.
  */
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { fromHex, cid, visibilityHex } from 'hashtree';
 import type { CID, SubscribeVisibilityInfo, Hash } from 'hashtree';
 import { useRoute } from './useRoute';
@@ -102,14 +102,29 @@ async function decryptEncryptionKey(
 
   // Unlisted tree with linkKey from URL - decrypt encryptedKey
   if (visibilityInfo.visibility === 'unlisted' && visibilityInfo.encryptedKey && linkKey) {
+    console.log('[decryptEncryptionKey] Attempting to decrypt unlisted tree:', {
+      linkKey,
+      encryptedKey: visibilityInfo.encryptedKey,
+      keyId: visibilityInfo.keyId,
+    });
     try {
       const decryptedHex = await visibilityHex.decryptKeyFromLink(visibilityInfo.encryptedKey, linkKey);
+      console.log('[decryptEncryptionKey] Decryption result:', decryptedHex ? 'success' : 'null');
       if (decryptedHex) {
         return fromHex(decryptedHex);
       }
-    } catch {
+      // Decryption returned null - key mismatch
+      console.warn('[decryptEncryptionKey] Key mismatch - linkKey does not decrypt encryptedKey');
+    } catch (e) {
       // Decryption failed - wrong key or corrupted data
+      console.error('[decryptEncryptionKey] Decryption failed:', e);
     }
+  } else if (visibilityInfo.visibility === 'unlisted') {
+    console.log('[decryptEncryptionKey] Unlisted tree but missing data:', {
+      hasEncryptedKey: !!visibilityInfo.encryptedKey,
+      hasLinkKey: !!linkKey,
+      linkKey,
+    });
   }
 
   // Unlisted or private tree - try selfEncryptedKey (owner access)
@@ -138,8 +153,6 @@ async function decryptEncryptionKey(
 export function useTreeRoot(): CID | null {
   const route = useRoute();
   const [rootCid, setRootCid] = useState<CID | null>(null);
-  const lastKeyRef = useRef<string | null>(null);
-  const lastLinkKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     // For permalinks (nhash routes), use CID from route (already decoded)
@@ -155,23 +168,20 @@ export function useTreeRoot(): CID | null {
     if (!resolverKey) {
       // No tree context (home, settings, etc.)
       setRootCid(null);
-      lastKeyRef.current = null;
-      lastLinkKeyRef.current = null;
       return;
     }
-
-    // Re-subscribe if key or linkKey changed
-    const keyChanged = lastKeyRef.current !== resolverKey;
-    const linkKeyChanged = lastLinkKeyRef.current !== route.linkKey;
-
-    if (!keyChanged && !linkKeyChanged) {
-      return;
-    }
-    lastKeyRef.current = resolverKey;
-    lastLinkKeyRef.current = route.linkKey;
 
     // Subscribe to resolver for live updates
+    // The effect cleanup will handle unsubscribing when deps change
+    console.log('[useTreeRoot] Subscribing to resolver:', resolverKey, 'with linkKey:', route.linkKey);
     const unsubscribe = subscribeToResolver(resolverKey, async (hash, encryptionKey, visibilityInfo) => {
+      console.log('[useTreeRoot] Resolver callback:', {
+        hasHash: !!hash,
+        hasEncryptionKey: !!encryptionKey,
+        visibility: visibilityInfo?.visibility,
+        hasEncryptedKey: !!visibilityInfo?.encryptedKey,
+        linkKey: route.linkKey,
+      });
       if (!hash) {
         setRootCid(null);
         return;

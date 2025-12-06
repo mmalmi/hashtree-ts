@@ -1,8 +1,18 @@
-import { useMemo } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { useLocation } from 'react-router-dom';
 import { isNHash, isNPath, nhashDecode, npathDecode } from 'hashtree';
 import { nip19 } from 'nostr-tools';
 import type { RouteInfo } from '../utils/route';
+
+// Subscribe to hash changes for proper reactivity
+function subscribeToHash(callback: () => void) {
+  window.addEventListener('hashchange', callback);
+  return () => window.removeEventListener('hashchange', callback);
+}
+
+function getHash() {
+  return window.location.hash;
+}
 
 /**
  * React hook to get route info from current URL
@@ -10,24 +20,34 @@ import type { RouteInfo } from '../utils/route';
  */
 export function useRoute(): RouteInfo {
   const location = useLocation();
+  // Subscribe to raw hash changes to catch ?k= param changes
+  const hash = useSyncExternalStore(subscribeToHash, getHash, getHash);
 
   return useMemo(() => {
     const hashPath = location.pathname;
     const parts = hashPath.split('/').filter(Boolean).map(decodeURIComponent);
 
     // Parse link key from query params (for unlisted trees)
-    // With HashRouter, params are part of the hash: /#/path?k=xxx
-    // React Router's location.search should contain this, but as a fallback
-    // we also parse from the raw hash
-    let linkKey = new URLSearchParams(location.search).get('k');
+    // With HashRouter, params are in the hash: /#/path?k=xxx
+    // React Router's location.search may or may not contain this depending on router version
+    // So we always parse from the raw hash to be safe
+    let linkKey: string | null = null;
+
+    // First try location.search (works in some React Router setups)
+    if (location.search) {
+      linkKey = new URLSearchParams(location.search).get('k');
+    }
+
+    // Always check raw hash as primary source for HashRouter
     if (!linkKey) {
-      const hashPart = window.location.hash;
-      const qIdx = hashPart.indexOf('?');
+      const qIdx = hash.indexOf('?');
       if (qIdx !== -1) {
-        const hashSearch = hashPart.slice(qIdx + 1);
+        const hashSearch = hash.slice(qIdx + 1);
         linkKey = new URLSearchParams(hashSearch).get('k');
       }
     }
+
+    console.log('[useRoute] linkKey:', linkKey, 'hash:', hash);
     // nhash route: /nhash1.../path... (path in URL segments, not encoded in nhash)
     if (parts[0] && isNHash(parts[0])) {
       try {
@@ -96,5 +116,5 @@ export function useRoute(): RouteInfo {
 
     // Home route
     return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, hash]);
 }
