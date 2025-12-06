@@ -6,21 +6,25 @@
  * - Binary messages: [4-byte LE request_id][data]
  *
  * Used as a fallback when WebRTC connections fail.
+ * Can both request data AND respond to incoming requests from the server.
  */
-import type { Hash } from '../types.js';
-import { toHex } from '../types.js';
+import type { Store, Hash } from '../types.js';
+import { toHex, fromHex } from '../types.js';
 import type { DataRequest, DataResponse } from './types.js';
 import {
   PendingRequest,
   handleBinaryResponse,
   handleResponseMessage,
   createRequest,
+  createResponse,
+  createBinaryMessage,
   clearPendingRequests,
 } from './protocol.js';
 
 export class WebSocketPeer {
   private ws: WebSocket | null = null;
   private url: string;
+  private localStore: Store | null;
   private pendingRequests = new Map<number, PendingRequest>();
   private nextRequestId = 1;
   private requestTimeout: number;
@@ -31,10 +35,12 @@ export class WebSocketPeer {
 
   constructor(options: {
     url: string;
+    localStore?: Store | null;
     requestTimeout?: number;
     debug?: boolean;
   }) {
     this.url = options.url;
+    this.localStore = options.localStore ?? null;
     this.requestTimeout = options.requestTimeout ?? 5000;
     this.debug = options.debug ?? false;
   }
@@ -163,11 +169,47 @@ export class WebSocketPeer {
 
       if (msg.type === 'res') {
         handleResponseMessage(msg as DataResponse, this.pendingRequests);
+      } else if (msg.type === 'req') {
+        // Server is forwarding a request from another peer
+        this.handleRequest(msg as DataRequest);
       }
       // Other message types (have, want, root) can be added as needed
     } catch (err) {
       this.log('Error handling message:', err);
     }
+  }
+
+  /**
+   * Handle incoming request from server (forwarded from another peer)
+   */
+  private async handleRequest(msg: DataRequest): Promise<void> {
+    if (!this.localStore) {
+      // No local store - stay silent, let server try next peer
+      this.log('Request for', msg.hash.slice(0, 16), '- no local store');
+      return;
+    }
+
+    const hash = fromHex(msg.hash);
+    const data = await this.localStore.get(hash);
+
+    if (data) {
+      // We have it - send response and data
+      this.log('Serving', msg.hash.slice(0, 16));
+      this.sendResponse(msg.id, msg.hash, true);
+      this.sendBinaryData(msg.id, data);
+    }
+    // If we don't have it, stay silent - server will timeout and try next peer
+    // (We don't send "not found" responses to save bandwidth)
+  }
+
+  private sendResponse(id: number, hash: string, found: boolean): void {
+    const msg = createResponse(id, hash, found);
+    this.sendJson(msg);
+  }
+
+  private sendBinaryData(requestId: number, data: Uint8Array): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.ws.send(createBinaryMessage(requestId, data));
   }
 
   private async handleBinaryMessage(data: ArrayBuffer): Promise<void> {

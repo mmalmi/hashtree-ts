@@ -127,8 +127,10 @@ export interface WebRTCStoreConfig {
     follows: PoolConfig;
     other: PoolConfig;
   };
-  // WebSocket fallback URL (e.g., wss://server.com/ws/data)
-  wsFallbackUrl?: string;
+  // WebSocket fallback URL for data relay when WebRTC fails
+  // Defaults to 'wss://hashtree.iris.to/ws/data'
+  // Set to null to disable fallback
+  wsFallbackUrl?: string | null;
 }
 
 export interface PeerStatus {
