@@ -29,6 +29,8 @@ export interface RouteInfo {
   isPermalink: boolean;
   /** Link key for unlisted trees (from ?k= param) */
   linkKey: string | null;
+  /** True when in streaming mode (from ?stream=1 param) */
+  isStreaming: boolean;
 }
 
 /**
@@ -45,11 +47,13 @@ export function parseRoute(): RouteInfo {
   const [hashPath, queryString] = fullHash.split('?');
   const parts = hashPath.split('/').filter(Boolean).map(decodeURIComponent);
 
-  // Parse link key from query params (for unlisted trees)
+  // Parse query params
   let linkKey: string | null = null;
+  let isStreaming = false;
   if (queryString) {
     const params = new URLSearchParams(queryString);
     linkKey = params.get('k');
+    isStreaming = params.get('stream') === '1';
   }
 
   // nhash route: #/nhash1.../path...
@@ -65,6 +69,7 @@ export function parseRoute(): RouteInfo {
         path: parts.slice(1),
         isPermalink: true,
         linkKey,
+        isStreaming,
       };
     } catch {
       // Fall through if decode fails
@@ -73,7 +78,7 @@ export function parseRoute(): RouteInfo {
 
   // Special routes (no tree context)
   if (['settings', 'wallet'].includes(parts[0])) {
-    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
+    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
   }
 
   // User routes
@@ -82,29 +87,28 @@ export function parseRoute(): RouteInfo {
 
     // Special user routes (profile, follows, edit)
     if (['profile', 'follows', 'edit'].includes(parts[1])) {
-      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
+      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
     }
 
     // Tree route: #/npub/treeName/path...
     if (parts[1] && !['profile', 'follows', 'edit'].includes(parts[1])) {
-      // Stream route is a special view, not a path within the tree
-      const isStreamRoute = parts[2] === 'stream';
       return {
         npub,
         treeName: parts[1],
         cid: null,
-        path: isStreamRoute ? [] : parts.slice(2),
+        path: parts.slice(2),
         isPermalink: false,
         linkKey,
+        isStreaming,
       };
     }
 
     // User view: #/npub
-    return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
+    return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
   }
 
   // Home route
-  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
+  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
 }
 
 /**

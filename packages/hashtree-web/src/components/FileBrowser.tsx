@@ -641,17 +641,27 @@ export function FileBrowser() {
           <div className="p-8 text-center">
             <div className="inline-flex items-center justify-center mb-4">
               {currentTree.visibility === 'unlisted' ? (
-                <LinkLockIcon className="text-3xl text-text-3" />
+                routeLinkKey ? (
+                  <span className="i-lucide-key-round text-3xl text-error" />
+                ) : (
+                  <LinkLockIcon className="text-3xl text-text-3" />
+                )
               ) : (
                 <span className="i-lucide-lock text-3xl text-text-3" />
               )}
             </div>
             <div className="text-text-2 font-medium mb-2">
-              {currentTree.visibility === 'unlisted' ? 'Link Required' : 'Private Folder'}
+              {currentTree.visibility === 'unlisted'
+                ? routeLinkKey
+                  ? 'Invalid Link Key'
+                  : 'Link Required'
+                : 'Private Folder'}
             </div>
             <div className="text-text-3 text-sm max-w-xs mx-auto">
               {currentTree.visibility === 'unlisted'
-                ? 'This folder requires a special link to access. Ask the owner for the link with the access key.'
+                ? routeLinkKey
+                  ? 'The link key provided is invalid or has expired. Ask the owner for a new link.'
+                  : 'This folder requires a special link to access. Ask the owner for the link with the access key.'
                 : 'This folder is private and can only be accessed by its owner.'}
             </div>
           </div>

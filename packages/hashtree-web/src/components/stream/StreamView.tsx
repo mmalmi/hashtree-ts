@@ -21,12 +21,19 @@ export function StreamView() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const navigate = useNavigate();
   const route = useRoute();
+  const selectedTree = useNostrStore(s => s.selectedTree);
   const { isRecording, recordingTime, streamStats } = useStreamState();
 
-  // Navigate back to tree root
-  const treeUrl = route.npub && route.treeName
-    ? `/${route.npub}/${route.treeName}`
+  // Build base URL for the current directory
+  const basePath = route.npub && route.treeName
+    ? `/${route.npub}/${route.treeName}${route.path.length ? '/' + route.path.join('/') : ''}`
     : '/';
+
+  // Get link key (prefer route, fallback to selectedTree)
+  const linkKey = route.linkKey ?? (selectedTree?.visibility === 'unlisted' && 'linkKey' in selectedTree ? selectedTree.linkKey : null);
+
+  // Build close URL (remove stream param but keep linkKey)
+  const closeUrl = linkKey ? `${basePath}?k=${linkKey}` : basePath;
 
   useEffect(() => {
     return () => {
@@ -38,8 +45,20 @@ export function StreamView() {
   const handleClose = () => {
     if (!isRecording) {
       stopPreview(videoRef.current);
-      navigate(treeUrl);
+      navigate(closeUrl);
     }
+  };
+
+  // When recording starts, navigate to the file URL (shareable link)
+  const handleStartRecording = (filename: string) => {
+    const fullFilename = `${filename}.webm`;
+    const filePath = `${basePath}/${encodeURIComponent(fullFilename)}`;
+    // Build query params: linkKey + stream=1
+    const params = [
+      linkKey ? `k=${linkKey}` : '',
+      'stream=1',
+    ].filter(Boolean).join('&');
+    navigate(`${filePath}?${params}`, { replace: true });
   };
 
   return (
@@ -79,14 +98,18 @@ export function StreamView() {
           </div>
         )}
 
-        <StreamControls videoRef={videoRef} onCancel={handleClose} />
-        <ShareLink />
+        <StreamControls videoRef={videoRef} onCancel={handleClose} onStartRecording={handleStartRecording} />
+        <ShareLink linkKey={linkKey} />
       </div>
     </div>
   );
 }
 
-function StreamControls({ videoRef, onCancel }: { videoRef: { current: HTMLVideoElement | null }; onCancel: () => void }) {
+function StreamControls({ videoRef, onCancel, onStartRecording }: {
+  videoRef: { current: HTMLVideoElement | null };
+  onCancel: () => void;
+  onStartRecording: (filename: string) => void;
+}) {
   const { isRecording, isPreviewing, streamFilename, persistStream } = useStreamState();
   const currentDirCid = useCurrentDirCid();
   const { entries } = useDirectoryEntries(currentDirCid);
@@ -170,7 +193,10 @@ function StreamControls({ videoRef, onCancel }: { videoRef: { current: HTMLVideo
 
       <div className="flex gap-2">
         <button
-          onClick={() => startRecording(videoRef.current)}
+          onClick={() => {
+            startRecording(videoRef.current);
+            onStartRecording(streamFilename);
+          }}
           className="flex-1 p-3 btn-danger"
         >
           <span className="i-lucide-circle mr-2" />
@@ -190,33 +216,34 @@ function StreamControls({ videoRef, onCancel }: { videoRef: { current: HTMLVideo
   );
 }
 
-function ShareLink() {
-  const { isRecording, streamFilename } = useStreamState();
-  const selectedTree = useNostrStore(s => s.selectedTree);
-  const route = useRoute();
+function ShareLink({ linkKey }: { linkKey: string | null }) {
+  const { isRecording } = useStreamState();
 
   if (!isRecording) return null;
 
-  if (selectedTree && route.npub && route.treeName) {
-    const filename = `${streamFilename}.webm`;
-    // Build URL from route path, excluding /stream suffix (which is the stream view route, not a directory)
-    const basePath = `${route.npub}/${route.treeName}`;
-    const pathWithoutStream = route.path.filter(p => p !== 'stream');
-    const dirPath = pathWithoutStream.length > 0 ? `/${pathWithoutStream.join('/')}` : '';
-    const shareUrl = `${window.location.origin}/#/${basePath}${dirPath}/${encodeURIComponent(filename)}`;
-    return (
-      <div className="p-3 bg-surface-1 rounded text-sm">
-        <div className="text-muted mb-1">Share link:</div>
-        <a href={shareUrl} target="_blank" className="text-accent break-all">
-          {shareUrl}
-        </a>
-      </div>
-    );
-  }
+  // The current URL (with stream=1) is the owner's view
+  // For viewers, we just remove the stream=1 param - same file path with ?k= for unlisted
+  const currentUrl = window.location.href;
+  // Remove stream=1 from URL to get viewer URL
+  const viewerUrl = currentUrl
+    .replace(/[&?]stream=1/, '')
+    .replace(/\?$/, ''); // Clean up trailing ? if it was the only param
 
   return (
-    <div className="p-3 bg-red-900/30 rounded text-sm text-danger">
-      Select a hashtree to enable live sharing
+    <div className="p-3 bg-surface-1 rounded text-sm">
+      <div className="text-muted mb-1">Share this link with viewers:</div>
+      <div className="flex gap-2 items-start">
+        <a href={viewerUrl} target="_blank" className="text-accent break-all flex-1">
+          {viewerUrl}
+        </a>
+        <button
+          onClick={() => navigator.clipboard.writeText(viewerUrl)}
+          className="btn-ghost shrink-0"
+          title="Copy link"
+        >
+          <span className="i-lucide-copy" />
+        </button>
+      </div>
     </div>
   );
 }

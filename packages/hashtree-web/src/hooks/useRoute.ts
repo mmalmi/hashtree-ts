@@ -27,27 +27,30 @@ export function useRoute(): RouteInfo {
     const hashPath = location.pathname;
     const parts = hashPath.split('/').filter(Boolean).map(decodeURIComponent);
 
-    // Parse link key from query params (for unlisted trees)
-    // With HashRouter, params are in the hash: /#/path?k=xxx
+    // Parse query params (for unlisted trees and streaming mode)
+    // With HashRouter, params are in the hash: /#/path?k=xxx&stream=1
     // React Router's location.search may or may not contain this depending on router version
     // So we always parse from the raw hash to be safe
     let linkKey: string | null = null;
+    let isStreaming = false;
 
     // First try location.search (works in some React Router setups)
     if (location.search) {
-      linkKey = new URLSearchParams(location.search).get('k');
+      const params = new URLSearchParams(location.search);
+      linkKey = params.get('k');
+      isStreaming = params.get('stream') === '1';
     }
 
     // Always check raw hash as primary source for HashRouter
-    if (!linkKey) {
-      const qIdx = hash.indexOf('?');
-      if (qIdx !== -1) {
-        const hashSearch = hash.slice(qIdx + 1);
-        linkKey = new URLSearchParams(hashSearch).get('k');
-      }
+    const qIdx = hash.indexOf('?');
+    if (qIdx !== -1) {
+      const hashSearch = hash.slice(qIdx + 1);
+      const params = new URLSearchParams(hashSearch);
+      if (!linkKey) linkKey = params.get('k');
+      if (!isStreaming) isStreaming = params.get('stream') === '1';
     }
 
-    console.log('[useRoute] linkKey:', linkKey, 'hash:', hash);
+    console.log('[useRoute] linkKey:', linkKey, 'isStreaming:', isStreaming, 'hash:', hash);
     // nhash route: /nhash1.../path... (path in URL segments, not encoded in nhash)
     if (parts[0] && isNHash(parts[0])) {
       try {
@@ -59,6 +62,7 @@ export function useRoute(): RouteInfo {
           path: parts.slice(1), // Path comes from URL segments after nhash
           isPermalink: true,
           linkKey,
+          isStreaming,
         };
       } catch {
         // Invalid nhash, fall through
@@ -78,6 +82,7 @@ export function useRoute(): RouteInfo {
           path: decoded.path || [],
           isPermalink: false,
           linkKey,
+          isStreaming,
         };
       } catch {
         // Invalid npath, fall through
@@ -86,7 +91,7 @@ export function useRoute(): RouteInfo {
 
     // Special routes (no tree context)
     if (['settings', 'wallet'].includes(parts[0])) {
-      return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
+      return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
     }
 
     // User routes
@@ -95,7 +100,7 @@ export function useRoute(): RouteInfo {
 
       // Special user routes (profile, follows, edit)
       if (['profile', 'follows', 'edit'].includes(parts[1])) {
-        return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
+        return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
       }
 
       // Tree route: /npub/treeName/path...
@@ -107,14 +112,15 @@ export function useRoute(): RouteInfo {
           path: parts.slice(2),
           isPermalink: false,
           linkKey,
+          isStreaming,
         };
       }
 
       // User view: /npub
-      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
+      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
     }
 
     // Home route
-    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null };
+    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
   }, [location.pathname, location.search, hash]);
 }

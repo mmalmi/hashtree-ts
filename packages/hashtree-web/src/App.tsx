@@ -92,6 +92,14 @@ function ExplorerLayout({ children }: { children: React.ReactNode }) {
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const isFullscreen = searchParams.get('fullscreen') === '1';
 
+  // Check if user is the tree owner for streaming mode
+  const selectedTree = useNostrStore(s => s.selectedTree);
+  const pubkey = useNostrStore(s => s.pubkey);
+  const isOwner = selectedTree && pubkey && selectedTree.pubkey === pubkey;
+
+  // Streaming mode: show StreamView when ?stream=1 and user is owner
+  const showStreamView = route.isStreaming && isOwner;
+
   // In fullscreen mode, hide file browser entirely
   if (isFullscreen) {
     return (
@@ -101,23 +109,28 @@ function ExplorerLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+  // When streaming is active, show StreamView instead of Viewer
+  const rightPanel = showStreamView ? <StreamView /> : <Viewer />;
+  // Show right panel when streaming or when file selected
+  const showRightPanel = showStreamView || hasFileSelected;
+
   return (
     <>
-      {/* File browser - hidden on mobile when file selected */}
+      {/* File browser - hidden on mobile when streaming or file selected */}
       <div className={
-        hasFileSelected
+        showRightPanel
           ? 'hidden lg:flex lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col'
           : 'flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col'
       }>
         {children}
       </div>
-      {/* Viewer - shown on mobile when file selected */}
+      {/* Right panel (Viewer or StreamView) - shown on mobile when streaming or file selected */}
       <div className={
-        hasFileSelected
+        showRightPanel
           ? 'flex flex-1 flex-col min-w-0 min-h-0'
           : 'hidden lg:flex flex-1 flex-col min-w-0 min-h-0'
       }>
-        <Viewer />
+        {rightPanel}
       </div>
     </>
   );
@@ -219,31 +232,6 @@ function ProfileRouteInner() {
         <div className="border-t border-surface-3">
           <FileBrowser />
         </div>
-      </div>
-    </>
-  );
-}
-
-// Route: Stream view within a tree
-function StreamRouteInner() {
-  const { npub, treeName } = useParams<{ npub: string; treeName: string }>();
-
-  useEffect(() => {
-    if (!npub || !treeName) return;
-    loadFromNostr(npub, treeName, []);
-  }, [npub, treeName]);
-
-  if (!npub || !treeName) return null;
-
-  return (
-    <>
-      {/* File browser - hidden on mobile, visible on desktop */}
-      <div className="hidden lg:flex lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col">
-        <FileBrowser key={`${npub}/${treeName}`} />
-      </div>
-      {/* Stream view */}
-      <div className="flex flex-1 flex-col min-w-0 min-h-0">
-        <StreamView />
       </div>
     </>
   );
@@ -498,7 +486,6 @@ export function App() {
               <Route path="/:npub/follows" element={<FollowsRouteInner />} />
               <Route path="/:npub/edit" element={<EditProfilePage />} />
               <Route path="/:npub/profile" element={<ProfileRouteInner />} />
-              <Route path="/:npub/:treeName/stream" element={<StreamRouteInner />} />
               <Route path="/:npub/:treeName/*" element={<TreeRouteInner />} />
               {/* Catch-all for npub user view, nhash permalink (with optional path), or npath live reference */}
               <Route path="/:id/*" element={<NpubOrNHashOrNPathRoute />} />

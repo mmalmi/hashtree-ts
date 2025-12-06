@@ -81,9 +81,14 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
 
   if (!dirCid && !canEdit) return null;
 
-  // Build stream URL if in tree context
+  // Build stream URL - goes to directory with ?stream=1 (StreamView will handle filename)
+  // Preserve ?k= for unlisted trees
+  const streamQueryParams = [
+    route.linkKey ? `k=${route.linkKey}` : '',
+    'stream=1',
+  ].filter(Boolean).join('&');
   const streamUrl = route.npub && route.treeName
-    ? `/${route.npub}/${route.treeName}/stream`
+    ? `/${route.npub}/${route.treeName}${route.path.length ? '/' + route.path.join('/') : ''}?${streamQueryParams}`
     : null;
 
   const btnClass = compact
