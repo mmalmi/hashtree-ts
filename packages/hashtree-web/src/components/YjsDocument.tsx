@@ -143,24 +143,42 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     }
   }, [canEdit, rootCid, currentPath, userNpub, route.treeName]);
 
-  // Ensure entries is always an array
-  const safeEntries = entries ?? [];
+  // Ensure entries is always an array - use a stable empty array reference
+  const emptyArray = useMemo(() => [] as TreeEntry[], []);
+  const safeEntries = entries ?? emptyArray;
 
   // Track the last saved state to detect changes
   const lastSavedStateRef = useRef<Uint8Array | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track if we've already loaded the document (to avoid reload on save)
-  const hasLoadedRef = useRef(false);
+  // Track the identity we loaded for (to detect stale entries during navigation)
+  const loadedForIdentityRef = useRef<string | null>(null);
 
-  // Create Yjs document
+  // Document identity based on route - this is what we SHOULD be loading
+  // When viewing someone else's tree, use their npub; otherwise use own npub or 'local'
+  const expectedIdentity = `${viewedNpub || userNpub || 'local'}/${route.treeName || ''}`;
+
+  // Create Yjs document - single instance per component mount
+  // Component is remounted via key prop when navigating to different documents
   const ydoc = useMemo(() => new Y.Doc(), []);
 
   // Load and apply deltas from the directory and collaborators
   useEffect(() => {
-    // Skip if we've already loaded (prevents reload on save)
-    if (hasLoadedRef.current) {
+    // Skip if we've already loaded for this exact identity (prevents reload on save)
+    // But allow reload if identity changed (navigation to different document)
+    if (loadedForIdentityRef.current === expectedIdentity) {
       return;
     }
+
+    // If we loaded for a DIFFERENT identity, we need to reload
+    // This can happen when entries prop updates after navigation
+    // With the key prop in DirectoryActions, the component should remount
+    // so this branch shouldn't be hit normally.
+    if (loadedForIdentityRef.current !== null && loadedForIdentityRef.current !== expectedIdentity) {
+      return;
+    }
+
+    // Mark as loading for this identity immediately to prevent concurrent loads
+    loadedForIdentityRef.current = expectedIdentity;
 
     let cancelled = false;
 
@@ -192,7 +210,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
           .filter(e => !e.isTree && isDeltaFile(e.name))
           .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-        // Load and apply local deltas first
+        // Load and apply local deltas
         for (const entry of deltaEntries) {
           if (cancelled) return;
 
@@ -221,7 +239,6 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
 
             // Resolve the editor's tree root with encryption key via subscription
             const resolverKey = `${npub}/${treeName}`;
-            console.log(`[YjsDocument loadDeltas] Resolving ${resolverKey.slice(0, 30)}...`);
             const resolved = await new Promise<{ hash: Hash; encryptionKey?: Hash } | null>((resolve) => {
               let hasResolved = false;
               const unsub = resolver.subscribe(resolverKey, (hash, encryptionKey) => {
@@ -229,10 +246,8 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
                 hasResolved = true;
                 unsub();
                 if (hash) {
-                  console.log(`[YjsDocument loadDeltas] Resolved ${resolverKey.slice(0, 30)}... -> hash: ${toHex(hash).slice(0, 16)}..., key: ${encryptionKey ? 'yes' : 'no'}`);
                   resolve({ hash, encryptionKey });
                 } else {
-                  console.log(`[YjsDocument loadDeltas] Resolved ${resolverKey.slice(0, 30)}... -> null`);
                   resolve(null);
                 }
               });
@@ -241,7 +256,6 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
                 if (!hasResolved) {
                   hasResolved = true;
                   unsub();
-                  console.log(`[YjsDocument loadDeltas] Timeout resolving ${resolverKey.slice(0, 30)}...`);
                   resolve(null);
                 }
               }, 5000);
@@ -285,7 +299,6 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
         }
 
         if (!cancelled) {
-          hasLoadedRef.current = true;
           setLoading(false);
         }
       } catch (err) {
@@ -301,7 +314,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     return () => {
       cancelled = true;
     };
-  }, [dirCid?.hash ? toHex(dirCid.hash) : null, safeEntries, ydoc, route.treeName, currentPath.join('/'), route.npub]);
+  }, [safeEntries, ydoc, route.treeName, currentPath.join('/'), route.npub, expectedIdentity]);
 
   // Subscribe to other editors' trees and fetch updates when they change
   useEffect(() => {
@@ -317,44 +330,27 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
 
     for (const npub of otherEditors) {
       const resolverKey = `${npub}/${route.treeName}`;
-      console.log(`[YjsDocument subscription] Subscribing to ${resolverKey.slice(0, 30)}...`);
 
       const unsub = resolver.subscribe(resolverKey, async (hash: Hash | null, encryptionKey?: Hash) => {
-        if (!hash) {
-          console.log(`[YjsDocument subscription] ${resolverKey.slice(0, 30)}... -> null`);
-          return;
-        }
-
-        console.log(`[YjsDocument subscription] ${resolverKey.slice(0, 30)}... -> ${toHex(hash).slice(0, 16)}...`);
+        if (!hash) return;
 
         try {
           // Fetch and apply deltas from this editor (include encryption key)
           const rootCid = makeCid(hash, encryptionKey);
-          console.log(`[YjsDocument subscription] Resolving path ${docPath} in ${toHex(hash).slice(0, 16)}...`);
           const result = await tree.resolvePath(rootCid, docPath);
-          if (!result) {
-            console.log(`[YjsDocument subscription] Path not found: ${docPath}`);
-            return;
-          }
+          if (!result) return;
 
-          console.log(`[YjsDocument subscription] Resolved to CID hash: ${toHex(result.cid.hash).slice(0, 16)}..., key: ${result.cid.key ? 'yes' : 'no'}`);
           const isDir = await tree.isDirectory(result.cid);
-          if (!isDir) {
-            console.log(`[YjsDocument subscription] Not a directory`);
-            return;
-          }
+          if (!isDir) return;
 
           const entries = await tree.listDirectory(result.cid);
-          console.log(`[YjsDocument subscription] Found ${entries.length} entries in dir`);
           const deltaEntries = entries
             .filter(e => !e.isTree && isDeltaFile(e.name))
             .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-          console.log(`[YjsDocument subscription] Found ${deltaEntries.length} delta files: ${deltaEntries.map(e => e.name).join(', ')}`);
           for (const entry of deltaEntries) {
             const data = await tree.readFile(entry.cid);
             if (data) {
-              console.log(`[YjsDocument subscription] Applying delta ${entry.name} (${data.length} bytes)`);
               // Mark as 'remote' so auto-save doesn't trigger
               Y.applyUpdate(ydoc, data, 'remote');
             }
@@ -409,26 +405,21 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
         const encryptionKey = myTree?.encryptionKey;
 
         // Check local cache first (most up-to-date after recent saves)
-        const cacheKey = `${userNpub.slice(0, 16)}.../${route.treeName}`;
         const cachedHash = getLocalRootCache(userNpub, route.treeName);
         if (cachedHash) {
-          console.log(`[YjsDocument] Using local cache for tree root: ${cacheKey} -> ${toHex(cachedHash).slice(0, 16)}... (key: ${encryptionKey ? 'yes' : 'no'})`);
           targetRootCid = makeCid(cachedHash, encryptionKey);
         } else if (myTree) {
           // Use hash and key from ownTrees
-          console.log('[YjsDocument] Using ownTrees hash:', toHex(myTree.hash).slice(0, 16), '(key:', encryptionKey ? 'yes' : 'no', ')');
           targetRootCid = makeCid(myTree.hash, encryptionKey);
         } else {
           // Fallback to sync cache or async resolve
           targetRootCid = getTreeRootSync(userNpub, route.treeName);
-          console.log('[YjsDocument] getTreeRootSync result:', targetRootCid ? 'found' : 'null');
 
           if (!targetRootCid) {
             // User's tree not in cache, resolve it async
             const resolver = getRefResolver();
             const resolverKey = `${userNpub}/${route.treeName}`;
             const hash = await resolver.resolve(resolverKey);
-            console.log('[YjsDocument] async resolve result:', hash ? toHex(hash).slice(0, 16) : 'null');
             if (hash) {
               // Note: encryptionKey is null here since myTree wasn't found
               // This path is rarely hit but we include key for consistency
@@ -464,7 +455,6 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
         const resolved = await tree.resolvePath(targetRootCid, pathStr);
 
         if (!resolved) {
-          console.log(`[YjsDocument] Path "${pathStr}" doesn't exist in target tree, creating it...`);
 
           // Create the document folder hierarchy
           // For each segment of the path, we need to ensure it exists
@@ -492,7 +482,6 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
                   0,
                   true
                 );
-                console.log(`[YjsDocument] Created directory "${segmentName}" at path "${partialPath.join('/')}"`);
               }
             }
           }
@@ -569,10 +558,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     const handleUpdate = (_update: Uint8Array, origin: unknown) => {
       // Only auto-save for local changes (origin is null/undefined for local edits)
       // Remote updates from Y.applyUpdate have 'remote' as origin
-      if (origin === 'remote') {
-        console.log('[YjsDocument] Skipping auto-save for remote update');
-        return;
-      }
+      if (origin === 'remote') return;
       scheduleAutoSave();
     };
 
@@ -587,6 +573,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
   }, [ydoc, canEdit, scheduleAutoSave]);
 
   // Create Tiptap editor with Yjs collaboration
+  // Only create editor after loading completes to ensure Y.Doc has been populated with deltas
   const editor = useEditor({
     extensions: [
       StarterKit,
@@ -595,10 +582,11 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
       }),
       Collaboration.configure({
         document: ydoc,
+        field: 'default',  // Use 'default' XmlFragment - must match across all instances
       }),
     ],
     editable: canEdit,
-  }, [ydoc, canEdit]);
+  }, [ydoc, canEdit, loading]);  // Re-create editor when loading state changes
 
   if (loading) {
     return (
@@ -664,7 +652,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
             className="btn-ghost flex items-center gap-1 px-2 py-1 text-sm"
             title="Share document"
           >
-            <span className="i-lucide-share-2" />
+            <span className="i-lucide-share" />
           </button>
           {/* Collaborators button (show for all, read-only for viewers) */}
           <button

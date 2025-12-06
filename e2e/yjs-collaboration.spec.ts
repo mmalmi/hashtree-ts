@@ -63,7 +63,7 @@ async function createDocument(page: Page, name: string) {
 // Helper to type content in the editor
 async function typeInEditor(page: Page, content: string) {
   const editor = page.locator('.ProseMirror');
-  await expect(editor).toBeVisible({ timeout: 5000 });
+  await expect(editor).toBeVisible({ timeout: 15000 });  // Increased timeout for slow document loading
   await editor.click();
   await page.keyboard.type(content);
   await page.waitForTimeout(500);
@@ -140,10 +140,14 @@ test.describe('Yjs Collaborative Document Editing', () => {
 
     // Log console for debugging
     pageA.on('console', msg => {
-      if (msg.type() === 'error') console.log(`[User A Error] ${msg.text()}`);
+      const text = msg.text();
+      if (msg.type() === 'error') console.log(`[User A Error] ${text}`);
+      if (text.includes('[YjsDocument')) console.log(`[User A] ${text}`);
     });
     pageB.on('console', msg => {
-      if (msg.type() === 'error') console.log(`[User B Error] ${msg.text()}`);
+      const text = msg.text();
+      if (msg.type() === 'error') console.log(`[User B Error] ${text}`);
+      if (text.includes('[YjsDocument')) console.log(`[User B] ${text}`);
     });
 
     try {

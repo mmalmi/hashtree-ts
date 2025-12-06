@@ -23,7 +23,7 @@ export default defineConfig({
     // CollaboratorsModal and QRScanner icons
     'i-lucide-qr-code',
     'i-lucide-search',
-    'i-lucide-share-2',
+    'i-lucide-share',
     'i-lucide-users',
     'i-lucide-x',
     'i-lucide-user',

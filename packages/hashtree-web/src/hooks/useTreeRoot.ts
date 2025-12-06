@@ -102,14 +102,8 @@ async function decryptEncryptionKey(
 
   // Unlisted tree with linkKey from URL - decrypt encryptedKey
   if (visibilityInfo.visibility === 'unlisted' && visibilityInfo.encryptedKey && linkKey) {
-    console.log('[decryptEncryptionKey] Attempting to decrypt unlisted tree:', {
-      linkKey,
-      encryptedKey: visibilityInfo.encryptedKey,
-      keyId: visibilityInfo.keyId,
-    });
     try {
       const decryptedHex = await visibilityHex.decryptKeyFromLink(visibilityInfo.encryptedKey, linkKey);
-      console.log('[decryptEncryptionKey] Decryption result:', decryptedHex ? 'success' : 'null');
       if (decryptedHex) {
         return fromHex(decryptedHex);
       }
@@ -119,12 +113,6 @@ async function decryptEncryptionKey(
       // Decryption failed - wrong key or corrupted data
       console.error('[decryptEncryptionKey] Decryption failed:', e);
     }
-  } else if (visibilityInfo.visibility === 'unlisted') {
-    console.log('[decryptEncryptionKey] Unlisted tree but missing data:', {
-      hasEncryptedKey: !!visibilityInfo.encryptedKey,
-      hasLinkKey: !!linkKey,
-      linkKey,
-    });
   }
 
   // Unlisted or private tree - try selfEncryptedKey (owner access)
@@ -176,19 +164,15 @@ export function useTreeRoot(): CID | null {
       return;
     }
 
+    // Reset rootCid to null while waiting for the new tree to resolve
+    // This prevents stale data from the previous tree being used
+    setRootCid(null);
+
     // Subscribe to resolver for live updates
     // The effect cleanup will handle unsubscribing when deps change
-    console.log('[useTreeRoot] Subscribing to resolver:', resolverKey, 'with linkKey:', route.linkKey);
     const unsubscribe = subscribeToResolver(resolverKey, async (hash, encryptionKey, visibilityInfo) => {
       // Use ref to get current linkKey value, avoiding stale closure
       const currentLinkKey = linkKeyRef.current;
-      console.log('[useTreeRoot] Resolver callback:', {
-        hasHash: !!hash,
-        hasEncryptionKey: !!encryptionKey,
-        visibility: visibilityInfo?.visibility,
-        hasEncryptedKey: !!visibilityInfo?.encryptedKey,
-        linkKey: currentLinkKey,
-      });
       if (!hash) {
         setRootCid(null);
         return;

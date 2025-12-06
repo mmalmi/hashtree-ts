@@ -220,6 +220,7 @@ export class WebRTCStore implements Store {
       } else {
         this.log('WebSocket fallback failed to connect');
       }
+      this.emit({ type: 'update' });
     });
   }
 
@@ -683,6 +684,16 @@ export class WebRTCStore implements Store {
    */
   getPoolConfig(): { follows: PoolConfig; other: PoolConfig } {
     return { ...this.pools };
+  }
+
+  /**
+   * Get WebSocket fallback status
+   */
+  getWsFallbackStatus(): { url: string | null; connected: boolean } {
+    return {
+      url: this.config.wsFallbackUrl,
+      connected: this.wsPeer?.isConnected ?? false,
+    };
   }
 
   // Store interface implementation

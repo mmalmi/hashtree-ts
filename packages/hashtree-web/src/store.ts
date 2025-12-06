@@ -32,6 +32,12 @@ export interface StorageStats {
   bytes: number;
 }
 
+// WebSocket fallback status
+export interface WsFallbackStatus {
+  url: string | null;
+  connected: boolean;
+}
+
 // App state store
 // Note: rootCid is now derived from URL via useTreeRoot hook (see hooks/useTreeRoot.ts)
 interface AppState {
@@ -39,6 +45,7 @@ interface AppState {
   peerCount: number;
   peers: PeerStatus[];
   myPeerId: string | null;
+  wsFallback: WsFallbackStatus;
 
   // Storage stats
   stats: StorageStats;
@@ -47,6 +54,7 @@ interface AppState {
   setPeerCount: (count: number) => void;
   setPeers: (peers: PeerStatus[]) => void;
   setMyPeerId: (id: string | null) => void;
+  setWsFallback: (status: WsFallbackStatus) => void;
   setStats: (stats: StorageStats) => void;
 }
 
@@ -54,11 +62,13 @@ export const useAppStore = create<AppState>((set) => ({
   peerCount: 0,
   peers: [],
   myPeerId: null,
+  wsFallback: { url: null, connected: false },
   stats: { items: 0, bytes: 0 },
 
   setPeerCount: (count) => set({ peerCount: count }),
   setPeers: (peers) => set({ peers }),
   setMyPeerId: (id) => set({ myPeerId: id }),
+  setWsFallback: (status) => set({ wsFallback: status }),
   setStats: (stats) => set({ stats }),
 }));
 
@@ -159,6 +169,7 @@ export function initWebRTC(
     if (event.type === 'update') {
       useAppStore.getState().setPeerCount(webrtcStore?.getConnectedCount() ?? 0);
       useAppStore.getState().setPeers(webrtcStore?.getPeers() ?? []);
+      useAppStore.getState().setWsFallback(webrtcStore?.getWsFallbackStatus() ?? { url: null, connected: false });
     }
   });
 
@@ -177,6 +188,7 @@ export function initWebRTC(
   });
 
   useAppStore.getState().setMyPeerId(webrtcStore.getMyPeerId());
+  useAppStore.getState().setWsFallback(webrtcStore.getWsFallbackStatus());
   webrtcStore.start();
 }
 
@@ -188,6 +200,7 @@ export function stopWebRTC() {
     useAppStore.getState().setPeerCount(0);
     useAppStore.getState().setPeers([]);
     useAppStore.getState().setMyPeerId(null);
+    useAppStore.getState().setWsFallback({ url: null, connected: false });
     _tree = new HashTree({ store: idbStore, chunkSize: 1024 });
   }
 }

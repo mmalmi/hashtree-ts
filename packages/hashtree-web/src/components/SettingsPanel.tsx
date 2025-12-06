@@ -14,6 +14,7 @@ export function SettingsPage() {
   const peerList = useAppStore(s => s.peers);
   const peerCountVal = useAppStore(s => s.peerCount);
   const statsVal = useAppStore(s => s.stats);
+  const wsFallback = useAppStore(s => s.wsFallback);
   const rootCidVal = useTreeRoot();
   const myPeerId = useAppStore(s => s.myPeerId);
   const relayList = useNostrStore(s => s.relays);
@@ -81,6 +82,23 @@ export function SettingsPage() {
                 </div>
               );
             })}
+            {wsFallback.url && (
+              <div className="flex items-center gap-2 p-3 text-sm">
+                <span
+                  className={`w-2 h-2 rounded-full shrink-0 ${wsFallback.connected ? 'bg-success' : 'bg-warning'}`}
+                />
+                <span className="text-text-1 truncate">
+                  {(() => {
+                    try {
+                      return new URL(wsFallback.url).hostname;
+                    } catch {
+                      return wsFallback.url;
+                    }
+                  })()}
+                </span>
+                <span className="text-muted text-xs ml-auto">(data fallback)</span>
+              </div>
+            )}
           </div>
         </div>
 
