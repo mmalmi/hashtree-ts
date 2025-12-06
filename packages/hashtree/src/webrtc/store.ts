@@ -87,6 +87,8 @@ export class WebRTCStore implements Store {
   private eventHandlers = new Set<WebRTCStoreEventHandler>();
   private running = false;
   private wantedHashes = new Map<Hash, WantedHash[]>();
+  // Deduplicate concurrent get() calls for the same hash
+  private pendingGets = new Map<string, Promise<Uint8Array | null>>();
 
   constructor(config: WebRTCStoreConfig) {
     this.signer = config.signer;
@@ -708,6 +710,33 @@ export class WebRTCStore implements Store {
       if (local) return local;
     }
 
+    // Deduplicate: if there's already a pending request for this hash, wait for it
+    const hashHex = toHex(hash);
+    const pendingGet = this.pendingGets.get(hashHex);
+    if (pendingGet) {
+      this.log('Deduplicating get for hash:', hashHex.slice(0, 16));
+      return pendingGet;
+    }
+
+    // Create the actual fetch promise
+    const fetchPromise = this.fetchFromPeers(hash);
+
+    // Store it for deduplication
+    this.pendingGets.set(hashHex, fetchPromise);
+
+    // Clean up when done
+    try {
+      const result = await fetchPromise;
+      return result;
+    } finally {
+      this.pendingGets.delete(hashHex);
+    }
+  }
+
+  /**
+   * Internal method to fetch data from peers (separated for deduplication)
+   */
+  private async fetchFromPeers(hash: Hash): Promise<Uint8Array | null> {
     // Get currently connected peers (prioritize follows pool)
     const triedPeers = new Set<string>();
     const allPeers = Array.from(this.peers.values())

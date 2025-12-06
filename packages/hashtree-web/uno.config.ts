@@ -20,6 +20,17 @@ export default defineConfig({
     'i-lucide-minus',
     'i-lucide-undo',
     'i-lucide-redo',
+    // CollaboratorsModal and QRScanner icons
+    'i-lucide-qr-code',
+    'i-lucide-search',
+    'i-lucide-share-2',
+    'i-lucide-users',
+    'i-lucide-x',
+    'i-lucide-user',
+    // VisibilityIcon icons
+    'i-lucide-globe',
+    'i-lucide-link',
+    'i-lucide-lock',
   ],
   presets: [
     presetUno(),

@@ -46,8 +46,8 @@ interface GitHistoryTarget {
 interface CollaboratorsTarget {
   /** Current list of collaborator npubs */
   npubs: string[];
-  /** Callback to save changes */
-  onSave: (npubs: string[]) => void;
+  /** Callback to save changes (undefined = read-only mode) */
+  onSave?: (npubs: string[]) => void;
 }
 
 
@@ -192,7 +192,7 @@ export function closeShareModal() {
   emit();
 }
 
-export function openCollaboratorsModal(npubs: string[], onSave: (npubs: string[]) => void) {
+export function openCollaboratorsModal(npubs: string[], onSave?: (npubs: string[]) => void) {
   state = { ...state, showCollaboratorsModal: true, collaboratorsTarget: { npubs, onSave } };
   emit();
 }

@@ -80,13 +80,13 @@ async function waitForSave(page: Page) {
 // Note: This assumes we're viewing the YjsDocument (inside the document folder)
 async function setEditors(page: Page, npubs: string[]) {
   // Click the collaborators button (users icon) in the toolbar
-  const collabButton = page.locator('button[title="Manage collaborators"]');
+  const collabButton = page.locator('button[title="Manage editors"]');
   await expect(collabButton).toBeVisible({ timeout: 5000 });
   await collabButton.click();
   await page.waitForTimeout(500);
 
   // Wait for the modal to appear
-  const modal = page.locator('h2:has-text("Collaborators")');
+  const modal = page.locator('h2:has-text("Manage Editors")');
   await expect(modal).toBeVisible({ timeout: 5000 });
 
   // Add each npub
@@ -94,9 +94,17 @@ async function setEditors(page: Page, npubs: string[]) {
     const input = page.locator('input[placeholder="npub1..."]');
     await input.fill(npub);
 
+    // Click Add button to show preview
     const addButton = page.getByRole('button', { name: 'Add' });
     await addButton.click();
     await page.waitForTimeout(300);
+
+    // Wait for preview and click confirm
+    const confirmButton = page.locator('button:has-text("Add User"), button:has-text("Add ")');
+    if (await confirmButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await confirmButton.click();
+      await page.waitForTimeout(300);
+    }
   }
 
   // Save

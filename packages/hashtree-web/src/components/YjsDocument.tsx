@@ -24,7 +24,7 @@ import { getRefResolver, getResolverKey } from '../refResolver';
 import { useRoute, useCurrentPath, useTreeRoot, useTrees, getTreeRootSync } from '../hooks';
 import { useNostrStore, autosaveIfOwn, saveHashtree } from '../nostr';
 import { buildRouteUrl } from '../actions';
-import { openForkModal, openCollaboratorsModal } from '../hooks/useModals';
+import { openForkModal, openCollaboratorsModal, openShareModal } from '../hooks/useModals';
 import { updateLocalRootCache, getLocalRootCache } from '../treeRootCache';
 
 interface YjsDocumentProps {
@@ -105,8 +105,14 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     const tree = getTree();
 
     try {
+      // Ensure owner's npub is always included in the list
+      let allEditors = [...npubs];
+      if (userNpub && !allEditors.includes(userNpub)) {
+        allEditors = [userNpub, ...allEditors];
+      }
+
       // Create .yjs file content (one npub per line)
-      const content = npubs.join('\n');
+      const content = allEditors.join('\n');
       const encoder = new TextEncoder();
       const data = encoder.encode(content);
 
@@ -130,17 +136,12 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
         updateLocalRootCache(userNpub, route.treeName, newRootCid.hash);
       }
 
-      // Update local state
-      setCollaborators(npubs);
+      // Update local state with full list including owner
+      setCollaborators(allEditors);
     } catch (err) {
       console.error('Failed to save collaborators:', err);
     }
   }, [canEdit, rootCid, currentPath, userNpub, route.treeName]);
-
-  // Handle opening collaborators modal
-  const handleCollaborators = () => {
-    openCollaboratorsModal(collaborators, saveCollaborators);
-  };
 
   // Ensure entries is always an array
   const safeEntries = entries ?? [];
@@ -148,12 +149,19 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
   // Track the last saved state to detect changes
   const lastSavedStateRef = useRef<Uint8Array | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track if we've already loaded the document (to avoid reload on save)
+  const hasLoadedRef = useRef(false);
 
   // Create Yjs document
   const ydoc = useMemo(() => new Y.Doc(), []);
 
   // Load and apply deltas from the directory and collaborators
   useEffect(() => {
+    // Skip if we've already loaded (prevents reload on save)
+    if (hasLoadedRef.current) {
+      return;
+    }
+
     let cancelled = false;
 
     async function loadDeltas() {
@@ -277,6 +285,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
         }
 
         if (!cancelled) {
+          hasLoadedRef.current = true;
           setLoading(false);
         }
       } catch (err) {
@@ -649,19 +658,32 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
               </span>
             )}
           </div>
-          {/* Collaborators button (only show for own trees) */}
-          {isOwnTree && (
-            <button
-              onClick={handleCollaborators}
-              className="btn-ghost flex items-center gap-1 px-2 py-1 text-sm"
-              title="Manage collaborators"
-            >
-              <span className="i-lucide-users" />
-              {collaborators.length > 0 && (
-                <span className="text-xs bg-surface-2 px-1.5 rounded-full">{collaborators.length}</span>
-              )}
-            </button>
-          )}
+          {/* Share button */}
+          <button
+            onClick={() => openShareModal(window.location.href)}
+            className="btn-ghost flex items-center gap-1 px-2 py-1 text-sm"
+            title="Share document"
+          >
+            <span className="i-lucide-share-2" />
+          </button>
+          {/* Collaborators button (show for all, read-only for viewers) */}
+          <button
+            onClick={() => {
+              if (isOwnTree) {
+                openCollaboratorsModal(collaborators, saveCollaborators);
+              } else {
+                // Read-only mode: pass undefined for onSave
+                openCollaboratorsModal(collaborators);
+              }
+            }}
+            className="btn-ghost flex items-center gap-1 px-2 py-1 text-sm"
+            title={isOwnTree ? "Manage editors" : "View editors"}
+          >
+            <span className="i-lucide-users" />
+            {collaborators.length > 0 && (
+              <span className="text-xs bg-surface-2 px-1.5 rounded-full">{collaborators.length}</span>
+            )}
+          </button>
           {/* Fork button */}
           <button
             onClick={handleFork}

@@ -34,7 +34,7 @@ import {
 import { markFilesChanged } from './hooks/useRecentlyChanged';
 import { nip19 } from 'nostr-tools';
 import { useNostrStore } from './nostr';
-import { useRoute, addRecent } from './hooks';
+import { useRoute, addRecent, useTrees } from './hooks';
 import { looksLikeFile } from './utils/route';
 import { useWalletStore, initWallet } from './wallet';
 
@@ -142,21 +142,40 @@ function ExplorerLayout({ children }: { children: React.ReactNode }) {
 function HomeRoute() {
   const npub = useNostrStore(s => s.npub);
   const isNewUser = useNostrStore(s => s.isNewUser);
+  const trees = useTrees(npub);
 
   useEffect(() => {
     // Create default folders for newly generated users
-    if (npub && isNewUser) {
-      useNostrStore.getState().setIsNewUser(false);
+    // Also create if user has no trees at all (covers imported nsec case)
+    const shouldCreateDefaults = npub && (isNewUser || trees.length === 0);
 
+    if (shouldCreateDefaults && isNewUser) {
+      useNostrStore.getState().setIsNewUser(false);
+    }
+
+    if (shouldCreateDefaults) {
       // Create the three default folders with corresponding visibility
       const createDefaultFolders = async () => {
-        const { createTree } = await import('./actions');
+        try {
+          const { createTree } = await import('./actions');
 
-        // Create folders in sequence: public, link (unlisted), private
-        // Use skipNavigation=true to avoid navigation issues
-        await createTree('public', 'public', true);
-        await createTree('link', 'unlisted', true);
-        await createTree('private', 'private', true);
+          // Create folders in sequence: public, link (unlisted), private
+          // Use skipNavigation=true to avoid navigation issues
+          // Check if each tree exists before creating (by name match in trees)
+          const existingNames = new Set(trees.map(t => t.name));
+
+          if (!existingNames.has('public')) {
+            await createTree('public', 'public', true);
+          }
+          if (!existingNames.has('link')) {
+            await createTree('link', 'unlisted', true);
+          }
+          if (!existingNames.has('private')) {
+            await createTree('private', 'private', true);
+          }
+        } catch (e) {
+          console.error('Failed to create default folders:', e);
+        }
       };
 
       createDefaultFolders();
@@ -165,7 +184,7 @@ function HomeRoute() {
 
     // Clear selected tree when on home route
     useNostrStore.getState().setSelectedTree(null);
-  }, [npub, isNewUser]);
+  }, [npub, isNewUser, trees.length]);
 
   // Show FileBrowser on left, Recents+Follows on right (desktop) or just FileBrowser (mobile)
   return (
