@@ -117,6 +117,7 @@ export interface WebRTCStoreConfig {
   helloInterval?: number;         // default 10000ms
   messageTimeout?: number;        // default 15000ms
   requestTimeout?: number;        // default 5000ms
+  peerQueryDelay?: number;        // default 500ms - delay between sequential peer queries
   relays?: string[];
   localStore?: import('../types.js').Store;
   debug?: boolean;
@@ -126,6 +127,8 @@ export interface WebRTCStoreConfig {
     follows: PoolConfig;
     other: PoolConfig;
   };
+  // WebSocket fallback URL (e.g., wss://server.com/ws/data)
+  wsFallbackUrl?: string;
 }
 
 export interface PeerStatus {

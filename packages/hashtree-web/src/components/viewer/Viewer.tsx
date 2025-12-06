@@ -68,6 +68,29 @@ export function Viewer() {
     return entries.find(e => e.name === urlFileName && !e.isTree) || null;
   }, [urlFileName, entries]);
 
+  // Get files only (no directories) for prev/next navigation
+  const filesOnly = useMemo(() => entries.filter(e => !e.isTree), [entries]);
+  const currentFileIndex = useMemo(() => {
+    if (!urlFileName) return -1;
+    return filesOnly.findIndex(e => e.name === urlFileName);
+  }, [filesOnly, urlFileName]);
+  // Wrap around at start/end
+  const prevFile = filesOnly.length > 1 && currentFileIndex >= 0
+    ? filesOnly[(currentFileIndex - 1 + filesOnly.length) % filesOnly.length]
+    : null;
+  const nextFile = filesOnly.length > 1 && currentFileIndex >= 0
+    ? filesOnly[(currentFileIndex + 1) % filesOnly.length]
+    : null;
+
+  // Navigate to a file in the same directory
+  const navigateToFile = useCallback((fileName: string) => {
+    const parts: string[] = [];
+    if (viewedNpub && currentTreeName) {
+      parts.push(viewedNpub, currentTreeName, ...currentPath, fileName);
+    }
+    navigate('/' + parts.map(encodeURIComponent).join('/') + location.search);
+  }, [viewedNpub, currentTreeName, currentPath, navigate, location.search]);
+
   // File state - content loaded from cid
   const [content, setContent] = useState<Uint8Array | null>(null);
   const [loading, setLoading] = useState(false);
@@ -363,6 +386,25 @@ export function Viewer() {
                 className="lg:hidden"
               />
             )}
+          {/* Prev/Next file navigation - mobile only, wraps around */}
+          {filesOnly.length > 1 && prevFile && nextFile && (
+            <div className="flex items-center lg:hidden">
+              <button
+                onClick={() => navigateToFile(prevFile.name)}
+                className="p-1 text-text-2 hover:text-text-1"
+                title={`Previous: ${prevFile.name}`}
+              >
+                <span className="i-lucide-chevron-left text-lg" />
+              </button>
+              <button
+                onClick={() => navigateToFile(nextFile.name)}
+                className="p-1 text-text-2 hover:text-text-1"
+                title={`Next: ${nextFile.name}`}
+              >
+                <span className="i-lucide-chevron-right text-lg" />
+              </button>
+            </div>
+          )}
           {/* Show avatar (for npub routes) or hash icon (for nhash routes) */}
           {viewedNpub ? (
             <Link to={`/${viewedNpub}/profile`} className="shrink-0">

@@ -3,7 +3,6 @@
  */
 import type { Store, Hash } from '../types.js';
 import { toHex, fromHex } from '../types.js';
-import { sha256 } from '../hash.js';
 import type {
   SignalingMessage,
   DataMessage,
@@ -13,6 +12,15 @@ import type {
   PeerId,
 } from './types.js';
 import { LRUCache } from './lruCache.js';
+import {
+  PendingRequest,
+  createBinaryMessage,
+  handleBinaryResponse,
+  handleResponseMessage,
+  createRequest,
+  createResponse,
+  clearPendingRequests,
+} from './protocol.js';
 
 const ICE_SERVERS = [
   { urls: 'stun:stun.iris.to:3478' },
@@ -25,13 +33,6 @@ const ICE_BATCH_DELAY = 100; // ms to wait before sending batched candidates
 
 // Default LRU cache size
 const THEIR_REQUESTS_SIZE = 200;
-
-// Request we sent to this peer, waiting for response
-interface OurRequest {
-  hash: string;
-  resolve: (data: Uint8Array | null) => void;
-  timeout: ReturnType<typeof setTimeout>;
-}
 
 // Request this peer sent us that we couldn't fulfill locally
 // We track it so we can push data back when/if we get it
@@ -54,7 +55,7 @@ export class Peer {
   private debug: boolean;
 
   // Requests we sent TO this peer (keyed by our request id)
-  private ourRequests = new Map<number, OurRequest>();
+  private ourRequests = new Map<number, PendingRequest>();
   // Requests this peer sent TO US that we couldn't fulfill (keyed by hash hex)
   // We track these so we can push data back if we get it later
   private theirRequests = new LRUCache<string, TheirRequest>(THEIR_REQUESTS_SIZE);
@@ -196,27 +197,11 @@ export class Peer {
   }
 
   private async handleBinaryMessage(data: ArrayBuffer): Promise<void> {
-    // Binary data follows a response or push message
-    // Format: [4 bytes requestId][data]
-    const view = new DataView(data);
-    const requestId = view.getUint32(0, true);
-    const blobData = new Uint8Array(data, 4);
-
-    const pending = this.ourRequests.get(requestId);
-    if (pending) {
-      clearTimeout(pending.timeout);
-      this.ourRequests.delete(requestId);
-
-      // Verify hash
-      const computedHash = await sha256(blobData);
-
-      if (toHex(computedHash) === pending.hash) {
-        pending.resolve(blobData);
-      } else {
-        this.log('Hash mismatch for request', requestId);
-        pending.resolve(null);
-      }
-    }
+    await handleBinaryResponse(
+      data,
+      this.ourRequests,
+      (requestId) => this.log('Hash mismatch for request', requestId),
+    );
   }
 
   private async handleRequest(msg: DataRequest): Promise<void> {
@@ -258,15 +243,8 @@ export class Peer {
   }
 
   private async handleResponse(msg: DataResponse): Promise<void> {
-    const pending = this.ourRequests.get(msg.id);
-    if (!pending) return;
-
-    if (!msg.found) {
-      clearTimeout(pending.timeout);
-      this.ourRequests.delete(msg.id);
-      pending.resolve(null);
-    }
-    // If found, wait for binary data
+    handleResponseMessage(msg, this.ourRequests);
+    // If found, handleResponseMessage does nothing and we wait for binary data
   }
 
   private async handlePush(msg: DataPush): Promise<void> {
@@ -279,20 +257,13 @@ export class Peer {
   }
 
   private sendResponse(id: number, hash: string, found: boolean): void {
-    const msg: DataResponse = { type: 'res', id, hash, found };
+    const msg = createResponse(id, hash, found);
     this.sendJson(msg);
   }
 
   private sendBinaryData(requestId: number, data: Uint8Array): void {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
-
-    // Format: [4 bytes requestId][data]
-    const packet = new Uint8Array(4 + data.length);
-    const view = new DataView(packet.buffer);
-    view.setUint32(0, requestId, true);
-    packet.set(data, 4);
-
-    this.dataChannel.send(packet.buffer);
+    this.dataChannel.send(createBinaryMessage(requestId, data));
   }
 
   private sendJson(msg: DataMessage): void {
@@ -319,7 +290,7 @@ export class Peer {
 
       this.ourRequests.set(requestId, { hash: hashHex, resolve, timeout });
 
-      const msg: DataRequest = { type: 'req', id: requestId, hash: hashHex };
+      const msg = createRequest(requestId, hashHex);
       this.sendJson(msg);
     });
   }
@@ -438,11 +409,7 @@ export class Peer {
    */
   close(): void {
     // Clear our pending requests
-    for (const pending of this.ourRequests.values()) {
-      clearTimeout(pending.timeout);
-      pending.resolve(null);
-    }
-    this.ourRequests.clear();
+    clearPendingRequests(this.ourRequests);
 
     // Clear their requests (they won't get responses)
     this.theirRequests.clear();

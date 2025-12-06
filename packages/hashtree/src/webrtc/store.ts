@@ -33,6 +33,7 @@ import {
   type PoolConfig,
 } from './types.js';
 import { Peer } from './peer.js';
+import { WebSocketPeer } from './wsPeer.js';
 
 const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
@@ -62,10 +63,13 @@ export class WebRTCStore implements Store {
     helloInterval: number;
     messageTimeout: number;
     requestTimeout: number;
+    peerQueryDelay: number;
     relays: string[];
     localStore: Store | null;
+    wsFallbackUrl: string | null;
     debug: boolean;
   };
+  private wsPeer: WebSocketPeer | null = null;
   private pools: { follows: PoolConfig; other: PoolConfig };
   private peerClassifier: PeerClassifier;
   private signer: EventSigner;
@@ -107,8 +111,10 @@ export class WebRTCStore implements Store {
       helloInterval: config.helloInterval ?? 10000,
       messageTimeout: config.messageTimeout ?? 15000,
       requestTimeout: config.requestTimeout ?? 5000,
+      peerQueryDelay: config.peerQueryDelay ?? 500,
       relays: config.relays ?? DEFAULT_RELAYS,
       localStore: config.localStore ?? null,
+      wsFallbackUrl: config.wsFallbackUrl ?? null,
       debug: config.debug ?? false,
     };
 
@@ -205,6 +211,12 @@ export class WebRTCStore implements Store {
     if (this.subscription) {
       this.subscription.close();
       this.subscription = null;
+    }
+
+    // Close WebSocket peer if connected
+    if (this.wsPeer) {
+      this.wsPeer.close();
+      this.wsPeer = null;
     }
 
     // Close all peer connections
@@ -423,6 +435,7 @@ export class WebRTCStore implements Store {
   /**
    * Forward a request to other peers (excluding the requester)
    * Called by Peer when it receives a request it can't fulfill locally
+   * Uses sequential queries with delays between attempts
    */
   private async forwardRequest(hashHex: string, excludePeerId: string): Promise<Uint8Array | null> {
     // Try all connected peers except the one who requested
@@ -437,14 +450,31 @@ export class WebRTCStore implements Store {
     });
 
     const hash = fromHex(hashHex);
-    for (const { peer } of otherPeers) {
-      const data = await peer.request(hash);
-      if (data) {
-        // Store locally for future requests
+
+    // Query peers sequentially with delay between attempts
+    for (let i = 0; i < otherPeers.length; i++) {
+      const { peer } = otherPeers[i];
+
+      // Start request to this peer
+      const requestPromise = peer.request(hash);
+
+      // Race between request completing and delay timeout
+      const result = await Promise.race([
+        requestPromise.then(data => ({ type: 'data' as const, data })),
+        this.delay(this.config.peerQueryDelay).then(() => ({ type: 'timeout' as const })),
+      ]);
+
+      if (result.type === 'data' && result.data) {
+        // Got data from this peer
         if (this.config.localStore) {
-          await this.config.localStore.put(hash, data);
+          await this.config.localStore.put(hash, result.data);
         }
-        return data;
+        return result.data;
+      }
+
+      // If timeout, continue to next peer
+      if (result.type === 'timeout') {
+        this.log('Forward: peer', peer.peerId.slice(0, 12), 'timeout, trying next');
       }
     }
 
@@ -643,7 +673,7 @@ export class WebRTCStore implements Store {
       if (local) return local;
     }
 
-    // Try currently connected peers (prioritize follows pool)
+    // Get currently connected peers (prioritize follows pool)
     const triedPeers = new Set<string>();
     const allPeers = Array.from(this.peers.values())
       .filter(({ peer }) => peer.isConnected);
@@ -655,15 +685,48 @@ export class WebRTCStore implements Store {
       return 0;
     });
 
-    for (const { peer } of allPeers) {
+    // Query peers sequentially with delay between attempts
+    for (let i = 0; i < allPeers.length; i++) {
+      const { peer } = allPeers[i];
       triedPeers.add(peer.peerId);
-      const data = await peer.request(hash);
-      if (data) {
-        // Store locally for future requests
+
+      // Start request to this peer
+      const requestPromise = peer.request(hash);
+
+      // Race between request completing and delay timeout
+      // If request completes within delay, we're done
+      // If delay passes first, start next peer while still waiting
+      const result = await Promise.race([
+        requestPromise.then(data => ({ type: 'data' as const, data })),
+        this.delay(this.config.peerQueryDelay).then(() => ({ type: 'timeout' as const })),
+      ]);
+
+      if (result.type === 'data' && result.data) {
+        // Got data from this peer
         if (this.config.localStore) {
-          await this.config.localStore.put(hash, data);
+          await this.config.localStore.put(hash, result.data);
         }
-        return data;
+        return result.data;
+      }
+
+      // If timeout, continue to next peer but also await the original request
+      // in case it eventually returns data
+      if (result.type === 'timeout') {
+        // Fire-and-forget: if this peer eventually responds, we'll miss it
+        // but that's fine - we're trying the next peer
+        this.log('Peer', peer.peerId.slice(0, 12), 'timeout after', this.config.peerQueryDelay, 'ms, trying next');
+      }
+    }
+
+    // All WebRTC peers failed - try WebSocket fallback if configured
+    if (this.config.wsFallbackUrl) {
+      this.log('All peers failed, trying WebSocket fallback');
+      const wsData = await this.requestFromWebSocket(hash);
+      if (wsData) {
+        if (this.config.localStore) {
+          await this.config.localStore.put(hash, wsData);
+        }
+        return wsData;
       }
     }
 
@@ -673,6 +736,31 @@ export class WebRTCStore implements Store {
     }
 
     return null;
+  }
+
+  /**
+   * Request data from WebSocket fallback server
+   */
+  private async requestFromWebSocket(hash: Hash): Promise<Uint8Array | null> {
+    if (!this.config.wsFallbackUrl) return null;
+
+    // Create WS peer lazily
+    if (!this.wsPeer) {
+      this.wsPeer = new WebSocketPeer({
+        url: this.config.wsFallbackUrl,
+        requestTimeout: this.config.requestTimeout,
+        debug: this.config.debug,
+      });
+    }
+
+    return this.wsPeer.request(hash);
+  }
+
+  /**
+   * Helper to create a delay promise
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**

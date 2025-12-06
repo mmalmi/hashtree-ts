@@ -88,6 +88,7 @@ export { BEP52_CHUNK_SIZE } from './builder.js';
 export {
   WebRTCStore,
   Peer,
+  WebSocketPeer,
   PeerId,
   generateUuid,
   type SignalingMessage,
