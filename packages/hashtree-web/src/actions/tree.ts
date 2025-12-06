@@ -99,8 +99,10 @@ export async function createDocument(name: string) {
   const tree = getTree();
   const currentPath = getCurrentPathFromUrl();
 
-  // Create .yjs config file (empty - no collaborators by default)
-  const yjsContent = new TextEncoder().encode('');
+  // Create .yjs config file with owner's npub as first editor
+  const nostrState = useNostrStore.getState();
+  const ownerNpub = nostrState.npub || '';
+  const yjsContent = new TextEncoder().encode(ownerNpub ? ownerNpub + '\n' : '');
   const yjsFileCid = await tree.putFile(yjsContent);
 
   // Create directory with .yjs file inside

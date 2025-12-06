@@ -105,14 +105,8 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     const tree = getTree();
 
     try {
-      // Ensure owner's npub is always included in the list
-      let allEditors = [...npubs];
-      if (userNpub && !allEditors.includes(userNpub)) {
-        allEditors = [userNpub, ...allEditors];
-      }
-
       // Create .yjs file content (one npub per line)
-      const content = allEditors.join('\n');
+      const content = npubs.join('\n');
       const encoder = new TextEncoder();
       const data = encoder.encode(content);
 
@@ -136,8 +130,8 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
         updateLocalRootCache(userNpub, route.treeName, newRootCid.hash);
       }
 
-      // Update local state with full list including owner
-      setCollaborators(allEditors);
+      // Update local state
+      setCollaborators(npubs);
     } catch (err) {
       console.error('Failed to save collaborators:', err);
     }
