@@ -489,13 +489,11 @@ export function FileBrowser() {
     // Determine which user to show in header
     const headerNpub = viewedNpub || (isLoggedIn ? userNpub : null);
     const headerPubkey = headerNpub ? (npubToPubkey(headerNpub) || headerNpub) : null;
-    // Hide header on mobile when viewing another user (ProfileView shown above)
-    const hideOnMobile = viewedNpub && viewedNpub !== userNpub;
 
     return (
       <div className="flex-1 flex flex-col min-h-0 bg-surface-1">
-        {/* Header with user info - hidden on mobile when viewing other user's profile (except share btn) */}
-        <div className={`h-10 shrink-0 px-3 border-b border-surface-3 flex items-center gap-2 bg-surface-1 ${hideOnMobile ? 'hidden lg:flex' : ''}`}>
+        {/* Header with user info */}
+        <div className="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center gap-2 bg-surface-1">
           {headerPubkey ? (
             <Link to={`/${headerNpub}/profile`} className="no-underline min-w-0">
               <UserRow pubkey={headerPubkey} avatarSize={24} showBadge={!isOwnTrees} className="min-w-0" />
@@ -503,20 +501,15 @@ export function FileBrowser() {
           ) : (
             <span className="text-sm text-text-2">Folders</span>
           )}
+          {/* Mobile share button */}
+          <button
+            onClick={() => openShareModal(window.location.href)}
+            className="lg:hidden ml-auto btn-ghost p-1.5"
+            title="Share"
+          >
+            <span className="i-lucide-share" />
+          </button>
         </div>
-        {/* Mobile share button when viewing another user's tree list */}
-        {hideOnMobile && (
-          <div className="lg:hidden h-10 shrink-0 px-3 border-b border-surface-3 flex items-center justify-end bg-surface-1">
-            <button
-              onClick={() => openShareModal(window.location.href)}
-              className="btn-ghost flex items-center gap-1 px-3 py-1.5 text-xs"
-              title="Share"
-            >
-              <span className="i-lucide-share" />
-              Share
-            </button>
-          </div>
-        )}
 
         {/* New folder button */}
         {isOwnTrees && (

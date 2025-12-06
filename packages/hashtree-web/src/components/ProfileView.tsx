@@ -3,6 +3,7 @@ import { navigate } from '../utils/navigate';
 import { useProfile } from '../hooks/useProfile';
 import { useFollows, followPubkey, unfollowPubkey } from '../hooks/useFollows';
 import { Avatar, Name, FollowedBy } from './user';
+import { CopyText } from './CopyText';
 import { nip19 } from 'nostr-tools';
 import { useNostrStore } from '../nostr';
 import { useFollowsMe, useFollowers } from '../utils/socialGraph';
@@ -20,7 +21,6 @@ export function ProfileView({ npub }: Props) {
   const follows = useFollows(npub);
   const myFollows = useFollows(myPubkeyVal || undefined);
   const [bannerError, setBannerError] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
 
   const pubkeyHex = (() => {
@@ -37,12 +37,6 @@ export function ProfileView({ npub }: Props) {
   const followsMe = useFollowsMe(pubkeyHex);
   const knownFollowers = useFollowers(pubkeyHex);
 
-  const copyUserId = async () => {
-    await navigator.clipboard.writeText(npub);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   const handleFollow = async () => {
     setFollowLoading(true);
     if (isFollowing) {
@@ -52,8 +46,6 @@ export function ProfileView({ npub }: Props) {
     }
     setFollowLoading(false);
   };
-
-  const shortNpub = npub.slice(0, 10) + '...' + npub.slice(-4);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0 overflow-y-auto">
@@ -126,18 +118,7 @@ export function ProfileView({ npub }: Props) {
         </div>
 
         {/* npub with copy */}
-        <button
-          onClick={copyUserId}
-          className="flex items-center gap-1 text-sm text-text-2 hover:text-text-1 bg-transparent border-none cursor-pointer p-0 mt-1"
-          title="Copy user ID"
-        >
-          {copied ? (
-            <span className="i-lucide-check text-success text-xs" />
-          ) : (
-            <span className="i-lucide-copy text-xs" />
-          )}
-          <span className="font-mono">{shortNpub}</span>
-        </button>
+        <CopyText text={npub} displayText={npub.slice(0, 8) + '...' + npub.slice(-4)} className="text-sm mt-1" />
 
         {profile?.nip05 && (
           <div className="text-sm text-accent mt-1">{profile.nip05}</div>

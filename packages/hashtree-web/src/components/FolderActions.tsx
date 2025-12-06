@@ -87,14 +87,21 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
     : null;
 
   const btnClass = compact
-    ? 'flex items-center gap-1 px-3 py-1.5 text-xs'
-    : 'flex items-center gap-1 px-3 py-2 text-sm';
+    ? 'flex items-center gap-1 px-3 h-7 text-xs'
+    : 'flex items-center gap-1 px-3 h-9 text-sm';
 
   return (
     <div className="flex flex-row flex-wrap items-center gap-2">
+      {/* Share and permalink first */}
       {dirCid && (
         <>
-          {/* Permalink to this directory's hash (includes key if encrypted) */}
+          <button
+            onClick={() => openShareModal(window.location.href)}
+            className={`btn-ghost ${btnClass}`}
+            title="Share"
+          >
+            <span className="i-lucide-share" />
+          </button>
           <Link
             to={`/${nhashEncode({ hash: toHex(dirCid.hash), decryptKey: dirCid.key ? toHex(dirCid.key) : undefined })}`}
             className={`btn-ghost no-underline ${btnClass}`}
@@ -103,49 +110,13 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
             <span className="i-lucide-link" />
             Permalink
           </Link>
-          <button onClick={handleFork} className={`btn-ghost ${btnClass}`} title="Fork as new top-level folder">
-            <span className="i-lucide-git-fork" />
-            Fork
-          </button>
-          <button
-            onClick={handleDownloadZip}
-            disabled={isDownloading}
-            className={`btn-ghost ${btnClass}`}
-            title="Download directory as ZIP"
-          >
-            <span className={isDownloading ? "i-lucide-loader-2 animate-spin" : "i-lucide-archive"} />
-            {isDownloading ? 'Zipping...' : 'ZIP'}
-          </button>
-          <button
-            onClick={() => openShareModal(window.location.href)}
-            className={`btn-ghost ${btnClass}`}
-            title="Share"
-          >
-            <span className="i-lucide-share" />
-            Share
-          </button>
-          {/* Git info */}
-          {gitInfo.isRepo && (
-            <>
-              <div className={`flex items-center gap-1 px-2 py-1 bg-surface-2 rounded text-text-2 ${compact ? 'text-xs' : 'text-sm'}`}>
-                <span className="i-lucide-git-branch" />
-                {gitInfo.currentBranch || 'detached'}
-              </div>
-              <button
-                onClick={() => dirCid && openGitHistoryModal(dirCid)}
-                className={`btn-ghost ${btnClass}`}
-                title="View commit history"
-              >
-                <span className="i-lucide-history" />
-                History
-              </button>
-            </>
-          )}
         </>
       )}
+
+      {/* Edit actions */}
       {canEdit && (
         <>
-          <label className={`btn-success cursor-pointer ${btnClass}`} title="Add files">
+          <label tabIndex={0} className={`btn-success cursor-pointer ${btnClass}`} title="Add files" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}>
             <span className="i-lucide-plus" />
             Add
             <input
@@ -161,8 +132,8 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
           </label>
 
           {hasDirectorySupport && (
-            <label className={`btn-ghost cursor-pointer ${btnClass}`} title="Add a folder with all its contents">
-              <span className="i-lucide-plus" />
+            <label tabIndex={0} className={`btn-ghost cursor-pointer ${btnClass}`} title="Add a folder with all its contents" onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.currentTarget.click(); }}>
+              <span className="i-lucide-folder-plus" />
               Add Folder
               <input
                 ref={dirInputRef}
@@ -213,6 +184,41 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
                 className={`btn-ghost text-danger ${btnClass}`}
               >
                 Delete
+              </button>
+            </>
+          )}
+        </>
+      )}
+
+      {/* Secondary actions: ZIP, Fork, Git */}
+      {dirCid && (
+        <>
+          <button
+            onClick={handleDownloadZip}
+            disabled={isDownloading}
+            className={`btn-ghost ${btnClass}`}
+            title="Download directory as ZIP"
+          >
+            <span className={isDownloading ? "i-lucide-loader-2 animate-spin" : "i-lucide-archive"} />
+            {isDownloading ? 'Zipping...' : 'ZIP'}
+          </button>
+          <button onClick={handleFork} className={`btn-ghost ${btnClass}`} title="Fork as new top-level folder">
+            <span className="i-lucide-git-fork" />
+            Fork
+          </button>
+          {gitInfo.isRepo && (
+            <>
+              <div className={`flex items-center gap-1 px-2 h-7 bg-surface-2 rounded text-text-2 ${compact ? 'text-xs' : 'text-sm'}`}>
+                <span className="i-lucide-git-branch" />
+                {gitInfo.currentBranch || 'detached'}
+              </div>
+              <button
+                onClick={() => dirCid && openGitHistoryModal(dirCid)}
+                className={`btn-ghost ${btnClass}`}
+                title="View commit history"
+              >
+                <span className="i-lucide-history" />
+                History
               </button>
             </>
           )}
