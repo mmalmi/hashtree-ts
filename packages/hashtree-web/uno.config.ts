@@ -2,7 +2,25 @@ import { defineConfig, presetUno, presetIcons } from 'unocss';
 import presetTypography from '@unocss/preset-typography';
 
 export default defineConfig({
-  safelist: ['animate-pulse-live', 'animate-pulse-bg'],
+  safelist: [
+    'animate-pulse-live',
+    'animate-pulse-bg',
+    // YjsDocument toolbar icons
+    'i-lucide-bold',
+    'i-lucide-italic',
+    'i-lucide-strikethrough',
+    'i-lucide-code',
+    'i-lucide-heading-1',
+    'i-lucide-heading-2',
+    'i-lucide-heading-3',
+    'i-lucide-list',
+    'i-lucide-list-ordered',
+    'i-lucide-quote',
+    'i-lucide-file-code',
+    'i-lucide-minus',
+    'i-lucide-undo',
+    'i-lucide-redo',
+  ],
   presets: [
     presetUno(),
     presetIcons({
