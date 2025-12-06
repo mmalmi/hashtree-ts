@@ -139,7 +139,6 @@ function ExplorerLayout({ children }: { children: React.ReactNode }) {
 // Route: Home (no npub, no tree)
 // Creates default folders for new users (public, link, private), shows recents for returning users
 function HomeRoute() {
-  const navigate = useNavigate();
   const npub = useNostrStore(s => s.npub);
   const isNewUser = useNostrStore(s => s.isNewUser);
 
@@ -153,13 +152,10 @@ function HomeRoute() {
         const { createTree } = await import('./actions');
 
         // Create folders in sequence: public, link (unlisted), private
-        // Use skipNavigation=true for first two to avoid navigation issues
+        // Use skipNavigation=true to avoid navigation issues
         await createTree('public', 'public', true);
         await createTree('link', 'unlisted', true);
         await createTree('private', 'private', true);
-
-        // Navigate to the public folder
-        navigate(`/${npub}/public`, { replace: true });
       };
 
       createDefaultFolders();
@@ -168,7 +164,7 @@ function HomeRoute() {
 
     // Clear selected tree when on home route
     useNostrStore.getState().setSelectedTree(null);
-  }, [npub, isNewUser, navigate]);
+  }, [npub, isNewUser]);
 
   // Show FileBrowser on left, Recents+Follows on right (desktop) or just FileBrowser (mobile)
   return (
