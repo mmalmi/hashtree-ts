@@ -54,6 +54,7 @@ export function Viewer() {
   // File state - content loaded from cid
   const [content, setContent] = useState<Uint8Array | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0); // 0-100
   const showLoading = useDelayedLoading(loading);
   const [, setFileCid] = useState<CID | null>(null);
   const [resolvedEntry, setResolvedEntry] = useState<{ name: string; cid: CID; size?: number } | null>(null);
@@ -183,6 +184,7 @@ export function Viewer() {
     setContent(null);
     setFileCid(null);
     setLoading(false);
+    setLoadProgress(0);
 
     if (!entry || isVideo || isDosExe) {
       return;
@@ -192,17 +194,39 @@ export function Viewer() {
     setLoading(true);
     setFileCid(entry.cid);
 
-    // readFile takes CID directly
-    getTree().readFile(entry.cid).then(data => {
-      if (!cancelled) {
-        setContent(data);
-        setLoading(false);
+    // Use streaming to track progress
+    const totalSize = entry.size || 0;
+    const chunks: Uint8Array[] = [];
+    let bytesLoaded = 0;
+
+    (async () => {
+      try {
+        for await (const chunk of getTree().readFileStream(entry.cid)) {
+          if (cancelled) return;
+          chunks.push(chunk);
+          bytesLoaded += chunk.length;
+          if (totalSize > 0) {
+            setLoadProgress(Math.min(100, Math.round((bytesLoaded / totalSize) * 100)));
+          }
+        }
+        if (!cancelled) {
+          // Combine chunks
+          const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+          const result = new Uint8Array(totalLength);
+          let offset = 0;
+          for (const chunk of chunks) {
+            result.set(chunk, offset);
+            offset += chunk.length;
+          }
+          setContent(result);
+          setLoading(false);
+        }
+      } catch {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-    }).catch(() => {
-      if (!cancelled) {
-        setLoading(false);
-      }
-    });
+    })();
 
     return () => { cancelled = true; };
   }, [entry?.cid?.hash ? toHex(entry.cid.hash) : null, isVideo]);
@@ -445,7 +469,17 @@ export function Viewer() {
         ) : !entry ? (
           <DirectoryActions />
         ) : loading ? (
-          showLoading ? <div className="w-full h-full flex items-center justify-center text-muted">Loading...</div> : null
+          showLoading ? (
+            <div className="w-full h-full flex flex-col items-center justify-center text-muted gap-2">
+              <div className="w-48 h-2 bg-surface-2 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-accent transition-all duration-150"
+                  style={{ width: `${loadProgress}%` }}
+                />
+              </div>
+              <span className="text-sm">{loadProgress}%</span>
+            </div>
+          ) : null
         ) : isDosExe && currentDirCid ? (
           // DOS executable - show DOSBox viewer
           // Key on CID hash to prevent remounting when layout changes (fullscreen toggle)
