@@ -245,21 +245,25 @@ export function CollaboratorsModal() {
     }
   };
 
-  const handleConfirmAdd = () => {
+  const handleConfirmAdd = async () => {
     if (pendingNpub) {
-      setNpubs([...npubs, pendingNpub]);
+      const newNpubs = [...npubs, pendingNpub];
+      setNpubs(newNpubs);
       setPendingNpub(null);
+      // Auto-save immediately
+      if (collaboratorsTarget.onSave) {
+        collaboratorsTarget.onSave(newNpubs);
+      }
     }
   };
 
   const handleRemove = (index: number) => {
-    setNpubs(npubs.filter((_, i) => i !== index));
-  };
-
-  const handleSave = () => {
-    if (isReadOnly) return;
-    collaboratorsTarget.onSave?.(npubs);
-    closeCollaboratorsModal();
+    const newNpubs = npubs.filter((_, i) => i !== index);
+    setNpubs(newNpubs);
+    // Auto-save immediately on remove
+    if (collaboratorsTarget.onSave) {
+      collaboratorsTarget.onSave(newNpubs);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -385,9 +389,14 @@ export function CollaboratorsModal() {
                 <UserPreview
                   npub={detectedNpub}
                   onConfirm={() => {
-                    setNpubs([...npubs, detectedNpub]);
+                    const newNpubs = [...npubs, detectedNpub];
+                    setNpubs(newNpubs);
                     setNewNpub('');
                     setError(null);
+                    // Auto-save immediately
+                    if (collaboratorsTarget.onSave) {
+                      collaboratorsTarget.onSave(newNpubs);
+                    }
                   }}
                   onCancel={() => setNewNpub('')}
                 />
@@ -446,34 +455,36 @@ export function CollaboratorsModal() {
                   </div>
                 )}
 
-                {/* Manual npub input */}
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newNpub}
-                    onChange={(e) => {
-                      setNewNpub(e.target.value);
-                      setError(null);
-                    }}
-                    onKeyDown={handleKeyDown}
-                    placeholder="npub1..."
-                    className="input flex-1 font-mono text-sm"
-                  />
-                  <button
-                    onClick={() => setShowQRScanner(true)}
-                    className="btn-ghost px-2"
-                    title="Scan QR code"
-                  >
-                    <span className="i-lucide-qr-code text-lg" />
-                  </button>
-                  <button
-                    onClick={handlePrepareAdd}
-                    className="btn-success px-3"
-                    disabled={!newNpub.trim()}
-                  >
-                    Add
-                  </button>
-                </div>
+                {/* Manual npub input - hide when detectedNpub shows UserPreview */}
+                {!detectedNpub && (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newNpub}
+                      onChange={(e) => {
+                        setNewNpub(e.target.value);
+                        setError(null);
+                      }}
+                      onKeyDown={handleKeyDown}
+                      placeholder="npub1..."
+                      className="input flex-1 font-mono text-sm"
+                    />
+                    <button
+                      onClick={() => setShowQRScanner(true)}
+                      className="btn-ghost px-2"
+                      title="Scan QR code"
+                    >
+                      <span className="i-lucide-qr-code text-lg" />
+                    </button>
+                    <button
+                      onClick={handlePrepareAdd}
+                      className="btn-success px-3"
+                      disabled={!newNpub.trim()}
+                    >
+                      Add
+                    </button>
+                  </div>
+                )}
                 {error && (
                   <p className="text-sm text-danger">{error}</p>
                 )}
@@ -484,13 +495,8 @@ export function CollaboratorsModal() {
           {/* Footer */}
           <div className="flex justify-end gap-2 px-4 py-3 border-t border-surface-3">
             <button onClick={closeCollaboratorsModal} className="btn-ghost">
-              {isReadOnly ? 'Close' : 'Cancel'}
+              Close
             </button>
-            {!isReadOnly && (
-              <button onClick={handleSave} className="btn-success">
-                Save
-              </button>
-            )}
           </div>
         </div>
       </div>

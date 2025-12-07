@@ -83,7 +83,7 @@ export function GitRepoView({ dirCid, entries, canEdit }: GitRepoViewProps) {
       </div>
 
       {/* Directory listing table - GitHub style */}
-      <div className="border border-surface-3 rounded-lg mx-4 overflow-hidden">
+      <div className="border border-surface-3 rounded-lg mx-4 overflow-hidden bg-surface-0">
         {/* Branch info header row */}
         <div className="flex items-center gap-3 px-3 py-2 bg-surface-1 border-b border-surface-3 text-sm">
           <span className="i-lucide-git-branch text-text-2" />
@@ -132,7 +132,7 @@ export function GitRepoView({ dirCid, entries, canEdit }: GitRepoViewProps) {
 
       {/* README.md panel */}
       {readmeContent && (
-        <div className="border border-surface-3 rounded-lg mx-4 mt-4 mb-4 overflow-hidden">
+        <div className="border border-surface-3 rounded-lg mx-4 mt-4 mb-4 overflow-hidden bg-surface-0">
           <div className="flex items-center justify-between px-4 py-2 bg-surface-1 border-b border-surface-3">
             <div className="flex items-center gap-2">
               <span className="i-lucide-book-open text-text-2" />

@@ -36,7 +36,8 @@ export function CreateModal() {
       // Navigate into the new document folder
       if (route.npub && route.treeName) {
         const newPath = [...route.path, name].map(encodeURIComponent).join('/');
-        window.location.hash = `/${route.npub}/${route.treeName}/${newPath}`;
+        const linkKeyParam = route.linkKey ? `?k=${route.linkKey}` : '';
+        window.location.hash = `/${route.npub}/${route.treeName}/${newPath}${linkKeyParam}`;
       }
     } else if (isFolder) {
       createFolder(name);
