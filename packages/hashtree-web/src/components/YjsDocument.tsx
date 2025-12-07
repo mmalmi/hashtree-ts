@@ -11,7 +11,6 @@
  * Changes are auto-saved to the hashtree as Yjs delta files.
  */
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { Link } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -23,7 +22,7 @@ import { getTree, decodeAsText } from '../store';
 import { getRefResolver } from '../refResolver';
 import { useRoute, useCurrentPath, useTreeRoot, useTrees, getTreeRootSync } from '../hooks';
 import { useNostrStore, autosaveIfOwn, saveHashtree } from '../nostr';
-import { buildRouteUrl } from '../actions';
+import { deleteCurrentFolder } from '../actions';
 import { openForkModal, openCollaboratorsModal, openShareModal } from '../hooks/useModals';
 import { updateLocalRootCache, getLocalRootCache } from '../treeRootCache';
 import { VisibilityIcon } from './VisibilityIcon';
@@ -92,10 +91,6 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
 
   // Document name (last path segment)
   const docName = currentPath.length > 0 ? currentPath[currentPath.length - 1] : 'document';
-
-  // Parent path for back navigation
-  const parentPath = currentPath.slice(0, -1);
-  const parentUrl = buildRouteUrl(route.npub, route.treeName, parentPath, undefined, route.linkKey);
 
   // Handle fork
   const handleFork = () => {
@@ -633,14 +628,6 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
       {/* Status bar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-surface-3 text-sm shrink-0">
         <div className="flex items-center gap-2">
-          {/* Back navigation */}
-          <Link
-            to={parentUrl}
-            className="btn-ghost p-1 no-underline"
-            title="Go back"
-          >
-            <span className="i-lucide-chevron-left text-base" />
-          </Link>
           <span className="i-lucide-file-text text-muted" />
           <span className="font-medium">{docName}</span>
           <VisibilityIcon visibility={visibility} className="text-muted text-sm" />
@@ -654,7 +641,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
             <span className="text-xs px-2 py-0.5 rounded bg-success/20 text-success" title="You are an editor - edits save to your tree">Editor</span>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {/* Save status */}
           <div className="flex items-center gap-2 text-muted">
             {saving && (
@@ -672,7 +659,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
           {/* Share button */}
           <button
             onClick={() => openShareModal(window.location.href)}
-            className="btn-ghost flex items-center gap-1 px-2 py-1 text-sm"
+            className="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
             title="Share document"
           >
             <span className="i-lucide-share" />
@@ -687,7 +674,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
                 openCollaboratorsModal(collaborators);
               }
             }}
-            className="btn-ghost flex items-center gap-1 px-2 py-1 text-sm"
+            className="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
             title={isOwnTree ? "Manage editors" : "View editors"}
           >
             <span className="i-lucide-users" />
@@ -698,12 +685,26 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
           {/* Fork button */}
           <button
             onClick={handleFork}
-            className="btn-ghost flex items-center gap-1 px-2 py-1 text-sm"
+            className="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
             title="Fork document as new tree"
           >
             <span className="i-lucide-git-fork" />
             Fork
           </button>
+          {/* Delete button - only for own tree */}
+          {isOwnTree && (
+            <button
+              onClick={() => {
+                if (confirm(`Delete document "${docName}" and all its contents?`)) {
+                  deleteCurrentFolder();
+                }
+              }}
+              className="btn-ghost text-danger flex items-center gap-1 px-3 h-9 text-sm"
+              title="Delete document"
+            >
+              Delete
+            </button>
+          )}
         </div>
       </div>
 

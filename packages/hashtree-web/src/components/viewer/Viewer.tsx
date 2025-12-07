@@ -5,7 +5,7 @@ import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { toHex, nhashEncode } from 'hashtree';
 import type { CID } from 'hashtree';
-import { Avatar } from '../user';
+import { Avatar, UserRow } from '../user';
 import { npubToPubkey } from '../../nostr';
 import { LiveVideo, LiveVideoFromHash } from '../LiveVideo';
 import { DosBoxViewer, isDosExecutable } from '../DosBox';
@@ -448,7 +448,6 @@ export function Viewer() {
                   }
                   navigate('/' + parts.map(encodeURIComponent).join('/') + location.search);
                 }}
-                className="lg:hidden"
               />
             )}
           {/* Show avatar (for npub routes) or hash icon (for nhash routes) */}
@@ -613,7 +612,32 @@ export function Viewer() {
             <LiveVideoFromHash cid={entry.cid} mimeType={mimeType} />
           ) : null
         ) : !entry ? (
-          <DirectoryActions />
+          <>
+            {/* Mobile directory navigation - show user and back link on small screens */}
+            {viewedNpub && (
+              <div className="flex items-center gap-2 mb-2 lg:hidden">
+                {currentPath.length > 0 && (
+                  <Link
+                    to={(() => {
+                      const parts: string[] = [];
+                      if (viewedNpub && currentTreeName) {
+                        parts.push(viewedNpub, currentTreeName, ...currentPath.slice(0, -1));
+                      }
+                      return '/' + parts.map(encodeURIComponent).join('/') + location.search;
+                    })()}
+                    className="btn-ghost p-1"
+                    title="Go to parent folder"
+                  >
+                    <span className="i-lucide-chevron-left text-lg" />
+                  </Link>
+                )}
+                <Link to={`/${viewedNpub}`} className="min-w-0 flex-1">
+                  <UserRow pubkey={npubToPubkey(viewedNpub) || viewedNpub} avatarSize={24} showBadge className="min-w-0" />
+                </Link>
+              </div>
+            )}
+            <DirectoryActions />
+          </>
         ) : loading ? (
           showLoading ? (
             <div className="w-full h-full flex flex-col items-center justify-center text-muted gap-2">
