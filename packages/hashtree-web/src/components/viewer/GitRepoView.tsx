@@ -76,9 +76,9 @@ export function GitRepoView({ dirCid, entries, canEdit }: GitRepoViewProps) {
   }, [entries]);
 
   return (
-    <div className="flex flex-col h-full overflow-auto">
+    <div className="h-full overflow-auto">
       {/* Folder actions */}
-      <div className="p-3 shrink-0">
+      <div className="p-3">
         <FolderActions dirCid={dirCid} canEdit={canEdit} />
       </div>
 
