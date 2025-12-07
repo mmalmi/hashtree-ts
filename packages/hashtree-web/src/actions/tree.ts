@@ -103,11 +103,11 @@ export async function createDocument(name: string) {
   const nostrState = useNostrStore.getState();
   const ownerNpub = nostrState.npub || '';
   const yjsContent = new TextEncoder().encode(ownerNpub ? ownerNpub + '\n' : '');
-  const yjsFileCid = await tree.putFile(yjsContent);
+  const { cid: yjsFileCid, size: yjsFileSize } = await tree.putFile(yjsContent);
 
   // Create directory with .yjs file inside
   const { cid: docDirCid } = await tree.putDirectory([
-    { name: '.yjs', cid: yjsFileCid, size: 0, isTree: false }
+    { name: '.yjs', cid: yjsFileCid, size: yjsFileSize, isTree: false }
   ]);
 
   if (rootCid) {

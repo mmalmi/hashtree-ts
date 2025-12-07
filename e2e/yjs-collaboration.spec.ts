@@ -566,4 +566,117 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await contextB.close();
     }
   });
+
+  test('editors count badge shows correct count after document creation and adding collaborator', async ({ page }) => {
+    // This test verifies:
+    // 1. When creating a new document, owner's npub should be in .yjs and badge should show "1"
+    // 2. After adding a collaborator, badge should show "2"
+
+    setupPageErrorHandler(page);
+
+    // Log console for debugging
+    page.on('console', msg => {
+      if (msg.type() === 'error') console.log(`[Error] ${msg.text()}`);
+      if (msg.text().includes('[YjsDocument') || msg.text().includes('collaborator')) {
+        console.log(`[Console] ${msg.text()}`);
+      }
+    });
+
+    // Setup fresh user
+    console.log('Setting up fresh user...');
+    await setupFreshUser(page);
+    const npub = await getNpub(page);
+    console.log(`User npub: ${npub.slice(0, 20)}...`);
+
+    // Create a new document
+    console.log('Creating new document...');
+    await createDocument(page, 'test-editors-count');
+
+    // Wait for document to load
+    await page.waitForTimeout(2000);
+
+    // Check the editors count badge - should show "1" (the owner)
+    console.log('Checking editors count badge after creation...');
+    const editorsButton = page.locator('button[title="Manage editors"]');
+    await expect(editorsButton).toBeVisible({ timeout: 5000 });
+
+    // Get button HTML for debugging
+    const buttonHtml = await editorsButton.innerHTML();
+    console.log(`Editors button HTML: ${buttonHtml}`);
+
+    // The badge is inside the button as a span with the count
+    const countBadge = editorsButton.locator('span.rounded-full');
+    const hasBadge = await countBadge.count();
+    console.log(`Badge count elements found: ${hasBadge}`);
+
+    if (hasBadge === 0) {
+      // Badge not found - this means collaborators.length is 0
+      // Let's open the modal to see what's in the list
+      console.log('No badge found, opening modal to check editors list...');
+      await editorsButton.click();
+      await page.waitForTimeout(1000);
+
+      // Check the list
+      const listItems = page.locator('.bg-surface-1 ul li');
+      const listCount = await listItems.count();
+      console.log(`Editors in modal list: ${listCount}`);
+
+      // Check for "No editors yet" message
+      const noEditorsMsg = page.locator('text=No editors yet');
+      const hasNoEditorsMsg = await noEditorsMsg.count();
+      console.log(`"No editors yet" message visible: ${hasNoEditorsMsg > 0}`);
+
+      // Close modal for further testing
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
+    }
+
+    await expect(countBadge).toBeVisible({ timeout: 5000 });
+    const initialCount = await countBadge.textContent();
+    console.log(`Initial editors count: ${initialCount}`);
+    expect(initialCount).toBe('1');
+
+    // Now add a collaborator (use a fake npub for testing)
+    console.log('Adding a collaborator...');
+    await editorsButton.click();
+    await page.waitForTimeout(500);
+
+    // Wait for modal
+    const modal = page.locator('h2:has-text("Editors")');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+
+    // Verify owner is already in the list
+    console.log('Verifying owner is in the editors list...');
+    const editorsList = page.locator('ul li');
+    const editorsCount = await editorsList.count();
+    console.log(`Editors in list: ${editorsCount}`);
+    expect(editorsCount).toBeGreaterThanOrEqual(1);
+
+    // Add a second editor (use a valid bech32-encoded npub)
+    const fakeNpub = 'npub1vpqsg7spcesqesfhjjept2rk3p5n9pcd3ef7aqsgyweehxl8dhzqu5deq5';
+    const input = page.locator('input[placeholder="npub1..."]');
+    await input.fill(fakeNpub);
+    await page.waitForTimeout(500);
+
+    // Click the confirm button from the preview
+    const confirmButton = page.locator('button.btn-success').filter({ hasText: /^Add/ }).first();
+    await expect(confirmButton).toBeVisible({ timeout: 3000 });
+    await confirmButton.click();
+    await page.waitForTimeout(500);
+
+    // Save
+    const saveButton = page.getByRole('button', { name: 'Save' });
+    await saveButton.click();
+    await page.waitForTimeout(2000);
+
+    // Check the editors count badge - should now show "2"
+    console.log('Checking editors count badge after adding collaborator...');
+    const updatedCountBadge = editorsButton.locator('span.rounded-full');
+    await expect(updatedCountBadge).toBeVisible({ timeout: 5000 });
+    const updatedCount = await updatedCountBadge.textContent();
+    console.log(`Updated editors count: ${updatedCount}`);
+    expect(updatedCount).toBe('2');
+
+    console.log('\n=== Editors Count Badge Test Passed ===');
+  });
 });

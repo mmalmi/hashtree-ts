@@ -13,8 +13,6 @@ import { useNostrStore } from '../nostr';
 import { getTree } from '../store';
 import { createZipFromDirectory, downloadBlob } from '../utils/compression';
 import { readFilesFromWebkitDirectory, supportsDirectoryUpload } from '../utils/directory';
-import { useGitInfo } from '../hooks/useGit';
-import { openGitHistoryModal } from '../hooks/useModals';
 
 interface FolderActionsProps {
   dirCid?: CID | null;
@@ -42,7 +40,6 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
   const [isDownloading, setIsDownloading] = useState(false);
   const dirInputRef = useRef<HTMLInputElement>(null);
   const hasDirectorySupport = supportsDirectoryUpload();
-  const gitInfo = useGitInfo(dirCid ?? null);
 
   // Get user's own trees for fork name suggestions
   const ownTrees = useTrees(userNpub);
@@ -221,22 +218,6 @@ export function FolderActions({ dirCid, canEdit, compact = false }: FolderAction
             <span className="i-lucide-git-fork" />
             Fork
           </button>
-          {gitInfo.isRepo && (
-            <>
-              <div className={`flex items-center gap-1 px-2 h-7 bg-surface-2 rounded text-text-2 ${compact ? 'text-xs' : 'text-sm'}`}>
-                <span className="i-lucide-git-branch" />
-                {gitInfo.currentBranch || 'detached'}
-              </div>
-              <button
-                onClick={() => dirCid && openGitHistoryModal(dirCid)}
-                className={`btn-ghost ${btnClass}`}
-                title="View commit history"
-              >
-                <span className="i-lucide-history" />
-                History
-              </button>
-            </>
-          )}
         </>
       )}
     </div>

@@ -1,6 +1,6 @@
 /**
  * DirectoryActions - empty state with upload zone and README display
- * Also handles special directory types like .yjs documents
+ * Also handles special directory types like .yjs documents and git repos
  */
 import { useState, useEffect, useRef } from 'react';
 import Markdown from 'markdown-to-jsx';
@@ -8,9 +8,11 @@ import { getTree, decodeAsText } from '../../store';
 import { selectFile } from '../../actions';
 import { useNostrStore } from '../../nostr';
 import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees, useCurrentPath } from '../../hooks';
+import { useGitInfo } from '../../hooks/useGit';
 import { FolderActions } from '../FolderActions';
 import { useUpload } from '../../hooks/useUpload';
 import { YjsDocument } from '../YjsDocument';
+import { GitRepoView } from './GitRepoView';
 
 export function DirectoryActions() {
   const rootCid = useTreeRoot();
@@ -40,6 +42,9 @@ export function DirectoryActions() {
   // Check if current directory contains a .yjs file (indicates Yjs document directory)
   const yjsConfigFile = entries.find(e => e.name === '.yjs' && !e.isTree);
   const isYjsDoc = !!yjsConfigFile;
+
+  // Check if current directory is a git repo
+  const gitInfo = useGitInfo(currentDirCid);
 
   const openFilePicker = () => {
     fileInputRef.current?.click();
@@ -114,6 +119,11 @@ export function DirectoryActions() {
   if (isYjsDoc && currentDirCid) {
     const docKey = `${viewedNpub || userNpub || 'local'}/${route.treeName || ''}/${currentPath.join('/')}`;
     return <YjsDocument key={docKey} dirCid={currentDirCid} entries={entries} />;
+  }
+
+  // If this is a git repo, show GitHub-style directory listing with README
+  if (gitInfo.isRepo && currentDirCid) {
+    return <GitRepoView dirCid={currentDirCid} entries={entries} canEdit={canEdit} />;
   }
 
   return (

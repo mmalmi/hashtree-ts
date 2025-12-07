@@ -26,6 +26,7 @@ import { useNostrStore, autosaveIfOwn, saveHashtree } from '../nostr';
 import { buildRouteUrl } from '../actions';
 import { openForkModal, openCollaboratorsModal, openShareModal } from '../hooks/useModals';
 import { updateLocalRootCache, getLocalRootCache } from '../treeRootCache';
+import { VisibilityIcon } from './VisibilityIcon';
 
 interface YjsDocumentProps {
   /** CID of the directory containing .yjs */
@@ -83,6 +84,11 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
   // Get user's trees for fork name suggestion
   const ownTrees = useTrees(userNpub);
   const ownTreeNames = ownTrees.map(t => t.name);
+
+  // Get viewed user's trees to find current tree visibility
+  const viewedTrees = useTrees(viewedNpub || userNpub);
+  const currentTree = route.treeName ? viewedTrees.find(t => t.name === route.treeName) : null;
+  const visibility = currentTree?.visibility || 'public';
 
   // Document name (last path segment)
   const docName = currentPath.length > 0 ? currentPath[currentPath.length - 1] : 'document';
@@ -319,6 +325,9 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     const docPath = currentPath.join('/');
     const unsubscribes: (() => void)[] = [];
 
+    // The document owner is the npub in the route (who we're viewing)
+    const docOwnerNpub = viewedNpub || userNpub;
+
     // Subscribe to all editors' trees (including our own for multi-tab sync)
     for (const npub of collaborators) {
       const resolverKey = `${npub}/${route.treeName}`;
@@ -336,6 +345,27 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
           if (!isDir) return;
 
           const entries = await tree.listDirectory(result.cid);
+
+          // If this update is from the document owner, re-read .yjs to check for collaborator changes
+          if (npub === docOwnerNpub) {
+            const yjsConfigEntry = entries.find(e => e.name === '.yjs' && !e.isTree);
+            if (yjsConfigEntry) {
+              const data = await tree.readFile(yjsConfigEntry.cid);
+              if (data) {
+                const text = decodeAsText(data);
+                if (text) {
+                  const newCollaborators = parseYjsConfig(text);
+                  // Update collaborators state if changed
+                  setCollaborators(prev => {
+                    const prevStr = prev.join(',');
+                    const newStr = newCollaborators.join(',');
+                    return prevStr !== newStr ? newCollaborators : prev;
+                  });
+                }
+              }
+            }
+          }
+
           const deltaEntries = entries
             .filter(e => !e.isTree && isDeltaFile(e.name))
             .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
@@ -358,7 +388,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     return () => {
       unsubscribes.forEach(unsub => unsub());
     };
-  }, [collaborators, route.treeName, currentPath.join('/'), ydoc]);
+  }, [collaborators, route.treeName, currentPath.join('/'), ydoc, viewedNpub, userNpub]);
 
   // Save function - writes the full Yjs state as a delta file
   // If viewing someone else's document as a collaborator, saves to user's own tree
@@ -613,6 +643,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
           </Link>
           <span className="i-lucide-file-text text-muted" />
           <span className="font-medium">{docName}</span>
+          <VisibilityIcon visibility={visibility} className="text-muted text-sm" />
           {canEdit && (
             <span className="i-lucide-pencil text-xs text-muted" title={isOwnTree ? "You can edit this document" : "Editing as editor - saves to your tree"} />
           )}
