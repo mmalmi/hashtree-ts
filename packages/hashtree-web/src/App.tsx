@@ -12,6 +12,7 @@ import {
   GitHistoryModal,
   ShareModal,
   CollaboratorsModal,
+  UnsavedChangesModal,
   NostrLogin,
   ConnectivityIndicator,
   SearchInput,
@@ -524,6 +525,7 @@ export function App() {
         <GitHistoryModal />
         <ShareModal />
         <CollaboratorsModal />
+        <UnsavedChangesModal />
         <Toast />
       </div>
     </HashRouter>

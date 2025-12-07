@@ -10,3 +10,4 @@ export { GitignoreModal } from './GitignoreModal';
 export { GitHistoryModal } from './GitHistoryModal';
 export { ShareModal } from './ShareModal';
 export { CollaboratorsModal } from './CollaboratorsModal';
+export { UnsavedChangesModal } from './UnsavedChangesModal';

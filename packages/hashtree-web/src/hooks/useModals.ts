@@ -50,6 +50,15 @@ interface CollaboratorsTarget {
   onSave?: (npubs: string[]) => void;
 }
 
+interface UnsavedChangesTarget {
+  /** Callback when user chooses Save */
+  onSave: () => Promise<void> | void;
+  /** Callback when user chooses Don't Save */
+  onDiscard: () => void;
+  /** Optional filename for display */
+  fileName?: string;
+}
+
 
 interface ModalState {
   showCreateModal: boolean;
@@ -70,6 +79,8 @@ interface ModalState {
   shareUrl: string | null;
   showCollaboratorsModal: boolean;
   collaboratorsTarget: CollaboratorsTarget | null;
+  showUnsavedChangesModal: boolean;
+  unsavedChangesTarget: UnsavedChangesTarget | null;
   modalInput: string;
 }
 
@@ -93,6 +104,8 @@ let state: ModalState = {
   shareUrl: null,
   showCollaboratorsModal: false,
   collaboratorsTarget: null,
+  showUnsavedChangesModal: false,
+  unsavedChangesTarget: null,
   modalInput: '',
 };
 
@@ -202,6 +215,16 @@ export function closeCollaboratorsModal() {
   emit();
 }
 
+export function openUnsavedChangesModal(target: UnsavedChangesTarget) {
+  state = { ...state, showUnsavedChangesModal: true, unsavedChangesTarget: target };
+  emit();
+}
+
+export function closeUnsavedChangesModal() {
+  state = { ...state, showUnsavedChangesModal: false, unsavedChangesTarget: null };
+  emit();
+}
+
 export function setModalInput(input: string) {
   state = { ...state, modalInput: input };
   emit();
@@ -232,8 +255,10 @@ export function useModals() {
     closeShareModal,
     openCollaboratorsModal,
     closeCollaboratorsModal,
+    openUnsavedChangesModal,
+    closeUnsavedChangesModal,
     setModalInput,
   };
 }
 
-export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, CollaboratorsTarget };
+export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, CollaboratorsTarget, UnsavedChangesTarget };
