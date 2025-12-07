@@ -117,17 +117,17 @@ export default defineConfig({
 
     // Card/Panel
     'card': 'bg-surface-1 rounded overflow-hidden',
-    'card-header': 'p-3 border-b border-surface-3 flex-between',
+    'card-header': 'p-3 b-b-1 b-b-solid b-b-surface-3 flex-between',
 
     // Buttons
     'btn': 'px-3 py-1.5 rounded-sm cursor-pointer border-none text-sm',
     'btn-primary': 'btn bg-accent text-white hover:bg-accent/90',
     'btn-success': 'btn bg-success text-white hover:bg-success/90',
     'btn-danger': 'btn bg-danger text-white hover:bg-danger/90',
-    'btn-ghost': 'btn bg-surface-2 border border-surface-3 text-text-1 hover:bg-surface-3',
+    'btn-ghost': 'btn bg-surface-2 b-1 b-solid b-surface-3 text-text-1 hover:bg-surface-3',
 
     // Form
-    'input': 'px-3 py-2 bg-surface-0 border border-surface-3 rounded text-text-1 outline-none focus:border-accent',
+    'input': 'px-3 py-2 bg-surface-0 b-1 b-solid b-surface-3 rounded text-text-1 outline-none focus:b-accent',
 
     // Text
     'text-muted': 'text-text-2',
