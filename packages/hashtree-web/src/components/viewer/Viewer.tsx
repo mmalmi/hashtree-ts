@@ -12,7 +12,7 @@ import { DosBoxViewer, isDosExecutable } from '../DosBox';
 import { HtmlViewer } from '../HtmlViewer';
 import { decodeAsText, getTree } from '../../store';
 import { saveFile, deleteEntry } from '../../actions';
-import { openRenameModal, openShareModal } from '../../hooks/useModals';
+import { openRenameModal, openShareModal, openUnsavedChangesModal } from '../../hooks/useModals';
 import { useNostrStore } from '../../nostr';
 import { useSettingsStore } from '../../stores/settings';
 import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees, usePathType } from '../../hooks';
@@ -173,6 +173,7 @@ export function Viewer() {
   const isEditing = searchParams.get('edit') === '1';
   const isFullscreen = searchParams.get('fullscreen') === '1';
   const [editContent, setEditContent] = useState('');
+  const [savedContent, setSavedContent] = useState(''); // Content as of last save (for detecting unsaved changes)
   const autoSave = useSettingsStore((s) => s.editor.autoSave);
   const setAutoSave = useSettingsStore((s) => s.setEditorSettings);
   const [saved, setSaved] = useState(false);
@@ -278,6 +279,7 @@ export function Viewer() {
       const text = decodeAsText(content);
       if (text !== null) {
         setEditContent(text);
+        setSavedContent(text); // Track original content for unsaved changes detection
       }
     }
   }, [isEditing, content]);
@@ -326,10 +328,39 @@ export function Viewer() {
     const newData = await saveFile(entry?.name, editContent);
     if (newData) {
       setContent(newData);
+      setSavedContent(editContent); // Update saved content tracker
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     }
   };
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = isEditing && editContent !== savedContent;
+
+  // Handle closing the editor - checks for unsaved changes
+  const handleCloseEditor = useCallback(async () => {
+    if (hasUnsavedChanges) {
+      // If autosave is enabled, just save and close immediately
+      if (autoSave) {
+        await handleSave();
+        setIsEditing(false);
+      } else {
+        // Show modal to ask user what to do
+        openUnsavedChangesModal({
+          fileName: entry?.name,
+          onSave: async () => {
+            await handleSave();
+            setIsEditing(false);
+          },
+          onDiscard: () => {
+            setIsEditing(false);
+          },
+        });
+      }
+    } else {
+      setIsEditing(false);
+    }
+  }, [hasUnsavedChanges, autoSave, entry?.name, setIsEditing]);
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setEditContent(e.target.value);
@@ -351,6 +382,9 @@ export function Viewer() {
     if (isEditing) return; // Don't navigate when editing
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't interfere with browser shortcuts (Cmd/Ctrl + arrows for back/forward)
+      if (e.metaKey || e.ctrlKey) return;
+
       const key = e.key.toLowerCase();
 
       // Escape or h: back to directory
@@ -381,6 +415,22 @@ export function Viewer() {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [entry, urlFileName, isEditing, viewedNpub, currentTreeName, currentPath, navigate, location.search, prevFile, nextFile, navigateToFile]);
+
+  // Escape key handler for edit mode
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        (document.activeElement as HTMLElement)?.blur();
+        handleCloseEditor();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isEditing, handleCloseEditor]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-surface-0">
@@ -525,7 +575,7 @@ export function Viewer() {
               Autosave
             </label>
             <SaveButton saved={saved} onClick={handleSave} />
-            <button onClick={() => { setIsEditing(false); }} className="btn-ghost">
+            <button onClick={handleCloseEditor} className="btn-ghost">
               Done
             </button>
             <button onClick={handleShare} className="btn-ghost" title="Share">
