@@ -42,7 +42,7 @@ export function GitHistoryModal() {
     try {
       const newCid = await checkoutCommit(gitHistoryTarget.dirCid, commitSha);
       // Save the new tree to nostr if this is the user's own tree
-      await autosaveIfOwn(newCid);
+      autosaveIfOwn(newCid);
       // Navigate to the new tree
       const nhash = nhashEncode({
         hash: toHex(newCid.hash),

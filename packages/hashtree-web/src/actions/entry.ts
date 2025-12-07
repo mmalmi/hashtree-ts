@@ -38,8 +38,8 @@ export async function renameEntry(oldName: string, newName: string) {
     oldName,
     newName
   );
-  // Publish to nostr - resolver will pick up the update
-  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  // Update local cache (publishes to nostr with throttle)
+  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Update URL if renamed file/dir was selected or we're inside it
   if (isRenamingCurrentDir) {
@@ -65,8 +65,8 @@ export async function deleteEntry(name: string) {
     currentPath,
     name
   );
-  // Publish to nostr - resolver will pick up the update
-  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  // Update local cache (publishes to nostr with throttle)
+  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Navigate to directory if deleted file was active
   const route = parseRoute();
@@ -95,8 +95,8 @@ export async function deleteCurrentFolder() {
     parentPath,
     folderName
   );
-  // Publish to nostr - resolver will pick up the update
-  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  // Update local cache (publishes to nostr with throttle)
+  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Navigate to parent directory
   const url = buildRouteUrl(route.npub, route.treeName, parentPath, undefined, route.linkKey);
@@ -134,8 +134,8 @@ export async function moveEntry(sourceName: string, targetDirName: string) {
   }
 
   const newRootCid = await tree.moveEntry(rootCid, currentPath, sourceName, [...currentPath, targetDirName]);
-  // Publish to nostr - resolver will pick up the update
-  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  // Update local cache (publishes to nostr with throttle)
+  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Clear selection if moved file was active
   const route = parseRoute();
@@ -176,8 +176,8 @@ export async function moveToParent(sourceName: string) {
   }
 
   const newRootCid = await tree.moveEntry(rootCid, currentPath, sourceName, parentPath);
-  // Publish to nostr - resolver will pick up the update
-  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  // Update local cache (publishes to nostr with throttle)
+  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   // Clear selection if moved file was active
   const route = parseRoute();

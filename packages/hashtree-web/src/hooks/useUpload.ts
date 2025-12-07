@@ -233,7 +233,7 @@ export function useUpload() {
     // Autosave after all uploads complete (single save instead of per-file)
     if (currentRootCid?.hash) {
       const keyHex = currentRootCid.key ? toHex(currentRootCid.key) : undefined;
-      await autosaveIfOwn(toHex(currentRootCid.hash), keyHex);
+      autosaveIfOwn(toHex(currentRootCid.hash), keyHex);
     }
 
     setUploadProgress(null);
@@ -465,7 +465,7 @@ export function useUpload() {
     // Autosave after all uploads complete
     if (currentRootCid?.hash) {
       const keyHex = currentRootCid.key ? toHex(currentRootCid.key) : undefined;
-      await autosaveIfOwn(toHex(currentRootCid.hash), keyHex);
+      autosaveIfOwn(toHex(currentRootCid.hash), keyHex);
     }
 
     setUploadProgress(null);

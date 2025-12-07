@@ -31,6 +31,21 @@ const subscriptionCache = new Map<string, {
   unsubscribe: (() => void) | null;
 }>();
 
+/**
+ * Update the subscription cache directly (called from treeRootCache on local writes)
+ * This ensures UI updates immediately when local changes are made.
+ */
+export function updateSubscriptionCache(key: string, hash: Hash, encryptionKey?: Hash): void {
+  const cached = subscriptionCache.get(key);
+  if (cached) {
+    cached.hash = hash;
+    cached.encryptionKey = encryptionKey;
+    cached.decryptedKey = encryptionKey; // For local writes, key is already decrypted
+    // Notify all listeners
+    cached.listeners.forEach(listener => listener(hash, encryptionKey, cached.visibilityInfo));
+  }
+}
+
 function subscribeToResolver(
   key: string,
   callback: (hash: Hash | null, encryptionKey?: Hash, visibilityInfo?: SubscribeVisibilityInfo) => void

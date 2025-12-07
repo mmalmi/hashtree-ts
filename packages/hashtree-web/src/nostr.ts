@@ -22,6 +22,7 @@ import {
   type TreeVisibility,
   visibilityHex,
 } from 'hashtree';
+import { updateLocalRootCacheHex } from './treeRootCache';
 import {
   useAccountsStore,
   initAccountsStore,
@@ -73,15 +74,12 @@ interface NostrState {
   pubkey: string | null;
   npub: string | null;
   isLoggedIn: boolean;
-  /** True when user was just auto-generated (first visit) - cleared after redirect */
-  isNewUser: boolean;
   selectedTree: HashTreeEvent | null;
   relays: string[];
 
   setPubkey: (pk: string | null) => void;
   setNpub: (npub: string | null) => void;
   setIsLoggedIn: (loggedIn: boolean) => void;
-  setIsNewUser: (isNew: boolean) => void;
   setSelectedTree: (tree: HashTreeEvent | null) => void;
   setRelays: (relays: string[]) => void;
 }
@@ -90,14 +88,12 @@ export const useNostrStore = create<NostrState>((set) => ({
   pubkey: null,
   npub: null,
   isLoggedIn: false,
-  isNewUser: false,
   selectedTree: null,
   relays: DEFAULT_RELAYS,
 
   setPubkey: (pk) => set({ pubkey: pk }),
   setNpub: (npub) => set({ npub }),
   setIsLoggedIn: (loggedIn) => set({ isLoggedIn: loggedIn }),
-  setIsNewUser: (isNew) => set({ isNewUser: isNew }),
   setSelectedTree: (tree) => set({ selectedTree: tree }),
   setRelays: (relays) => set({ relays }),
 }));
@@ -348,7 +344,6 @@ export function generateNewKey(): { nsec: string; npub: string } {
   const npubStr = nip19.npubEncode(pk);
   store.setNpub(npubStr);
   store.setIsLoggedIn(true);
-  store.setIsNewUser(true); // Mark for home redirect
 
   // Save to localStorage
   localStorage.setItem(STORAGE_KEY_LOGIN_TYPE, 'nsec');
@@ -375,7 +370,25 @@ export function generateNewKey(): { nsec: string; npub: string } {
   // Initialize WebRTC with signer
   initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt);
 
+  // Create default folders for new user (public, link, private)
+  createDefaultFolders();
+
   return { nsec, npub: npubStr };
+}
+
+/**
+ * Create default folders for a new user
+ */
+async function createDefaultFolders() {
+  try {
+    const { createTree } = await import('./actions');
+    // Create folders in sequence with skipNavigation=true
+    await createTree('public', 'public', true);
+    await createTree('link', 'unlisted', true);
+    await createTree('private', 'private', true);
+  } catch (e) {
+    console.error('Failed to create default folders:', e);
+  }
 }
 
 /**
@@ -436,75 +449,80 @@ export interface SaveHashtreeOptions {
  * @param options - Visibility options
  * @returns Object with success status and linkKey (for unlisted trees)
  */
-export async function saveHashtree(
+export function saveHashtree(
   name: string,
   rootHash: string,
   rootKey?: string,
   options: SaveHashtreeOptions = {}
-): Promise<{ success: boolean; linkKey?: string }> {
+): { success: boolean; linkKey?: string } {
   const store = useNostrStore.getState();
   if (!store.pubkey || !ndk.signer) return { success: false };
 
   const visibility = options.visibility ?? 'public';
 
-  try {
-    const event = new NDKEvent(ndk);
-    event.kind = 30078;
-    event.content = '';
-    event.tags = [
-      ['d', name],
-      ['l', 'hashtree'],
-      ['hash', rootHash],
-    ];
+  const event = new NDKEvent(ndk);
+  event.kind = 30078;
+  event.content = '';
+  event.tags = [
+    ['d', name],
+    ['l', 'hashtree'],
+    ['hash', rootHash],
+  ];
 
-    let linkKey: string | undefined;
+  let linkKey: string | undefined;
 
-    if (rootKey) {
-      switch (visibility) {
-        case 'public':
-          // Plaintext key - anyone can access
-          event.tags.push(['key', rootKey]);
-          break;
+  if (rootKey) {
+    switch (visibility) {
+      case 'public':
+        // Plaintext key - anyone can access
+        event.tags.push(['key', rootKey]);
+        break;
 
-        case 'unlisted':
-          // Encrypt key with link key for sharing
-          linkKey = options.linkKey ?? visibilityHex.generateLinkKey();
-          const encryptedKey = await visibilityHex.encryptKeyForLink(rootKey, linkKey);
-          const keyId = await visibilityHex.computeKeyId(linkKey);
+      case 'unlisted':
+        // Encrypt key with link key for sharing - do async work in background
+        linkKey = options.linkKey ?? visibilityHex.generateLinkKey();
+        // Fire off encryption and publish in background
+        (async () => {
+          const encryptedKey = await visibilityHex.encryptKeyForLink(rootKey, linkKey!);
+          const keyId = await visibilityHex.computeKeyId(linkKey!);
           event.tags.push(['encryptedKey', encryptedKey]);
           event.tags.push(['keyId', keyId]);
           // Also self-encrypt so owner can always access without link key
           const selfEncryptedUnlisted = await nip04.encrypt(secretKey!, store.pubkey, rootKey);
           event.tags.push(['selfEncryptedKey', selfEncryptedUnlisted]);
-          break;
+          event.publish().catch(e => console.error('Failed to publish hashtree:', e));
+        })();
+        break;
 
-        case 'private':
-          // Encrypt key to self using NIP-04
+      case 'private':
+        // Encrypt key to self using NIP-04 - do async work in background
+        (async () => {
           const selfEncrypted = await nip04.encrypt(secretKey!, store.pubkey, rootKey);
           event.tags.push(['selfEncryptedKey', selfEncrypted]);
-          break;
-      }
+          event.publish().catch(e => console.error('Failed to publish hashtree:', e));
+        })();
+        break;
     }
-
-    await event.publish();
-
-    // Update selectedTree if it matches
-    const currentSelected = store.selectedTree;
-    if (currentSelected && currentSelected.name === name && currentSelected.pubkey === store.pubkey) {
-      useNostrStore.getState().setSelectedTree({
-        ...currentSelected,
-        rootHash,
-        rootKey: visibility === 'public' ? rootKey : undefined,
-        visibility,
-        created_at: event.created_at || Math.floor(Date.now() / 1000),
-      });
-    }
-
-    return { success: true, linkKey };
-  } catch (e) {
-    console.error('Failed to save hashtree:', e);
-    return { success: false };
   }
+
+  // For public visibility, publish immediately (no encryption needed)
+  if (!rootKey || visibility === 'public') {
+    event.publish().catch(e => console.error('Failed to publish hashtree:', e));
+  }
+
+  // Update selectedTree if it matches
+  const currentSelected = store.selectedTree;
+  if (currentSelected && currentSelected.name === name && currentSelected.pubkey === store.pubkey) {
+    useNostrStore.getState().setSelectedTree({
+      ...currentSelected,
+      rootHash,
+      rootKey: visibility === 'public' ? rootKey : undefined,
+      visibility,
+      created_at: event.created_at || Math.floor(Date.now() / 1000),
+    });
+  }
+
+  return { success: true, linkKey };
 }
 
 /**
@@ -537,16 +555,37 @@ export function isOwnTree(): boolean {
 }
 
 /**
- * Autosave current tree if it's our own
- * Preserves the tree's visibility setting (public/unlisted/private)
+ * Autosave current tree if it's our own.
+ * Updates local cache immediately, publishing is throttled.
  * @param rootHash - Root hash (hex encoded)
  * @param rootKey - Decryption key (hex encoded, optional for encrypted trees)
  */
-export async function autosaveIfOwn(rootHash: string, rootKey?: string): Promise<boolean> {
+export function autosaveIfOwn(rootHash: string, rootKey?: string): void {
   const store = useNostrStore.getState();
-  if (!isOwnTree() || !store.selectedTree) return false;
+  if (!isOwnTree() || !store.selectedTree || !store.npub) return;
 
-  // Preserve the tree's visibility when autosaving
+  // Update local cache - this triggers throttled publish to Nostr
+  updateLocalRootCacheHex(store.npub, store.selectedTree.name, rootHash, rootKey);
+
+  // Update selectedTree state immediately for UI
+  useNostrStore.getState().setSelectedTree({
+    ...store.selectedTree,
+    rootHash,
+    rootKey: store.selectedTree.visibility === 'public' ? rootKey : store.selectedTree.rootKey,
+  });
+}
+
+/**
+ * Publish tree root to Nostr (called by treeRootCache after throttle)
+ * This is the ONLY place that should publish merkle roots.
+ */
+export async function publishTreeRoot(treeName: string, rootHash: string, rootKey?: string): Promise<boolean> {
+  const store = useNostrStore.getState();
+  if (!store.pubkey || !ndk.signer || !store.selectedTree) return false;
+
+  // Only publish if this is for the current tree
+  if (store.selectedTree.name !== treeName) return false;
+
   const visibility = store.selectedTree.visibility;
 
   // For unlisted trees, get the linkKey from the URL
@@ -556,17 +595,10 @@ export async function autosaveIfOwn(rootHash: string, rootKey?: string): Promise
     linkKey = route.linkKey ?? undefined;
   }
 
-  const result = await saveHashtree(store.selectedTree.name, rootHash, rootKey, {
+  const result = await saveHashtree(treeName, rootHash, rootKey, {
     visibility,
     linkKey,
   });
-
-  // Update local cache for subsequent saves from other documents
-  if (result.success && store.npub) {
-    const { updateLocalRootCacheHex } = await import('./treeRootCache');
-    console.log(`[autosaveIfOwn] Updating local cache: ${store.npub.slice(0, 16)}.../${store.selectedTree.name} -> ${rootHash.slice(0, 16)}...`);
-    updateLocalRootCacheHex(store.npub, store.selectedTree.name, rootHash);
-  }
 
   return result.success;
 }

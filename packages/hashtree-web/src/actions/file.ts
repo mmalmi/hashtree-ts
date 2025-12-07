@@ -34,7 +34,7 @@ export async function saveFile(entryName: string | undefined, content: string): 
   );
 
   // Publish to nostr - resolver will pick up the update automatically
-  await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
   return data;
 }
@@ -61,7 +61,7 @@ export async function createFile(name: string, content: string = '') {
       size
     );
     // Publish to nostr - resolver will pick up the update
-    await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+    autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
   } else {
     // Initialize virtual tree with this file
     const result = await initVirtualTree([{ name, cid: fileCid, size }]);
@@ -108,7 +108,7 @@ export async function uploadSingleFile(fileName: string, data: Uint8Array): Prom
 
   if (rootCid) {
     const keyHex = rootCid.key ? toHex(rootCid.key) : undefined;
-    await autosaveIfOwn(toHex(rootCid.hash), keyHex);
+    autosaveIfOwn(toHex(rootCid.hash), keyHex);
   }
 }
 
@@ -196,6 +196,6 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
   if (rootCid) {
     // Publish to nostr - resolver will pick up the update
     const keyHex = rootCid.key ? toHex(rootCid.key) : undefined;
-    await autosaveIfOwn(toHex(rootCid.hash), keyHex);
+    autosaveIfOwn(toHex(rootCid.hash), keyHex);
   }
 }

@@ -25,26 +25,26 @@ export function setupPageErrorHandler(page: any) {
  */
 export async function navigateToPublicFolder(page: any) {
   // Wait for the public folder link to appear in the tree list (indicates setup complete)
+  // This can take a while for new users since default folders are created async
+  // and published to Nostr fire-and-forget style
   const publicLink = page.getByRole('link', { name: 'public' }).first();
-  await expect(publicLink).toBeVisible({ timeout: 15000 });
+  await expect(publicLink).toBeVisible({ timeout: 30000 });
 
   // Click into the public folder
   await publicLink.click();
 
   // Wait for navigation to complete and folder actions to be visible
-  await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
+  await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 15000 });
   await expect(page.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
 }
 
 /**
- * Selector for "My Trees" button in header.
- * Uses partial match because title includes additional text.
+ * Navigate to user's tree list (home/root).
+ * Clicks the logo in the header which links to home.
  */
-export const myTreesButtonSelector = 'header button[title*="My Trees"]';
-
-/**
- * Click the "My Trees" button to navigate to user's tree list.
- */
-export async function clickMyTreesButton(page: any) {
-  await page.locator(myTreesButtonSelector).click();
+export async function goToTreeList(page: any) {
+  // Click the hashtree logo to go home
+  await page.locator('header a:has-text("hashtree")').click();
+  // Wait for tree list to be visible
+  await page.waitForTimeout(500);
 }

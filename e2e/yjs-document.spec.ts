@@ -92,6 +92,7 @@ test.describe('Yjs Document Viewer', () => {
     // We're inside the public folder from navigateToPublicFolder
 
     // Create a regular folder first
+    console.log('Creating folder...');
     await page.getByRole('button', { name: 'New Folder' }).first().click();
     await page.waitForTimeout(500);
     await page.locator('input[placeholder="Folder name..."]').fill('manual-doc');
@@ -99,28 +100,45 @@ test.describe('Yjs Document Viewer', () => {
     await page.waitForTimeout(1500);
 
     // Navigate into the folder
+    console.log('Looking for manual-doc folder...');
     const folder = page.locator('a:has-text("manual-doc")');
+    const folderCount = await folder.count();
+    console.log(`Found ${folderCount} elements matching manual-doc`);
     await expect(folder).toBeVisible({ timeout: 5000 });
     await folder.click();
     await page.waitForTimeout(1000);
 
     // Should show normal directory (no .yjs file yet)
+    console.log('Checking for drop zone...');
     const dropZone = page.locator('text=Drop or click to add');
     await expect(dropZone).toBeVisible({ timeout: 5000 });
 
     // Create a .yjs file inside
+    console.log('Creating .yjs file...');
     await page.getByRole('button', { name: 'New File' }).click();
     await page.waitForTimeout(500);
     await page.locator('input[placeholder="File name..."]').fill('.yjs');
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1500);
 
-    // Go back to parent
-    await page.locator('a:has-text("..")').click();
+    // Go back to parent - wait for the link to appear
+    console.log('Going back to parent...');
+    const backLink = page.locator('a:has-text("..")');
+    await expect(backLink).toBeVisible({ timeout: 5000 });
+    await backLink.click();
     await page.waitForTimeout(1000);
 
-    // Navigate back into the folder
-    await page.locator('a:has-text("manual-doc")').click();
+    // Navigate back into the folder - wait for it to be visible first
+    console.log('Navigating back to manual-doc...');
+    const currentUrl = page.url();
+    console.log(`Current URL: ${currentUrl}`);
+    const allLinks = await page.locator('a').allTextContents();
+    console.log(`All links on page: ${allLinks.join(', ')}`);
+    const manualDocLink = page.locator('a:has-text("manual-doc")');
+    const linkCount = await manualDocLink.count();
+    console.log(`Found ${linkCount} manual-doc links`);
+    await expect(manualDocLink).toBeVisible({ timeout: 5000 });
+    await manualDocLink.click();
     await page.waitForTimeout(1500);
 
     // Should now show the Tiptap editor (detects .yjs file)
@@ -167,9 +185,9 @@ test.describe('Yjs Document Viewer', () => {
     const savedStatus = page.locator('text=Saved');
     await expect(savedStatus).toBeVisible({ timeout: 5000 });
 
-    // Verify a "doc" file was created in the folder (with a size indicator)
-    const docFile = page.getByRole('link', { name: /^doc \d+ B$/ });
-    await expect(docFile).toBeVisible({ timeout: 5000 });
+    // Verify a "deltas" folder was created for delta-based storage
+    const deltasFolder = page.getByRole('link', { name: /^deltas$/ });
+    await expect(deltasFolder).toBeVisible({ timeout: 5000 });
   });
 
   test('clicking .yjs file to view it does not cause errors', async ({ page }) => {

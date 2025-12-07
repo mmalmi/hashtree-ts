@@ -84,7 +84,7 @@ export async function createFolder(name: string) {
       true
     );
     // Publish to nostr - resolver will pick up the update
-    await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+    autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
   } else {
     // Initialize virtual tree with this folder
     await initVirtualTree([{ name, cid: emptyDirCid, size: 0, isTree: true }]);
@@ -121,7 +121,7 @@ export async function createDocument(name: string) {
       true
     );
     // Publish to nostr
-    await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+    autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
     // Update local cache for subsequent saves
     const route = parseRoute();
@@ -172,6 +172,7 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
   if (!name) return { success: false };
 
   const { saveHashtree } = await import('../nostr');
+  const { storeLinkKey } = await import('../hooks/useTrees');
 
   const tree = getTree();
   // Create encrypted empty directory (default)
@@ -196,18 +197,16 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
       });
     }
 
-    // Publish to nostr with visibility - resolver will pick up the update when we navigate
-    const result = await saveHashtree(name, rootHex, keyHex, { visibility });
-    if (result.success) {
-      // For unlisted trees, store link key locally and append to URL
-      if (result.linkKey) {
-        const { storeLinkKey } = await import('../hooks/useTrees');
-        await storeLinkKey(nostrState.npub, name, result.linkKey);
-      }
-      if (!skipNavigation) {
-        const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
-        navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}${linkKeyParam}`);
-      }
+    // Publish to nostr - fire and forget, don't block UI
+    const result = saveHashtree(name, rootHex, keyHex, { visibility });
+
+    // For unlisted trees, store link key locally and append to URL
+    if (result.linkKey) {
+      storeLinkKey(nostrState.npub, name, result.linkKey);
+    }
+    if (!skipNavigation) {
+      const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
+      navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}${linkKeyParam}`);
     }
     return result;
   }

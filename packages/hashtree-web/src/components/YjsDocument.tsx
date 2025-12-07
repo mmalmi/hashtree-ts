@@ -2,13 +2,22 @@
  * YjsDocument - renders an editable Yjs document using Tiptap
  *
  * A Yjs document directory contains:
- * - A `.yjs` file with collaborator npubs (one per line) to merge from
- * - Delta files (binary Yjs updates) - any file that isn't `.yjs` or starting with `.`
+ * - `.yjs` - config file with collaborator npubs (one per line)
+ * - `state.yjs` - optional compacted full state (created after many deltas)
+ * - `deltas/` - directory of incremental Yjs updates (0001.bin, 0002.bin, etc.)
+ *
+ * Storage strategy:
+ * - Each local edit is saved as a new delta file (small, append-only)
+ * - After COMPACTION_THRESHOLD deltas, they're compacted into state.yjs
+ * - Loading: read state.yjs (if exists) then apply all deltas on top
+ *
+ * This approach optimizes for:
+ * - Minimal rehashing (only new delta file needs hashing)
+ * - Efficient deduplication (immutable delta files)
+ * - Fast appends (O(1) instead of O(n))
  *
  * When collaborators are defined, this component will also fetch and merge
  * deltas from those users' hashtrees at the same relative path.
- *
- * Changes are auto-saved to the hashtree as Yjs delta files.
  */
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -27,6 +36,15 @@ import { openForkModal, openCollaboratorsModal, openShareModal } from '../hooks/
 import { updateLocalRootCache, getLocalRootCache } from '../treeRootCache';
 import { VisibilityIcon } from './VisibilityIcon';
 
+// Compaction threshold - after this many deltas, compact into state.yjs
+const COMPACTION_THRESHOLD = 50;
+
+// Deltas subdirectory name
+const DELTAS_DIR = 'deltas';
+
+// State file name (compacted state)
+const STATE_FILE = 'state.yjs';
+
 interface YjsDocumentProps {
   /** CID of the directory containing .yjs */
   dirCid: CID;
@@ -42,9 +60,25 @@ function parseYjsConfig(content: string): string[] {
     .filter(line => line.length > 0 && line.startsWith('npub1'));
 }
 
-/** Check if a file is a delta file (not config files) */
+/** Check if a file is a delta file (in deltas/ directory, ends with .bin) */
 function isDeltaFile(name: string): boolean {
-  return name !== '.yjs' && !name.startsWith('.');
+  return name.endsWith('.bin');
+}
+
+/** Generate next delta filename (0001.bin, 0002.bin, etc.) */
+function getNextDeltaName(existingDeltas: TreeEntry[]): string {
+  if (existingDeltas.length === 0) {
+    return '0001.bin';
+  }
+  // Find the highest numbered delta
+  const numbers = existingDeltas
+    .map(e => {
+      const match = e.name.match(/^(\d+)\.bin$/);
+      return match ? parseInt(match[1], 10) : 0;
+    })
+    .filter(n => n > 0);
+  const maxNum = numbers.length > 0 ? Math.max(...numbers) : 0;
+  return String(maxNum + 1).padStart(4, '0') + '.bin';
 }
 
 /** Suggest a fork name - use dirName unless it already exists */
@@ -124,7 +158,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
       );
 
       // Publish to nostr
-      await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+      autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
 
       // Update local cache for subsequent saves from other documents
       if (userNpub && route.treeName) {
@@ -142,8 +176,6 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
   const emptyArray = useMemo(() => [] as TreeEntry[], []);
   const safeEntries = entries ?? emptyArray;
 
-  // Track the last saved state to detect changes
-  const lastSavedStateRef = useRef<Uint8Array | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track the identity we loaded for (to detect stale entries during navigation)
   const loadedForIdentityRef = useRef<string | null>(null);
@@ -200,21 +232,48 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
           }
         }
 
-        // Sort delta entries by name (assumed to be numbered/ordered)
-        const deltaEntries = [...safeEntries]
-          .filter(e => !e.isTree && isDeltaFile(e.name))
-          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+        // Load state.yjs (compacted state) if it exists
+        const stateEntry = safeEntries.find(e => e.name === STATE_FILE && !e.isTree);
+        if (stateEntry) {
+          const data = await tree.readFile(stateEntry.cid);
+          if (cancelled) return;
+          if (data) {
+            Y.applyUpdate(ydoc, data, 'remote');
+          }
+        }
 
-        // Load and apply local deltas
-        for (const entry of deltaEntries) {
+        // Load deltas from deltas/ directory
+        const deltasDir = safeEntries.find(e => e.name === DELTAS_DIR && e.isTree);
+        if (deltasDir) {
+          const deltaEntries = await tree.listDirectory(deltasDir.cid);
           if (cancelled) return;
 
-          const data = await tree.readFile(entry.cid);
-          if (cancelled) return;
-          if (!data) continue;
+          // Sort delta entries by name (0001.bin, 0002.bin, etc.)
+          const sortedDeltas = deltaEntries
+            .filter(e => !e.isTree && isDeltaFile(e.name))
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-          // Apply the update to the Yjs document (mark as 'remote' to skip auto-save)
-          Y.applyUpdate(ydoc, data, 'remote');
+          // Load and apply deltas
+          for (const entry of sortedDeltas) {
+            if (cancelled) return;
+
+            const data = await tree.readFile(entry.cid);
+            if (cancelled) return;
+            if (!data) continue;
+
+            // Apply the update to the Yjs document (mark as 'remote' to skip auto-save)
+            Y.applyUpdate(ydoc, data, 'remote');
+          }
+        }
+
+        // BACKWARDS COMPATIBILITY: Also check for old-style 'doc' file
+        const legacyDocEntry = safeEntries.find(e => e.name === 'doc' && !e.isTree);
+        if (legacyDocEntry && !stateEntry && !deltasDir) {
+          const data = await tree.readFile(legacyDocEntry.cid);
+          if (cancelled) return;
+          if (data) {
+            Y.applyUpdate(ydoc, data, 'remote');
+          }
         }
 
         // Now load and merge deltas from other editors
@@ -272,20 +331,45 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
             const collabEntries = await tree.listDirectory(result.cid);
             if (cancelled) return;
 
-            // Sort and apply their deltas
-            const collabDeltas = collabEntries
-              .filter(e => !e.isTree && isDeltaFile(e.name))
-              .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+            // Load their state.yjs if it exists
+            const collabState = collabEntries.find(e => e.name === STATE_FILE && !e.isTree);
+            if (collabState) {
+              const data = await tree.readFile(collabState.cid);
+              if (cancelled) return;
+              if (data) {
+                Y.applyUpdate(ydoc, data, 'remote');
+              }
+            }
 
-            for (const entry of collabDeltas) {
+            // Load their deltas from deltas/ directory
+            const collabDeltasDir = collabEntries.find(e => e.name === DELTAS_DIR && e.isTree);
+            if (collabDeltasDir) {
+              const collabDeltaEntries = await tree.listDirectory(collabDeltasDir.cid);
               if (cancelled) return;
 
-              const data = await tree.readFile(entry.cid);
-              if (cancelled) return;
-              if (!data) continue;
+              const sortedDeltas = collabDeltaEntries
+                .filter(e => !e.isTree && isDeltaFile(e.name))
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
-              // Mark as 'remote' to skip auto-save
-              Y.applyUpdate(ydoc, data, 'remote');
+              for (const entry of sortedDeltas) {
+                if (cancelled) return;
+
+                const data = await tree.readFile(entry.cid);
+                if (cancelled) return;
+                if (!data) continue;
+
+                Y.applyUpdate(ydoc, data, 'remote');
+              }
+            }
+
+            // BACKWARDS COMPATIBILITY: Check for old-style 'doc' file
+            const collabLegacyDoc = collabEntries.find(e => e.name === 'doc' && !e.isTree);
+            if (collabLegacyDoc && !collabState && !collabDeltasDir) {
+              const data = await tree.readFile(collabLegacyDoc.cid);
+              if (cancelled) return;
+              if (data) {
+                Y.applyUpdate(ydoc, data, 'remote');
+              }
             }
           } catch (err) {
             // Continue with other collaborators if one fails
@@ -361,14 +445,36 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
             }
           }
 
-          const deltaEntries = entries
-            .filter(e => !e.isTree && isDeltaFile(e.name))
-            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-          for (const entry of deltaEntries) {
-            const data = await tree.readFile(entry.cid);
+          // Load state.yjs (compacted state) if it exists
+          const stateEntry = entries.find(e => e.name === STATE_FILE && !e.isTree);
+          if (stateEntry) {
+            const data = await tree.readFile(stateEntry.cid);
             if (data) {
-              // Mark as 'remote' so auto-save doesn't trigger
+              Y.applyUpdate(ydoc, data, 'remote');
+            }
+          }
+
+          // Load deltas from deltas/ directory
+          const deltasDir = entries.find(e => e.name === DELTAS_DIR && e.isTree);
+          if (deltasDir) {
+            const deltaEntries = await tree.listDirectory(deltasDir.cid);
+            const sortedDeltas = deltaEntries
+              .filter(e => !e.isTree && isDeltaFile(e.name))
+              .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+            for (const entry of sortedDeltas) {
+              const data = await tree.readFile(entry.cid);
+              if (data) {
+                Y.applyUpdate(ydoc, data, 'remote');
+              }
+            }
+          }
+
+          // BACKWARDS COMPATIBILITY: Check for old-style 'doc' file
+          const legacyDocEntry = entries.find(e => e.name === 'doc' && !e.isTree);
+          if (legacyDocEntry && !stateEntry && !deltasDir) {
+            const data = await tree.readFile(legacyDocEntry.cid);
+            if (data) {
               Y.applyUpdate(ydoc, data, 'remote');
             }
           }
@@ -385,7 +491,10 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     };
   }, [collaborators, route.treeName, currentPath.join('/'), ydoc, viewedNpub, userNpub]);
 
-  // Save function - writes the full Yjs state as a delta file
+  // Track last saved state vector for incremental updates
+  const lastSavedStateVectorRef = useRef<Uint8Array | null>(null);
+
+  // Save function - writes incremental Yjs deltas to deltas/ directory
   // If viewing someone else's document as a collaborator, saves to user's own tree
   const saveDocument = useCallback(async () => {
     if (!canEdit) return;
@@ -395,16 +504,22 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     try {
       setSaving(true);
 
-      // Get the full encoded state of the Yjs document
-      const state = Y.encodeStateAsUpdate(ydoc);
+      // Get current state vector and encode diff since last save
+      const currentStateVector = Y.encodeStateVector(ydoc);
+      let deltaUpdate: Uint8Array;
 
-      // Check if state has actually changed
-      if (lastSavedStateRef.current) {
-        const prevState = lastSavedStateRef.current;
-        if (state.length === prevState.length && state.every((v, i) => v === prevState[i])) {
-          setSaving(false);
-          return; // No changes
-        }
+      if (lastSavedStateVectorRef.current) {
+        // Encode only the changes since last save
+        deltaUpdate = Y.encodeStateAsUpdate(ydoc, lastSavedStateVectorRef.current);
+      } else {
+        // First save - encode full state
+        deltaUpdate = Y.encodeStateAsUpdate(ydoc);
+      }
+
+      // Check if there are actual changes (delta would be very small if no changes)
+      if (deltaUpdate.length <= 2) {
+        setSaving(false);
+        return; // No meaningful changes
       }
 
       // Determine where to save
@@ -459,37 +574,29 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
         return;
       }
 
-      // Store the state as a file
-      const { cid: fileCid, size } = await tree.putFile(state);
+      let workingRootCid = targetRootCid;
 
       // Check if the path exists in the target tree (needed for editor saving to own tree)
       // If not, we need to create the document folder first
-      let workingRootCid = targetRootCid;
-
       if (!isOwnTree && isEditor && currentPath.length > 0) {
         // Check if path exists by trying to resolve it
         const pathStr = currentPath.join('/');
         const resolved = await tree.resolvePath(targetRootCid, pathStr);
 
         if (!resolved) {
-
           // Create the document folder hierarchy
-          // For each segment of the path, we need to ensure it exists
           for (let i = 0; i < currentPath.length; i++) {
             const partialPath = currentPath.slice(0, i);
             const segmentName = currentPath[i];
 
-            // Check if this segment exists
             const segmentPath = partialPath.length > 0 ? partialPath.join('/') : '';
             const parentResolved = segmentPath ? await tree.resolvePath(workingRootCid, segmentPath) : { cid: workingRootCid };
 
             if (parentResolved) {
-              // Check if segmentName exists in parent
               const parentEntries = await tree.listDirectory(parentResolved.cid);
               const segmentExists = parentEntries.some(e => e.name === segmentName);
 
               if (!segmentExists) {
-                // Create an empty directory for this segment
                 const { cid: emptyDirCid } = await tree.putDirectory([]);
                 workingRootCid = await tree.setEntry(
                   workingRootCid,
@@ -505,14 +612,71 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
         }
       }
 
-      // Add/update the "doc" entry in the current directory
+      // Get or create the deltas directory
+      const docDirPath = currentPath.join('/');
+      const docDirResolved = docDirPath ? await tree.resolvePath(workingRootCid, docDirPath) : { cid: workingRootCid };
+
+      let existingDeltas: TreeEntry[] = [];
+      if (docDirResolved) {
+        const docEntries = await tree.listDirectory(docDirResolved.cid);
+        const deltasDir = docEntries.find(e => e.name === DELTAS_DIR && e.isTree);
+
+        if (deltasDir) {
+          existingDeltas = await tree.listDirectory(deltasDir.cid);
+        } else {
+          // Create deltas directory
+          const { cid: emptyDirCid } = await tree.putDirectory([]);
+          workingRootCid = await tree.setEntry(
+            workingRootCid,
+            currentPath,
+            DELTAS_DIR,
+            emptyDirCid,
+            0,
+            true
+          );
+        }
+      }
+
+      // Store the delta as a new file
+      const { cid: deltaCid, size: deltaSize } = await tree.putFile(deltaUpdate);
+      const deltaName = getNextDeltaName(existingDeltas.filter(e => isDeltaFile(e.name)));
+
+      // Add the delta file to deltas/ directory
       let newRootCid = await tree.setEntry(
         workingRootCid,
-        currentPath,
-        'doc',
-        fileCid,
-        size
+        [...currentPath, DELTAS_DIR],
+        deltaName,
+        deltaCid,
+        deltaSize
       );
+
+      // Check if we need to compact (too many deltas)
+      const deltaCount = existingDeltas.filter(e => isDeltaFile(e.name)).length + 1;
+      if (deltaCount >= COMPACTION_THRESHOLD) {
+        // Compact: save full state as state.yjs and clear deltas
+        const fullState = Y.encodeStateAsUpdate(ydoc);
+        const { cid: stateCid, size: stateSize } = await tree.putFile(fullState);
+
+        // Update state.yjs
+        newRootCid = await tree.setEntry(
+          newRootCid,
+          currentPath,
+          STATE_FILE,
+          stateCid,
+          stateSize
+        );
+
+        // Clear deltas directory (create empty directory)
+        const { cid: emptyDirCid } = await tree.putDirectory([]);
+        newRootCid = await tree.setEntry(
+          newRootCid,
+          currentPath,
+          DELTAS_DIR,
+          emptyDirCid,
+          0,
+          true
+        );
+      }
 
       // If saving as collaborator, also create/update the .yjs file with collaborators
       if (!isOwnTree && isEditor && targetCollaborators.length > 0) {
@@ -533,7 +697,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
       // Publish to nostr and update local cache
       if (isOwnTree) {
         // Use autosaveIfOwn for own trees (preserves visibility settings)
-        await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+        autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
         // Update local cache so subsequent saves from other documents use this hash
         if (userNpub && route.treeName) {
           updateLocalRootCache(userNpub, route.treeName, newRootCid.hash);
@@ -545,7 +709,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
         updateLocalRootCache(userNpub, route.treeName, newRootCid.hash);
       }
 
-      lastSavedStateRef.current = state;
+      lastSavedStateVectorRef.current = currentStateVector;
       setLastSaved(new Date());
     } catch (err) {
       console.error('Failed to save document:', err);

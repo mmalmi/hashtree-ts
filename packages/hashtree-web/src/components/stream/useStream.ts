@@ -235,11 +235,11 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       const currentPath = getCurrentPathFromUrl();
       const newRootCid = await tree.setEntry(rootCid, currentPath, filename, fileCid!, fileSize);
       // Publish to nostr - resolver will pick up the update
-      await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+      autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
     } else {
       // Create new tree - public directory but with encrypted file entries
       const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid!, size: fileSize }], { public: true })).cid;
-      await autosaveIfOwn(toHex(newRootCid.hash));
+      autosaveIfOwn(toHex(newRootCid.hash));
     }
   }, 3000);
 
@@ -295,11 +295,11 @@ export async function stopRecording(): Promise<void> {
       const currentPath = getCurrentPathFromUrl();
       const newRootCid = await tree.setEntry(rootCid, currentPath, filename, fileCid, fileSize);
       // Publish to nostr - resolver will pick up the update
-      await autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+      autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
     } else {
       // Create new tree - public directory but with encrypted file entries
       const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid, size: fileSize }], { public: true })).cid;
-      await autosaveIfOwn(toHex(newRootCid.hash));
+      autosaveIfOwn(toHex(newRootCid.hash));
       navigate('/');
     }
   }
