@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 
 test.describe('Git integration features', () => {
   // Skip: Folder creation timing is flaky in parallel test environment
@@ -9,7 +9,7 @@ test.describe('Git integration features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -64,7 +64,7 @@ test.describe('Git integration features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -157,7 +157,7 @@ test.describe('Git integration features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 

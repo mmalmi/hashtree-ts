@@ -8,7 +8,7 @@
  * 4. DOSBox viewer loads directory context
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -24,7 +24,7 @@ test.describe('DOSBox integration', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -74,7 +74,7 @@ test.describe('DOSBox integration', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -129,7 +129,7 @@ test.describe('DOSBox integration', () => {
     await navigateToPublicFolder(page);
 
     // Create folder and upload ZIP
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -178,7 +178,7 @@ test.describe('DOSBox integration', () => {
     await navigateToPublicFolder(page);
 
     // Create folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -220,7 +220,7 @@ test.describe('DOSBox integration', () => {
     await navigateToPublicFolder(page);
 
     // Create folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 

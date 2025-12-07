@@ -11,8 +11,8 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 
-/** Selector for "My Trees" button in header (uses partial match) */
-const myTreesButtonSelector = 'header button[title*="My Trees"]';
+/** Selector for profile button in header (avatar button when logged in) */
+const profileButtonSelector = 'header button[title*="My Profile"]';
 
 // Helper to create a temp file and upload it
 async function uploadTempFile(page: Page, name: string, content: string | Buffer) {
@@ -56,7 +56,7 @@ async function navigateToPublicFolder(page: Page) {
 // Helper to create tree via modal and navigate into it
 async function createAndEnterTree(page: Page, name: string) {
   // Go to user's tree list first
-  await page.locator(myTreesButtonSelector).click();
+  await page.locator('header a:has-text("hashtree")').click();
   await page.waitForTimeout(300);
 
   await page.getByRole('button', { name: 'New Folder' }).click();

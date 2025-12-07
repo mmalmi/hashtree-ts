@@ -8,7 +8,7 @@
  * 4. Resources from subdirectories are accessible
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 
 test.describe('HTML Viewer with directory context', () => {
   // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
@@ -18,7 +18,7 @@ test.describe('HTML Viewer with directory context', () => {
     await navigateToPublicFolder(page);
 
     // Create a folder for our HTML site
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -108,7 +108,7 @@ h1 {
     await navigateToPublicFolder(page);
 
     // Create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -184,7 +184,7 @@ window.onload = function() {
     await navigateToPublicFolder(page);
 
     // Create main folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 
 test.describe('Multi-file upload', () => {
   let tempDir: string;
@@ -40,7 +40,7 @@ test.describe('Multi-file upload', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list first, then create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
 
     // Click New Folder to create a folder/tree
@@ -77,7 +77,7 @@ test.describe('Multi-file upload', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list first, then create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
 
     // Click New Folder to create a folder/tree

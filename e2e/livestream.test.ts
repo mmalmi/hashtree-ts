@@ -2,7 +2,7 @@ import { test, expect, Page } from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 
 // Increase timeout for livestream tests
 test.setTimeout(60000);
@@ -27,7 +27,7 @@ test.describe('Livestream Video Stability', () => {
   // Helper to navigate to tree list and create a new tree
   async function createTree(page: Page, name: string) {
     // Navigate to tree list first
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
 
     await page.getByRole('button', { name: 'New Folder' }).click();

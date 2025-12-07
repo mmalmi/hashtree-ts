@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 
 test.describe('Compression features', () => {
   test('should show ZIP button when viewing a folder', async ({ page }) => {
@@ -8,7 +8,7 @@ test.describe('Compression features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -37,7 +37,7 @@ test.describe('Compression features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -65,7 +65,7 @@ test.describe('Compression features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 

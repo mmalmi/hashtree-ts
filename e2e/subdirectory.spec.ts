@@ -5,7 +5,7 @@
  * (not files) across all visibility types: public, unlisted, and private.
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 
 test.describe('Subdirectory Creation', () => {
   // Increase timeout for all tests since new user setup now creates 3 default folders
@@ -34,7 +34,7 @@ test.describe('Subdirectory Creation', () => {
 
   test('subdirectory in public tree should show as folder with folder icon', async ({ page }) => {
     // Go to tree list
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
@@ -70,7 +70,7 @@ test.describe('Subdirectory Creation', () => {
 
   test('clicking subdirectory in public tree should navigate into it', async ({ page }) => {
     // Go to tree list
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
@@ -104,7 +104,7 @@ test.describe('Subdirectory Creation', () => {
   test.skip('nested subdirectories in public tree should all show as folders', async ({ page }) => {
     // TODO: File/Folder buttons not showing when inside subdirectory - separate bug
     // Go to tree list
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
@@ -162,7 +162,7 @@ test.describe('Subdirectory Creation', () => {
 
   test('File/Folder buttons visible inside subdirectory of public tree', async ({ page }) => {
     // Go to tree list
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
@@ -191,7 +191,7 @@ test.describe('Subdirectory Creation', () => {
 
   test('subdirectory in unlisted tree should show as folder', async ({ page }) => {
     // Go to tree list
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
@@ -225,7 +225,7 @@ test.describe('Subdirectory Creation', () => {
 
   test('subdirectory in private tree should show as folder', async ({ page }) => {
     // Go to tree list
-    await page.locator(myTreesButtonSelector).click();
+    await page.locator('header a:has-text("hashtree")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });

@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 
 // Helper to navigate to accounts page
 async function navigateToAccountsPage(page: any) {
   // Double-click on avatar to go to accounts
-  await page.locator(myTreesButtonSelector).dblclick();
+  await page.locator('header button[title*="My Profile"]').dblclick();
   await page.waitForTimeout(300);
 
   // Should be on accounts page
@@ -229,7 +229,7 @@ test.describe('Multi-Account Management', () => {
     await page.waitForTimeout(500);
 
     // Navigate back to accounts page
-    await page.locator(myTreesButtonSelector).dblclick();
+    await page.locator('header button[title*="My Profile"]').dblclick();
     await page.waitForTimeout(300);
 
     // Should still have 2 accounts - non-active row should be visible
