@@ -211,6 +211,10 @@ export class WebRTCStore implements Store {
       localStore: this.config.localStore,
       requestTimeout: this.config.requestTimeout,
       debug: this.config.debug,
+      onStatusChange: () => {
+        // Emit update when WebSocket status changes (connect, disconnect, reconnect)
+        this.emit({ type: 'update' });
+      },
     });
 
     // Connect in background (don't block start)
@@ -218,9 +222,8 @@ export class WebRTCStore implements Store {
       if (connected) {
         this.log('WebSocket fallback connected to', this.config.wsFallbackUrl);
       } else {
-        this.log('WebSocket fallback failed to connect');
+        this.log('WebSocket fallback failed to connect (will retry with backoff)');
       }
-      this.emit({ type: 'update' });
     });
   }
 

@@ -32,17 +32,24 @@ export class WebSocketPeer {
   private connected = false;
   private connecting = false;
   private connectPromise: Promise<boolean> | null = null;
+  private reconnectInterval = 1000; // Start at 1s
+  private maxReconnectInterval = 15000; // Max 15s
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private shouldReconnect = true;
+  private onStatusChange: (() => void) | null = null;
 
   constructor(options: {
     url: string;
     localStore?: Store | null;
     requestTimeout?: number;
     debug?: boolean;
+    onStatusChange?: () => void;
   }) {
     this.url = options.url;
     this.localStore = options.localStore ?? null;
     this.requestTimeout = options.requestTimeout ?? 5000;
     this.debug = options.debug ?? false;
+    this.onStatusChange = options.onStatusChange ?? null;
   }
 
   private log(...args: unknown[]): void {
@@ -75,6 +82,15 @@ export class WebSocketPeer {
             this.log('Connection timeout');
             this.ws?.close();
             this.connecting = false;
+            this.onStatusChange?.();
+            // Schedule reconnect on timeout
+            if (this.shouldReconnect) {
+              this.reconnectInterval = Math.min(
+                this.reconnectInterval * 1.5,
+                this.maxReconnectInterval
+              );
+              this.scheduleReconnect();
+            }
             resolve(false);
           }
         }, 5000);
@@ -83,16 +99,24 @@ export class WebSocketPeer {
           clearTimeout(connectTimeout);
           this.connected = true;
           this.connecting = false;
+          this.reconnectInterval = 1000; // Reset on successful connection
           this.log('Connected');
+          this.onStatusChange?.();
           resolve(true);
         };
 
         this.ws.onclose = () => {
           clearTimeout(connectTimeout);
+          const wasConnected = this.connected;
           this.connected = false;
           this.connecting = false;
           this.log('Disconnected');
           clearPendingRequests(this.pendingRequests);
+          this.onStatusChange?.();
+          // Schedule reconnect if we were connected or this wasn't the initial connect
+          if (wasConnected && this.shouldReconnect) {
+            this.scheduleReconnect();
+          }
         };
 
         this.ws.onerror = (err) => {
@@ -100,6 +124,15 @@ export class WebSocketPeer {
           this.log('Error:', err);
           this.connected = false;
           this.connecting = false;
+          this.onStatusChange?.();
+          // Schedule reconnect on error
+          if (this.shouldReconnect) {
+            this.reconnectInterval = Math.min(
+              this.reconnectInterval * 1.5,
+              this.maxReconnectInterval
+            );
+            this.scheduleReconnect();
+          }
           resolve(false);
         };
 
@@ -121,9 +154,39 @@ export class WebSocketPeer {
   }
 
   /**
+   * Schedule a reconnect with exponential backoff
+   */
+  private scheduleReconnect(): void {
+    if (!this.shouldReconnect || this.reconnectTimeout) return;
+
+    this.log(`Scheduling reconnect in ${this.reconnectInterval}ms`);
+    this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null;
+      if (this.shouldReconnect && !this.connected && !this.connecting) {
+        this.log('Attempting reconnect...');
+        this.connect().then(success => {
+          if (!success && this.shouldReconnect) {
+            // Increase interval for next attempt (exponential backoff)
+            this.reconnectInterval = Math.min(
+              this.reconnectInterval * 1.5,
+              this.maxReconnectInterval
+            );
+            this.scheduleReconnect();
+          }
+        });
+      }
+    }, this.reconnectInterval);
+  }
+
+  /**
    * Close the WebSocket connection
    */
   close(): void {
+    this.shouldReconnect = false;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
     if (this.ws) {
       this.ws.onclose = null;
       this.ws.onerror = null;
