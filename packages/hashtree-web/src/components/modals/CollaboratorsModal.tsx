@@ -11,7 +11,7 @@ import { nip19 } from 'nostr-tools';
 import Fuse from 'fuse.js';
 import { useModals, closeCollaboratorsModal } from '../../hooks/useModals';
 import { useNostrStore } from '../../nostr';
-import { useFollows, useSocialGraph } from '../../utils/socialGraph';
+import { useFollows } from '../../utils/socialGraph';
 import { useProfile, getProfileName } from '../../hooks/useProfile';
 import { UserRow } from '../user/UserRow';
 import { QRScanner } from '../QRScanner';
@@ -107,7 +107,6 @@ export function CollaboratorsModal() {
 
   const userPubkey = useNostrStore(s => s.pubkey);
   const follows = useFollows(userPubkey);
-  const socialGraph = useSocialGraph();
 
   // Read-only mode if no onSave callback
   const isReadOnly = !collaboratorsTarget?.onSave;
@@ -198,23 +197,6 @@ export function CollaboratorsModal() {
   }, [showCollaboratorsModal, collaboratorsTarget, newNpub, npubs, pendingNpub]);
 
   if (!showCollaboratorsModal || !collaboratorsTarget) return null;
-
-  const validateNpub = (input: string): string | null => {
-    const trimmed = input.trim();
-    if (!trimmed) return null;
-
-    // Validate npub format
-    if (!trimmed.startsWith('npub1') || trimmed.length !== 63) {
-      return null;
-    }
-
-    // Check for duplicates
-    if (npubs.includes(trimmed)) {
-      return null;
-    }
-
-    return trimmed;
-  };
 
   const validateAndPrepareAdd = (input: string): string | null => {
     const trimmed = input.trim();
