@@ -352,7 +352,7 @@ export class HashTreeFS {
   /**
    * Change file mode (no-op for hashtree)
    */
-  async chmod(filepath: string, _mode: number): Promise<void> {
+  async chmod(_filepath: string, _mode: number): Promise<void> {
     // No-op - hashtree doesn't support file modes
   }
 

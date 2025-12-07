@@ -20,7 +20,7 @@ import * as Y from 'yjs';
 import type { CID, TreeEntry, Hash } from 'hashtree';
 import { toHex, cid as makeCid } from 'hashtree';
 import { getTree, decodeAsText } from '../store';
-import { getRefResolver, getResolverKey } from '../refResolver';
+import { getRefResolver } from '../refResolver';
 import { useRoute, useCurrentPath, useTreeRoot, useTrees, getTreeRootSync } from '../hooks';
 import { useNostrStore, autosaveIfOwn, saveHashtree } from '../nostr';
 import { buildRouteUrl } from '../actions';
