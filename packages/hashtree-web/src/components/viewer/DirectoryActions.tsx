@@ -3,9 +3,8 @@
  * Also handles special directory types like .yjs documents and git repos
  */
 import { useState, useEffect, useRef } from 'react';
-import Markdown from 'markdown-to-jsx';
 import { getTree, decodeAsText } from '../../store';
-import { selectFile } from '../../actions';
+import { ReadmePanel } from './ReadmePanel';
 import { useNostrStore } from '../../nostr';
 import { useRoute, useCurrentDirCid, useDirectoryEntries, useTreeRoot, useTrees, useCurrentPath } from '../../hooks';
 import { useGitInfo } from '../../hooks/useGit';
@@ -162,28 +161,8 @@ export function DirectoryActions() {
 
       {/* README.md content */}
       {readmeContent && (
-        <div className="flex-1 overflow-auto px-4 pb-4 lg:px-8 lg:pb-8">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-text-2 text-sm font-medium">README.md</span>
-            {canEdit && (
-              <button
-                onClick={() => {
-                  const readmeEntry = entries.find(
-                    e => e.name.toLowerCase() === 'readme.md' && !e.isTree
-                  );
-                  if (readmeEntry) {
-                    selectFile(readmeEntry);
-                  }
-                }}
-                className="btn-ghost text-xs px-2 py-1"
-              >
-                Edit
-              </button>
-            )}
-          </div>
-          <div className="prose prose-sm max-w-none text-text-1">
-            <Markdown>{readmeContent}</Markdown>
-          </div>
+        <div className="flex-1 overflow-auto px-4 pb-4">
+          <ReadmePanel content={readmeContent} entries={entries} canEdit={canEdit} />
         </div>
       )}
     </div>

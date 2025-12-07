@@ -4,15 +4,14 @@
  */
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import Markdown from 'markdown-to-jsx';
 import type { CID, TreeEntry } from 'hashtree';
 import { getTree, decodeAsText, formatBytes } from '../../store';
-import { selectFile } from '../../actions';
-import { useRoute, useCurrentPath, useCurrentDirCid } from '../../hooks';
+import { useRoute, useCurrentPath } from '../../hooks';
 import { useGitInfo, useGitLog } from '../../hooks/useGit';
 import { openGitHistoryModal } from '../../hooks/useModals';
 import { getFileIcon } from './utils';
 import { FolderActions } from '../FolderActions';
+import { ReadmePanel } from './ReadmePanel';
 
 interface GitRepoViewProps {
   dirCid: CID;
@@ -83,9 +82,9 @@ export function GitRepoView({ dirCid, entries, canEdit }: GitRepoViewProps) {
       </div>
 
       {/* Directory listing table - GitHub style */}
-      <div className="border border-surface-3 rounded-lg mx-4 overflow-hidden bg-surface-0">
+      <div className="b-1 b-surface-3 b-solid rounded-lg mx-4 overflow-hidden bg-surface-0">
         {/* Branch info header row */}
-        <div className="flex items-center gap-3 px-3 py-2 bg-surface-1 border-b border-surface-3 text-sm">
+        <div className="flex items-center gap-3 px-3 py-2 bg-surface-1 b-b-1 b-b-solid b-b-surface-3 text-sm">
           <span className="i-lucide-git-branch text-text-2" />
           <span className="font-medium">{gitInfo.currentBranch || 'detached'}</span>
           <button
@@ -96,12 +95,12 @@ export function GitRepoView({ dirCid, entries, canEdit }: GitRepoViewProps) {
             <span>{commits.length > 0 ? `${commits.length} commits` : 'Commits'}</span>
           </button>
         </div>
-        <table className="w-full text-sm">
+        <table className="w-full text-sm border-collapse">
           <tbody>
             {sortedEntries.map((entry) => (
               <tr
                 key={entry.name}
-                className="border-b border-surface-3 last:border-b-0 hover:bg-surface-1"
+                className="b-b-1 b-b-solid b-b-surface-3 hover:bg-surface-1"
               >
                 <td className="py-2 px-3 w-8">
                   <span className={`${entry.isTree ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}`} />
@@ -132,31 +131,8 @@ export function GitRepoView({ dirCid, entries, canEdit }: GitRepoViewProps) {
 
       {/* README.md panel */}
       {readmeContent && (
-        <div className="border border-surface-3 rounded-lg mx-4 mt-4 mb-4 overflow-hidden bg-surface-0">
-          <div className="flex items-center justify-between px-4 py-2 bg-surface-1 border-b border-surface-3">
-            <div className="flex items-center gap-2">
-              <span className="i-lucide-book-open text-text-2" />
-              <span className="text-sm font-medium">README.md</span>
-            </div>
-            {canEdit && (
-              <button
-                onClick={() => {
-                  const readmeEntry = entries.find(
-                    e => e.name.toLowerCase() === 'readme.md' && !e.isTree
-                  );
-                  if (readmeEntry) {
-                    selectFile(readmeEntry);
-                  }
-                }}
-                className="btn-ghost text-xs px-2 py-1"
-              >
-                Edit
-              </button>
-            )}
-          </div>
-          <div className="p-4 lg:p-6 prose prose-sm max-w-none text-text-1">
-            <Markdown>{readmeContent}</Markdown>
-          </div>
+        <div className="mx-4 mt-4 mb-4">
+          <ReadmePanel content={readmeContent} entries={entries} canEdit={canEdit} />
         </div>
       )}
     </div>
