@@ -319,10 +319,8 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     const docPath = currentPath.join('/');
     const unsubscribes: (() => void)[] = [];
 
-    // Subscribe to each editor's tree (except the currently viewed one)
-    const otherEditors = collaborators.filter(npub => npub !== route.npub);
-
-    for (const npub of otherEditors) {
+    // Subscribe to all editors' trees (including our own for multi-tab sync)
+    for (const npub of collaborators) {
       const resolverKey = `${npub}/${route.treeName}`;
 
       const unsub = resolver.subscribe(resolverKey, async (hash: Hash | null, encryptionKey?: Hash) => {
@@ -360,7 +358,7 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
     return () => {
       unsubscribes.forEach(unsub => unsub());
     };
-  }, [collaborators, route.treeName, route.npub, currentPath.join('/'), ydoc]);
+  }, [collaborators, route.treeName, currentPath.join('/'), ydoc]);
 
   // Save function - writes the full Yjs state as a delta file
   // If viewing someone else's document as a collaborator, saves to user's own tree

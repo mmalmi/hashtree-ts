@@ -336,7 +336,28 @@ test.describe('Yjs Collaborative Document Editing', () => {
       // A should see B's edit in real-time
       expect(contentA).toContain('[REALTIME EDIT]');
 
-      console.log('\n=== Real-time Sync Test Passed ===');
+      // === Now test the reverse: A makes an edit, B should see it ===
+      console.log('User A: Making edit while B watches...');
+      await editorA.click();
+      await pageA.keyboard.type(' [A RESPONSE]');
+      await pageA.waitForTimeout(500);
+
+      // Wait for A's save
+      await waitForSave(pageA);
+      console.log('User A: Edit saved to A\'s tree');
+
+      // === Wait for B to receive the update via subscription ===
+      console.log('Waiting for B to receive A\'s update via subscription...');
+      await pageB.waitForTimeout(5000); // Give time for nostr to propagate and subscription to fire
+
+      // Check what B sees now (without refreshing!)
+      contentB = await editorB.textContent();
+      console.log(`After A's edit - User B sees: "${contentB}"`);
+
+      // B should see A's edit in real-time
+      expect(contentB).toContain('[A RESPONSE]');
+
+      console.log('\n=== Real-time Sync Test Passed (Both Directions) ===');
 
     } finally {
       await contextA.close();
