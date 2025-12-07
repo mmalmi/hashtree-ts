@@ -40,7 +40,7 @@ async function clearStorageAndReload(page: Page) {
 }
 
 // Helper to wait for new user setup and navigate to public folder
-async function waitForNewUserRedirect(page: Page) {
+async function navigateToPublicFolder(page: Page) {
   // Wait for the public folder link to appear in the tree list (indicates setup complete)
   const publicLink = page.getByRole('link', { name: 'public' }).first();
   await expect(publicLink).toBeVisible({ timeout: 15000 });
@@ -83,7 +83,7 @@ test.describe('nhash file permalinks', () => {
     await page1.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
 
     // Wait for new user redirect to public folder
-    await waitForNewUserRedirect(page1);
+    await navigateToPublicFolder(page1);
 
     // Create a new tree for testing (more reliable than using public folder)
     await createAndEnterTree(page1, 'permalink-test');
@@ -206,7 +206,7 @@ test.describe('nhash file permalinks', () => {
     await page1.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
 
     // Wait for new user redirect to public folder
-    await waitForNewUserRedirect(page1);
+    await navigateToPublicFolder(page1);
 
     // Create a new tree for testing
     await createAndEnterTree(page1, 'dir-permalink-test');

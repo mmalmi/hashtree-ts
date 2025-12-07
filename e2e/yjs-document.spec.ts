@@ -5,7 +5,7 @@
  * A Yjs document directory is identified by having a .yjs config file inside.
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, waitForNewUserRedirect } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 
 test.describe('Yjs Document Viewer', () => {
   test.setTimeout(60000);
@@ -28,11 +28,11 @@ test.describe('Yjs Document Viewer', () => {
     await page.reload();
     await page.waitForTimeout(500);
     await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
   });
 
   test('New Document button creates folder with .yjs file', async ({ page }) => {
-    // We're inside the public folder from waitForNewUserRedirect
+    // We're inside the public folder from navigateToPublicFolder
 
     // Click New Document button
     await page.getByRole('button', { name: 'New Document' }).click();
@@ -57,7 +57,7 @@ test.describe('Yjs Document Viewer', () => {
   });
 
   test('non-document directory shows normal directory actions', async ({ page }) => {
-    // We're inside the public folder from waitForNewUserRedirect
+    // We're inside the public folder from navigateToPublicFolder
 
     // Create a regular subfolder using New Folder button
     await page.getByRole('button', { name: 'New Folder' }).first().click();
@@ -89,7 +89,7 @@ test.describe('Yjs Document Viewer', () => {
   });
 
   test('folder with manually created .yjs file shows Tiptap editor', async ({ page }) => {
-    // We're inside the public folder from waitForNewUserRedirect
+    // We're inside the public folder from navigateToPublicFolder
 
     // Create a regular folder first
     await page.getByRole('button', { name: 'New Folder' }).first().click();
@@ -133,7 +133,7 @@ test.describe('Yjs Document Viewer', () => {
   });
 
   test('typing in document editor works and auto-saves', async ({ page }) => {
-    // We're inside the public folder from waitForNewUserRedirect
+    // We're inside the public folder from navigateToPublicFolder
 
     // Click New Document button
     await page.getByRole('button', { name: 'New Document' }).click();
@@ -187,7 +187,7 @@ test.describe('Yjs Document Viewer', () => {
       consoleErrors.push(err.message);
     });
 
-    // We're inside the public folder from waitForNewUserRedirect
+    // We're inside the public folder from navigateToPublicFolder
 
     // Create a document folder using New Document button
     await page.getByRole('button', { name: 'New Document' }).click();

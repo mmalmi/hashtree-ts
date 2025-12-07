@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 
 test.describe('FileBrowser keyboard navigation', () => {
   let tempDir: string;
@@ -33,7 +33,7 @@ test.describe('FileBrowser keyboard navigation', () => {
   test.skip('should navigate files with arrow keys and preview them', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list first, then create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -113,7 +113,7 @@ test.describe('FileBrowser keyboard navigation', () => {
     // Use mobile viewport because FolderActions buttons are hidden on desktop (lg:hidden)
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list first, then create a folder
     await page.locator(myTreesButtonSelector).click();

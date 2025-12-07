@@ -8,7 +8,7 @@
  * - Verifying visibility icons in tree list and inside tree view
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 
 test.describe('Unlisted Tree Visibility', () => {
   // Increase timeout for all tests since new user setup now creates 3 default folders
@@ -38,7 +38,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
 
     // New users get auto-redirected to their public folder - wait for that
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
   });
 
   test('should create unlisted tree with ?k= param in URL', async ({ page }) => {

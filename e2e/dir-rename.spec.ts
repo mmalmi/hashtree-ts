@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, waitForNewUserRedirect } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 
 test.describe('Directory rename', () => {
   // Increase timeout for all tests since new user setup now creates 3 default folders
@@ -7,7 +7,7 @@ test.describe('Directory rename', () => {
   test('should rename a subdirectory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Now we're in the user's public folder, which starts empty
     // Wait for the Folder button to be available (may take a moment for UI to settle)
@@ -69,7 +69,7 @@ test.describe('Directory rename', () => {
   test('should not show rename button for root directory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Now we're in the user's public folder (which is a root tree)
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
@@ -84,7 +84,7 @@ test.describe('Directory rename', () => {
   test.skip('should delete a subdirectory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Now we're in the user's public folder, which starts empty
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });

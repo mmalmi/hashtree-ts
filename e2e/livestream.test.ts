@@ -2,7 +2,7 @@ import { test, expect, Page } from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 
 // Increase timeout for livestream tests
 test.setTimeout(60000);
@@ -66,7 +66,7 @@ test.describe('Livestream Video Stability', () => {
     await clearStorage(page);
     await page.reload();
     await waitForAutoLogin(page);
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Create folder via tree list
     await createTree(page, 'stream-test');
@@ -149,7 +149,7 @@ test.describe('Livestream Video Stability', () => {
     await clearStorage(page);
     await page.reload();
     await waitForAutoLogin(page);
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Create folder via tree list
     await createTree(page, 'live-test');

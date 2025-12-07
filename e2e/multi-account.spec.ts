@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 
 // Helper to navigate to accounts page
 async function navigateToAccountsPage(page: any) {
@@ -36,7 +36,7 @@ test.describe('Multi-Account Management', () => {
     await page.reload();
     await page.waitForTimeout(500);
     await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
   });
 
   test('should navigate to accounts page via double-click on avatar', async ({ page }) => {

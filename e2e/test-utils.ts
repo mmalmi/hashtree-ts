@@ -20,11 +20,10 @@ export function setupPageErrorHandler(page: any) {
 
 /**
  * Wait for new user setup to complete and navigate to public folder.
- * New users get three default folders created (public, link, private)
- * but no longer get auto-redirected. This function waits for setup,
- * then clicks into the public folder for tests that need it.
+ * New users get three default folders created (public, link, private).
+ * This function waits for setup, then clicks into the public folder.
  */
-export async function waitForNewUserRedirect(page: any) {
+export async function navigateToPublicFolder(page: any) {
   // Wait for the public folder link to appear in the tree list (indicates setup complete)
   const publicLink = page.getByRole('link', { name: 'public' }).first();
   await expect(publicLink).toBeVisible({ timeout: 15000 });

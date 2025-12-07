@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 
 test.describe('Directory upload features', () => {
   test('should show Add Folder button when in a folder (if browser supports it)', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -42,7 +42,7 @@ test.describe('Directory upload features', () => {
   test('should have webkitdirectory attribute on directory input', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -71,7 +71,7 @@ test.describe('Directory upload features', () => {
   test('should show both Add and Add Folder buttons', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -111,7 +111,7 @@ test.describe('Directory upload features', () => {
   test('should upload nested directory structure correctly', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
     await page.locator(myTreesButtonSelector).click();

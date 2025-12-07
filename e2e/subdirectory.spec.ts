@@ -5,7 +5,7 @@
  * (not files) across all visibility types: public, unlisted, and private.
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 
 test.describe('Subdirectory Creation', () => {
   // Increase timeout for all tests since new user setup now creates 3 default folders
@@ -29,7 +29,7 @@ test.describe('Subdirectory Creation', () => {
     await page.reload();
     await page.waitForTimeout(500);
     await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
   });
 
   test('subdirectory in public tree should show as folder with folder icon', async ({ page }) => {

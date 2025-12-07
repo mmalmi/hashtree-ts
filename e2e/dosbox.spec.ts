@@ -8,7 +8,7 @@
  * 4. DOSBox viewer loads directory context
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,7 +21,7 @@ test.describe('DOSBox integration', () => {
   test.skip('should show extract modal when uploading a ZIP with DOS files', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -71,7 +71,7 @@ test.describe('DOSBox integration', () => {
   test.skip('should show DOSBox viewer when clicking on .exe file', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -126,7 +126,7 @@ test.describe('DOSBox integration', () => {
   test.skip('should load directory context when starting DOSBox', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Create folder and upload ZIP
     await page.locator(myTreesButtonSelector).click();
@@ -175,7 +175,7 @@ test.describe('DOSBox integration', () => {
   test.skip('should display terminal icon for .exe files in file list', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Create folder
     await page.locator(myTreesButtonSelector).click();
@@ -217,7 +217,7 @@ test.describe('DOSBox integration', () => {
   test('should allow keeping ZIP as file instead of extracting', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Create folder
     await page.locator(myTreesButtonSelector).click();

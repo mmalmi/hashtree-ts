@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,7 +61,7 @@ test.describe('Hashtree Explorer', () => {
     await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
 
     // New users get auto-redirected to their public folder - wait for that
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
   });
 
   test('should display header and initial state', async ({ page }) => {

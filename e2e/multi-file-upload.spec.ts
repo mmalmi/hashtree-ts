@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 
 test.describe('Multi-file upload', () => {
   let tempDir: string;
@@ -37,7 +37,7 @@ test.describe('Multi-file upload', () => {
   test.skip('should upload multiple files at once', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list first, then create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -74,7 +74,7 @@ test.describe('Multi-file upload', () => {
   test.skip('should not navigate to any file after multi-file upload', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list first, then create a folder
     await page.locator(myTreesButtonSelector).click();

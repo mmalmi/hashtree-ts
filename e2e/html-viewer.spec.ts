@@ -8,14 +8,14 @@
  * 4. Resources from subdirectories are accessible
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 
 test.describe('HTML Viewer with directory context', () => {
   // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
   test.skip('should render HTML with inline CSS from same directory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Create a folder for our HTML site
     await page.locator(myTreesButtonSelector).click();
@@ -105,7 +105,7 @@ h1 {
   test.skip('should render HTML with JavaScript from same directory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -181,7 +181,7 @@ window.onload = function() {
   test('should load resources from subdirectories', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Create main folder
     await page.locator(myTreesButtonSelector).click();

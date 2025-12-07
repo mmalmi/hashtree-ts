@@ -1,12 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, waitForNewUserRedirect, myTreesButtonSelector } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, myTreesButtonSelector } from './test-utils.js';
 
 test.describe('Git integration features', () => {
   // Skip: Folder creation timing is flaky in parallel test environment
   test.skip('navigating to .git directory should show directory view not file download', { timeout: 30000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -61,7 +61,7 @@ test.describe('Git integration features', () => {
   test('dotfiles like .git and .claude should be treated as directories', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -114,7 +114,7 @@ test.describe('Git integration features', () => {
   test('looksLikeFile utility should correctly identify files vs directories', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     const result = await page.evaluate(async () => {
       const { looksLikeFile } = await import('/src/utils/route.ts');
@@ -154,7 +154,7 @@ test.describe('Git integration features', () => {
   test('should detect git repo and show git features when .git directory exists', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
     await page.locator(myTreesButtonSelector).click();
@@ -221,7 +221,7 @@ test.describe('Git integration features', () => {
   test('.git directory should be uploaded when adding a folder', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Check that .git is NOT in the default ignore patterns
     const result = await page.evaluate(async () => {
@@ -247,7 +247,7 @@ test.describe('Git integration features', () => {
   test('git repo structure is preserved when uploading .git directory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Create a real git repo with commits using CLI
     const fs = await import('fs/promises');
@@ -380,7 +380,7 @@ test.describe('Git integration features', () => {
   test.skip('git history should return commits from uploaded git repo', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Create a real git repo with commits using CLI
     const fs = await import('fs/promises');
@@ -544,7 +544,7 @@ test.describe('Git integration features', () => {
   test('git history modal should handle repos without commits gracefully', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Test getLog with a minimal .git structure that has no actual commits
     const result = await page.evaluate(async () => {
@@ -602,7 +602,7 @@ test.describe('Git integration features', () => {
   test.skip('checkout commit should restore files from that commit', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Import Node.js modules
     const fs = await import('fs/promises');
@@ -765,7 +765,7 @@ test.describe('Git integration features', () => {
   test.skip('checkout commit should return a valid directory CID that can be listed', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
-    await waitForNewUserRedirect(page);
+    await navigateToPublicFolder(page);
 
     // Import Node.js modules
     const fs = await import('fs/promises');
