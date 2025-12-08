@@ -7,3 +7,4 @@ export { routeStore, currentHash, parseRouteFromHash, getRouteSync, currentPathS
 export { createTreesStore, useTrees, storeLinkKey, getLinkKey, type TreeEntry } from './useTrees';
 export { createDirectoryEntriesStore, useDirectoryEntries, directoryEntriesStore, type DirectoryEntriesState } from './useDirectoryEntries';
 export { currentDirCidStore, currentDirHashStore, useCurrentDirCid, useCurrentDirHash } from './useCurrentDirHash';
+export { createGitInfoStore, createGitLogStore, type GitInfo, type CommitInfo } from './useGit';

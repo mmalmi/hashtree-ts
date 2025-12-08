@@ -5,8 +5,9 @@
    */
   import { getTree, decodeAsText } from '../../store';
   import { nostrStore } from '../../nostr';
-  import { routeStore, currentDirCidStore, treeRootStore, createTreesStore, directoryEntriesStore } from '../../hooks';
+  import { routeStore, currentDirCidStore, treeRootStore, createTreesStore, directoryEntriesStore, createGitInfoStore } from '../../hooks';
   import FolderActions from '../FolderActions.svelte';
+  import GitRepoView from '../Git/GitRepoView.svelte';
   import { uploadFiles } from '../../hooks/useUpload';
   import type { TreeEntry as HashTreeEntry } from 'hashtree';
 
@@ -39,6 +40,23 @@
   let currentTree = $derived(currentTreeName ? trees.find(t => t.name === currentTreeName) : null);
 
   let canEdit = $derived(!viewedNpub || viewedNpub === userNpub || !isLoggedIn);
+
+  // Check if this is a git repo
+  let gitInfoStore = $derived(createGitInfoStore(currentDirCid));
+  let gitInfo = $state<{ isRepo: boolean; currentBranch: string | null; branches: string[]; loading: boolean }>({
+    isRepo: false,
+    currentBranch: null,
+    branches: [],
+    loading: true,
+  });
+
+  $effect(() => {
+    const store = gitInfoStore;
+    const unsub = store.subscribe(value => {
+      gitInfo = value;
+    });
+    return unsub;
+  });
   // Show actions if we have a tree OR we're in a tree context (empty tree that hasn't been created yet)
   let hasTreeContext = $derived(rootHash !== null || (route.treeName !== null && canEdit));
 
@@ -118,18 +136,30 @@
   );
 </script>
 
-<div
-  class="flex flex-col h-full"
-  ondragover={handleFileDragOver}
-  ondragleave={handleFileDragLeave}
-  ondrop={handleFileDrop}
->
-  <!-- Action buttons - hide when viewing locked unlisted/private directory -->
-  {#if hasTreeContext && !hideActions}
-    <div class="p-3 shrink-0">
-      <FolderActions dirCid={currentDirCid} {canEdit} />
-    </div>
-  {/if}
+<!-- If this is a git repo, show GitHub-style directory listing -->
+{#if gitInfo.isRepo && currentDirCid}
+  <div class="flex flex-col h-full overflow-auto p-3">
+    <GitRepoView
+      dirCid={currentDirCid}
+      {entries}
+      {canEdit}
+      currentBranch={gitInfo.currentBranch}
+      branches={gitInfo.branches}
+    />
+  </div>
+{:else}
+  <div
+    class="flex flex-col h-full"
+    ondragover={handleFileDragOver}
+    ondragleave={handleFileDragLeave}
+    ondrop={handleFileDrop}
+  >
+    <!-- Action buttons - hide when viewing locked unlisted/private directory -->
+    {#if hasTreeContext && !hideActions}
+      <div class="p-3 shrink-0">
+        <FolderActions dirCid={currentDirCid} {canEdit} />
+      </div>
+    {/if}
 
   <!-- Upload drop zone -->
   {#if hasTreeContext && canEdit && !readmeContent}
@@ -162,4 +192,5 @@
       </div>
     </div>
   {/if}
-</div>
+  </div>
+{/if}
