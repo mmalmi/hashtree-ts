@@ -523,6 +523,23 @@
           {/if}
           <button onclick={handleDelete} class="btn-ghost text-danger" data-testid="viewer-delete">Delete</button>
         {/if}
+        <!-- Prev/Next file navigation - mobile only -->
+        {#if filesOnly.length > 1 && prevFile && nextFile}
+          <button
+            onclick={() => navigateToFile(prevFile.name)}
+            class="btn-ghost lg:hidden"
+            title={`Previous: ${prevFile.name}`}
+          >
+            <span class="i-lucide-chevron-left text-base"></span>
+          </button>
+          <button
+            onclick={() => navigateToFile(nextFile.name)}
+            class="btn-ghost lg:hidden"
+            title={`Next: ${nextFile.name}`}
+          >
+            <span class="i-lucide-chevron-right text-base"></span>
+          </button>
+        {/if}
       </div>
     </div>
 
