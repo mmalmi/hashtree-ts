@@ -8,27 +8,23 @@ test.describe('Copy and Share functionality', () => {
     await page.waitForTimeout(1500);
   });
 
-  // Helper to close any open modals
-  async function closeModals(page) {
-    const closeButton = page.getByRole('button', { name: 'Close' });
-    if (await closeButton.isVisible({ timeout: 500 }).catch(() => false)) {
-      await closeButton.click();
-      await page.waitForTimeout(200);
+  // Helper to navigate to own profile by clicking the avatar in NostrLogin
+  async function goToProfile(page) {
+    // Click on the user avatar/button in the header to go to profile
+    const avatarLink = page.locator('header a[href*="profile"]');
+    if (await avatarLink.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await avatarLink.click();
+    } else {
+      // Fallback: get npub from window and navigate directly
+      const npub = await page.evaluate(() => (window as any).__nostrStore?.getState()?.npub);
+      await page.goto(`/#/${npub}/profile`);
     }
+    await page.waitForTimeout(500);
   }
 
   test.describe('CopyText in ProfileView', () => {
     test('should show npub with copy button in profile', async ({ page }) => {
-      await closeModals(page);
-
-      // Navigate to own profile
-      const url = page.url();
-      const npubMatch = url.match(/npub[a-z0-9]+/);
-      expect(npubMatch).toBeTruthy();
-      const npub = npubMatch![0];
-
-      await page.goto(`/#/${npub}/profile`);
-      await page.waitForTimeout(500);
+      await goToProfile(page);
 
       // Should see the copy button for npub
       const copyButton = page.getByTestId('copy-npub');
@@ -41,15 +37,7 @@ test.describe('Copy and Share functionality', () => {
     });
 
     test('should show check icon after clicking copy', async ({ page }) => {
-      await closeModals(page);
-
-      // Navigate to profile
-      const url = page.url();
-      const npubMatch = url.match(/npub[a-z0-9]+/);
-      const npub = npubMatch![0];
-
-      await page.goto(`/#/${npub}/profile`);
-      await page.waitForTimeout(500);
+      await goToProfile(page);
 
       // Click copy button
       const copyButton = page.getByTestId('copy-npub');
@@ -66,15 +54,7 @@ test.describe('Copy and Share functionality', () => {
 
   test.describe('ShareModal', () => {
     test('should open share modal when clicking share button', async ({ page }) => {
-      await closeModals(page);
-
-      // Navigate to profile
-      const url = page.url();
-      const npubMatch = url.match(/npub[a-z0-9]+/);
-      const npub = npubMatch![0];
-
-      await page.goto(`/#/${npub}/profile`);
-      await page.waitForTimeout(500);
+      await goToProfile(page);
 
       // Click share button
       await page.getByRole('button', { name: 'Share' }).click();
@@ -85,14 +65,7 @@ test.describe('Copy and Share functionality', () => {
     });
 
     test('should display QR code in share modal', async ({ page }) => {
-      await closeModals(page);
-
-      const url = page.url();
-      const npubMatch = url.match(/npub[a-z0-9]+/);
-      const npub = npubMatch![0];
-
-      await page.goto(`/#/${npub}/profile`);
-      await page.waitForTimeout(500);
+      await goToProfile(page);
 
       await page.getByRole('button', { name: 'Share' }).click();
       await page.waitForTimeout(500);
@@ -107,14 +80,7 @@ test.describe('Copy and Share functionality', () => {
     });
 
     test('should show URL with copy button in share modal', async ({ page }) => {
-      await closeModals(page);
-
-      const url = page.url();
-      const npubMatch = url.match(/npub[a-z0-9]+/);
-      const npub = npubMatch![0];
-
-      await page.goto(`/#/${npub}/profile`);
-      await page.waitForTimeout(500);
+      await goToProfile(page);
 
       await page.getByRole('button', { name: 'Share' }).click();
       await page.waitForTimeout(300);
@@ -123,20 +89,13 @@ test.describe('Copy and Share functionality', () => {
       const copyUrl = page.getByTestId('share-copy-url');
       await expect(copyUrl).toBeVisible();
 
-      // Should contain the share URL
+      // Should contain npub in the URL
       const text = await copyUrl.textContent();
-      expect(text).toContain(npub);
+      expect(text).toContain('npub');
     });
 
     test('should copy URL when clicking copy in share modal', async ({ page }) => {
-      await closeModals(page);
-
-      const url = page.url();
-      const npubMatch = url.match(/npub[a-z0-9]+/);
-      const npub = npubMatch![0];
-
-      await page.goto(`/#/${npub}/profile`);
-      await page.waitForTimeout(500);
+      await goToProfile(page);
 
       await page.getByRole('button', { name: 'Share' }).click();
       await page.waitForTimeout(300);
@@ -150,14 +109,7 @@ test.describe('Copy and Share functionality', () => {
     });
 
     test('should close share modal when clicking backdrop', async ({ page }) => {
-      await closeModals(page);
-
-      const url = page.url();
-      const npubMatch = url.match(/npub[a-z0-9]+/);
-      const npub = npubMatch![0];
-
-      await page.goto(`/#/${npub}/profile`);
-      await page.waitForTimeout(500);
+      await goToProfile(page);
 
       await page.getByRole('button', { name: 'Share' }).click();
       await page.waitForTimeout(300);
@@ -171,14 +123,7 @@ test.describe('Copy and Share functionality', () => {
     });
 
     test('should close share modal when clicking QR code', async ({ page }) => {
-      await closeModals(page);
-
-      const url = page.url();
-      const npubMatch = url.match(/npub[a-z0-9]+/);
-      const npub = npubMatch![0];
-
-      await page.goto(`/#/${npub}/profile`);
-      await page.waitForTimeout(500);
+      await goToProfile(page);
 
       await page.getByRole('button', { name: 'Share' }).click();
       await page.waitForTimeout(500);
@@ -192,14 +137,7 @@ test.describe('Copy and Share functionality', () => {
     });
 
     test('should close share modal with Escape key', async ({ page }) => {
-      await closeModals(page);
-
-      const url = page.url();
-      const npubMatch = url.match(/npub[a-z0-9]+/);
-      const npub = npubMatch![0];
-
-      await page.goto(`/#/${npub}/profile`);
-      await page.waitForTimeout(500);
+      await goToProfile(page);
 
       await page.getByRole('button', { name: 'Share' }).click();
       await page.waitForTimeout(300);

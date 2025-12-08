@@ -8,6 +8,7 @@
   import { createProfileStore } from '../hooks/useProfile';
   import { openShareModal } from '../hooks/useModals';
   import { Avatar, Name } from './User';
+  import CopyText from './CopyText.svelte';
 
   interface Props {
     npub: string;
@@ -108,9 +109,12 @@
     </div>
 
     <!-- npub with copy -->
-    <div class="text-sm text-text-3 mt-1">
-      {npub.slice(0, 8)}...{npub.slice(-4)}
-    </div>
+    <CopyText
+      text={npub}
+      displayText={npub.slice(0, 8) + '...' + npub.slice(-4)}
+      class="text-sm mt-1"
+      testId="copy-npub"
+    />
 
     {#if profile?.nip05}
       <div class="text-sm text-accent mt-1">{profile.nip05}</div>
