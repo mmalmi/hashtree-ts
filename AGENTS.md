@@ -29,4 +29,7 @@ npm run test:e2e # E2E tests
 
 ## Testing
 - When tests are failing, increasing timeouts is usually not the solution. The app should work fast
-- Debug failing / flaky tests with console logs, further tests or playwright screenshots and fix
+- Debug failing / flaky tests with console logs, further tests or playwrght screenshots and fix. If you suspect nostr relay issue, debug with local mock or real relay
+- Playwright test in headless mode
+- App autoconnects to other instances p2p over nostr relays and webrtc which may interfere with some tests. One option is to make it connect only to followed users in webrtc transport settings, or test in offline mode.
+- TDD is a good idea: write failing test first, then write code that makes it pass
