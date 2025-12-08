@@ -157,13 +157,8 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
         size
       );
 
-      // Publish to nostr
+      // Publish to nostr (also updates local cache)
       autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
-
-      // Update local cache for subsequent saves from other documents
-      if (userNpub && route.treeName) {
-        updateLocalRootCache(userNpub, route.treeName, newRootCid.hash);
-      }
 
       // Update local state
       setCollaborators(npubs);
@@ -697,16 +692,13 @@ export function YjsDocument({ dirCid, entries }: YjsDocumentProps) {
       // Publish to nostr and update local cache
       if (isOwnTree) {
         // Use autosaveIfOwn for own trees (preserves visibility settings)
+        // Publish to nostr (also updates local cache)
         autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
-        // Update local cache so subsequent saves from other documents use this hash
-        if (userNpub && route.treeName) {
-          updateLocalRootCache(userNpub, route.treeName, newRootCid.hash);
-        }
       } else if (userNpub && route.treeName) {
         // When editing someone else's document as editor, save to user's own tree
         await saveHashtree(route.treeName, toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
         // Update local cache for subsequent saves
-        updateLocalRootCache(userNpub, route.treeName, newRootCid.hash);
+        updateLocalRootCache(userNpub, route.treeName, newRootCid);
       }
 
       lastSavedStateVectorRef.current = currentStateVector;
