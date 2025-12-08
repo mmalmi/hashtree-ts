@@ -7,7 +7,7 @@ import { toHex, verifyTree } from 'hashtree';
 import type { CID } from 'hashtree';
 import { saveHashtree, useNostrStore } from '../nostr';
 import { nip19 } from 'nostr-tools';
-import { idbStore, getTree } from '../store';
+import { opfsStore, getTree } from '../store';
 import { autosaveIfOwn } from '../nostr';
 import { getCurrentRootCid, getCurrentPathFromUrl } from './route';
 import { updateLocalRootCache } from '../treeRootCache';
@@ -221,12 +221,12 @@ export async function verifyCurrentTree(): Promise<{ valid: boolean; missing: nu
   const rootCid = getCurrentRootCid();
   if (!rootCid) return { valid: false, missing: 0 };
 
-  const { valid, missing } = await verifyTree(idbStore, rootCid.hash);
+  const { valid, missing } = await verifyTree(opfsStore, rootCid.hash);
   return { valid, missing: missing.length };
 }
 
 // Clear store
 export function clearStore() {
-  idbStore.clear();
+  opfsStore.clear();
   navigate('/');
 }

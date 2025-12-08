@@ -1,9 +1,9 @@
 /**
  * Hook to get store stats (items count, total bytes)
- * Reads directly from idbStore, no app state needed
+ * Reads directly from opfsStore, no app state needed
  */
 import { useState, useEffect } from 'react';
-import { idbStore } from '../store';
+import { opfsStore } from '../store';
 
 interface Stats {
   items: number;
@@ -17,8 +17,8 @@ export function useStats(): Stats {
     let mounted = true;
 
     async function loadStats() {
-      const items = await idbStore.count();
-      const bytes = await idbStore.totalBytes();
+      const items = await opfsStore.count();
+      const bytes = await opfsStore.totalBytes();
       if (mounted) {
         setStats({ items, bytes });
       }

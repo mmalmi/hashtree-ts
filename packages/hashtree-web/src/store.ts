@@ -3,7 +3,7 @@
  */
 import { create } from 'zustand';
 import {
-  IndexedDBStore,
+  OpfsStore,
   HashTree,
   WebRTCStore,
 } from 'hashtree';
@@ -11,11 +11,11 @@ import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClass
 import { getSocialGraph, useSocialGraphStore } from './utils/socialGraph';
 import { useSettingsStore, DEFAULT_POOL_SETTINGS } from './stores/settings';
 
-// Store instances - using IndexedDB for persistence
-export const idbStore = new IndexedDBStore('hashtree-explorer');
+// Store instances - using OPFS for persistence (replaces IndexedDB)
+export const opfsStore = new OpfsStore('hashtree-explorer');
 
 // HashTree instance - single class for all tree operations
-let _tree = new HashTree({ store: idbStore, chunkSize: 1024 });
+let _tree = new HashTree({ store: opfsStore, chunkSize: 1024 });
 
 // Getter for tree - always returns current instance
 export function getTree(): HashTree {
@@ -74,9 +74,9 @@ export const useAppStore = create<AppState>((set) => ({
 
 // Expose for debugging in tests
 if (typeof window !== 'undefined') {
-  const win = window as Window & { __appStore?: typeof useAppStore; __idbStore?: typeof idbStore };
+  const win = window as Window & { __appStore?: typeof useAppStore; __opfsStore?: typeof opfsStore };
   win.__appStore = useAppStore;
-  win.__idbStore = idbStore;
+  win.__opfsStore = opfsStore;
 }
 
 // Format bytes
@@ -86,11 +86,11 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-// Update storage stats from IndexedDB
+// Update storage stats from OPFS
 export async function updateStorageStats(): Promise<void> {
   try {
-    const items = await idbStore.count();
-    const bytes = await idbStore.totalBytes();
+    const items = await opfsStore.count();
+    const bytes = await opfsStore.totalBytes();
     useAppStore.getState().setStats({ items, bytes });
   } catch {
     // Ignore errors
@@ -156,7 +156,7 @@ export function initWebRTC(
     pubkey,
     encrypt,
     decrypt,
-    localStore: idbStore,
+    localStore: opfsStore,
     debug: true,
     // Pool-based peer management
     peerClassifier: createPeerClassifier(),
@@ -201,7 +201,7 @@ export function stopWebRTC() {
     useAppStore.getState().setPeers([]);
     useAppStore.getState().setMyPeerId(null);
     useAppStore.getState().setWsFallback({ url: null, connected: false });
-    _tree = new HashTree({ store: idbStore, chunkSize: 1024 });
+    _tree = new HashTree({ store: opfsStore, chunkSize: 1024 });
   }
 }
 
