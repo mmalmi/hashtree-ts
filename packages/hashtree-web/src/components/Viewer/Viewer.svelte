@@ -1,0 +1,593 @@
+<script lang="ts">
+  /**
+   * Viewer - main file viewer component
+   * Port of React Viewer component
+   */
+  import { toHex, nhashEncode } from 'hashtree';
+  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore } from '../../hooks';
+  import { looksLikeFile } from '../../utils/route';
+  import { getTree, decodeAsText } from '../../store';
+  import { nostrStore, npubToPubkey } from '../../nostr';
+  import { deleteEntry } from '../../actions';
+  import { openRenameModal, openShareModal } from '../../hooks/useModals';
+  import DirectoryActions from './DirectoryActions.svelte';
+  import FileEditor from './FileEditor.svelte';
+  import HtmlViewer from './HtmlViewer.svelte';
+  import VideoViewer from './VideoViewer.svelte';
+  import YjsDocumentEditor from './YjsDocumentEditor.svelte';
+  import { Avatar } from '../User';
+  import VisibilityIcon from '../VisibilityIcon.svelte';
+
+  let route = $derived($routeStore);
+  let rootCid = $derived($treeRootStore);
+  let currentDirCid = $derived($currentDirCidStore);
+  let dirEntries = $derived($directoryEntriesStore);
+  let entries = $derived(dirEntries.entries);
+  let hash = $derived($currentHash);
+
+  // Check if user can edit (owns the tree or is not viewing another user's tree)
+  let userNpub = $derived($nostrStore.npub);
+  let isLoggedIn = $derived($nostrStore.isLoggedIn);
+  let viewedNpub = $derived(route.npub);
+  let canEdit = $derived(!viewedNpub || viewedNpub === userNpub || !isLoggedIn);
+
+  // Get current tree for visibility info
+  let targetNpub = $derived(viewedNpub || userNpub);
+  let treesStore = $derived(createTreesStore(targetNpub));
+  let trees = $derived($treesStore);
+  let currentTreeName = $derived(route.treeName);
+  let currentTree = $derived(currentTreeName ? trees.find(t => t.name === currentTreeName) : null);
+
+  // Get filename from URL path - uses path type heuristic
+  let urlPath = $derived(route.path);
+  let lastSegment = $derived(urlPath.length > 0 ? urlPath[urlPath.length - 1] : null);
+  let hasFile = $derived(lastSegment && looksLikeFile(lastSegment));
+  let urlFileName = $derived(hasFile ? lastSegment : null);
+
+  // Parse query params from URL hash - use currentHash store for reactivity
+  let searchParams = $derived.by(() => {
+    const qIdx = hash.indexOf('?');
+    if (qIdx === -1) return new URLSearchParams();
+    return new URLSearchParams(hash.slice(qIdx + 1));
+  });
+
+  let isEditing = $derived(searchParams.get('edit') === '1');
+
+  // Find entry in current entries list, or create synthetic entry for file permalinks
+  let entryFromStore = $derived.by(() => {
+    if (!urlFileName) return null;
+
+    // First try to find the file in entries (works for files within directories)
+    const fromEntries = entries.find(e => e.name === urlFileName && !e.isTree);
+    if (fromEntries) return fromEntries;
+
+    // For direct file permalinks (no directory listing), the rootCid IS the file's CID
+    // Create a synthetic entry since there's no directory listing
+    if (route.isPermalink && rootCid && entries.length === 0) {
+      return {
+        name: urlFileName,
+        cid: rootCid,
+        size: 0,
+        isTree: false,
+      };
+    }
+
+    return null;
+  });
+
+  // Get files only (no directories) for prev/next navigation
+  let filesOnly = $derived(entries.filter(e => !e.isTree));
+  let currentFileIndex = $derived(urlFileName ? filesOnly.findIndex(e => e.name === urlFileName) : -1);
+  // Wrap around at start/end
+  let prevFile = $derived(
+    filesOnly.length > 1 && currentFileIndex >= 0
+      ? filesOnly[(currentFileIndex - 1 + filesOnly.length) % filesOnly.length]
+      : null
+  );
+  let nextFile = $derived(
+    filesOnly.length > 1 && currentFileIndex >= 0
+      ? filesOnly[(currentFileIndex + 1) % filesOnly.length]
+      : null
+  );
+
+  // Navigate to a file in the same directory
+  function navigateToFile(fileName: string) {
+    const dirPath = route.path.slice(0, -1); // Remove current filename
+    const parts: string[] = [];
+    if (route.npub && route.treeName) {
+      parts.push(route.npub, route.treeName, ...dirPath, fileName);
+    }
+    const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+    window.location.hash = '/' + parts.map(encodeURIComponent).join('/') + linkKeySuffix;
+  }
+
+  // Check if we have a tree context (for showing actions)
+  let hasTreeContext = $derived(!!rootCid || !!route.treeName);
+
+  // Check if current directory is a Yjs document (contains .yjs file)
+  let isYjsDocument = $derived(entries.some(e => e.name === '.yjs' && !e.isTree));
+
+  // Get current directory name from path
+  let currentDirName = $derived.by(() => {
+    const pathSegments = route.path;
+    return pathSegments.length > 0 ? pathSegments[pathSegments.length - 1] : route.treeName || 'Document';
+  });
+
+  // File content state - raw binary data
+  let fileData = $state<Uint8Array | null>(null);
+  // Decoded text content (null if binary)
+  let fileContent = $state<string | null>(null);
+  let loading = $state(false);
+  // Only show loading indicator after 2 seconds (avoid flash for fast loads)
+  let showLoading = $state(false);
+  let loadingTimer: ReturnType<typeof setTimeout> | null = null;
+  // Blob URL for binary content (images, etc)
+  let blobUrl = $state<string | null>(null);
+  // Track current blob URL outside of reactive system for cleanup
+  let currentBlobUrl: string | null = null;
+
+  // MIME type detection
+  function getMimeType(filename?: string): string | null {
+    if (!filename) return null;
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      // Images
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      avif: 'image/avif',
+      svg: 'image/svg+xml',
+      ico: 'image/x-icon',
+      bmp: 'image/bmp',
+      // PDF
+      pdf: 'application/pdf',
+      // Audio
+      mp3: 'audio/mpeg',
+      wav: 'audio/wav',
+      flac: 'audio/flac',
+      m4a: 'audio/mp4',
+      ogg: 'audio/ogg',
+    };
+    return ext ? mimeTypes[ext] || null : null;
+  }
+
+  // Helper to clean up blob URL
+  function cleanupBlobUrl() {
+    if (currentBlobUrl) {
+      URL.revokeObjectURL(currentBlobUrl);
+      currentBlobUrl = null;
+    }
+  }
+
+  // Load file content when entry changes
+  $effect(() => {
+    // Clean up previous blob URL (use non-reactive variable)
+    cleanupBlobUrl();
+
+    // Clear loading timer
+    if (loadingTimer) {
+      clearTimeout(loadingTimer);
+      loadingTimer = null;
+    }
+
+    fileData = null;
+    fileContent = null;
+    blobUrl = null;
+    loading = false;
+    showLoading = false;
+
+    const entry = entryFromStore;
+    if (!entry) return;
+
+    // Skip loading for video files - they stream separately
+    if (isVideo) return;
+
+    loading = true;
+    let cancelled = false;
+
+    // Show loading indicator only after 2 seconds delay
+    loadingTimer = setTimeout(() => {
+      if (!cancelled && loading) {
+        showLoading = true;
+      }
+    }, 2000);
+
+    getTree().readFile(entry.cid).then(data => {
+      if (!cancelled && data) {
+        fileData = data;
+        // Try to decode as text
+        const text = decodeAsText(data);
+        fileContent = text;
+
+        // If not text, create blob URL for binary viewing
+        if (text === null && urlFileName) {
+          const mimeType = getMimeType(urlFileName);
+          if (mimeType) {
+            const blob = new Blob([data], { type: mimeType });
+            const newUrl = URL.createObjectURL(blob);
+            currentBlobUrl = newUrl;
+            blobUrl = newUrl;
+          }
+        }
+      }
+      loading = false;
+      showLoading = false;
+      if (loadingTimer) {
+        clearTimeout(loadingTimer);
+        loadingTimer = null;
+      }
+    }).catch(() => {
+      loading = false;
+      showLoading = false;
+      if (loadingTimer) {
+        clearTimeout(loadingTimer);
+        loadingTimer = null;
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      cleanupBlobUrl();
+      if (loadingTimer) {
+        clearTimeout(loadingTimer);
+        loadingTimer = null;
+      }
+    };
+  });
+
+  function exitEditMode() {
+    // Remove ?edit=1 from URL
+    const hashBase = window.location.hash.split('?')[0];
+    const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+    params.delete('edit');
+    const queryString = params.toString();
+    window.location.hash = queryString ? `${hashBase}?${queryString}` : hashBase;
+  }
+
+  function enterEditMode() {
+    // Add ?edit=1 to URL
+    const hashBase = window.location.hash.split('?')[0];
+    const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+    params.set('edit', '1');
+    window.location.hash = `${hashBase}?${params.toString()}`;
+  }
+
+  function handleDelete() {
+    if (!entryFromStore) return;
+    if (confirm(`Delete ${entryFromStore.name}?`)) {
+      deleteEntry(entryFromStore.name);
+      // Navigate back to directory
+      const dirPath = route.path.slice(0, -1);
+      const parts: string[] = [];
+      if (route.npub && route.treeName) {
+        parts.push(route.npub, route.treeName, ...dirPath);
+      }
+      const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+      window.location.hash = '#/' + parts.map(encodeURIComponent).join('/') + linkKeySuffix;
+    }
+  }
+
+  // Keyboard navigation for file viewing
+  $effect(() => {
+    if (!entryFromStore && !urlFileName) return; // Only when viewing a file
+    if (isEditing) return; // Don't navigate when editing
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't interfere with browser shortcuts (Cmd/Ctrl + arrows)
+      if (e.metaKey || e.ctrlKey) return;
+      // Don't interfere when focus is in input/textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+
+      const key = e.key.toLowerCase();
+
+      // Escape: back to directory
+      if (key === 'escape') {
+        e.preventDefault();
+        (document.activeElement as HTMLElement)?.blur();
+        window.location.hash = backUrl.slice(1); // Remove leading #
+        return;
+      }
+
+      // j/k/ArrowDown/ArrowUp: next/prev file (vertical navigation)
+      // l/ArrowRight: next file (horizontal navigation)
+      if ((key === 'j' || key === 'arrowdown' || key === 'l' || key === 'arrowright') && nextFile) {
+        e.preventDefault();
+        navigateToFile(nextFile.name);
+        return;
+      }
+
+      // k/ArrowUp/h/ArrowLeft: prev file
+      if ((key === 'k' || key === 'arrowup' || key === 'h' || key === 'arrowleft') && prevFile) {
+        e.preventDefault();
+        navigateToFile(prevFile.name);
+        return;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  });
+
+  // Check if file looks like text based on extension
+  function isLikelyTextFile(filename: string): boolean {
+    const textExtensions = ['txt', 'md', 'json', 'js', 'ts', 'jsx', 'tsx', 'css', 'scss', 'html', 'xml', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'sh', 'bash', 'py', 'rb', 'go', 'rs', 'c', 'cpp', 'h', 'hpp', 'java', 'php', 'sql', 'svelte', 'vue'];
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    return textExtensions.includes(ext);
+  }
+
+  let isTextFile = $derived(urlFileName ? isLikelyTextFile(urlFileName) : false);
+
+  // Check if file is HTML (should be rendered in iframe)
+  function isHtmlFile(filename: string): boolean {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    return ext === 'html' || ext === 'htm';
+  }
+
+  let isHtml = $derived(urlFileName ? isHtmlFile(urlFileName) : false);
+
+  // Check if file is a video
+  function isVideoFile(filename: string): boolean {
+    const videoExtensions = ['mp4', 'webm', 'ogg', 'ogv', 'mov', 'avi', 'mkv'];
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    return videoExtensions.includes(ext);
+  }
+
+  let isVideo = $derived(urlFileName ? isVideoFile(urlFileName) : false);
+
+  // Check if file is an image
+  function isImageFile(filename: string): boolean {
+    const imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg', 'ico', 'bmp'];
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    return imageExtensions.includes(ext);
+  }
+
+  let isImage = $derived(urlFileName ? isImageFile(urlFileName) : false);
+
+  // Check if file is audio
+  function isAudioFile(filename: string): boolean {
+    const audioExtensions = ['mp3', 'wav', 'flac', 'm4a', 'ogg', 'aac'];
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    return audioExtensions.includes(ext);
+  }
+
+  let isAudio = $derived(urlFileName ? isAudioFile(urlFileName) : false);
+
+  // Check if file is PDF
+  function isPdfFile(filename: string): boolean {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    return ext === 'pdf';
+  }
+
+  let isPdf = $derived(urlFileName ? isPdfFile(urlFileName) : false);
+
+  // Build permalink URL for the current file
+  let permalinkUrl = $derived.by(() => {
+    if (!entryFromStore?.cid?.hash) return null;
+    const hashHex = toHex(entryFromStore.cid.hash);
+    const keyHex = entryFromStore.cid.key ? toHex(entryFromStore.cid.key) : undefined;
+    const nhash = nhashEncode({ hash: hashHex, decryptKey: keyHex });
+    return `#/${nhash}/${encodeURIComponent(entryFromStore.name)}`;
+  });
+
+  // Build back URL (directory without file)
+  let backUrl = $derived.by(() => {
+    const dirPath = route.path.slice(0, -1);
+    const parts: string[] = [];
+    if (route.npub && route.treeName) {
+      parts.push(route.npub, route.treeName, ...dirPath);
+    }
+    const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+    return '#/' + parts.map(encodeURIComponent).join('/') + linkKeySuffix;
+  });
+
+  // Get file icon based on extension
+  function getFileIcon(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const iconMap: Record<string, string> = {
+      // Images
+      png: 'i-lucide-image',
+      jpg: 'i-lucide-image',
+      jpeg: 'i-lucide-image',
+      gif: 'i-lucide-image',
+      webp: 'i-lucide-image',
+      svg: 'i-lucide-image',
+      // Video
+      mp4: 'i-lucide-video',
+      webm: 'i-lucide-video',
+      mov: 'i-lucide-video',
+      // Audio
+      mp3: 'i-lucide-music',
+      wav: 'i-lucide-music',
+      flac: 'i-lucide-music',
+      // Code
+      js: 'i-lucide-file-code',
+      ts: 'i-lucide-file-code',
+      jsx: 'i-lucide-file-code',
+      tsx: 'i-lucide-file-code',
+      py: 'i-lucide-file-code',
+      rs: 'i-lucide-file-code',
+      go: 'i-lucide-file-code',
+      // Documents
+      md: 'i-lucide-file-text',
+      txt: 'i-lucide-file-text',
+      pdf: 'i-lucide-file-text',
+      // Archive
+      zip: 'i-lucide-archive',
+      tar: 'i-lucide-archive',
+      gz: 'i-lucide-archive',
+    };
+    return iconMap[ext] || 'i-lucide-file';
+  }
+
+  let fileIcon = $derived(urlFileName ? getFileIcon(urlFileName) : 'i-lucide-file');
+
+  // Download handler
+  async function handleDownload() {
+    if (!entryFromStore) return;
+
+    let data = fileData;
+    // For video files, content isn't preloaded - fetch it now
+    if (!data && isVideo) {
+      data = await getTree().readFile(entryFromStore.cid);
+    }
+    if (!data) return;
+
+    const mimeType = getMimeType(urlFileName || '') || 'application/octet-stream';
+    const blob = new Blob([data], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = entryFromStore.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Share handler
+  function handleShare() {
+    // Strip ?edit=1 from URL when sharing
+    let url = window.location.href;
+    url = url.replace(/[?&]edit=1/, '');
+    openShareModal(url);
+  }
+</script>
+
+{#if urlFileName && isEditing}
+  <!-- Edit mode - show even if entry not found yet (newly created file) -->
+  <FileEditor
+    fileName={urlFileName}
+    initialContent={fileContent || ''}
+    onDone={exitEditMode}
+  />
+{:else if urlFileName && entryFromStore}
+  <!-- File view - show content -->
+  <div class="flex-1 flex flex-col min-h-0 bg-surface-0">
+    <!-- Header -->
+    <div class="shrink-0 px-3 py-2 border-b border-surface-3 flex flex-wrap items-center justify-between gap-2 bg-surface-1" data-testid="viewer-header">
+      <div class="flex items-center gap-2 min-w-0">
+        <a href={backUrl} class="btn-ghost p-1 no-underline" title="Back to folder" data-testid="viewer-back">
+          <span class="i-lucide-chevron-left text-lg"></span>
+        </a>
+        <!-- Avatar (for npub routes) or LinkLock/globe (for nhash routes) -->
+        {#if viewedNpub}
+          <a href="#/{viewedNpub}/profile" class="shrink-0">
+            <Avatar pubkey={npubToPubkey(viewedNpub) || ''} size={20} />
+          </a>
+        {:else if route.isPermalink}
+          {#if rootCid?.key}
+            <!-- LinkLockIcon for encrypted permalink -->
+            <span class="relative inline-block shrink-0 text-text-2" title="Encrypted permalink">
+              <span class="i-lucide-link"></span>
+              <span class="i-lucide-lock absolute -bottom-0.5 -right-1.5 text-[0.6em]"></span>
+            </span>
+          {:else}
+            <span class="i-lucide-globe text-text-2 shrink-0" title="Public permalink"></span>
+          {/if}
+        {/if}
+        <!-- Visibility icon (for trees) -->
+        {#if currentTree}
+          <VisibilityIcon visibility={currentTree.visibility} class="text-text-2" />
+        {/if}
+        <!-- File type icon -->
+        <span class="{fileIcon} text-text-2 shrink-0"></span>
+        <span class="font-medium text-text-1 truncate">{entryFromStore.name}</span>
+      </div>
+      <div class="flex items-center gap-1 flex-wrap">
+        <button onclick={handleDownload} class="btn-ghost" title="Download file" data-testid="viewer-download" disabled={loading && !isVideo}>
+          Download
+        </button>
+        {#if permalinkUrl}
+          <a href={permalinkUrl} class="btn-ghost no-underline" title={entryFromStore?.cid?.hash ? toHex(entryFromStore.cid.hash) : ''} data-testid="viewer-permalink">
+            <span class={entryFromStore?.cid?.key ? "i-lucide-link" : "i-lucide-lock"}></span>
+            Permalink
+          </a>
+        {/if}
+        <button onclick={handleShare} class="btn-ghost" title="Share" data-testid="viewer-share">
+          Share
+        </button>
+        {#if canEdit}
+          <button onclick={() => openRenameModal(entryFromStore.name)} class="btn-ghost" data-testid="viewer-rename">Rename</button>
+          {#if isTextFile && !isHtml}
+            <button
+              onclick={enterEditMode}
+              class="btn-ghost"
+              disabled={loading || fileContent === null}
+              data-testid="viewer-edit"
+            >
+              Edit
+            </button>
+          {/if}
+          <button onclick={handleDelete} class="btn-ghost text-danger" data-testid="viewer-delete">Delete</button>
+        {/if}
+      </div>
+    </div>
+
+    <!-- Content -->
+    {#if isVideo && entryFromStore?.cid}
+      <VideoViewer cid={entryFromStore.cid} fileName={urlFileName} />
+    {:else if isHtml && fileContent !== null}
+      <HtmlViewer content={fileContent} fileName={urlFileName} />
+    {:else if isImage && blobUrl}
+      <!-- Image viewer -->
+      <div class="flex-1 flex items-center justify-center overflow-auto bg-surface-0 p-4">
+        <img
+          src={blobUrl}
+          alt={urlFileName}
+          class="max-w-full max-h-full object-contain"
+          data-testid="image-viewer"
+        />
+      </div>
+    {:else if isAudio && blobUrl}
+      <!-- Audio player -->
+      <div class="flex-1 flex items-center justify-center p-4">
+        <audio src={blobUrl} controls class="w-full max-w-md" />
+      </div>
+    {:else if isPdf && blobUrl}
+      <!-- PDF viewer -->
+      <iframe
+        src={blobUrl}
+        class="flex-1 w-full border-none"
+        title={urlFileName}
+      />
+    {:else}
+      <div class="flex-1 overflow-auto p-4">
+        {#if showLoading}
+          <p class="text-muted animate-fade-in" data-testid="loading-indicator">Loading...</p>
+        {:else if fileContent !== null}
+          <pre class="text-sm text-text-1 font-mono whitespace-pre-wrap break-words">{fileContent}</pre>
+        {:else if blobUrl}
+          <!-- Binary file with blob URL but no specific viewer - show download option -->
+          <div class="w-full h-full flex flex-col items-center justify-center text-accent">
+            <span class="i-lucide-download text-4xl mb-2"></span>
+            <span class="text-sm mb-1">{urlFileName}</span>
+            <a href={blobUrl} download={urlFileName} class="btn-primary mt-2">Download</a>
+          </div>
+        {:else if !loading}
+          <!-- Only show error if not loading (avoid flash during load) -->
+          <p class="text-muted">Unable to display file content</p>
+        {/if}
+      </div>
+    {/if}
+  </div>
+{:else if hasTreeContext && isYjsDocument && currentDirCid}
+  <!-- Yjs Document view - show Tiptap editor -->
+  <YjsDocumentEditor
+    dirCid={currentDirCid}
+    dirName={currentDirName}
+    entries={entries}
+  />
+{:else if hasTreeContext}
+  <!-- Directory view - show DirectoryActions -->
+  <div class="flex-1 flex flex-col min-h-0 bg-surface-0">
+    <DirectoryActions />
+  </div>
+{:else}
+  <!-- No content view -->
+  <div class="flex-1 flex items-center justify-center bg-surface-0 text-muted">
+    <span>Select a file to view</span>
+  </div>
+{/if}

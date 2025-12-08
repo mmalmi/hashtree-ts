@@ -52,7 +52,7 @@ test.describe('Yjs Document Viewer', () => {
     await page.waitForTimeout(2000);
 
     // Verify .yjs file exists inside the folder
-    const yjsFile = page.locator('a:has-text(".yjs")');
+    const yjsFile = page.locator('a:has-text(".yjs")').first();
     await expect(yjsFile).toBeVisible({ timeout: 5000 });
   });
 
@@ -186,7 +186,7 @@ test.describe('Yjs Document Viewer', () => {
     await expect(savedStatus).toBeVisible({ timeout: 5000 });
 
     // Verify a "deltas" folder was created for delta-based storage
-    const deltasFolder = page.getByRole('link', { name: /^deltas$/ });
+    const deltasFolder = page.getByRole('link', { name: /^deltas$/ }).first();
     await expect(deltasFolder).toBeVisible({ timeout: 5000 });
   });
 
@@ -217,7 +217,7 @@ test.describe('Yjs Document Viewer', () => {
 
     // After creating a document, we should automatically navigate into it
     // Verify the .yjs file is visible (we're inside the document folder)
-    const yjsFile = page.locator('a:has-text(".yjs")');
+    const yjsFile = page.locator('a:has-text(".yjs")').first();
     await expect(yjsFile).toBeVisible({ timeout: 10000 });
 
     // Click on the .yjs file to view it - this should not cause errors

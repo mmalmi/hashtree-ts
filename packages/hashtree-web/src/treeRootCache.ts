@@ -8,6 +8,7 @@
  */
 import type { Hash } from 'hashtree';
 import { fromHex, toHex } from 'hashtree';
+import { updateSubscriptionCache } from './hooks/useTreeRoot';
 
 interface CacheEntry {
   hash: Hash;
@@ -56,9 +57,7 @@ export function updateLocalRootCache(npub: string, treeName: string, hash: Hash,
   schedulePublish(npub, treeName);
 
   // Update subscription cache to trigger immediate UI update
-  import('./hooks/useTreeRoot').then(({ updateSubscriptionCache }) => {
-    updateSubscriptionCache(cacheKey, hash, key);
-  });
+  updateSubscriptionCache(cacheKey, hash, key);
 }
 
 /**

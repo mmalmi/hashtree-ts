@@ -1,31 +1,24 @@
 /**
- * Hook to get the root CID from the URL via resolver subscription
+ * Tree root store for Svelte
  *
- * This hook derives the rootCid from the URL:
+ * This provides the rootCid from the URL via resolver subscription:
  * - For tree routes (/npub/treeName/...), subscribes to the resolver
  * - For permalink routes (/nhash1.../...), extracts hash directly from URL
  * - Returns null when no tree context
- *
- * For unlisted trees, if a linkKey is in the URL (?k=...), it's used to
- * decrypt the encryptedKey from the nostr event.
- *
- * Components use this instead of reading rootCid from global app state.
  */
-import { useState, useEffect, useRef } from 'react';
+import { writable, derived, get, type Readable } from 'svelte/store';
 import { fromHex, cid, visibilityHex } from 'hashtree';
 import type { CID, SubscribeVisibilityInfo, Hash } from 'hashtree';
-import { useRoute } from './useRoute';
+import { routeStore, getRouteSync } from './useRoute';
 import { getRefResolver, getResolverKey } from '../refResolver';
-import { useNostrStore, getSecretKey } from '../nostr';
+import { nostrStore, getSecretKey } from '../nostr';
 import { nip44 } from 'nostr-tools';
 
 // Shared subscription cache - stores raw resolver data, not decrypted CIDs
-// Each subscriber may need different decryption based on their linkKey
 const subscriptionCache = new Map<string, {
   hash: Hash | null;
   encryptionKey: Hash | undefined;
   visibilityInfo: SubscribeVisibilityInfo | undefined;
-  /** Decrypted key for unlisted/private trees - cached after first decryption */
   decryptedKey: Hash | undefined;
   listeners: Set<(hash: Hash | null, encryptionKey?: Hash, visibilityInfo?: SubscribeVisibilityInfo) => void>;
   unsubscribe: (() => void) | null;
@@ -33,15 +26,13 @@ const subscriptionCache = new Map<string, {
 
 /**
  * Update the subscription cache directly (called from treeRootCache on local writes)
- * This ensures UI updates immediately when local changes are made.
  */
 export function updateSubscriptionCache(key: string, hash: Hash, encryptionKey?: Hash): void {
   const cached = subscriptionCache.get(key);
   if (cached) {
     cached.hash = hash;
     cached.encryptionKey = encryptionKey;
-    cached.decryptedKey = encryptionKey; // For local writes, key is already decrypted
-    // Notify all listeners
+    cached.decryptedKey = encryptionKey;
     cached.listeners.forEach(listener => listener(hash, encryptionKey, cached.visibilityInfo));
   }
 }
@@ -53,7 +44,6 @@ function subscribeToResolver(
   let entry = subscriptionCache.get(key);
 
   if (!entry) {
-    // First subscriber for this key - create subscription
     entry = {
       hash: null,
       encryptionKey: undefined,
@@ -65,31 +55,27 @@ function subscribeToResolver(
     subscriptionCache.set(key, entry);
 
     const resolver = getRefResolver();
-    entry.unsubscribe = resolver.subscribe(key, (hash, encryptionKey, visibilityInfo) => {
+    entry.unsubscribe = resolver.subscribe(key, (resolvedCid, visibilityInfo) => {
       const cached = subscriptionCache.get(key);
       if (cached) {
-        cached.hash = hash;
-        cached.encryptionKey = encryptionKey;
+        cached.hash = resolvedCid?.hash ?? null;
+        cached.encryptionKey = resolvedCid?.key;
         cached.visibilityInfo = visibilityInfo;
-        cached.listeners.forEach(listener => listener(hash, encryptionKey, visibilityInfo));
+        cached.listeners.forEach(listener => listener(resolvedCid?.hash ?? null, resolvedCid?.key, visibilityInfo));
       }
     });
   }
 
-  // Add this callback to listeners
   entry.listeners.add(callback);
 
-  // If we already have a cached value, call callback immediately
   if (entry.hash) {
     callback(entry.hash, entry.encryptionKey, entry.visibilityInfo);
   }
 
-  // Return unsubscribe function
   return () => {
     const cached = subscriptionCache.get(key);
     if (cached) {
       cached.listeners.delete(callback);
-      // If no more listeners, clean up the subscription
       if (cached.listeners.size === 0) {
         cached.unsubscribe?.();
         subscriptionCache.delete(key);
@@ -106,7 +92,6 @@ async function decryptEncryptionKey(
   encryptionKey: Hash | undefined,
   linkKey: string | null
 ): Promise<Hash | undefined> {
-  // Public tree - key is already decrypted
   if (encryptionKey) {
     return encryptionKey;
   }
@@ -115,17 +100,15 @@ async function decryptEncryptionKey(
     return undefined;
   }
 
-  // Unlisted tree with linkKey from URL - decrypt encryptedKey
+  // Unlisted tree with linkKey from URL
   if (visibilityInfo.visibility === 'unlisted' && visibilityInfo.encryptedKey && linkKey) {
     try {
       const decryptedHex = await visibilityHex.decryptKeyFromLink(visibilityInfo.encryptedKey, linkKey);
       if (decryptedHex) {
         return fromHex(decryptedHex);
       }
-      // Decryption returned null - key mismatch
       console.warn('[decryptEncryptionKey] Key mismatch - linkKey does not decrypt encryptedKey');
     } catch (e) {
-      // Decryption failed - wrong key or corrupted data
       console.error('[decryptEncryptionKey] Decryption failed:', e);
     }
   }
@@ -133,15 +116,14 @@ async function decryptEncryptionKey(
   // Unlisted or private tree - try selfEncryptedKey (owner access)
   if (visibilityInfo.selfEncryptedKey) {
     try {
-      const store = useNostrStore.getState();
+      const state = get(nostrStore);
       const sk = getSecretKey();
-      if (sk && store.pubkey) {
-        const conversationKey = nip44.v2.utils.getConversationKey(sk, store.pubkey);
+      if (sk && state.pubkey) {
+        const conversationKey = nip44.v2.utils.getConversationKey(sk, state.pubkey);
         const decrypted = nip44.v2.decrypt(visibilityInfo.selfEncryptedKey, conversationKey);
         return fromHex(decrypted);
       }
     } catch (e) {
-      // Not the owner or decryption failed
       console.debug('Could not decrypt selfEncryptedKey (not owner?):', e);
     }
   }
@@ -149,25 +131,30 @@ async function decryptEncryptionKey(
   return undefined;
 }
 
+// Store for tree root
+export const treeRootStore = writable<CID | null>(null);
+
+// Active subscription cleanup
+let activeUnsubscribe: (() => void) | null = null;
+let activeResolverKey: string | null = null;
+
 /**
- * Hook to get the current tree's root CID from URL via resolver
- *
- * @returns The root CID (hash + optional encryption key) or null if not in a tree context
+ * Create a tree root store that reacts to route changes
  */
-export function useTreeRoot(): CID | null {
-  const route = useRoute();
-  const [rootCid, setRootCid] = useState<CID | null>(null);
-
-  // Use ref to always have the current linkKey available in callbacks
-  // This prevents stale closure issues when the resolver fires multiple times
-  const linkKeyRef = useRef<string | null>(route.linkKey);
-  linkKeyRef.current = route.linkKey;
-
-  useEffect(() => {
-    // For permalinks (nhash routes), use CID from route (already decoded)
+export function createTreeRootStore(): Readable<CID | null> {
+  // Subscribe to route changes
+  routeStore.subscribe(async (route) => {
+    // For permalinks, use CID from route
     if (route.isPermalink && route.cid) {
       const key = route.cid.key ? fromHex(route.cid.key) : undefined;
-      setRootCid(cid(fromHex(route.cid.hash), key));
+      treeRootStore.set(cid(fromHex(route.cid.hash), key));
+
+      // Cleanup any active subscription
+      if (activeUnsubscribe) {
+        activeUnsubscribe();
+        activeUnsubscribe = null;
+        activeResolverKey = null;
+      }
       return;
     }
 
@@ -175,29 +162,39 @@ export function useTreeRoot(): CID | null {
     const resolverKey = getResolverKey(route.npub ?? undefined, route.treeName ?? undefined);
 
     if (!resolverKey) {
-      // No tree context (home, settings, etc.)
-      setRootCid(null);
+      treeRootStore.set(null);
+      if (activeUnsubscribe) {
+        activeUnsubscribe();
+        activeUnsubscribe = null;
+        activeResolverKey = null;
+      }
       return;
     }
 
-    // Reset rootCid to null while waiting for the new tree to resolve
-    // This prevents stale data from the previous tree being used
-    setRootCid(null);
+    // Same key, no need to resubscribe
+    if (resolverKey === activeResolverKey) {
+      return;
+    }
 
-    // Subscribe to resolver for live updates
-    // The effect cleanup will handle unsubscribing when deps change
-    const unsubscribe = subscribeToResolver(resolverKey, async (hash, encryptionKey, visibilityInfo) => {
-      // Use ref to get current linkKey value, avoiding stale closure
-      const currentLinkKey = linkKeyRef.current;
+    // Cleanup previous subscription
+    if (activeUnsubscribe) {
+      activeUnsubscribe();
+    }
+
+    // Reset while waiting for new data
+    treeRootStore.set(null);
+    activeResolverKey = resolverKey;
+
+    // Subscribe to resolver
+    activeUnsubscribe = subscribeToResolver(resolverKey, async (hash, encryptionKey, visibilityInfo) => {
       if (!hash) {
-        setRootCid(null);
+        treeRootStore.set(null);
         return;
       }
 
-      // Decrypt the encryption key based on visibility and available keys
-      const decryptedKey = await decryptEncryptionKey(visibilityInfo, encryptionKey, currentLinkKey);
+      const decryptedKey = await decryptEncryptionKey(visibilityInfo, encryptionKey, route.linkKey);
 
-      // Cache the decrypted key for sync access (used by getTreeRootSync)
+      // Cache the decrypted key
       if (decryptedKey) {
         const cached = subscriptionCache.get(resolverKey);
         if (cached) {
@@ -205,25 +202,15 @@ export function useTreeRoot(): CID | null {
         }
       }
 
-      setRootCid(cid(hash, decryptedKey));
+      treeRootStore.set(cid(hash, decryptedKey));
     });
+  });
 
-    return unsubscribe;
-  }, [route.npub, route.treeName, route.cid?.hash, route.cid?.key, route.isPermalink, route.linkKey]);
-
-  return rootCid;
+  return treeRootStore;
 }
 
 /**
- * Non-hook function to get the current root CID synchronously
- * Used in actions that run outside React components
- *
- * For public trees, returns the encryption key from the resolver.
- * For unlisted/private trees, returns the decrypted key if available in cache.
- *
- * @param npub - User's npub
- * @param treeName - Tree name
- * @returns The cached root CID or null
+ * Get the current root CID synchronously
  */
 export function getTreeRootSync(npub: string | null | undefined, treeName: string | null | undefined): CID | null {
   const key = getResolverKey(npub ?? undefined, treeName ?? undefined);
@@ -232,20 +219,22 @@ export function getTreeRootSync(npub: string | null | undefined, treeName: strin
   const cached = subscriptionCache.get(key);
   if (!cached?.hash) return null;
 
-  // Use decrypted key if available (for unlisted/private trees),
-  // otherwise use encryptionKey (for public trees)
   const encryptionKey = cached.decryptedKey ?? cached.encryptionKey;
   return cid(cached.hash, encryptionKey);
 }
 
 /**
  * Invalidate and refresh the cached root CID
- * Call this after publishing a new root hash to ensure subscribers get the update
  */
 export function invalidateTreeRoot(npub: string | null | undefined, treeName: string | null | undefined): void {
   const key = getResolverKey(npub ?? undefined, treeName ?? undefined);
   if (!key) return;
-
   // The resolver subscription will automatically pick up the new value
-  // No need to manually invalidate - the nostr subscription handles this
 }
+
+// Initialize the store
+// Use queueMicrotask to defer until after module initialization completes
+// This avoids circular dependency issues with nostr.ts -> store.ts
+queueMicrotask(() => {
+  createTreeRootStore();
+});

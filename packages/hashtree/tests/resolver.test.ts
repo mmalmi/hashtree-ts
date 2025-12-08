@@ -7,7 +7,7 @@ import WebSocket from 'ws';
 import NDK, { NDKEvent, NDKPrivateKeySigner, type NDKFilter, type NDKSubscriptionOptions } from '@nostr-dev-kit/ndk';
 import { nip19, generateSecretKey, getPublicKey } from 'nostr-tools';
 import { createNostrRefResolver, type NostrFilter, type NostrEvent } from '../src/resolver/nostr.js';
-import { toHex, fromHex } from '../src/types.js';
+import { toHex, fromHex, cid } from '../src/types.js';
 
 // NDK requires WebSocket to be available globally in Node.js
 // @ts-ignore
@@ -113,7 +113,7 @@ describe('NostrRefResolver', () => {
     resolver.stop?.();
   });
 
-  it('should publish and resolve a hash', async () => {
+  it('should publish and resolve a CID', async () => {
     const { subscribe, publish } = createNostrFunctions(ndk);
     const resolver = createNostrRefResolver({
       subscribe,
@@ -124,10 +124,10 @@ describe('NostrRefResolver', () => {
 
     const treeName = `test-tree-${Date.now()}`;
     const key = `${npub}/${treeName}`;
-    const testHash = fromHex('abcd'.repeat(16)); // 32 bytes
+    const testCid = cid(fromHex('abcd'.repeat(16))); // 32 bytes
 
     // Publish
-    const published = await resolver.publish!(key, testHash);
+    const published = await resolver.publish!(key, testCid);
     expect(published).toBe(true);
 
     // Wait for relay to process
@@ -136,7 +136,7 @@ describe('NostrRefResolver', () => {
     // Resolve
     const resolved = await resolver.resolve(key);
     expect(resolved).not.toBeNull();
-    expect(toHex(resolved!)).toBe(toHex(testHash));
+    expect(toHex(resolved!.hash)).toBe(toHex(testCid.hash));
 
     resolver.stop?.();
   });
@@ -153,18 +153,18 @@ describe('NostrRefResolver', () => {
     // Publish a couple of trees
     const tree1 = `list-test-1-${Date.now()}`;
     const tree2 = `list-test-2-${Date.now()}`;
-    const hash1 = fromHex('1111'.repeat(16));
-    const hash2 = fromHex('2222'.repeat(16));
+    const cid1 = cid(fromHex('1111'.repeat(16)));
+    const cid2 = cid(fromHex('2222'.repeat(16)));
 
-    await resolver.publish!(`${npub}/${tree1}`, hash1);
-    await resolver.publish!(`${npub}/${tree2}`, hash2);
+    await resolver.publish!(`${npub}/${tree1}`, cid1);
+    await resolver.publish!(`${npub}/${tree2}`, cid2);
 
     // Wait for relay
     await new Promise(r => setTimeout(r, 500));
 
     // List with callback (wait for results then unsubscribe)
-    const trees = await new Promise<Array<{ key: string; hash: Uint8Array }>>((resolve) => {
-      let lastEntries: Array<{ key: string; hash: Uint8Array }> = [];
+    const trees = await new Promise<Array<{ key: string; cid: { hash: Uint8Array } }>>((resolve) => {
+      let lastEntries: Array<{ key: string; cid: { hash: Uint8Array } }> = [];
       const unsubscribe = resolver.list!(npub, (entries) => {
         lastEntries = entries;
       });
@@ -195,18 +195,18 @@ describe('NostrRefResolver', () => {
 
     const treeName = `subscribe-test-${Date.now()}`;
     const key = `${npub}/${treeName}`;
-    const initialHash = fromHex('aaaa'.repeat(16));
-    const updatedHash = fromHex('bbbb'.repeat(16));
+    const initialCid = cid(fromHex('aaaa'.repeat(16)));
+    const updatedCid = cid(fromHex('bbbb'.repeat(16)));
 
     // Publish initial value
-    await resolver.publish!(key, initialHash);
+    await resolver.publish!(key, initialCid);
     await new Promise(r => setTimeout(r, 500));
 
     // Subscribe
     const receivedHashes: string[] = [];
-    const unsubscribe = resolver.subscribe(key, (hash) => {
-      if (hash) {
-        receivedHashes.push(toHex(hash));
+    const unsubscribe = resolver.subscribe(key, (received) => {
+      if (received) {
+        receivedHashes.push(toHex(received.hash));
       }
     });
 
@@ -215,17 +215,17 @@ describe('NostrRefResolver', () => {
 
     // Should have received initial hash
     expect(receivedHashes.length).toBeGreaterThanOrEqual(1);
-    expect(receivedHashes[receivedHashes.length - 1]).toBe(toHex(initialHash));
+    expect(receivedHashes[receivedHashes.length - 1]).toBe(toHex(initialCid.hash));
 
     // Publish update
-    await resolver.publish!(key, updatedHash);
+    await resolver.publish!(key, updatedCid);
 
     // Wait for update
     await new Promise(r => setTimeout(r, 1500));
 
     // Should have received updated hash
     expect(receivedHashes.length).toBeGreaterThanOrEqual(2);
-    expect(receivedHashes[receivedHashes.length - 1]).toBe(toHex(updatedHash));
+    expect(receivedHashes[receivedHashes.length - 1]).toBe(toHex(updatedCid.hash));
 
     unsubscribe();
     resolver.stop?.();
@@ -241,10 +241,10 @@ describe('NostrRefResolver', () => {
     });
 
     const treeName = `list-update-test-${Date.now()}`;
-    const hash = fromHex('cccc'.repeat(16));
+    const testCid = cid(fromHex('cccc'.repeat(16)));
 
     // Subscribe to list
-    let lastEntries: Array<{ key: string; hash: Uint8Array }> = [];
+    let lastEntries: Array<{ key: string; cid: { hash: Uint8Array } }> = [];
     const unsubscribe = resolver.list!(npub, (entries) => {
       lastEntries = entries;
     });
@@ -255,7 +255,7 @@ describe('NostrRefResolver', () => {
     const initialCount = lastEntries.length;
 
     // Publish new tree
-    await resolver.publish!(`${npub}/${treeName}`, hash);
+    await resolver.publish!(`${npub}/${treeName}`, testCid);
 
     // Wait for update
     await new Promise(r => setTimeout(r, 1500));
@@ -306,15 +306,15 @@ describe('NostrRefResolver', () => {
 
     // Publish multiple updates with longer delays to ensure distinct timestamps
     // (Nostr uses second-precision timestamps)
-    const hash1 = fromHex('1111'.repeat(16));
-    const hash2 = fromHex('2222'.repeat(16));
-    const hash3 = fromHex('3333'.repeat(16));
+    const cid1 = cid(fromHex('1111'.repeat(16)));
+    const cid2 = cid(fromHex('2222'.repeat(16)));
+    const cid3 = cid(fromHex('3333'.repeat(16)));
 
-    await resolver.publish!(key, hash1);
+    await resolver.publish!(key, cid1);
     await new Promise(r => setTimeout(r, 1100)); // Wait >1s for next timestamp
-    await resolver.publish!(key, hash2);
+    await resolver.publish!(key, cid2);
     await new Promise(r => setTimeout(r, 1100)); // Wait >1s for next timestamp
-    await resolver.publish!(key, hash3);
+    await resolver.publish!(key, cid3);
 
     // Wait for relay
     await new Promise(r => setTimeout(r, 1000));
@@ -322,7 +322,60 @@ describe('NostrRefResolver', () => {
     // Should resolve to latest
     const resolved = await resolver.resolve(key);
     expect(resolved).not.toBeNull();
-    expect(toHex(resolved!)).toBe(toHex(hash3));
+    expect(toHex(resolved!.hash)).toBe(toHex(cid3.hash));
+
+    resolver.stop?.();
+  }, 10000);
+
+  it('should preserve visibility info when publishing with visibility', async () => {
+    const { subscribe, publish } = createNostrFunctions(ndk);
+    const resolver = createNostrRefResolver({
+      subscribe,
+      publish,
+      getPubkey: () => pubkey,
+      nip19,
+    });
+
+    const treeName = `visibility-test-${Date.now()}`;
+    const key = `${npub}/${treeName}`;
+    const testCid = cid(fromHex('dddd'.repeat(16)));
+
+    // Publish with unlisted visibility
+    const published = await resolver.publish!(key, testCid, {
+      visibility: 'unlisted',
+      encryptedKey: 'encrypted-key-data',
+      keyId: 'key-id-123',
+    });
+    expect(published).toBe(true);
+
+    // Subscribe to list and check visibility
+    const entries = await new Promise<Array<{ key: string; visibility?: string }>>((resolve) => {
+      let lastEntries: Array<{ key: string; visibility?: string }> = [];
+      let unsubscribe: (() => void) | null = null;
+      let resolved = false;
+      unsubscribe = resolver.list!(npub, (entries) => {
+        lastEntries = entries;
+        const found = entries.find(e => e.key.includes(treeName));
+        if (found && !resolved) {
+          resolved = true;
+          // Defer unsubscribe to avoid calling before assignment
+          setTimeout(() => unsubscribe?.(), 0);
+          resolve(lastEntries);
+        }
+      });
+      // Timeout after 3s
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          unsubscribe?.();
+          resolve(lastEntries);
+        }
+      }, 3000);
+    });
+
+    const entry = entries.find(e => e.key.includes(treeName));
+    expect(entry).toBeDefined();
+    expect(entry!.visibility).toBe('unlisted');
 
     resolver.stop?.();
   }, 10000);

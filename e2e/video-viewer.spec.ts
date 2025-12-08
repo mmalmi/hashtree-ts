@@ -66,18 +66,15 @@ test.describe('Video Viewer', () => {
     console.log('Uploading video file...');
     const fileInput = page.locator('input[type="file"][multiple]').first();
     await fileInput.setInputFiles(TEST_VIDEO);
-    await page.waitForTimeout(1000); // Wait for upload processing
 
-    // Wait for upload to complete - look for the video in the file list
-    console.log('Waiting for video to appear in file list...');
-    const videoLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'Big_Buck_Bunny_360_10s_1MB.mp4' }).first();
-    await expect(videoLink).toBeVisible({ timeout: 30000 });
-    console.log('Video uploaded successfully');
+    // After uploading a single file, the app auto-navigates to view it
+    // Wait for the URL to include the filename (indicating upload complete and navigation happened)
+    console.log('Waiting for upload and auto-navigation...');
+    await page.waitForURL(/Big_Buck_Bunny_360_10s_1MB\.mp4/, { timeout: 30000 });
+    console.log('Upload complete, navigated to video');
 
-    // Click on the video to view it
-    console.log('Clicking on video to view...');
-    await videoLink.click();
-    await page.waitForTimeout(1000);
+    // Small wait for video component to load
+    await page.waitForTimeout(500);
 
     // Check that video element exists
     console.log('Checking for video element...');
@@ -179,14 +176,9 @@ test.describe('Video Viewer', () => {
     // Upload the video via hidden file input
     const fileInput = page.locator('input[type="file"][multiple]').first();
     await fileInput.setInputFiles(TEST_VIDEO);
-    await page.waitForTimeout(1000); // Wait for upload processing
 
-    // Wait for video in file list
-    const videoLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'Big_Buck_Bunny_360_10s_1MB.mp4' }).first();
-    await expect(videoLink).toBeVisible({ timeout: 30000 });
-
-    // Click on video
-    await videoLink.click();
+    // After uploading a single file, the app auto-navigates to view it
+    await page.waitForURL(/Big_Buck_Bunny_360_10s_1MB\.mp4/, { timeout: 30000 });
 
     // Wait for video element
     const videoElement = page.locator('video');

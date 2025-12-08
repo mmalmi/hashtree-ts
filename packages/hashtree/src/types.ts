@@ -4,6 +4,8 @@
  * Core principle: Every node is stored by SHA256(CBOR(node)) -> CBOR(node)
  * This enables pure KV content-addressed storage.
  */
+import type { TreeVisibility } from './visibility.js';
+export type { TreeVisibility };
 
 /**
  * 32-byte SHA256 hash used as content address
@@ -197,11 +199,9 @@ export function hashEquals(a: Hash, b: Hash): boolean {
  */
 export interface RefResolverListEntry {
   key: string;
-  hash: Hash;
-  /** @deprecated Use visibility fields instead */
-  encryptionKey?: Hash;
+  cid: CID;
   /** Tree visibility: public, unlisted, or private */
-  visibility?: 'public' | 'unlisted' | 'private';
+  visibility?: TreeVisibility;
   /** Encrypted key for unlisted trees - decrypt with link key from URL */
   encryptedKey?: string;
   /** Key ID for unlisted trees */
@@ -215,7 +215,7 @@ export interface RefResolverListEntry {
  */
 export interface SubscribeVisibilityInfo {
   /** Tree visibility: public, unlisted, or private */
-  visibility: 'public' | 'unlisted' | 'private';
+  visibility: TreeVisibility;
   /** Encrypted key for unlisted trees - decrypt with link key from URL */
   encryptedKey?: string;
   /** Key ID for unlisted trees */
@@ -239,31 +239,32 @@ export interface SubscribeVisibilityInfo {
  */
 export interface RefResolver {
   /**
-   * Resolve a key to its current root hash.
-   * Waits indefinitely until a hash is found - caller should apply timeout if needed.
-   * @returns Hash (never null - waits until found)
+   * Resolve a key to its current CID.
+   * Waits indefinitely until found - caller should apply timeout if needed.
+   * @returns CID (never null - waits until found)
    */
-  resolve(key: string): Promise<Hash | null>;
+  resolve(key: string): Promise<CID | null>;
 
   /**
-   * Subscribe to root hash changes for a key.
+   * Subscribe to CID changes for a key.
    * Callback fires immediately with current value (if available), then on each update.
    * Subscription stays open indefinitely until unsubscribed.
    *
    * @param key The key to watch
-   * @param callback Called with new hash (or null if deleted/unavailable), optional encryption key (for public trees), and visibility info
+   * @param callback Called with new CID (or null if deleted/unavailable) and visibility info
    * @returns Unsubscribe function
    */
-  subscribe(key: string, callback: (hash: Hash | null, encryptionKey?: Hash, visibilityInfo?: SubscribeVisibilityInfo) => void): () => void;
+  subscribe(key: string, callback: (cid: CID | null, visibilityInfo?: SubscribeVisibilityInfo) => void): () => void;
 
   /**
-   * Publish/update a root hash (optional - only for writable backends)
+   * Publish/update a CID (optional - only for writable backends)
    * @param key The key to publish to
-   * @param hash The hash to publish
-   * @param encryptionKey Optional encryption key for encrypted trees
+   * @param cid The CID to publish
+   * @param visibilityInfo Optional visibility info for list subscriptions
+   * @param skipNostrPublish Optional - skip Nostr publish (caller handles separately)
    * @returns true if published successfully
    */
-  publish?(key: string, hash: Hash, encryptionKey?: Hash): Promise<boolean>;
+  publish?(key: string, cid: CID, visibilityInfo?: SubscribeVisibilityInfo, skipNostrPublish?: boolean): Promise<boolean>;
 
   /**
    * List all keys matching a prefix.
@@ -280,4 +281,11 @@ export interface RefResolver {
    * Stop the resolver and clean up resources
    */
   stop?(): void;
+
+  /**
+   * Inject a local list entry (for instant UI updates)
+   * This makes trees appear immediately without waiting for network
+   * @param entry The entry to inject with full visibility info
+   */
+  injectListEntry?(entry: RefResolverListEntry): void;
 }

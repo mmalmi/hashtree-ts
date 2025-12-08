@@ -1,29 +1,14 @@
 /**
- * Hook for managing recently changed files (for pulse animation)
- * Uses a simple module-level store to avoid global appStore bloat
+ * Store for managing recently changed files (for pulse animation)
+ * Uses Svelte stores
  */
-import { useSyncExternalStore } from 'react';
+import { writable, get } from 'svelte/store';
 
-// Module-level state
-let recentlyChangedFiles: Set<string> = new Set();
-const listeners = new Set<() => void>();
+// Svelte store for recently changed files
+export const recentlyChangedFiles = writable<Set<string>>(new Set());
 
 // Per-file timers - when a file is re-marked, we cancel the old timer
 const fileTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot() {
-  return recentlyChangedFiles;
-}
-
-function setRecentlyChangedFiles(files: Set<string>) {
-  recentlyChangedFiles = files;
-  listeners.forEach(l => l());
-}
 
 // Clear a single file after delay
 function clearFileAfterDelay(fileName: string, delayMs: number) {
@@ -36,11 +21,13 @@ function clearFileAfterDelay(fileName: string, delayMs: number) {
   // Set new timer
   const timer = setTimeout(() => {
     fileTimers.delete(fileName);
-    const current = recentlyChangedFiles;
-    if (current.has(fileName)) {
-      const remaining = new Set([...current].filter(f => f !== fileName));
-      setRecentlyChangedFiles(remaining);
-    }
+    recentlyChangedFiles.update(current => {
+      if (current.has(fileName)) {
+        const remaining = new Set([...current].filter(f => f !== fileName));
+        return remaining;
+      }
+      return current;
+    });
   }, delayMs);
 
   fileTimers.set(fileName, timer);
@@ -52,19 +39,10 @@ function clearFileAfterDelay(fileName: string, delayMs: number) {
  * If a file is marked again before timeout, the timer resets
  */
 export function markFilesChanged(fileNames: Set<string>) {
-  const merged = new Set([...recentlyChangedFiles, ...fileNames]);
-  setRecentlyChangedFiles(merged);
+  recentlyChangedFiles.update(current => new Set([...current, ...fileNames]));
 
   // Set individual timers for each file (resets if already set)
   for (const fileName of fileNames) {
     clearFileAfterDelay(fileName, 5000);
   }
-}
-
-/**
- * Hook to read recently changed files state
- */
-export function useRecentlyChanged() {
-  const files = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  return files;
 }

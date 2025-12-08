@@ -97,11 +97,18 @@ test.describe('Hashtree Explorer', () => {
     // Create tree via modal
     await createAndEnterTree(page, 'file-btn-test');
 
-    // Create file using File button
+    // Create file using File button - this auto-opens in edit mode
     await page.getByRole('button', { name: /File/ }).first().click();
     await page.locator('input[placeholder="File name..."]').fill('test-file.txt');
     await page.getByRole('button', { name: 'Create' }).click();
-    await page.waitForTimeout(1000);
+
+    // File opens in edit mode - exit edit mode first
+    await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 5000 });
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // Navigate back to the tree directory by clicking on the tree name in sidebar
+    await page.locator('a:has-text("file-btn-test")').first().click();
+    await page.waitForTimeout(500);
 
     // File should appear in file browser (use a:has-text since entries are links)
     await expect(fileList.locator('a').filter({ hasText: 'test-file.txt' }).first()).toBeVisible({ timeout: 10000 });
@@ -447,6 +454,32 @@ test.describe('Hashtree Explorer', () => {
     // Should be back on profile page
     expect(page.url()).not.toContain('/edit');
     await expect(page.getByRole('button', { name: 'Edit Profile' })).toBeVisible();
+  });
+
+  test('should show trees listing on profile page in mobile view', async ({ page }) => {
+    // Get the npub from current URL
+    const url = page.url();
+    const npubMatch = url.match(/npub[a-z0-9]+/);
+    expect(npubMatch).toBeTruthy();
+    const npub = npubMatch![0];
+
+    // Set mobile viewport
+    await page.setViewportSize({ width: 375, height: 667 });
+
+    // Navigate to profile page
+    await page.goto(`/#/${npub}/profile`);
+    await page.waitForTimeout(300);
+
+    // Should see ProfileView elements
+    await expect(page.getByRole('button', { name: 'Edit Profile' })).toBeVisible({ timeout: 5000 });
+
+    // Should also see FileBrowser/trees listing below profile (in mobile stacked layout)
+    // In mobile, both desktop (hidden) and mobile (visible) file-lists exist - check that at least one is visible
+    const fileLists = page.getByTestId('file-list');
+    const count = await fileLists.count();
+    expect(count).toBeGreaterThan(0);
+    // Check the last one (mobile layout) is visible
+    await expect(fileLists.last()).toBeVisible({ timeout: 5000 });
   });
 
   // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright

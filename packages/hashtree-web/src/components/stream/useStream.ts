@@ -1,12 +1,9 @@
-import { useSyncExternalStore } from 'react';
+import { writable, get } from 'svelte/store';
 import { toHex, cid } from 'hashtree';
 import type { StreamWriter, CID } from 'hashtree';
-import {
-  getTree,
-} from '../../store';
-import { autosaveIfOwn, useNostrStore } from '../../nostr';
-import { navigate } from '../../utils/navigate';
-import { getCurrentPathFromUrl, parseRoute } from '../../utils/route';
+import { getTree } from '../../store';
+import { autosaveIfOwn, nostrStore } from '../../nostr';
+import { parseRoute, getCurrentPathFromUrl } from '../../utils/route';
 import { getTreeRootSync } from '../../hooks/useTreeRoot';
 
 // Generate default stream filename
@@ -27,8 +24,8 @@ interface StreamState {
   streamStats: { chunks: number; buffered: number; totalSize: number };
 }
 
-// Module-level state
-let state: StreamState = {
+// Initial state
+const initialState: StreamState = {
   isRecording: false,
   isPreviewing: false,
   recordingTime: 0,
@@ -38,67 +35,41 @@ let state: StreamState = {
   streamStats: { chunks: 0, buffered: 0, totalSize: 0 },
 };
 
-const listeners = new Set<() => void>();
+// Create Svelte store
+export const streamStore = writable<StreamState>(initialState);
 
-function emit() {
-  listeners.forEach(l => l());
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot() {
-  return state;
-}
-
-// Non-hook getter for use in non-React code
-export function getStreamState() {
-  return state;
+// Non-hook getter for use in non-reactive code
+export function getStreamState(): StreamState {
+  return get(streamStore);
 }
 
 // State setters
 export function setIsRecording(recording: boolean) {
-  state = { ...state, isRecording: recording };
-  emit();
+  streamStore.update(s => ({ ...s, isRecording: recording }));
 }
 
 export function setIsPreviewing(previewing: boolean) {
-  state = { ...state, isPreviewing: previewing };
-  emit();
+  streamStore.update(s => ({ ...s, isPreviewing: previewing }));
 }
 
 export function setRecordingTime(time: number) {
-  state = { ...state, recordingTime: time };
-  emit();
+  streamStore.update(s => ({ ...s, recordingTime: time }));
 }
 
 export function setStreamFilename(filename: string) {
-  state = { ...state, streamFilename: filename };
-  emit();
+  streamStore.update(s => ({ ...s, streamFilename: filename }));
 }
 
 export function setPersistStream(persist: boolean) {
-  state = { ...state, persistStream: persist };
-  emit();
+  streamStore.update(s => ({ ...s, persistStream: persist }));
 }
 
 export function setStreamWriter(streamWriter: StreamWriter | null) {
-  state = { ...state, streamWriter };
-  emit();
+  streamStore.update(s => ({ ...s, streamWriter }));
 }
 
 export function setStreamStats(stats: { chunks: number; buffered: number; totalSize: number }) {
-  state = { ...state, streamStats: stats };
-  emit();
-}
-
-/**
- * Hook to read stream state
- */
-export function useStreamState() {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  streamStore.update(s => ({ ...s, streamStats: stats }));
 }
 
 // Module state for media
@@ -170,7 +141,7 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
   mediaRecorder.ondataavailable = async (event) => {
     if (event.data.size > 0) {
       const chunk = new Uint8Array(await event.data.arrayBuffer());
-      const currentState = getSnapshot();
+      const currentState = getStreamState();
 
       if (currentState.persistStream) {
         const streamWriter = currentState.streamWriter;
@@ -197,19 +168,19 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
   setRecordingTime(0);
 
   recordingInterval = window.setInterval(() => {
-    const currentState = getSnapshot();
+    const currentState = getStreamState();
     setRecordingTime(currentState.recordingTime + 1);
   }, 1000);
 
   // Publish to nostr every 3 seconds (check login/tree state inside interval)
   publishInterval = window.setInterval(async () => {
-    const nostrState = useNostrStore.getState();
+    const nostrState = nostrStore.getState();
     // Only publish if logged in and have a selected tree
     if (!nostrState.isLoggedIn || !nostrState.selectedTree) {
       return;
     }
 
-    const currentState = getSnapshot();
+    const currentState = getStreamState();
     const route = parseRoute();
     const rootCid = getTreeRootSync(route.npub, route.treeName);
     const filename = `${currentState.streamFilename}.webm`;
@@ -242,7 +213,6 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       autosaveIfOwn(toHex(newRootCid.hash));
     }
   }, 3000);
-
 }
 
 export async function stopRecording(): Promise<void> {
@@ -270,7 +240,7 @@ export async function stopRecording(): Promise<void> {
   setIsRecording(false);
   setIsPreviewing(false);
 
-  const currentState = getSnapshot();
+  const currentState = getStreamState();
   const filename = `${currentState.streamFilename}.webm`;
 
   const tree = getTree();
@@ -300,12 +270,21 @@ export async function stopRecording(): Promise<void> {
       // Create new tree - public directory but with encrypted file entries
       const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid, size: fileSize }], { public: true })).cid;
       autosaveIfOwn(toHex(newRootCid.hash));
-      navigate('/');
+      window.location.hash = '#/';
     }
   }
 
   setStreamWriter(null);
   recentChunks = [];
+
+  // Close streaming mode by removing ?stream=1 from URL
+  const hash = window.location.hash;
+  if (hash.includes('stream=1')) {
+    const newHash = hash
+      .replace(/[?&]stream=1/, '')
+      .replace(/\?$/, ''); // Remove trailing ? if no other params
+    window.location.hash = newHash;
+  }
 }
 
 export function formatTime(seconds: number): string {

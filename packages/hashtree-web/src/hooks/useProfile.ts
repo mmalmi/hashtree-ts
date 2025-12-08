@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { writable, type Readable } from 'svelte/store';
 import { nip19 } from 'nostr-tools';
 import { LRUCache } from '../utils/lruCache';
 import { ndk } from '../nostr';
@@ -82,57 +82,47 @@ async function fetchProfile(pubkey: string): Promise<void> {
 }
 
 /**
- * Hook to fetch and cache a nostr profile
+ * Create a Svelte store for a profile
  */
-export function useProfile(pubkey?: string): Profile | undefined {
-  const pubkeyHex = useMemo(() => {
-    if (!pubkey) return '';
-    if (pubkey.startsWith('npub1')) {
-      try {
-        const decoded = nip19.decode(pubkey);
-        console.log('[useProfile] decoded npub to hex:', decoded.data);
-        return decoded.data as string;
-      } catch (e) {
-        console.error('[useProfile] failed to decode npub:', e);
-        return '';
-      }
-    }
-    console.log('[useProfile] using hex pubkey:', pubkey);
-    return pubkey;
-  }, [pubkey]);
+export function createProfileStore(pubkey: string | undefined): Readable<Profile | undefined> {
+  const pubkeyHex = pubkey
+    ? pubkey.startsWith('npub1')
+      ? (() => {
+          try {
+            const decoded = nip19.decode(pubkey);
+            return decoded.data as string;
+          } catch {
+            return '';
+          }
+        })()
+      : pubkey
+    : '';
 
-  const [profile, setProfile] = useState<Profile | undefined>(() =>
-    pubkeyHex ? profileCache.get(pubkeyHex) : undefined
-  );
+  const store = writable<Profile | undefined>(pubkeyHex ? profileCache.get(pubkeyHex) : undefined);
 
-  const handleProfileUpdate = useCallback((p: Profile) => {
-    setProfile(p);
-  }, []);
+  if (pubkeyHex) {
+    // Subscribe to updates
+    const unsubListener = subscribe(pubkeyHex, (profile) => {
+      store.set(profile);
+    });
 
-  useEffect(() => {
-    if (!pubkeyHex) {
-      setProfile(undefined);
-      return;
-    }
-
-    // Check cache first
-    const cached = profileCache.get(pubkeyHex);
-    if (cached) {
-      setProfile(cached);
-    }
-
-    // Always subscribe to updates (for cache invalidation/refetch)
-    const unsub = subscribe(pubkeyHex, handleProfileUpdate);
-
-    // Trigger fetch if not cached
-    if (!cached) {
+    // Fetch if not cached
+    if (!profileCache.get(pubkeyHex)) {
       fetchProfile(pubkeyHex);
     }
 
-    return unsub;
-  }, [pubkeyHex, handleProfileUpdate]);
+    return {
+      subscribe: (run, invalidate) => {
+        const unsubStore = store.subscribe(run, invalidate);
+        return () => {
+          unsubStore();
+          unsubListener();
+        };
+      },
+    };
+  }
 
-  return profile;
+  return { subscribe: store.subscribe };
 }
 
 /**
@@ -156,4 +146,22 @@ export function getProfileName(profile?: Profile, pubkey?: string): string | und
   }
 
   return undefined;
+}
+
+/**
+ * Get cached profile synchronously (for non-reactive use)
+ */
+export function getProfileSync(pubkey: string): Profile | undefined {
+  if (!pubkey) return undefined;
+  const pubkeyHex = pubkey.startsWith('npub1')
+    ? (() => {
+        try {
+          const decoded = nip19.decode(pubkey);
+          return decoded.data as string;
+        } catch {
+          return '';
+        }
+      })()
+    : pubkey;
+  return profileCache.get(pubkeyHex);
 }

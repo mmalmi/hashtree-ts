@@ -1,7 +1,7 @@
 /**
- * Settings store with Dexie persistence
+ * Settings store with Dexie persistence (Svelte version)
  */
-import { create } from 'zustand';
+import { writable, get } from 'svelte/store';
 import Dexie, { type Table } from 'dexie';
 
 // Pool configuration
@@ -80,64 +80,82 @@ export interface SettingsState {
 
   // Editor settings
   editor: EditorSettings;
-
-  // Actions
-  setPoolSettings: (pools: Partial<PoolSettings>) => void;
-  resetPoolSettings: () => void;
-  setUploadSettings: (upload: Partial<UploadSettings>) => void;
-  setEditorSettings: (editor: Partial<EditorSettings>) => void;
 }
 
-export const useSettingsStore = create<SettingsState>((set, get) => ({
-  // Legacy settings
-  appearance: {},
-  content: {},
-  imgproxy: {},
-  notifications: {},
-  network: {
-    negentropyEnabled: false,
-  },
-  desktop: {},
-  debug: {},
-  legal: {},
+function createSettingsStore() {
+  const { subscribe, set, update } = writable<SettingsState>({
+    // Legacy settings
+    appearance: {},
+    content: {},
+    imgproxy: {},
+    notifications: {},
+    network: {
+      negentropyEnabled: false,
+    },
+    desktop: {},
+    debug: {},
+    legal: {},
 
-  // Pool settings
-  pools: DEFAULT_POOL_SETTINGS,
-  poolsLoaded: false,
+    // Pool settings
+    pools: DEFAULT_POOL_SETTINGS,
+    poolsLoaded: false,
 
-  // Upload settings
-  upload: DEFAULT_UPLOAD_SETTINGS,
+    // Upload settings
+    upload: DEFAULT_UPLOAD_SETTINGS,
 
-  // Editor settings
-  editor: DEFAULT_EDITOR_SETTINGS,
+    // Editor settings
+    editor: DEFAULT_EDITOR_SETTINGS,
+  });
 
-  setPoolSettings: (pools) => {
-    const current = get().pools;
-    const updated = { ...current, ...pools };
-    set({ pools: updated });
-    // Persist to Dexie
-    db.settings.put({ key: 'pools', value: updated }).catch(console.error);
-  },
+  return {
+    subscribe,
 
-  resetPoolSettings: () => {
-    set({ pools: DEFAULT_POOL_SETTINGS });
-    db.settings.put({ key: 'pools', value: DEFAULT_POOL_SETTINGS }).catch(console.error);
-  },
+    setPoolSettings: (pools: Partial<PoolSettings>) => {
+      update(state => {
+        const updated = { ...state.pools, ...pools };
+        // Persist to Dexie
+        db.settings.put({ key: 'pools', value: updated }).catch(console.error);
+        return { ...state, pools: updated };
+      });
+    },
 
-  setUploadSettings: (upload) => {
-    const current = get().upload;
-    const updated = { ...current, ...upload };
-    set({ upload: updated });
-    db.settings.put({ key: 'upload', value: updated }).catch(console.error);
-  },
+    resetPoolSettings: () => {
+      update(state => {
+        db.settings.put({ key: 'pools', value: DEFAULT_POOL_SETTINGS }).catch(console.error);
+        return { ...state, pools: DEFAULT_POOL_SETTINGS };
+      });
+    },
 
-  setEditorSettings: (editor) => {
-    const current = get().editor;
-    const updated = { ...current, ...editor };
-    set({ editor: updated });
-    db.settings.put({ key: 'editor', value: updated }).catch(console.error);
-  },
-}));
+    setUploadSettings: (upload: Partial<UploadSettings>) => {
+      update(state => {
+        const updated = { ...state.upload, ...upload };
+        db.settings.put({ key: 'upload', value: updated }).catch(console.error);
+        return { ...state, upload: updated };
+      });
+    },
+
+    setEditorSettings: (editor: Partial<EditorSettings>) => {
+      update(state => {
+        const updated = { ...state.editor, ...editor };
+        db.settings.put({ key: 'editor', value: updated }).catch(console.error);
+        return { ...state, editor: updated };
+      });
+    },
+
+    // Get current state synchronously
+    getState: (): SettingsState => get(settingsStore),
+
+    // Set state directly
+    setState: (newState: Partial<SettingsState>) => {
+      update(state => ({ ...state, ...newState }));
+    },
+  };
+}
+
+export const settingsStore = createSettingsStore();
+
+// Legacy compatibility alias
+export const useSettingsStore = settingsStore;
 
 // Load settings from Dexie on startup
 async function loadSettings() {
@@ -174,10 +192,10 @@ async function loadSettings() {
       };
     }
 
-    useSettingsStore.setState(updates);
+    settingsStore.setState(updates);
   } catch (err) {
     console.error('[settings] error loading:', err);
-    useSettingsStore.setState({ poolsLoaded: true });
+    settingsStore.setState({ poolsLoaded: true });
   }
 }
 

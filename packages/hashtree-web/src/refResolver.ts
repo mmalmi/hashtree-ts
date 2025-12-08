@@ -65,3 +65,26 @@ export function getResolverKey(npub: string | undefined, treeName: string | unde
   if (!npub || !treeName) return null;
   return `${npub}/${treeName}`;
 }
+
+/**
+ * Update local tree cache for instant UI updates.
+ * This makes the tree appear immediately without waiting for Nostr relay.
+ * NOTE: This does NOT publish to Nostr - the caller handles that separately.
+ */
+export async function updateLocalTreeCache(
+  npub: string,
+  treeName: string,
+  hashHex: string,
+  keyHex?: string,
+  visibility: 'public' | 'unlisted' | 'private' = 'public'
+): Promise<void> {
+  const key = `${npub}/${treeName}`;
+  const res = getRefResolver();
+
+  // Use the resolver's publish method which updates local cache only (no Nostr publish)
+  const { fromHex, cid } = await import('hashtree');
+  const hash = fromHex(hashHex);
+  const encryptionKey = keyHex ? fromHex(keyHex) : undefined;
+  await res.publish?.(key, cid(hash, encryptionKey), { visibility });
+}
+

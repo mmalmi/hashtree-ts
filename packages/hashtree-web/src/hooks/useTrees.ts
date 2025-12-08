@@ -1,12 +1,13 @@
 /**
  * Hook to subscribe to a user's trees via RefResolver
  *
- * Replaces the old loadHashtrees approach with live subscription.
+ * Svelte port - uses Svelte stores instead of React hooks.
+ * The link key storage is framework-agnostic.
  */
-import { useEffect, useState } from 'react';
+import { writable, derived, get, type Readable } from 'svelte/store';
 import { getRefResolver } from '../refResolver';
 import { toHex, type Hash, type TreeVisibility } from 'hashtree';
-import { useNostrStore } from '../nostr';
+import { nostrStore } from '../nostr';
 import Dexie from 'dexie';
 
 // Dexie database for link keys
@@ -94,59 +95,70 @@ export interface TreeEntry {
 }
 
 /**
- * Subscribe to trees for an npub
- * Returns live-updating list of trees
+ * Create a Svelte store that subscribes to trees for an npub
+ * Returns a Readable store with live-updating list of trees
  */
-export function useTrees(npub: string | null): TreeEntry[] {
-  const [trees, setTrees] = useState<TreeEntry[]>([]);
-  const userNpub = useNostrStore(s => s.npub);
+export function createTreesStore(npub: string | null): Readable<TreeEntry[]> {
+  const store = writable<TreeEntry[]>([]);
+
+  if (!npub) {
+    return { subscribe: store.subscribe };
+  }
+
+  const resolver = getRefResolver();
+  if (!resolver.list) {
+    return { subscribe: store.subscribe };
+  }
+
+  // Get current user's npub for comparison
+  const userNpub = nostrStore.getState().npub;
   const isOwnTrees = npub === userNpub;
 
-  useEffect(() => {
-    if (!npub) {
-      setTrees([]);
-      return;
-    }
+  let unsubscribe: (() => void) | undefined;
 
-    const resolver = getRefResolver();
-    if (!resolver.list) {
-      return;
-    }
+  // Wait for link keys cache before subscribing
+  waitForLinkKeysCache().then(() => {
+    unsubscribe = resolver.list!(npub, (entries) => {
+      // Read link keys fresh on each callback
+      const storedLinkKeys = isOwnTrees ? getStoredLinkKeys() : {};
 
-    let unsubscribe: (() => void) | undefined;
+      store.set(entries.map(e => {
+        const name = e.key.split('/')[1] || '';
+        const visibility = e.visibility ?? 'public';
+        // Include stored link key for unlisted trees (own trees only)
+        const linkKey = visibility === 'unlisted' && isOwnTrees
+          ? storedLinkKeys[`${npub}/${name}`]
+          : undefined;
 
-    // Wait for link keys cache before subscribing
-    waitForLinkKeysCache().then(() => {
-      unsubscribe = resolver.list!(npub, (entries) => {
-        // Read link keys fresh on each callback
-        const storedLinkKeys = isOwnTrees ? getStoredLinkKeys() : {};
-
-        setTrees(entries.map(e => {
-          const name = e.key.split('/')[1] || '';
-          const visibility = e.visibility ?? 'public';
-          // Include stored link key for unlisted trees (own trees only)
-          const linkKey = visibility === 'unlisted' && isOwnTrees
-            ? storedLinkKeys[`${npub}/${name}`]
-            : undefined;
-
-          return {
-            key: e.key,
-            name,
-            hash: e.hash,
-            hashHex: toHex(e.hash),
-            encryptionKey: e.encryptionKey,
-            visibility,
-            encryptedKey: e.encryptedKey,
-            keyId: e.keyId,
-            selfEncryptedKey: e.selfEncryptedKey,
-            linkKey,
-          };
-        }));
-      });
+        return {
+          key: e.key,
+          name,
+          hash: e.cid.hash,
+          hashHex: toHex(e.cid.hash),
+          encryptionKey: e.cid.key,
+          visibility,
+          encryptedKey: e.encryptedKey,
+          keyId: e.keyId,
+          selfEncryptedKey: e.selfEncryptedKey,
+          linkKey,
+        };
+      }));
     });
+  });
 
-    return () => unsubscribe?.();
-  }, [npub, isOwnTrees]);
+  return {
+    subscribe: (fn: (value: TreeEntry[]) => void) => {
+      const unsub = store.subscribe(fn);
+      return () => {
+        unsub();
+        unsubscribe?.();
+      };
+    }
+  };
+}
 
-  return trees;
+// For backward compatibility with React-style usage in non-component code
+export function useTrees(npub: string | null): TreeEntry[] {
+  const store = createTreesStore(npub);
+  return get(store);
 }

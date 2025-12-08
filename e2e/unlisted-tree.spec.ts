@@ -327,10 +327,6 @@ test.describe('Unlisted Tree Visibility', () => {
     await page2.goto(treeUrlWithoutKey);
     await page2.waitForTimeout(3000);
 
-    // Debug: take screenshot and log URL
-    console.log('Non-owner URL:', page2.url());
-    await page2.screenshot({ path: 'test-results/non-owner-debug.png' });
-
     // Should see "Link Required" message
     await expect(page2.getByText('Link Required')).toBeVisible({ timeout: 10000 });
     await expect(page2.getByText('This folder requires a special link to access')).toBeVisible();
@@ -588,7 +584,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
 
     // Create a file with content
-    await page.getByRole('button', { name: 'File' }).click();
+    await page.getByRole('button', { name: 'New File' }).click();
     await page.locator('input[placeholder="File name..."]').fill('encrypted-file.txt');
     await page.getByRole('button', { name: 'Create' }).click();
 
@@ -644,8 +640,8 @@ test.describe('Unlisted Tree Visibility', () => {
     // Wait for the UI to be ready and find the New file button
     await page.waitForTimeout(1000);
 
-    // Create a new file in the private tree (button is labeled "File")
-    await page.getByRole('button', { name: 'File' }).click({ timeout: 10000 });
+    // Create a new file in the private tree
+    await page.getByRole('button', { name: 'New File' }).click({ timeout: 10000 });
     await page.locator('input[placeholder="File name..."]').fill('secret.txt');
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(500);

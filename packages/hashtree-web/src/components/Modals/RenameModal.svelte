@@ -1,0 +1,43 @@
+<script lang="ts">
+  import { modalsStore, closeRenameModal, setModalInput } from '../../hooks/useModals';
+  import { renameEntry } from '../../actions';
+
+  let show = $derived($modalsStore.showRenameModal);
+  let modalInput = $derived($modalsStore.modalInput);
+  let originalName = $derived($modalsStore.renameTarget || '');
+
+  async function handleSubmit(e: Event) {
+    e.preventDefault();
+    const newName = modalInput.trim();
+    if (!newName || newName === originalName) {
+      closeRenameModal();
+      return;
+    }
+    await renameEntry(originalName, newName);
+    closeRenameModal();
+  }
+</script>
+
+{#if show}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onclick={closeRenameModal}>
+    <div class="bg-surface-1 rounded-lg shadow-lg p-6 w-full max-w-md mx-4" onclick={(e) => e.stopPropagation()}>
+      <h2 class="text-lg font-semibold mb-4">Rename</h2>
+      <form onsubmit={handleSubmit}>
+        <input
+          type="text"
+          placeholder="New name..."
+          value={modalInput}
+          oninput={(e) => setModalInput((e.target as HTMLInputElement).value)}
+          class="input w-full mb-4"
+          autofocus
+        />
+        <div class="flex justify-end gap-2">
+          <button type="button" onclick={closeRenameModal} class="btn-ghost">Cancel</button>
+          <button type="submit" class="btn-success">Rename</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}

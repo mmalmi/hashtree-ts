@@ -5,6 +5,7 @@ export default defineConfig({
   safelist: [
     'animate-pulse-live',
     'animate-pulse-bg',
+    'animate-fade-in',
     // YjsDocument toolbar icons
     'i-lucide-bold',
     'i-lucide-italic',
@@ -144,6 +145,10 @@ export default defineConfig({
     ['animate-pulse-bg', {
       animation: 'pulse-bg 3s ease-in-out infinite',
     }],
+    // Fade-in animation for delayed loading indicator
+    ['animate-fade-in', {
+      animation: 'fade-in 0.3s ease-in',
+    }],
     // Hide scrollbar while keeping scroll functionality
     ['scrollbar-hide', {
       '-ms-overflow-style': 'none',
@@ -156,6 +161,10 @@ export default defineConfig({
         @keyframes pulse-bg {
           0%, 100% { background-color: transparent; }
           50% { background-color: rgba(88, 166, 255, 0.08); }
+        }
+        @keyframes fade-in {
+          0% { opacity: 0; }
+          100% { opacity: 1; }
         }
         .scrollbar-hide::-webkit-scrollbar {
           display: none;

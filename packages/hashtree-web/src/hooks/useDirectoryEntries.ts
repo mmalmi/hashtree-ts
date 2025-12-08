@@ -2,8 +2,9 @@
  * Hook to fetch directory entries from tree
  * Simple - just reads from tree, no caching or global state
  * Supports both encrypted and public directories via CID
+ * Svelte version using stores
  */
-import { useState, useEffect } from 'react';
+import { writable, derived, get, type Readable } from 'svelte/store';
 import { type CID, type TreeEntry, toHex } from 'hashtree';
 import { getTree } from '../store';
 
@@ -15,79 +16,81 @@ function sortEntries(entries: TreeEntry[]): TreeEntry[] {
   });
 }
 
+export interface DirectoryEntriesState {
+  entries: TreeEntry[];
+  loading: boolean;
+  isDirectory: boolean;
+}
+
 /**
- * Fetch directory entries for a given CID (hash + optional key)
- * Returns entries (sorted: dirs first, then files) and whether it's actually a directory
+ * Create a store for directory entries for a given CID
  */
-export function useDirectoryEntries(location: CID | null) {
-  const [entries, setEntries] = useState<TreeEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [isDirectory, setIsDirectory] = useState(true);
+export function createDirectoryEntriesStore(locationStore: Readable<CID | null>): Readable<DirectoryEntriesState> {
+  const state = writable<DirectoryEntriesState>({
+    entries: [],
+    loading: false,
+    isDirectory: true,
+  });
 
-  // Convert to hex strings for stable comparison (Uint8Array reference changes on each render)
-  const hashKey = location?.hash ? toHex(location.hash) : null;
-  const encKey = location?.key ? toHex(location.key) : null;
+  let prevHashKey: string | null = null;
+  let prevEncKey: string | null = null;
 
-  useEffect(() => {
+  // Subscribe to location changes
+  locationStore.subscribe(async (location) => {
+    const hashKey = location?.hash ? toHex(location.hash) : null;
+    const encKey = location?.key ? toHex(location.key) : null;
+
+    // Skip if no change
+    if (hashKey === prevHashKey && encKey === prevEncKey) return;
+    prevHashKey = hashKey;
+    prevEncKey = encKey;
+
     if (!location || !hashKey) {
-      setEntries([]);
-      setIsDirectory(true);
+      state.set({ entries: [], loading: false, isDirectory: true });
       return;
     }
 
-    let cancelled = false;
-    setLoading(true);
-
+    state.update(s => ({ ...s, loading: true }));
     const tree = getTree();
 
-    // For encrypted directories, we can't use isDirectory since it requires decryption
-    // Instead, try to list and handle errors
-    if (location.key) {
-      // Encrypted - try to list directory with key
-      tree.listDirectory(location).then(list => {
-        if (!cancelled) {
-          setEntries(sortEntries(list));
-          setIsDirectory(true);
-          setLoading(false);
-        }
-      }).catch(() => {
-        // Could be a file or decryption failed
-        if (!cancelled) {
-          setEntries([]);
-          setIsDirectory(false);
-          setLoading(false);
-        }
-      });
-    } else {
-      // Public - first check if it's a directory
-      tree.isDirectory(location).then(isDir => {
-        if (cancelled) return;
-        setIsDirectory(isDir);
+    try {
+      if (location.key) {
+        // Encrypted - try to list directory with key
+        const list = await tree.listDirectory(location);
+        state.set({ entries: sortEntries(list), loading: false, isDirectory: true });
+      } else {
+        // Public - first check if it's a directory
+        const isDir = await tree.isDirectory(location);
 
         if (isDir) {
-          // It's a directory - list entries
-          return tree.listDirectory(location).then(list => {
-            if (!cancelled) {
-              setEntries(sortEntries(list));
-              setLoading(false);
-            }
-          });
+          const list = await tree.listDirectory(location);
+          state.set({ entries: sortEntries(list), loading: false, isDirectory: true });
         } else {
-          // It's a file - don't list entries (would show chunks)
-          setEntries([]);
-          setLoading(false);
+          state.set({ entries: [], loading: false, isDirectory: false });
         }
-      }).catch(() => {
-        if (!cancelled) {
-          setEntries([]);
-          setIsDirectory(true);
-          setLoading(false);
-        }
-      });
+      }
+    } catch {
+      state.set({ entries: [], loading: false, isDirectory: false });
     }
+  });
 
-    return () => { cancelled = true; };
-  }, [hashKey, encKey]); // Use string keys for stable comparison
-
-  return { entries, loading, isDirectory };
+  return { subscribe: state.subscribe };
 }
+
+/**
+ * Synchronous function to use directory entries (React-style hook compatibility)
+ * For components that need to use the entries synchronously
+ */
+export function useDirectoryEntries(location: CID | null): DirectoryEntriesState {
+  const locationStore = writable(location);
+  const store = createDirectoryEntriesStore(locationStore);
+  return get(store);
+}
+
+// Import currentDirCidStore for global entries store
+import { currentDirCidStore } from './useCurrentDirHash';
+
+/**
+ * Global directory entries store based on current directory CID
+ */
+export const directoryEntriesStore = createDirectoryEntriesStore(currentDirCidStore);

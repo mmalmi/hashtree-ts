@@ -185,8 +185,8 @@ test.describe('Subdirectory Creation', () => {
     await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
 
     // CRITICAL: File and Folder buttons should be visible inside subdirectory
-    await expect(page.getByRole('button', { name: 'File' })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('button', { name: 'Folder' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'New File' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 5000 });
   });
 
   test('subdirectory in unlisted tree should show as folder', async ({ page }) => {

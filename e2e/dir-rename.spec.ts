@@ -11,11 +11,11 @@ test.describe('Directory rename', () => {
 
     // Now we're in the user's public folder, which starts empty
     // Wait for the Folder button to be available (may take a moment for UI to settle)
-    await expect(page.getByRole('button', { name: 'Folder' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
     // Create a subdirectory - use the Folder button in the toolbar
-    await page.getByRole('button', { name: 'Folder' }).click();
+    await page.getByRole('button', { name: 'New Folder' }).click();
 
     // Enter subdirectory name in modal
     const subInput = page.locator('input[placeholder="Folder name..."]');
@@ -76,7 +76,7 @@ test.describe('Directory rename', () => {
 
     // Should NOT see a Rename button for root directory (public folder)
     // The "Folder" button should exist (for creating subfolders) but not Rename
-    await expect(page.getByRole('button', { name: 'Folder' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible();
     await expect(page.locator('button:has-text("Rename")')).not.toBeVisible();
   });
 
@@ -90,7 +90,7 @@ test.describe('Directory rename', () => {
     await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
 
     // Create a subdirectory - use visible button with folder-plus icon
-    await page.getByRole('button', { name: /Folder/ }).click();
+    await page.getByRole('button', { name: 'New Folder' }).click();
     const subInput = page.locator('input[placeholder="Folder name..."]');
     await subInput.waitFor({ timeout: 5000 });
     await subInput.fill('folder-to-delete');

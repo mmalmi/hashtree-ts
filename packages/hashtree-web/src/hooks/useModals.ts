@@ -1,7 +1,7 @@
 /**
- * Modal state management using module-level store
+ * Modal state management using Svelte stores
  */
-import { useSyncExternalStore } from 'react';
+import { writable, get } from 'svelte/store';
 import type { CID, TreeVisibility } from 'hashtree';
 import type { FileWithPath } from '../utils/directory';
 
@@ -65,7 +65,7 @@ interface ModalState {
   createModalType: ModalType;
   createTreeVisibility: TreeVisibility;
   showRenameModal: boolean;
-  renameTarget: string; // Original name of item being renamed
+  renameTarget: string;
   showForkModal: boolean;
   forkTarget: ForkTarget | null;
   showExtractModal: boolean;
@@ -84,8 +84,7 @@ interface ModalState {
   modalInput: string;
 }
 
-// Module-level state
-let state: ModalState = {
+const initialState: ModalState = {
   showCreateModal: false,
   createModalType: 'file',
   createTreeVisibility: 'public',
@@ -109,156 +108,92 @@ let state: ModalState = {
   modalInput: '',
 };
 
-const listeners = new Set<() => void>();
-
-function emit() {
-  listeners.forEach(l => l());
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot() {
-  return state;
-}
+// Svelte store
+export const modalsStore = writable<ModalState>(initialState);
 
 // Actions
 export function openCreateModal(type: ModalType) {
-  state = { ...state, showCreateModal: true, createModalType: type, createTreeVisibility: 'public', modalInput: '' };
-  emit();
+  modalsStore.update(s => ({ ...s, showCreateModal: true, createModalType: type, createTreeVisibility: 'public', modalInput: '' }));
 }
 
 export function closeCreateModal() {
-  state = { ...state, showCreateModal: false, createTreeVisibility: 'public', modalInput: '' };
-  emit();
+  modalsStore.update(s => ({ ...s, showCreateModal: false, createTreeVisibility: 'public', modalInput: '' }));
 }
 
 export function setCreateTreeVisibility(visibility: TreeVisibility) {
-  state = { ...state, createTreeVisibility: visibility };
-  emit();
+  modalsStore.update(s => ({ ...s, createTreeVisibility: visibility }));
 }
 
 export function openRenameModal(currentName: string) {
-  state = { ...state, showRenameModal: true, renameTarget: currentName, modalInput: currentName };
-  emit();
+  modalsStore.update(s => ({ ...s, showRenameModal: true, renameTarget: currentName, modalInput: currentName }));
 }
 
 export function closeRenameModal() {
-  state = { ...state, showRenameModal: false, renameTarget: '', modalInput: '' };
-  emit();
+  modalsStore.update(s => ({ ...s, showRenameModal: false, renameTarget: '', modalInput: '' }));
 }
 
 export function openForkModal(dirCid: CID, suggestedName: string) {
-  state = { ...state, showForkModal: true, forkTarget: { dirCid, suggestedName }, modalInput: suggestedName };
-  emit();
+  modalsStore.update(s => ({ ...s, showForkModal: true, forkTarget: { dirCid, suggestedName }, modalInput: suggestedName }));
 }
 
 export function closeForkModal() {
-  state = { ...state, showForkModal: false, forkTarget: null, modalInput: '' };
-  emit();
+  modalsStore.update(s => ({ ...s, showForkModal: false, forkTarget: null, modalInput: '' }));
 }
 
 export function openExtractModal(archiveName: string, files: ArchiveFile[], originalData?: Uint8Array) {
-  state = { ...state, showExtractModal: true, extractTarget: { archiveName, files, originalData }, extractLocation: 'subdir', modalInput: '' };
-  emit();
+  modalsStore.update(s => ({ ...s, showExtractModal: true, extractTarget: { archiveName, files, originalData }, extractLocation: 'subdir', modalInput: '' }));
 }
 
 export function closeExtractModal() {
-  state = { ...state, showExtractModal: false, extractTarget: null, extractLocation: 'current', modalInput: '' };
-  emit();
+  modalsStore.update(s => ({ ...s, showExtractModal: false, extractTarget: null, extractLocation: 'current', modalInput: '' }));
 }
 
 export function setExtractLocation(location: ExtractLocation) {
-  state = { ...state, extractLocation: location };
-  emit();
+  modalsStore.update(s => ({ ...s, extractLocation: location }));
 }
 
 export function openGitignoreModal(target: GitignoreTarget) {
-  state = { ...state, showGitignoreModal: true, gitignoreTarget: target };
-  emit();
+  modalsStore.update(s => ({ ...s, showGitignoreModal: true, gitignoreTarget: target }));
 }
 
 export function closeGitignoreModal() {
-  state = { ...state, showGitignoreModal: false, gitignoreTarget: null };
-  emit();
+  modalsStore.update(s => ({ ...s, showGitignoreModal: false, gitignoreTarget: null }));
 }
 
 export function openGitHistoryModal(dirCid: CID) {
-  state = { ...state, showGitHistoryModal: true, gitHistoryTarget: { dirCid } };
-  emit();
+  modalsStore.update(s => ({ ...s, showGitHistoryModal: true, gitHistoryTarget: { dirCid } }));
 }
 
 export function closeGitHistoryModal() {
-  state = { ...state, showGitHistoryModal: false, gitHistoryTarget: null };
-  emit();
+  modalsStore.update(s => ({ ...s, showGitHistoryModal: false, gitHistoryTarget: null }));
 }
 
 export function openShareModal(url: string) {
-  state = { ...state, showShareModal: true, shareUrl: url };
-  emit();
+  modalsStore.update(s => ({ ...s, showShareModal: true, shareUrl: url }));
 }
 
 export function closeShareModal() {
-  state = { ...state, showShareModal: false, shareUrl: null };
-  emit();
+  modalsStore.update(s => ({ ...s, showShareModal: false, shareUrl: null }));
 }
 
 export function openCollaboratorsModal(npubs: string[], onSave?: (npubs: string[]) => void) {
-  state = { ...state, showCollaboratorsModal: true, collaboratorsTarget: { npubs, onSave } };
-  emit();
+  modalsStore.update(s => ({ ...s, showCollaboratorsModal: true, collaboratorsTarget: { npubs, onSave } }));
 }
 
 export function closeCollaboratorsModal() {
-  state = { ...state, showCollaboratorsModal: false, collaboratorsTarget: null };
-  emit();
+  modalsStore.update(s => ({ ...s, showCollaboratorsModal: false, collaboratorsTarget: null }));
 }
 
 export function openUnsavedChangesModal(target: UnsavedChangesTarget) {
-  state = { ...state, showUnsavedChangesModal: true, unsavedChangesTarget: target };
-  emit();
+  modalsStore.update(s => ({ ...s, showUnsavedChangesModal: true, unsavedChangesTarget: target }));
 }
 
 export function closeUnsavedChangesModal() {
-  state = { ...state, showUnsavedChangesModal: false, unsavedChangesTarget: null };
-  emit();
+  modalsStore.update(s => ({ ...s, showUnsavedChangesModal: false, unsavedChangesTarget: null }));
 }
 
 export function setModalInput(input: string) {
-  state = { ...state, modalInput: input };
-  emit();
-}
-
-/**
- * Hook to read modal state
- */
-export function useModals() {
-  const modalState = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  return {
-    ...modalState,
-    openCreateModal,
-    closeCreateModal,
-    setCreateTreeVisibility,
-    openRenameModal,
-    closeRenameModal,
-    openForkModal,
-    closeForkModal,
-    openExtractModal,
-    closeExtractModal,
-    setExtractLocation,
-    openGitignoreModal,
-    closeGitignoreModal,
-    openGitHistoryModal,
-    closeGitHistoryModal,
-    openShareModal,
-    closeShareModal,
-    openCollaboratorsModal,
-    closeCollaboratorsModal,
-    openUnsavedChangesModal,
-    closeUnsavedChangesModal,
-    setModalInput,
-  };
+  modalsStore.update(s => ({ ...s, modalInput: input }));
 }
 
 export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, CollaboratorsTarget, UnsavedChangesTarget };
