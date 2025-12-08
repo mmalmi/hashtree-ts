@@ -56,7 +56,7 @@ export async function initVirtualTree(entries: { name: string; cid: CID; size: n
 
   // Update local cache for subsequent saves
   if (nostrStore.npub) {
-    updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid.hash);
+    updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid);
   }
 
   return newRootCid;
@@ -120,15 +120,8 @@ export async function createDocument(name: string) {
       0,
       true
     );
-    // Publish to nostr
+    // Publish to nostr (also updates local cache)
     autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
-
-    // Update local cache for subsequent saves
-    const route = parseRoute();
-    const nostrStore = useNostrStore.getState();
-    if (nostrStore.npub && route.treeName) {
-      updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid.hash);
-    }
   } else {
     // Initialize virtual tree with this document folder
     await initVirtualTree([{ name, cid: docDirCid, size: 0, isTree: true }]);

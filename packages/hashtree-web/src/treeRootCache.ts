@@ -49,15 +49,15 @@ function notifyListeners(npub: string, treeName: string) {
  * This should be the ONLY place that tracks merkle root changes.
  * Publishing to Nostr is throttled - multiple rapid updates result in one publish.
  */
-export function updateLocalRootCache(npub: string, treeName: string, hash: Hash, key?: Hash) {
+export function updateLocalRootCache(npub: string, treeName: string, rootCid: { hash: Hash; key?: Hash }) {
   const cacheKey = `${npub}/${treeName}`;
-  localRootCache.set(cacheKey, { hash, key, dirty: true });
+  localRootCache.set(cacheKey, { hash: rootCid.hash, key: rootCid.key, dirty: true });
   notifyListeners(npub, treeName);
   schedulePublish(npub, treeName);
 
   // Update subscription cache to trigger immediate UI update
   import('./hooks/useTreeRoot').then(({ updateSubscriptionCache }) => {
-    updateSubscriptionCache(cacheKey, hash, key);
+    updateSubscriptionCache(cacheKey, rootCid.hash, rootCid.key);
   });
 }
 
@@ -65,12 +65,10 @@ export function updateLocalRootCache(npub: string, treeName: string, hash: Hash,
  * Update the local root cache (hex version)
  */
 export function updateLocalRootCacheHex(npub: string, treeName: string, hashHex: string, keyHex?: string) {
-  updateLocalRootCache(
-    npub,
-    treeName,
-    fromHex(hashHex),
-    keyHex ? fromHex(keyHex) : undefined
-  );
+  updateLocalRootCache(npub, treeName, {
+    hash: fromHex(hashHex),
+    key: keyHex ? fromHex(keyHex) : undefined,
+  });
 }
 
 /**
