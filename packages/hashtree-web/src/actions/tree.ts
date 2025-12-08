@@ -204,6 +204,7 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
     if (result.linkKey) {
       storeLinkKey(nostrState.npub, name, result.linkKey);
     }
+
     if (!skipNavigation) {
       const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
       navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}${linkKeyParam}`);

@@ -7,7 +7,7 @@ import {
   generateSecretKey,
   getPublicKey,
   nip19,
-  nip04,
+  nip44,
 } from 'nostr-tools';
 import NDK, {
   NDKEvent,
@@ -251,11 +251,18 @@ export async function loginWithExtension(): Promise<boolean> {
     accountsStore.setActiveAccount(pk);
     saveActiveAccountToStorage(pk);
 
-    // Use window.nostr.nip04 for encryption (NIP-07 compatible)
+    // Use window.nostr.nip44 for encryption (NIP-07 compatible)
+    // Fall back to nip04 if nip44 is not available
     const encrypt = async (pubkey: string, plaintext: string) => {
+      if (window.nostr!.nip44?.encrypt) {
+        return window.nostr!.nip44!.encrypt(pubkey, plaintext);
+      }
       return window.nostr!.nip04!.encrypt(pubkey, plaintext);
     };
     const decrypt = async (pubkey: string, ciphertext: string) => {
+      if (window.nostr!.nip44?.decrypt) {
+        return window.nostr!.nip44!.decrypt(pubkey, ciphertext);
+      }
       return window.nostr!.nip04!.decrypt(pubkey, ciphertext);
     };
 
@@ -308,13 +315,15 @@ export function loginWithNsec(nsec: string, save = true): boolean {
       saveActiveAccountToStorage(pk);
     }
 
-    // Create encrypt/decrypt using nostr-tools nip04
+    // Create encrypt/decrypt using nostr-tools nip44
     const sk = secretKey;
     const encrypt = async (pubkey: string, plaintext: string) => {
-      return nip04.encrypt(sk, pubkey, plaintext);
+      const conversationKey = nip44.v2.utils.getConversationKey(sk, pubkey);
+      return nip44.v2.encrypt(plaintext, conversationKey);
     };
     const decrypt = async (pubkey: string, ciphertext: string) => {
-      return nip04.decrypt(sk, pubkey, ciphertext);
+      const conversationKey = nip44.v2.utils.getConversationKey(sk, pubkey);
+      return nip44.v2.decrypt(ciphertext, conversationKey);
     };
 
     // Initialize WebRTC with signer
@@ -358,13 +367,15 @@ export function generateNewKey(): { nsec: string; npub: string } {
     saveActiveAccountToStorage(pk);
   }
 
-  // Create encrypt/decrypt using nostr-tools nip04
+  // Create encrypt/decrypt using nostr-tools nip44
   const sk = secretKey;
   const encrypt = async (pubkey: string, plaintext: string) => {
-    return nip04.encrypt(sk, pubkey, plaintext);
+    const conversationKey = nip44.v2.utils.getConversationKey(sk, pubkey);
+    return nip44.v2.encrypt(plaintext, conversationKey);
   };
   const decrypt = async (pubkey: string, ciphertext: string) => {
-    return nip04.decrypt(sk, pubkey, ciphertext);
+    const conversationKey = nip44.v2.utils.getConversationKey(sk, pubkey);
+    return nip44.v2.decrypt(ciphertext, conversationKey);
   };
 
   // Initialize WebRTC with signer
@@ -488,16 +499,18 @@ export function saveHashtree(
           event.tags.push(['encryptedKey', encryptedKey]);
           event.tags.push(['keyId', keyId]);
           // Also self-encrypt so owner can always access without link key
-          const selfEncryptedUnlisted = await nip04.encrypt(secretKey!, store.pubkey, rootKey);
+          const conversationKey = nip44.v2.utils.getConversationKey(secretKey!, store.pubkey!);
+          const selfEncryptedUnlisted = nip44.v2.encrypt(rootKey, conversationKey);
           event.tags.push(['selfEncryptedKey', selfEncryptedUnlisted]);
           event.publish().catch(e => console.error('Failed to publish hashtree:', e));
         })();
         break;
 
       case 'private':
-        // Encrypt key to self using NIP-04 - do async work in background
+        // Encrypt key to self using NIP-44 - do async work in background
         (async () => {
-          const selfEncrypted = await nip04.encrypt(secretKey!, store.pubkey, rootKey);
+          const conversationKey = nip44.v2.utils.getConversationKey(secretKey!, store.pubkey!);
+          const selfEncrypted = nip44.v2.encrypt(rootKey, conversationKey);
           event.tags.push(['selfEncryptedKey', selfEncrypted]);
           event.publish().catch(e => console.error('Failed to publish hashtree:', e));
         })();

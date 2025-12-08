@@ -5,7 +5,7 @@
  */
 
 import { WebRTCStore, MemoryStore, sha256, nhashEncode } from 'hashtree';
-import { generateSecretKey, getPublicKey, finalizeEvent, nip04, type EventTemplate } from 'nostr-tools';
+import { generateSecretKey, getPublicKey, finalizeEvent, nip44, type EventTemplate } from 'nostr-tools';
 
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -67,8 +67,14 @@ export function initWebRTCTest() {
       console.log(`Our pubkey: ${pubkey.slice(0, 16)}...`);
 
       const signer = async (event: EventTemplate) => finalizeEvent(event, secretKey);
-      const encrypt = async (pk: string, plaintext: string) => nip04.encrypt(secretKey, pk, plaintext);
-      const decrypt = async (pk: string, ciphertext: string) => nip04.decrypt(secretKey, pk, ciphertext);
+      const encrypt = async (pk: string, plaintext: string) => {
+        const conversationKey = nip44.v2.utils.getConversationKey(secretKey, pk);
+        return nip44.v2.encrypt(plaintext, conversationKey);
+      };
+      const decrypt = async (pk: string, ciphertext: string) => {
+        const conversationKey = nip44.v2.utils.getConversationKey(secretKey, pk);
+        return nip44.v2.decrypt(ciphertext, conversationKey);
+      };
 
       const store = new WebRTCStore({
         signer,
@@ -193,8 +199,14 @@ export function initWebRTCTest() {
       console.log(`Our pubkey: ${pubkey.slice(0, 16)}...`);
 
       const signer = async (event: EventTemplate) => finalizeEvent(event, secretKey);
-      const encrypt = async (pk: string, plaintext: string) => nip04.encrypt(secretKey, pk, plaintext);
-      const decrypt = async (pk: string, ciphertext: string) => nip04.decrypt(secretKey, pk, ciphertext);
+      const encrypt = async (pk: string, plaintext: string) => {
+        const conversationKey = nip44.v2.utils.getConversationKey(secretKey, pk);
+        return nip44.v2.encrypt(plaintext, conversationKey);
+      };
+      const decrypt = async (pk: string, ciphertext: string) => {
+        const conversationKey = nip44.v2.utils.getConversationKey(secretKey, pk);
+        return nip44.v2.decrypt(ciphertext, conversationKey);
+      };
 
       // Create memory store with test content
       const localStore = new MemoryStore();
@@ -290,8 +302,14 @@ export function initWebRTCTest() {
       console.log(`Our pubkey: ${pubkey.slice(0, 16)}...`);
 
       const signer = async (event: EventTemplate) => finalizeEvent(event, secretKey);
-      const encrypt = async (pk: string, plaintext: string) => nip04.encrypt(secretKey, pk, plaintext);
-      const decrypt = async (pk: string, ciphertext: string) => nip04.decrypt(secretKey, pk, ciphertext);
+      const encrypt = async (pk: string, plaintext: string) => {
+        const conversationKey = nip44.v2.utils.getConversationKey(secretKey, pk);
+        return nip44.v2.encrypt(plaintext, conversationKey);
+      };
+      const decrypt = async (pk: string, ciphertext: string) => {
+        const conversationKey = nip44.v2.utils.getConversationKey(secretKey, pk);
+        return nip44.v2.decrypt(ciphertext, conversationKey);
+      };
 
       // Track who we follow (for peer classification)
       const follows = new Set<string>(options.followPubkeys || []);

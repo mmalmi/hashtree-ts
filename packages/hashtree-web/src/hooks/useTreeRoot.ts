@@ -17,7 +17,7 @@ import type { CID, SubscribeVisibilityInfo, Hash } from 'hashtree';
 import { useRoute } from './useRoute';
 import { getRefResolver, getResolverKey } from '../refResolver';
 import { useNostrStore, getSecretKey } from '../nostr';
-import { nip04 } from 'nostr-tools';
+import { nip44 } from 'nostr-tools';
 
 // Shared subscription cache - stores raw resolver data, not decrypted CIDs
 // Each subscriber may need different decryption based on their linkKey
@@ -136,7 +136,8 @@ async function decryptEncryptionKey(
       const store = useNostrStore.getState();
       const sk = getSecretKey();
       if (sk && store.pubkey) {
-        const decrypted = await nip04.decrypt(sk, store.pubkey, visibilityInfo.selfEncryptedKey);
+        const conversationKey = nip44.v2.utils.getConversationKey(sk, store.pubkey);
+        const decrypted = nip44.v2.decrypt(visibilityInfo.selfEncryptedKey, conversationKey);
         return fromHex(decrypted);
       }
     } catch (e) {
