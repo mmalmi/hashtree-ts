@@ -306,6 +306,15 @@ export async function stopRecording(): Promise<void> {
 
   setStreamWriter(null);
   recentChunks = [];
+
+  // Close streaming mode by removing ?stream=1 from URL
+  const hash = window.location.hash;
+  if (hash.includes('stream=1')) {
+    const newHash = hash
+      .replace(/[?&]stream=1/, '')
+      .replace(/\?$/, ''); // Remove trailing ? if no other params
+    window.location.hash = newHash;
+  }
 }
 
 export function formatTime(seconds: number): string {
