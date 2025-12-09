@@ -1,6 +1,8 @@
 <script lang="ts">
+  import type { TreeVisibility } from 'hashtree';
   import { modalsStore, closeForkModal, setModalInput } from '../../stores/modals';
   import { forkTree } from '../../actions/tree';
+  import VisibilityPicker from './VisibilityPicker.svelte';
 
   let show = $derived($modalsStore.showForkModal);
   let forkTarget = $derived($modalsStore.forkTarget);
@@ -9,6 +11,14 @@
   let isForking = $state(false);
   let error = $state('');
   let inputRef: HTMLInputElement | undefined = $state();
+  let visibility = $state<TreeVisibility>('public');
+
+  // Reset visibility when modal opens
+  $effect(() => {
+    if (show) {
+      visibility = 'public';
+    }
+  });
 
   // Focus input when modal opens
   $effect(() => {
@@ -31,8 +41,8 @@
     error = '';
 
     try {
-      const success = await forkTree(forkTarget.dirCid, name);
-      if (success) {
+      const result = await forkTree(forkTarget.dirCid, name, visibility);
+      if (result.success) {
         closeForkModal();
       } else {
         error = 'Failed to create fork. Please try again.';
@@ -78,6 +88,10 @@
           class="w-full px-3 py-2 bg-surface-2 border border-surface-3 rounded text-text-1 placeholder:text-text-3 focus:outline-none focus:border-accent"
           disabled={isForking}
         />
+      </div>
+
+      <div class="mb-4">
+        <VisibilityPicker value={visibility} onchange={(v) => visibility = v} />
       </div>
 
       {#if error}

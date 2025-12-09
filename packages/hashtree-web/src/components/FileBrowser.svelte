@@ -10,7 +10,7 @@
   import { uploadFiles, uploadDirectory } from '../stores/upload';
   import { recentlyChangedFiles } from '../stores/recentlyChanged';
   import { nostrStore, npubToPubkey } from '../nostr';
-  import { UserRow } from './User';
+  import { UserRow, Avatar } from './User';
   import FolderActions from './FolderActions.svelte';
   import VisibilityIcon from './VisibilityIcon.svelte';
   import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore, isViewingFileStore } from '../stores';
@@ -517,18 +517,35 @@
     </div>
   {:else}
     <!-- File browser view -->
+    <!-- Desktop: show user row -->
     {#if viewedNpub}
-      <div class="h-10 shrink-0 px-3 border-b border-surface-3 flex items-center gap-2 bg-surface-1">
+      <div class="hidden lg:flex h-10 shrink-0 px-3 border-b border-surface-3 items-center gap-2 bg-surface-1">
         <a href="#/{viewedNpub}/profile" class="no-underline min-w-0">
           <UserRow pubkey={npubToPubkey(viewedNpub) || viewedNpub} avatarSize={24} showBadge class="min-w-0" />
         </a>
       </div>
     {/if}
+    <!-- Mobile: show rich header with back, avatar, visibility, folder name -->
+    <div class="lg:hidden shrink-0 px-3 py-2 border-b border-surface-3 flex items-center gap-2 bg-surface-1">
+      {#if hasParent}
+        <a href={currentPath.length > 0 ? buildDirHref(currentPath.slice(0, -1)) : buildRootHref()} class="btn-ghost p-1 no-underline" title="Back">
+          <span class="i-lucide-chevron-left text-lg"></span>
+        </a>
+      {/if}
+      {#if viewedNpub}
+        <a href="#/{viewedNpub}/profile" class="shrink-0">
+          <Avatar pubkey={npubToPubkey(viewedNpub) || ''} size={20} />
+        </a>
+      {/if}
+      <VisibilityIcon visibility={currentTreeVisibility} class="text-text-2" />
+      <span class="i-lucide-folder-open text-warning shrink-0"></span>
+      <span class="font-medium text-text-1 truncate">{currentDirName || currentTreeName}</span>
+    </div>
 
     <!-- Mobile action buttons -->
     {#if currentDirCid || canEdit}
       <div class="lg:hidden px-3 py-2 border-b border-surface-3 bg-surface-1">
-        <FolderActions dirCid={currentDirCid} {canEdit} compact />
+        <FolderActions dirCid={currentDirCid} {canEdit} />
       </div>
     {/if}
 

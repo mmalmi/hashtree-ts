@@ -9,7 +9,7 @@
   import FolderActions from '../FolderActions.svelte';
   import GitRepoView from '../Git/GitRepoView.svelte';
   import ReadmePanel from './ReadmePanel.svelte';
-  import MobileViewerHeader from './MobileViewerHeader.svelte';
+  import ViewerHeader from './ViewerHeader.svelte';
   import { uploadFiles } from '../../stores/upload';
   import type { TreeEntry as HashTreeEntry } from 'hashtree';
 
@@ -166,8 +166,8 @@
 <!-- If this is a git repo, show GitHub-style directory listing -->
 {#if gitInfo.isRepo && currentDirCid}
   <div class="flex flex-col h-full">
-    <!-- Mobile header with back button and owner avatar (only on small screens) -->
-    <MobileViewerHeader
+    <!-- Header with back button, avatar, visibility, folder name -->
+    <ViewerHeader
       {backUrl}
       npub={viewedNpub}
       isPermalink={route.isPermalink}
@@ -175,12 +175,7 @@
       visibility={currentTree?.visibility}
       icon="i-lucide-folder-open text-warning"
       name={currentDirName}
-      class="lg:hidden"
     />
-    <!-- Mobile action buttons (compact version like FileBrowser) -->
-    <div class="lg:hidden px-3 py-2 border-b border-surface-3 bg-surface-1">
-      <FolderActions dirCid={currentDirCid} {canEdit} compact />
-    </div>
     <div class="flex-1 overflow-auto p-3">
       <GitRepoView
         dirCid={currentDirCid}
@@ -198,8 +193,8 @@
     ondragleave={handleFileDragLeave}
     ondrop={handleFileDrop}
   >
-    <!-- Mobile header with back button and owner avatar (only on small screens) -->
-    <MobileViewerHeader
+    <!-- Header with back button, avatar, visibility, folder name -->
+    <ViewerHeader
       {backUrl}
       npub={viewedNpub}
       isPermalink={route.isPermalink}
@@ -207,16 +202,10 @@
       visibility={currentTree?.visibility}
       icon="i-lucide-folder-open text-warning"
       name={currentDirName}
-      class="lg:hidden"
     />
     <!-- Action buttons - hide when viewing locked unlisted/private directory -->
     {#if hasTreeContext && !hideActions}
-      <!-- Mobile: compact inline actions -->
-      <div class="lg:hidden px-3 py-2 border-b border-surface-3 bg-surface-1">
-        <FolderActions dirCid={currentDirCid} {canEdit} compact />
-      </div>
-      <!-- Desktop: full actions -->
-      <div class="hidden lg:block p-3 shrink-0">
+      <div class="p-3 shrink-0">
         <FolderActions dirCid={currentDirCid} {canEdit} />
       </div>
     {/if}

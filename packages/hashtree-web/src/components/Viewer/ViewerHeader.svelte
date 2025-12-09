@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
-   * MobileViewerHeader - Shared header for mobile single-column view
+   * ViewerHeader - Shared header for viewer panel
    * Shows back button, avatar, visibility, and name
-   * Used by both file viewer and directory viewer (git repos, etc.)
+   * Used by directory viewer (git repos, regular dirs)
    */
   import type { CID, TreeVisibility } from 'hashtree';
   import { npubToPubkey } from '../../nostr';

@@ -146,33 +146,44 @@ export async function createDocument(name: string) {
 
 // Fork a directory as a new top-level tree
 // Preserves the key if forking from an encrypted tree
-export async function forkTree(dirCid: CID, name: string): Promise<boolean> {
-  if (!name) return false;
+export async function forkTree(dirCid: CID, name: string, visibility: import('hashtree').TreeVisibility = 'public'): Promise<{ success: boolean; linkKey?: string }> {
+  if (!name) return { success: false };
 
   const { saveHashtree } = await import('../nostr');
+  const { storeLinkKey } = await import('../stores/trees');
   const rootHex = toHex(dirCid.hash);
   const keyHex = dirCid.key ? toHex(dirCid.key) : undefined;
 
   const nostrState = useNostrStore.getState();
 
-  if (!nostrState.npub || !nostrState.pubkey) return false;
+  if (!nostrState.npub || !nostrState.pubkey) return { success: false };
 
   useNostrStore.setSelectedTree({
     id: '',
     name,
     pubkey: nostrState.pubkey,
     rootHash: rootHex,
-    rootKey: keyHex,
-    visibility: 'public',
+    rootKey: visibility === 'public' ? keyHex : undefined,
+    visibility,
     created_at: Math.floor(Date.now() / 1000),
   });
 
+  // Update local cache IMMEDIATELY for subsequent operations
+  updateLocalRootCache(nostrState.npub, name, dirCid.hash, dirCid.key, visibility);
+
   // Publish to nostr - resolver will pick up the update when we navigate
-  const success = await saveHashtree(name, rootHex, keyHex);
-  if (success) {
-    navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}`);
+  const result = await saveHashtree(name, rootHex, keyHex, { visibility });
+
+  // For unlisted trees, store link key locally and append to URL
+  if (result.linkKey) {
+    storeLinkKey(nostrState.npub, name, result.linkKey);
   }
-  return success;
+
+  if (result.success) {
+    const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
+    navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}${linkKeyParam}`);
+  }
+  return result;
 }
 
 // Create a new tree (top-level folder on nostr or local)

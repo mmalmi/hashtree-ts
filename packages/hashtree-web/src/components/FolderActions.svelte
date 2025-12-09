@@ -17,10 +17,9 @@
   interface Props {
     dirCid?: CID | null;
     canEdit: boolean;
-    compact?: boolean;
   }
 
-  let { dirCid = null, canEdit, compact = false }: Props = $props();
+  let { dirCid = null, canEdit }: Props = $props();
 
   let isDownloading = $state(false);
   let dirInputRef: HTMLInputElement | undefined = $state();
@@ -115,13 +114,11 @@
       : null;
   });
 
-  let btnClass = $derived(compact
-    ? 'flex items-center gap-1 px-3 h-7 text-xs'
-    : 'flex items-center gap-1 px-3 h-9 text-sm');
+  let btnClass = 'flex items-center gap-1 px-2 h-7 text-xs lg:px-3 lg:h-9 lg:text-sm';
 </script>
 
 {#if dirCid || canEdit}
-  <div class="flex flex-row flex-wrap items-center gap-2">
+  <div class="flex flex-row flex-wrap items-center gap-1">
     <!-- Share and permalink first -->
     {#if dirCid?.hash}
       <button
@@ -172,7 +169,7 @@
           title="Add a folder with all its contents"
           onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') (e.currentTarget as HTMLElement).click(); }}
         >
-          <span class="i-lucide-plus"></span>
+          <span class="i-lucide-folder-plus"></span>
           Add Folder
           <input
             bind:this={dirInputRef}
@@ -184,30 +181,31 @@
         </label>
       {/if}
 
-      <button onclick={() => openCreateModal('file')} class="btn-ghost {btnClass}">
+      <button onclick={() => openCreateModal('file')} class="btn-ghost {btnClass}" title="New File">
         <span class="i-lucide-file-plus"></span>
         New File
       </button>
 
-      <button onclick={() => openCreateModal('folder')} class="btn-ghost {btnClass}">
+      <button onclick={() => openCreateModal('folder')} class="btn-ghost {btnClass}" title="New Folder">
         <span class="i-lucide-folder-plus"></span>
         New Folder
       </button>
 
-      <button onclick={() => openCreateModal('document')} class="btn-ghost {btnClass}" title="Create a new collaborative document">
+      <button onclick={() => openCreateModal('document')} class="btn-ghost {btnClass}" title="New Document">
         <span class="i-lucide-file-text"></span>
         New Document
       </button>
 
       {#if streamUrl}
-        <a href={streamUrl} class="btn-ghost no-underline {btnClass}">
+        <a href={streamUrl} class="btn-ghost no-underline {btnClass}" title="Stream">
           <span class="i-lucide-video"></span>
           Stream
         </a>
       {/if}
 
       {#if isSubdir && currentDirName}
-        <button onclick={() => openRenameModal(currentDirName!)} class="btn-ghost {btnClass}">
+        <button onclick={() => openRenameModal(currentDirName!)} class="btn-ghost {btnClass}" title="Rename">
+          <span class="i-lucide-pencil"></span>
           Rename
         </button>
         <button
@@ -217,7 +215,9 @@
             }
           }}
           class="btn-ghost text-danger {btnClass}"
+          title="Delete"
         >
+          <span class="i-lucide-trash-2"></span>
           Delete
         </button>
       {/if}
