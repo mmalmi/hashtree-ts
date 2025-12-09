@@ -10,8 +10,11 @@
 5. [x] MobileSearch - Responsive search that expands on mobile (DONE - 4 tests passing)
 
 ### New Features Added
-- [x] LiveVideoViewer with MSE - Progressive video streaming with LIVE indicator (2 tests passing)
+- [x] LiveVideoViewer with MSE - Progressive video streaming with LIVE indicator (5 tests passing)
 - [x] readFileRange/readFileStream with offset - Random access file reads for seeking (9 tests passing)
+- [x] ?live=1 hash param - Detect live streams from shared links (tested)
+- [x] Stream share with live param - Share button includes ?live=1 when recording
+- [x] Auto-remove ?live=1 - Param removed when stream ends or becomes non-live (tested)
 
 ### Already Working (verified)
 - [x] ReadmePanel - README.md display with markdown (2 tests passing)

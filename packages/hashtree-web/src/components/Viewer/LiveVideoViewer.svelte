@@ -3,10 +3,14 @@
    * LiveVideoViewer - Video player with MSE for live streaming
    *
    * Uses MediaSource Extensions to progressively play video as chunks arrive.
-   * Detects live streams (recently changed files) and seeks to near-live position.
+   * Detects live streams via:
+   * - ?live=1 hash param (from shared link or stream recording)
+   * - recentlyChangedFiles store (local session only)
+   * Seeks to near-live position (5s from end) for live streams.
    */
   import { getTree } from '../../store';
   import { recentlyChangedFiles } from '../../stores/recentlyChanged';
+  import { currentHash } from '../../stores';
   import type { CID } from 'hashtree';
 
   interface Props {
@@ -26,9 +30,51 @@
   let currentTime = $state(0);
   let bufferedEnd = $state(0);
 
-  // Check if file is live (recently changed)
+  // Check if live=1 is in URL hash params
+  let hash = $derived($currentHash);
+  let isLiveFromUrl = $derived.by(() => {
+    const qIdx = hash.indexOf('?');
+    if (qIdx === -1) return false;
+    const params = new URLSearchParams(hash.slice(qIdx + 1));
+    return params.get('live') === '1';
+  });
+
+  // Check if file is live (recently changed in this session)
   let changedFiles = $derived($recentlyChangedFiles);
   let isRecentlyChanged = $derived(changedFiles.has(fileName));
+
+  // Combined live detection: URL param OR recently changed
+  let shouldTreatAsLive = $derived(isLiveFromUrl || isRecentlyChanged);
+
+  // Remove ?live=1 from URL when stream ends
+  function removeLiveParam() {
+    const hashBase = window.location.hash.split('?')[0];
+    const qIdx = window.location.hash.indexOf('?');
+    if (qIdx === -1) return;
+
+    const params = new URLSearchParams(window.location.hash.slice(qIdx + 1));
+    if (!params.has('live')) return;
+
+    params.delete('live');
+    const queryString = params.toString();
+    window.location.hash = queryString ? `${hashBase}?${queryString}` : hashBase;
+    isLive = false;
+  }
+
+  // Watch for stream becoming non-live (file no longer being updated)
+  // Remove ?live=1 from URL when this happens
+  let liveParamRemovalScheduled = false;
+  $effect(() => {
+    // If we have ?live=1 in URL but file is no longer recently changed,
+    // the stream has ended - remove the param after video finishes loading
+    if (isLiveFromUrl && !isRecentlyChanged && !loading && !liveParamRemovalScheduled) {
+      liveParamRemovalScheduled = true;
+      // Small delay to allow any final processing
+      setTimeout(() => {
+        removeLiveParam();
+      }, 500);
+    }
+  });
 
   // Determine MIME type from extension
   function getMimeType(filename: string): string {
@@ -107,7 +153,7 @@
       }
 
       // If live, seek to near the end
-      if (isRecentlyChanged && videoRef && duration > 5) {
+      if (shouldTreatAsLive && videoRef && duration > 5) {
         videoRef.currentTime = Math.max(0, duration - 5);
         isLive = true;
       }
@@ -142,7 +188,7 @@
           duration = videoRef!.duration;
 
           // If live, seek to near the end
-          if (isRecentlyChanged && duration > 5) {
+          if (shouldTreatAsLive && duration > 5) {
             videoRef!.currentTime = Math.max(0, duration - 5);
             isLive = true;
           }
@@ -180,52 +226,61 @@
     };
   });
 
-  // Load video when component mounts
+  // Load video when component mounts - use flag to prevent re-running
+  let hasStartedLoading = false;
   $effect(() => {
-    if (videoRef) {
+    if (videoRef && !hasStartedLoading) {
+      hasStartedLoading = true;
       loadWithMse();
     }
   });
 </script>
 
 <div class="flex-1 flex flex-col min-h-0 bg-black">
-  {#if loading}
-    <div class="flex-1 flex items-center justify-center text-white">
-      <span class="i-lucide-loader-2 animate-spin mr-2"></span>
-      Loading video...
-    </div>
-  {:else if error}
-    <div class="flex-1 flex items-center justify-center text-red-400">
-      <span class="i-lucide-alert-circle mr-2"></span>
-      {error}
-    </div>
-  {:else}
-    <div class="relative flex-1 flex flex-col">
-      <!-- Live indicator -->
-      {#if isLive || isRecentlyChanged}
-        <div class="absolute top-3 left-3 z-10 flex items-center gap-2 px-2 py-1 bg-red-600 text-white text-sm font-bold rounded">
-          <span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>
-          LIVE
-        </div>
-      {/if}
+  <div class="relative flex-1 flex flex-col">
+    <!-- Loading overlay -->
+    {#if loading}
+      <div class="absolute inset-0 flex items-center justify-center text-white bg-black z-20">
+        <span class="i-lucide-loader-2 animate-spin mr-2"></span>
+        Loading video...
+      </div>
+    {/if}
 
-      <!-- Video element -->
-      <!-- svelte-ignore a11y_media_has_caption -->
-      <video
-        bind:this={videoRef}
-        controls
-        autoplay={isLive || isRecentlyChanged}
-        class="w-full h-full object-contain"
-        preload="metadata"
-        ontimeupdate={handleTimeUpdate}
-      >
-        Your browser does not support the video tag.
-      </video>
+    <!-- Error overlay -->
+    {#if error}
+      <div class="absolute inset-0 flex items-center justify-center text-red-400 bg-black z-20">
+        <span class="i-lucide-alert-circle mr-2"></span>
+        {error}
+      </div>
+    {/if}
 
-      <!-- Duration/time info -->
+    <!-- Live indicator -->
+    {#if (isLive || shouldTreatAsLive) && !loading && !error}
+      <div class="absolute top-3 left-3 z-10 flex items-center gap-2 px-2 py-1 bg-red-600 text-white text-sm font-bold rounded">
+        <span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+        LIVE
+      </div>
+    {/if}
+
+    <!-- Video element (always rendered to allow binding) -->
+    <!-- svelte-ignore a11y_media_has_caption -->
+    <video
+      bind:this={videoRef}
+      controls
+      autoplay={isLive || shouldTreatAsLive}
+      class="w-full h-full object-contain"
+      class:invisible={loading || error}
+      preload="metadata"
+      ontimeupdate={handleTimeUpdate}
+    >
+      Your browser does not support the video tag.
+    </video>
+
+    <!-- Duration/time info -->
+    {#if !loading && !error}
       <div class="absolute bottom-16 right-3 z-10 px-2 py-1 bg-black/70 text-white text-sm rounded">
         {formatTime(currentTime)} / {formatTime(duration)}
       </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
 </div>

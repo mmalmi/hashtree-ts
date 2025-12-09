@@ -278,12 +278,14 @@ export async function stopRecording(): Promise<void> {
   setStreamWriter(null);
   recentChunks = [];
 
-  // Close streaming mode by removing ?stream=1 from URL
+  // Close streaming mode by removing ?stream=1 and ?live=1 from URL
   const hash = window.location.hash;
-  if (hash.includes('stream=1')) {
+  if (hash.includes('stream=1') || hash.includes('live=1')) {
     const newHash = hash
-      .replace(/[?&]stream=1/, '')
-      .replace(/\?$/, ''); // Remove trailing ? if no other params
+      .replace(/[?&]stream=1/g, '')
+      .replace(/[?&]live=1/g, '')
+      .replace(/\?$/, '') // Remove trailing ? if no other params
+      .replace(/\?&/, '?'); // Fix ?& to just ?
     window.location.hash = newHash;
   }
 }

@@ -76,9 +76,17 @@
   }
 
   function handleShare() {
-    const viewerUrl = window.location.href
+    // Build viewer URL with ?live=1 for live playback behavior
+    let viewerUrl = window.location.href
       .replace(/[&?]stream=1/, '')
       .replace(/\?$/, '');
+
+    // Add live=1 param if recording (so viewers see it as live stream)
+    if (stream.isRecording) {
+      const hasQuery = viewerUrl.includes('?');
+      viewerUrl += hasQuery ? '&live=1' : '?live=1';
+    }
+
     openShareModal(viewerUrl);
   }
 
@@ -108,6 +116,7 @@
     </div>
     <div class="flex items-center gap-1 shrink-0">
       <button onclick={handleShare} class="btn-ghost" title="Share">
+        <span class="i-lucide-share text-base mr-1"></span>
         Share
       </button>
       {#if !stream.isRecording}
