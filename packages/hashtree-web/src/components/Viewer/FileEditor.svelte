@@ -30,10 +30,20 @@
     await saveFile(fileName, editContent);
     savedContent = editContent; // Update saved content after successful save
     saving = false;
+    triggerSavedIndicator();
   }
 
-  // Show "Saved!" briefly after saving
-  let showSaved = $derived(!isDirty && savedContent !== initialContent);
+  // Show "Saved!" for 2 seconds after saving
+  let showSaved = $state(false);
+  let savedTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function triggerSavedIndicator() {
+    showSaved = true;
+    if (savedTimer) clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => {
+      showSaved = false;
+    }, 2000);
+  }
 
   // Autosave: debounce save after 1 second of no typing
   let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -115,7 +125,7 @@
     <span class="i-lucide-file-text text-text-2"></span>
     <span class="font-medium text-text-1">{fileName}</span>
     <span class="text-xs text-muted">
-      (editing{#if isDirty}{autoSaveEnabled ? ' - autosaving...' : ' - unsaved'}{/if})
+      (editing{#if isDirty && !autoSaveEnabled} - unsaved{/if})
     </span>
     <div class="ml-auto flex items-center gap-3">
       <label class="flex items-center gap-1.5 text-sm text-text-2 cursor-pointer select-none">
@@ -132,7 +142,7 @@
         <span class="invisible">Saving...</span>
         <!-- Visible text positioned absolutely -->
         <span class="absolute inset-0 flex items-center justify-center">
-          {saving ? 'Saving...' : showSaved ? 'Saved!' : 'Save'}
+          {saving ? 'Saving...' : showSaved ? 'Saved' : 'Save'}
         </span>
       </button>
       <button onclick={handleClose} class="btn-ghost">
