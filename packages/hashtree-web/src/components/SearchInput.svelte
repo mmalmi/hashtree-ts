@@ -6,6 +6,12 @@
   import { follows } from '../utils/socialGraph';
   import { UserRow } from './User';
 
+  interface Props {
+    fullWidth?: boolean;
+  }
+
+  let { fullWidth = false }: Props = $props();
+
   // Match 64 hex chars optionally followed by /filename
   const HASH_PATTERN = /^([a-f0-9]{64})(\/.*)?$/i;
 
@@ -172,7 +178,7 @@
       onfocus={() => { focused = true; showDropdown = true; }}
       onblur={() => (focused = false)}
       placeholder="Search users or paste hash..."
-      class="bg-transparent border-none outline-none text-sm text-text-1 placeholder:text-muted w-40 lg:w-64"
+      class="bg-transparent border-none outline-none text-sm text-text-1 placeholder:text-muted {fullWidth ? 'flex-1' : 'w-40 lg:w-64'}"
     />
   </div>
 

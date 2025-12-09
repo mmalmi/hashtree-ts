@@ -1,7 +1,7 @@
 /**
  * Modal state management using Svelte stores
  */
-import { writable, get } from 'svelte/store';
+import { writable } from 'svelte/store';
 import type { CID, TreeVisibility } from 'hashtree';
 import type { FileWithPath } from '../utils/directory';
 

@@ -2,7 +2,7 @@
  * Toast notification store
  * Manages toast messages with auto-dismiss
  */
-import { writable, get } from 'svelte/store';
+import { writable } from 'svelte/store';
 
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
 

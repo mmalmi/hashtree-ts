@@ -81,7 +81,7 @@ interface NostrState {
 
 // Create Svelte store for nostr state
 function createNostrStore() {
-  const { subscribe, set, update } = writable<NostrState>({
+  const { subscribe, update } = writable<NostrState>({
     pubkey: null,
     npub: null,
     isLoggedIn: false,

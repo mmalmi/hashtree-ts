@@ -7,13 +7,13 @@
 
   let recents = $derived($recentsStore);
 
-  function getIcon(type: RecentItem['type']): string {
+  function getIcon(type: RecentItem['type']): { icon: string; color: string } {
     switch (type) {
-      case 'tree': return 'i-lucide-folder';
-      case 'dir': return 'i-lucide-folder';
-      case 'file': return 'i-lucide-file';
-      case 'hash': return 'i-lucide-link';
-      default: return 'i-lucide-file';
+      case 'tree': return { icon: 'i-lucide-folder', color: 'text-warning' };
+      case 'dir': return { icon: 'i-lucide-folder', color: 'text-warning' };
+      case 'file': return { icon: 'i-lucide-file', color: 'text-text-2' };
+      case 'hash': return { icon: 'i-lucide-link', color: 'text-accent' };
+      default: return { icon: 'i-lucide-file', color: 'text-text-2' };
     }
   }
 
@@ -51,11 +51,12 @@
     {:else}
       <div class="divide-y divide-surface-2">
         {#each recents as item (item.path)}
+          {@const iconInfo = getIcon(item.type)}
           <button
             class="w-full px-4 py-2 flex items-center gap-3 hover:bg-surface-1 transition-colors text-left"
             onclick={() => handleClick(item)}
           >
-            <span class="{getIcon(item.type)} text-text-3 shrink-0"></span>
+            <span class="{iconInfo.icon} {iconInfo.color} shrink-0"></span>
             <div class="flex-1 min-w-0">
               <div class="text-sm text-text-1 truncate">{item.label}</div>
               {#if item.treeName}

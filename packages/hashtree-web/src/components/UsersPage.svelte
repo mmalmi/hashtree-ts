@@ -113,7 +113,7 @@
 <div class="flex-1 flex flex-col min-h-0 bg-surface-0 p-6 max-w-2xl mx-auto w-full">
   <!-- Header -->
   <div class="flex items-center gap-4 mb-6">
-    <BackButton href="/" label="Back" />
+    <BackButton href="/" />
     <h1 class="text-xl font-semibold">Users</h1>
   </div>
 

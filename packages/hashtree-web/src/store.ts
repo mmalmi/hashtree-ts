@@ -52,7 +52,7 @@ interface AppState {
 
 // Create Svelte store for app state
 function createAppStore() {
-  const { subscribe, set, update } = writable<AppState>({
+  const { subscribe, update } = writable<AppState>({
     peerCount: 0,
     peers: [],
     myPeerId: null,

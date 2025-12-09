@@ -1,7 +1,7 @@
 /**
  * Git-related stores for detecting and interacting with git repos
  */
-import { writable, derived, type Readable } from 'svelte/store';
+import { writable, type Readable } from 'svelte/store';
 import type { CID } from 'hashtree';
 import { isGitRepo, getBranches, getLog } from '../utils/git';
 

@@ -1,7 +1,7 @@
 /**
  * Simple hash router for Svelte 5
  */
-import { writable, derived, get } from 'svelte/store';
+import { writable } from 'svelte/store';
 
 // Current hash location
 export const location = writable(window.location.hash.slice(1) || '/');

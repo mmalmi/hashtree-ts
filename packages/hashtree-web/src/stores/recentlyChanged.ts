@@ -2,7 +2,7 @@
  * Store for managing recently changed files (for pulse animation)
  * Uses Svelte stores
  */
-import { writable, get } from 'svelte/store';
+import { writable } from 'svelte/store';
 
 // Svelte store for recently changed files
 export const recentlyChangedFiles = writable<Set<string>>(new Set());

@@ -31,6 +31,7 @@ function loadRecents(): RecentItem[] {
     const cleanedItems = items.map(item => {
       if (item.type === 'hash' && item.npub) {
         cleaned = true;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { npub, ...rest } = item;
         return rest;
       }

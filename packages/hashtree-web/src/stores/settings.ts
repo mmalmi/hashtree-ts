@@ -83,7 +83,7 @@ export interface SettingsState {
 }
 
 function createSettingsStore() {
-  const { subscribe, set, update } = writable<SettingsState>({
+  const { subscribe, update } = writable<SettingsState>({
     // Legacy settings
     appearance: {},
     content: {},

@@ -261,7 +261,7 @@ export class OpfsStore implements Store {
 
     // Iterate over shard directories
     // @ts-ignore - entries() exists on FileSystemDirectoryHandle
-    for await (const [shardName, shardHandle] of storeDir.entries()) {
+    for await (const [, shardHandle] of storeDir.entries()) {
       if (shardHandle.kind !== 'directory') continue;
 
       // Iterate over files in shard

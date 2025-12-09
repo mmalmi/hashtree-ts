@@ -4,7 +4,7 @@
  * Svelte port - uses Svelte stores instead of React hooks.
  * The link key storage is framework-agnostic.
  */
-import { writable, derived, get, type Readable } from 'svelte/store';
+import { writable, get, type Readable } from 'svelte/store';
 import { getRefResolver } from '../refResolver';
 import { toHex, type Hash, type TreeVisibility } from 'hashtree';
 import { nostrStore } from '../nostr';

@@ -7,7 +7,7 @@
  * render cycle. Components can subscribe to hash changes and update directly
  * (e.g., MediaSource append) without triggering re-renders.
  */
-import type { RefResolver, Hash, CID, RefResolverListEntry, SubscribeVisibilityInfo } from '../types.js';
+import type { RefResolver, CID, RefResolverListEntry, SubscribeVisibilityInfo } from '../types.js';
 import { fromHex, toHex, cid } from '../types.js';
 
 // Nostr event structure (minimal)

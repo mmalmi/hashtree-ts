@@ -4,7 +4,7 @@
    * Port of React Viewer component
    */
   import { toHex, nhashEncode } from 'hashtree';
-  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent, recentlyChangedFiles, isViewingFileStore } from '../../stores';
+  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent, isViewingFileStore, recentlyChangedFiles } from '../../stores';
   import { getTree, decodeAsText, formatBytes } from '../../store';
   import { nostrStore, npubToPubkey } from '../../nostr';
   import { deleteEntry } from '../../actions';
@@ -425,9 +425,28 @@
 
   let isDos = $derived(urlFileName ? isDosExecutable(urlFileName) : false);
 
-  // Check if file was recently changed (for LIVE indicator)
-  let changedFiles = $derived($recentlyChangedFiles);
-  let isRecentlyChanged = $derived(urlFileName ? changedFiles.has(urlFileName) : false);
+  // Check if file is a live stream
+  // Shows LIVE indicator when:
+  // 1. URL has ?live=1 param, OR
+  // 2. File was recently changed AND viewing someone else's tree (not own files)
+  let recentlyChanged = $derived($recentlyChangedFiles);
+  let isLiveStream = $derived.by(() => {
+    // Check URL param first
+    const hashPart = window.location.hash;
+    const queryIndex = hashPart.indexOf('?');
+    if (queryIndex !== -1) {
+      const params = new URLSearchParams(hashPart.slice(queryIndex + 1));
+      if (params.get('live') === '1') return true;
+    }
+
+    // Show LIVE for files recently changed by others (not our own uploads)
+    // Only applies when viewing another user's tree
+    if (urlFileName && viewedNpub && viewedNpub !== userNpub && recentlyChanged.has(urlFileName)) {
+      return true;
+    }
+
+    return false;
+  });
 
   // Build permalink URL for the current file
   let permalinkUrl = $derived.by(() => {
@@ -589,7 +608,7 @@
         <!-- File type icon -->
         <span class="{fileIcon} text-text-2 shrink-0"></span>
         <span class="font-medium text-text-1 truncate">{entryFromStore.name}</span>
-        {#if isRecentlyChanged}
+        {#if isLiveStream}
           <span class="ml-2 px-1.5 py-0.5 text-xs font-bold bg-red-600 text-white rounded animate-pulse">LIVE</span>
         {/if}
       </div>

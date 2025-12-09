@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import { toHex, cid } from 'hashtree';
+import { cid } from 'hashtree';
 import type { StreamWriter, CID } from 'hashtree';
 import { getTree } from '../../store';
 import { autosaveIfOwn, nostrStore } from '../../nostr';

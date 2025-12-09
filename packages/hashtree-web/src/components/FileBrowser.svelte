@@ -469,7 +469,23 @@
       <button
         onclick={() => {
           const base = window.location.origin + window.location.pathname + '#';
-          openShareModal(base + (viewedNpub ? `/${viewedNpub}` : '/'));
+          const npub = viewedNpub || userNpub;
+          let url = base;
+          if (npub) {
+            url += `/${npub}`;
+            if (currentTreeName) {
+              url += `/${currentTreeName}`;
+              if (urlPath.length > 0) {
+                url += '/' + urlPath.join('/');
+              }
+            }
+          } else {
+            url += '/';
+          }
+          if (linkKey) {
+            url += `?k=${linkKey}`;
+          }
+          openShareModal(url);
         }}
         class="ml-auto btn-ghost p-1.5"
         title="Share"

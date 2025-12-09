@@ -110,22 +110,6 @@ export async function* readFileStream(store: Store, hash: Hash, offset: number =
   yield* streamChunksWithOffset(store, node, offset);
 }
 
-async function* streamChunks(store: Store, node: TreeNode): AsyncGenerator<Uint8Array> {
-  for (const link of node.links) {
-    const childData = await store.get(link.hash);
-    if (!childData) {
-      throw new Error(`Missing chunk: ${toHex(link.hash)}`);
-    }
-
-    if (isTreeNode(childData)) {
-      const childNode = decodeTreeNode(childData);
-      yield* streamChunks(store, childNode);
-    } else {
-      yield childData;
-    }
-  }
-}
-
 /**
  * Stream chunks starting from an offset
  * Uses link.size to efficiently skip chunks before offset

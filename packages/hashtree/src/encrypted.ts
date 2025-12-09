@@ -250,33 +250,6 @@ export async function* readFileEncryptedStream(
   }
 }
 
-async function* streamEncryptedChunks(
-  store: Store,
-  node: TreeNode
-): AsyncGenerator<Uint8Array> {
-  for (const link of node.links) {
-    const chunkKey = link.key;
-    if (!chunkKey) {
-      throw new Error(`Missing decryption key for chunk: ${toHex(link.hash)}`);
-    }
-
-    const encryptedChild = await store.get(link.hash);
-    if (!encryptedChild) {
-      throw new Error(`Missing chunk: ${toHex(link.hash)}`);
-    }
-
-    // CHK decrypt the child
-    const decrypted = await decryptChk(encryptedChild, chunkKey);
-
-    if (isTreeNode(decrypted)) {
-      const childNode = decodeTreeNode(decrypted);
-      yield* streamEncryptedChunks(store, childNode);
-    } else {
-      yield decrypted;
-    }
-  }
-}
-
 /**
  * Stream encrypted chunks starting from an offset
  */

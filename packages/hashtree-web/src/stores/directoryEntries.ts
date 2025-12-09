@@ -4,7 +4,7 @@
  * Supports both encrypted and public directories via CID
  * Svelte version using stores
  */
-import { writable, derived, get, type Readable } from 'svelte/store';
+import { writable, get, type Readable } from 'svelte/store';
 import { type CID, type TreeEntry, toHex } from 'hashtree';
 import { getTree } from '../store';
 
