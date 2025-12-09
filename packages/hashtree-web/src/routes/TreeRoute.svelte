@@ -4,7 +4,7 @@
   import Viewer from '../components/Viewer/Viewer.svelte';
   import StreamView from '../components/stream/StreamView.svelte';
   import { nostrStore } from '../nostr';
-  import { routeStore, addRecent } from '../stores';
+  import { routeStore, addRecent, isViewingFileStore } from '../stores';
 
   interface Props {
     npub?: string;
@@ -24,7 +24,9 @@
 
   // Only enable streaming mode on user's own trees
   let isStreaming = $derived(route.isStreaming && isOwnTree);
-  let hasFileSelected = $derived(route.path.length > 0 || isStreaming);
+  // Check if a file is selected (actual check from hashtree, not heuristic)
+  let isViewingFile = $derived($isViewingFileStore);
+  let hasFileSelected = $derived(isViewingFile || isStreaming);
 
   // Show stream view if streaming and logged in
   let isLoggedIn = $derived($nostrStore.isLoggedIn);

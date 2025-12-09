@@ -1,10 +1,12 @@
 /**
  * Route helper functions for actions
  */
+import { get } from 'svelte/store';
 import { navigate } from '../utils/navigate';
-import { parseRoute, looksLikeFile } from '../utils/route';
+import { parseRoute } from '../utils/route';
 import type { CID } from 'hashtree';
 import { getTreeRootSync } from '../stores/treeRoot';
+import { isViewingFileStore } from '../stores/currentDirHash';
 
 // Helper to get current rootCid from route via resolver cache
 export function getCurrentRootCid(): CID | null {
@@ -39,9 +41,9 @@ export function getCurrentPathFromUrl(): string[] {
   const urlPath = route.path;
   if (urlPath.length === 0) return [];
 
-  // Check if last segment looks like a file (has extension)
-  const lastSegment = urlPath[urlPath.length - 1];
-  return looksLikeFile(lastSegment) ? urlPath.slice(0, -1) : urlPath;
+  // Use actual isDirectory check from store
+  const isViewingFile = get(isViewingFileStore);
+  return isViewingFile ? urlPath.slice(0, -1) : urlPath;
 }
 
 // Update URL to reflect current state

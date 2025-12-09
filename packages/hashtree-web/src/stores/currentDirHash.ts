@@ -8,11 +8,13 @@ import { toHex } from 'hashtree';
 import { getTree } from '../store';
 import { routeStore } from './route';
 import { treeRootStore } from './treeRoot';
-import { looksLikeFile } from '../utils/route';
 import type { CID, Hash } from 'hashtree';
 
 // Store for current directory CID
 const currentDirCidStore = writable<CID | null>(null);
+
+// Store for whether we're viewing a file (not a directory)
+const isViewingFileStore = writable<boolean>(false);
 
 // Track previous values to avoid redundant recalculations
 let prevRootHash: string | null = null;
@@ -20,17 +22,14 @@ let prevRootKey: string | null = null;
 let prevPathKey: string | null = null;
 
 // Reactive update based on rootCid and path changes
-function updateCurrentDirCid() {
+async function updateCurrentDirCid() {
   const rootCid = get(treeRootStore);
   const route = get(routeStore);
-  // Get directory path (exclude file if URL points to file)
   const urlPath = route.path;
-  const lastSegment = urlPath.length > 0 ? urlPath[urlPath.length - 1] : null;
-  const currentPath = lastSegment && looksLikeFile(lastSegment) ? urlPath.slice(0, -1) : urlPath;
 
   const rootHash = rootCid?.hash ? toHex(rootCid.hash) : null;
   const rootKey = rootCid?.key ? toHex(rootCid.key) : null;
-  const pathKey = currentPath.join('/');
+  const pathKey = urlPath.join('/');
 
   // Skip if no change
   if (rootHash === prevRootHash && rootKey === prevRootKey && pathKey === prevPathKey) {
@@ -42,25 +41,51 @@ function updateCurrentDirCid() {
 
   if (!rootCid || !rootHash) {
     currentDirCidStore.set(null);
+    isViewingFileStore.set(false);
     return;
   }
 
-  if (currentPath.length === 0) {
+  if (urlPath.length === 0) {
     currentDirCidStore.set(rootCid);
+    isViewingFileStore.set(false);
     return;
   }
 
-  // Resolve path asynchronously
   const tree = getTree();
-  tree.resolvePath(rootCid, currentPath).then(result => {
-    if (result) {
-      currentDirCidStore.set(result.cid);
-    } else {
+
+  try {
+    // Resolve full path first
+    const result = await tree.resolvePath(rootCid, urlPath);
+    if (!result) {
       currentDirCidStore.set(null);
+      isViewingFileStore.set(false);
+      return;
     }
-  }).catch(() => {
+
+    // Check if resolved path is a directory
+    const isDir = await tree.isDirectory(result.cid);
+
+    if (isDir) {
+      // Path points to a directory
+      currentDirCidStore.set(result.cid);
+      isViewingFileStore.set(false);
+    } else {
+      // Path points to a file - get parent directory
+      isViewingFileStore.set(true);
+      if (urlPath.length === 1) {
+        // File is in root
+        currentDirCidStore.set(rootCid);
+      } else {
+        // Resolve parent directory
+        const parentPath = urlPath.slice(0, -1);
+        const parentResult = await tree.resolvePath(rootCid, parentPath);
+        currentDirCidStore.set(parentResult?.cid ?? null);
+      }
+    }
+  } catch {
     currentDirCidStore.set(null);
-  });
+    isViewingFileStore.set(false);
+  }
 }
 
 // Subscribe to changes in root and route
@@ -79,6 +104,11 @@ export const currentDirHashStore: Readable<Hash | null> = derived(
  * Store for current directory CID
  */
 export { currentDirCidStore };
+
+/**
+ * Store for whether current URL path points to a file (not a directory)
+ */
+export { isViewingFileStore };
 
 // Compatibility functions for React-style usage
 export function currentDirHash(): Hash | null {

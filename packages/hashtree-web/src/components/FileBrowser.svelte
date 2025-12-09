@@ -5,7 +5,6 @@
    */
   import { toHex, nhashEncode, type TreeEntry as HashTreeEntry } from 'hashtree';
   import { formatBytes, getTree } from '../store';
-  import { looksLikeFile } from '../utils/route';
   import { deleteEntry, moveEntry, moveToParent } from '../actions';
   import { openCreateModal, openShareModal } from '../stores/modals';
   import { uploadFiles, uploadDirectory } from '../stores/upload';
@@ -14,7 +13,7 @@
   import { UserRow } from './User';
   import FolderActions from './FolderActions.svelte';
   import VisibilityIcon from './VisibilityIcon.svelte';
-  import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore } from '../stores';
+  import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore, isViewingFileStore } from '../stores';
   import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
   // Get icon class based on file extension
@@ -101,7 +100,8 @@
   // Get directory path (exclude file if URL points to file)
   let urlPath = $derived(route.path);
   let lastSegment = $derived(urlPath.length > 0 ? urlPath[urlPath.length - 1] : null);
-  let currentPath = $derived(lastSegment && looksLikeFile(lastSegment) ? urlPath.slice(0, -1) : urlPath);
+  let isViewingFile = $derived($isViewingFileStore);
+  let currentPath = $derived(isViewingFile ? urlPath.slice(0, -1) : urlPath);
   let rootHash = $derived(rootCid?.hash ?? null);
   let linkKey = $derived(route.linkKey);
 
@@ -301,8 +301,8 @@
       : currentTreeName || (rootCid?.hash ? nhashEncode({ hash: toHex(rootCid.hash), decryptKey: rootCid.key ? toHex(rootCid.key) : undefined }).slice(0, 16) + '...' : '')
   );
 
-  // Get file name from URL (last segment if it's a file)
-  let selectedFileName = $derived(lastSegment && looksLikeFile(lastSegment) ? lastSegment : null);
+  // Get file name from URL (last segment if viewing a file)
+  let selectedFileName = $derived(isViewingFile && lastSegment ? lastSegment : null);
 
   // Find selected entry
   let selectedEntry = $derived(selectedFileName ? entries.find(e => e.name === selectedFileName) : null);

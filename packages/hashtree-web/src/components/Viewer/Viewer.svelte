@@ -4,8 +4,7 @@
    * Port of React Viewer component
    */
   import { toHex, nhashEncode } from 'hashtree';
-  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent, recentlyChangedFiles } from '../../stores';
-  import { looksLikeFile } from '../../utils/route';
+  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent, recentlyChangedFiles, isViewingFileStore } from '../../stores';
   import { getTree, decodeAsText, formatBytes } from '../../store';
   import { nostrStore, npubToPubkey } from '../../nostr';
   import { deleteEntry } from '../../actions';
@@ -40,11 +39,12 @@
   let currentTreeName = $derived(route.treeName);
   let currentTree = $derived(currentTreeName ? trees.find(t => t.name === currentTreeName) : null);
 
-  // Get filename from URL path - uses path type heuristic
+  // Get filename from URL path - uses actual isDirectory check from hashtree
   let urlPath = $derived(route.path);
   let lastSegment = $derived(urlPath.length > 0 ? urlPath[urlPath.length - 1] : null);
   // Don't treat .yjs files as viewable files - they are internal to Yjs documents
-  let hasFile = $derived(lastSegment && looksLikeFile(lastSegment) && !lastSegment.endsWith('.yjs'));
+  let isViewingFile = $derived($isViewingFileStore);
+  let hasFile = $derived(isViewingFile && lastSegment && !lastSegment.endsWith('.yjs'));
   let urlFileName = $derived(hasFile ? lastSegment : null);
 
   // Parse query params from URL hash - use currentHash store for reactivity

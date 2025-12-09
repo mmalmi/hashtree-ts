@@ -3,7 +3,8 @@ import { toHex, cid } from 'hashtree';
 import type { StreamWriter, CID } from 'hashtree';
 import { getTree } from '../../store';
 import { autosaveIfOwn, nostrStore } from '../../nostr';
-import { parseRoute, getCurrentPathFromUrl } from '../../utils/route';
+import { parseRoute } from '../../utils/route';
+import { getCurrentPathFromUrl } from '../../actions/route';
 import { getTreeRootSync } from '../../stores/treeRoot';
 
 // Generate default stream filename
