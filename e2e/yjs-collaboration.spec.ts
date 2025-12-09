@@ -744,6 +744,116 @@ test.describe('Yjs Collaborative Document Editing', () => {
     console.log('\n=== Editors Count Badge Test Passed ===');
   });
 
+  test('document becomes editable without refresh when user is added as editor', async ({ browser }) => {
+    // This test verifies:
+    // 1. User B views User A's document - should be read-only initially
+    // 2. User A adds B as editor
+    // 3. User B can edit the document WITHOUT refreshing the page
+
+    const contextA = await browser.newContext();
+    const contextB = await browser.newContext();
+
+    const pageA = await contextA.newPage();
+    const pageB = await contextB.newPage();
+
+    setupPageErrorHandler(pageA);
+    setupPageErrorHandler(pageB);
+
+    pageA.on('console', msg => {
+      if (msg.text().includes('[YjsDoc]')) console.log(`[User A] ${msg.text()}`);
+    });
+    pageB.on('console', msg => {
+      if (msg.text().includes('[YjsDoc]')) console.log(`[User B] ${msg.text()}`);
+    });
+
+    try {
+      // Setup User A
+      console.log('Setting up User A...');
+      await setupFreshUser(pageA);
+      const npubA = await getNpub(pageA);
+      console.log(`User A npub: ${npubA.slice(0, 20)}...`);
+
+      // Setup User B
+      console.log('Setting up User B...');
+      await setupFreshUser(pageB);
+      const npubB = await getNpub(pageB);
+      console.log(`User B npub: ${npubB.slice(0, 20)}...`);
+
+      // User A creates a document
+      console.log('User A: Creating document...');
+      await createDocument(pageA, 'editor-test');
+
+      // User A adds initial content
+      const editorA = pageA.locator('.ProseMirror');
+      await expect(editorA).toBeVisible({ timeout: 5000 });
+      await editorA.click();
+      await pageA.keyboard.type('Content from owner.');
+      await waitForSave(pageA);
+      console.log('User A: Document saved');
+
+      // User B navigates to A's document (without being an editor yet)
+      console.log('User B: Navigating to A\'s document (not an editor yet)...');
+      await pageB.goto(`http://localhost:5173/#/${npubA}/public/editor-test`);
+      await pageB.waitForTimeout(2000);
+
+      // Verify B sees the document
+      const editorB = pageB.locator('.ProseMirror');
+      await expect(editorB).toBeVisible({ timeout: 10000 });
+      const contentB = await editorB.textContent();
+      console.log(`User B sees: "${contentB}"`);
+      expect(contentB).toContain('Content from owner');
+
+      // Verify B sees "Read-only" badge (not an editor)
+      const readOnlyBadge = pageB.locator('text=Read-only');
+      const isReadOnly = await readOnlyBadge.isVisible();
+      console.log(`User B read-only status: ${isReadOnly}`);
+      expect(isReadOnly).toBe(true);
+
+      // User A now adds B as an editor
+      console.log('User A: Adding B as editor...');
+      await setEditors(pageA, [npubA, npubB]);
+      console.log('User A: Editors updated');
+
+      // Wait for B to receive the update via subscription
+      console.log('Waiting for B to receive editor status update...');
+      await pageB.waitForTimeout(5000);
+
+      // Verify B no longer sees "Read-only" badge
+      const readOnlyAfter = await pageB.locator('text=Read-only').isVisible();
+      console.log(`User B read-only status after being added: ${readOnlyAfter}`);
+      expect(readOnlyAfter).toBe(false);
+
+      // B should now see "Editor" badge (exact match to avoid ambiguity)
+      const editorBadge = pageB.getByText('Editor', { exact: true });
+      const hasEditorIndicator = await editorBadge.isVisible();
+      console.log(`User B has editor indicator: ${hasEditorIndicator}`);
+      expect(hasEditorIndicator).toBe(true);
+
+      // The key test: B should be able to type without refresh
+      console.log('User B: Attempting to edit document...');
+      await editorB.click();
+      await pageB.keyboard.type(' [B-EDIT]');
+      await pageB.waitForTimeout(2000);
+
+      // Check if B's edit appeared
+      const contentAfterEdit = await editorB.textContent();
+      console.log(`User B content after edit: "${contentAfterEdit}"`);
+      expect(contentAfterEdit).toContain('[B-EDIT]');
+
+      // Verify A sees B's edit
+      await pageA.waitForTimeout(3000);
+      const contentA = await editorA.textContent();
+      console.log(`User A sees: "${contentA}"`);
+      expect(contentA).toContain('[B-EDIT]');
+
+      console.log('\n=== Document Becomes Editable Without Refresh Test PASSED ===');
+
+    } finally {
+      await contextA.close();
+      await contextB.close();
+    }
+  });
+
   test('long document collaboration persists after refresh for both users', async ({ browser }) => {
     // This test verifies:
     // 1. Two users can collaboratively write a longer document with edits at different positions

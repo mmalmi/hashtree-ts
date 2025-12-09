@@ -96,6 +96,13 @@
     }
   });
 
+  // Reactively update editor's editable state when canEdit changes
+  $effect(() => {
+    if (editor && editor.isEditable !== canEdit) {
+      editor.setEditable(canEdit);
+    }
+  });
+
   // Load deltas from a directory's entries
   async function loadDeltasFromEntries(docEntries: TreeEntry[]): Promise<Uint8Array[]> {
     const tree = getTree();
