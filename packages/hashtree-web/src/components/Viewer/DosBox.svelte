@@ -260,6 +260,7 @@ echo.
         canvas.style.objectFit = 'contain';
         canvas.style.imageRendering = 'pixelated';
         canvas.style.background = '#000';
+        canvas.style.outline = 'none';
         containerEl?.appendChild(canvas);
 
         // Set up audio context for sound
@@ -396,11 +397,13 @@ echo.
             console.log('[DOSBox] keydown:', e.code, e.key, 'keyCode:', e.keyCode, '-> jsDos:', jsDosCode);
             ci.sendKeyEvent(jsDosCode, true);
             e.preventDefault();
+            e.stopPropagation();
           };
           const onKeyUp = (e: KeyboardEvent) => {
             const jsDosCode = domToJsDos[e.keyCode] ?? e.keyCode;
             ci.sendKeyEvent(jsDosCode, false);
             e.preventDefault();
+            e.stopPropagation();
           };
 
           // Handle mouse input with pointer lock
@@ -589,7 +592,7 @@ echo.
 
 {#if status === 'idle'}
   <!-- Start screen -->
-  <div class="w-full h-full flex flex-col items-center justify-center bg-surface-0">
+  <div class="flex-1 flex flex-col items-center justify-center bg-surface-0 min-h-0">
     <div class="text-center p-8 max-w-md">
       <div class="w-16 h-16 mx-auto mb-4 bg-surface-2 rounded-lg flex items-center justify-center">
         <span class="i-lucide-terminal text-3xl text-accent"></span>
@@ -622,7 +625,7 @@ echo.
   </div>
 {:else if status === 'error'}
   <!-- Error screen -->
-  <div class="w-full h-full flex flex-col items-center justify-center bg-surface-0 p-8">
+  <div class="flex-1 flex flex-col items-center justify-center bg-surface-0 p-8 min-h-0">
     <div class="w-16 h-16 mx-auto mb-4 bg-danger/10 rounded-lg flex items-center justify-center">
       <span class="i-lucide-x text-3xl text-danger"></span>
     </div>
@@ -637,7 +640,7 @@ echo.
   </div>
 {:else}
   <!-- Loading or Running state -->
-  <div class="w-full h-full flex flex-col bg-black" bind:this={containerEl}>
+  <div class="flex-1 flex flex-col bg-black min-h-0">
     <!-- Toolbar -->
     <div class="h-10 shrink-0 px-3 flex items-center justify-between bg-surface-1 border-b border-surface-3 {isFullscreen ? 'absolute top-0 left-0 right-0 z-10 opacity-0 hover:opacity-100 transition-opacity' : ''}">
       <span class="text-sm font-mono flex items-center gap-2">
@@ -665,10 +668,10 @@ echo.
       </div>
     </div>
 
-    <!-- DOSBox canvas container -->
+    <!-- DOSBox canvas container - js-dos renders into this -->
     <div
-      class="flex-1 bg-black relative"
-      style="min-height: 400px"
+      bind:this={containerEl}
+      class="flex-1 bg-black relative min-h-0 outline-none"
     >
       {#if status === 'loading'}
         <div class="absolute inset-0 flex flex-col items-center justify-center text-green-400">

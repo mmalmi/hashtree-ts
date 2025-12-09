@@ -296,13 +296,14 @@
   $effect(() => {
     if (!entryFromStore && !urlFileName) return; // Only when viewing a file
     if (isEditing) return; // Don't navigate when editing
+    if (isDos) return; // Don't interfere with DOSBox keyboard input
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't interfere with browser shortcuts (Cmd/Ctrl + arrows)
       if (e.metaKey || e.ctrlKey) return;
-      // Don't interfere when focus is in input/textarea
+      // Don't interfere when focus is in input/textarea/canvas
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'CANVAS' || target.isContentEditable) return;
 
       const key = e.key.toLowerCase();
 
