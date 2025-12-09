@@ -490,23 +490,51 @@
 
   let fileIcon = $derived(urlFileName ? getFileIcon(urlFileName) : 'i-lucide-file');
 
-  // Download handler
+  // Download handler - uses streaming when File System Access API is available
   async function handleDownload() {
     if (!entryFromStore) return;
 
+    const tree = getTree();
+    const mimeType = getMimeType(urlFileName || '') || 'application/octet-stream';
+    const fileName = entryFromStore.name;
+
+    // Try streaming download with File System Access API (Chrome/Edge)
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: fileName,
+          types: [{
+            description: 'File',
+            accept: { [mimeType]: ['.' + (fileName.split('.').pop() || '')] },
+          }],
+        });
+        const writable = await handle.createWritable();
+
+        // Stream from hashtree directly to file
+        for await (const chunk of tree.readFileStream(entryFromStore.cid)) {
+          await writable.write(chunk);
+        }
+        await writable.close();
+        return;
+      } catch (err: any) {
+        // User cancelled or API failed - fall back to blob method
+        if (err.name === 'AbortError') return;
+        console.warn('File System Access API failed, falling back to blob:', err);
+      }
+    }
+
+    // Fallback: buffer entire file (required for browsers without File System Access API)
     let data = fileData;
-    // For video files, content isn't preloaded - fetch it now
-    if (!data && isVideo) {
-      data = await getTree().readFile(entryFromStore.cid);
+    if (!data) {
+      data = await tree.readFile(entryFromStore.cid);
     }
     if (!data) return;
 
-    const mimeType = getMimeType(urlFileName || '') || 'application/octet-stream';
     const blob = new Blob([data], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = entryFromStore.name;
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

@@ -5,7 +5,7 @@
  * All uploads use encryption by default (CHK - Content Hash Key).
  */
 import { writable, get } from 'svelte/store';
-import { toHex, nhashEncode } from 'hashtree';
+import { toHex, nhashEncode, cid } from 'hashtree';
 import type { CID } from 'hashtree';
 import { getTree } from '../store';
 import { autosaveIfOwn, saveHashtree, nostrStore } from '../nostr';
@@ -64,6 +64,34 @@ function checkCancelled(): boolean {
   return false;
 }
 
+// Stall detection timeout (10 seconds)
+const STALL_TIMEOUT_MS = 10000;
+
+/**
+ * Wrap an async operation with stall detection
+ * Shows a warning toast if the operation takes too long
+ */
+async function withStallDetection<T>(
+  operation: Promise<T>,
+  message: string
+): Promise<T> {
+  let toastShown = false;
+  const timeoutId = setTimeout(() => {
+    toastShown = true;
+    toast.warning(message);
+  }, STALL_TIMEOUT_MS);
+
+  try {
+    return await operation;
+  } finally {
+    clearTimeout(timeoutId);
+    // If we showed a stall warning, show success when it completes
+    if (toastShown) {
+      toast.success('Operation resumed');
+    }
+  }
+}
+
 /**
  * Upload files to the current directory
  */
@@ -114,35 +142,38 @@ export async function uploadFiles(files: FileList): Promise<void> {
       totalBytes,
     });
 
-    // Read file with progress tracking
-    const chunks: Uint8Array[] = [];
-    let bytesRead = 0;
-    const reader = file.stream().getReader();
+    let fileCid: CID;
+    let size: number;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      bytesRead += value.length;
-      setUploadProgress({
-        current: i + 1,
-        total,
-        fileName: file.name,
-        bytes: bytesRead,
-        totalBytes,
-      });
-    }
-
-    // Combine chunks
-    const data = new Uint8Array(bytesRead);
-    let offset = 0;
-    for (const chunk of chunks) {
-      data.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    // Check if this is an archive file and offer to extract
+    // Check if this is an archive file - needs buffering for extraction
     if (isArchiveFile(file.name)) {
+      // Buffer the file for archive extraction
+      const chunks: Uint8Array[] = [];
+      let bytesRead = 0;
+      const reader = file.stream().getReader();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        bytesRead += value.length;
+        setUploadProgress({
+          current: i + 1,
+          total,
+          fileName: file.name,
+          bytes: bytesRead,
+          totalBytes,
+        });
+      }
+
+      // Combine chunks
+      const data = new Uint8Array(bytesRead);
+      let offset = 0;
+      for (const chunk of chunks) {
+        data.set(chunk, offset);
+        offset += chunk.length;
+      }
+
       try {
         const extractedFiles = extractArchive(data, file.name);
         if (extractedFiles.length > 0) {
@@ -162,10 +193,41 @@ export async function uploadFiles(files: FileList): Promise<void> {
         console.warn('Failed to parse archive, uploading as regular file:', err);
         // Fall through to normal upload
       }
-    }
 
-    // Use encrypted file storage (default)
-    const { cid: fileCid, size } = await tree.putFile(data);
+      // Use encrypted file storage (default)
+      const result = await tree.putFile(data);
+      fileCid = result.cid;
+      size = result.size;
+    } else {
+      // Stream upload - no buffering needed
+      const stream = tree.createStream();
+      let bytesRead = 0;
+      const reader = file.stream().getReader();
+
+      while (true) {
+        const readResult = await withStallDetection(
+          reader.read(),
+          `Reading ${file.name} is taking longer than expected...`
+        );
+        if (readResult.done) break;
+        await withStallDetection(
+          stream.append(readResult.value),
+          `Writing ${file.name} is taking longer than expected...`
+        );
+        bytesRead += readResult.value.length;
+        setUploadProgress({
+          current: i + 1,
+          total,
+          fileName: file.name,
+          bytes: bytesRead,
+          totalBytes,
+        });
+      }
+
+      const result = await stream.finalize();
+      fileCid = cid(result.hash, result.key);
+      size = result.size;
+    }
     uploadedFileNames.push(file.name);
 
     // Add file to tree immediately after upload completes
@@ -384,16 +446,22 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
       totalBytes,
     });
 
-    // Read file with progress tracking
-    const chunks: Uint8Array[] = [];
+    // Stream upload - no buffering needed
+    const stream = tree.createStream();
     let bytesRead = 0;
     const reader = file.stream().getReader();
 
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      bytesRead += value.length;
+      const readResult = await withStallDetection(
+        reader.read(),
+        `Reading ${relativePath} is taking longer than expected...`
+      );
+      if (readResult.done) break;
+      await withStallDetection(
+        stream.append(readResult.value),
+        `Writing ${relativePath} is taking longer than expected...`
+      );
+      bytesRead += readResult.value.length;
       setUploadProgress({
         current: i + 1,
         total,
@@ -403,16 +471,9 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
       });
     }
 
-    // Combine chunks
-    const data = new Uint8Array(bytesRead);
-    let offset = 0;
-    for (const chunk of chunks) {
-      data.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    // Store the file with encryption (default)
-    const { cid: fileCid, size } = await tree.putFile(data);
+    const result = await stream.finalize();
+    const fileCid = cid(result.hash, result.key);
+    const size = result.size;
 
     // Parse the relative path to get directory components and filename
     const pathParts = relativePath.split('/');
