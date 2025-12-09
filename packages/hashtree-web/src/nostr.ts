@@ -76,6 +76,7 @@ interface NostrState {
   isLoggedIn: boolean;
   selectedTree: HashTreeEvent | null;
   relays: string[];
+  connectedRelays: number;
 }
 
 // Create Svelte store for nostr state
@@ -86,6 +87,7 @@ function createNostrStore() {
     isLoggedIn: false,
     selectedTree: null,
     relays: DEFAULT_RELAYS,
+    connectedRelays: 0,
   });
 
   return {
@@ -109,6 +111,10 @@ function createNostrStore() {
 
     setRelays: (relays: string[]) => {
       update(state => ({ ...state, relays }));
+    },
+
+    setConnectedRelays: (count: number) => {
+      update(state => ({ ...state, connectedRelays: count }));
     },
 
     // Get current state synchronously
@@ -153,6 +159,37 @@ export const ndk = new NDK({
 
 // Connect on init
 ndk.connect().catch(console.error);
+
+// Track connected relay count
+// NDKRelayStatus: CONNECTED=5, AUTH_REQUESTED=6, AUTHENTICATING=7, AUTHENTICATED=8
+const NDK_RELAY_STATUS_CONNECTED = 5;
+function updateConnectedRelayCount() {
+  const pool = ndk.pool;
+  if (!pool) {
+    nostrStore.setConnectedRelays(0);
+    return;
+  }
+  // Count relays with connected status (>= CONNECTED)
+  let connected = 0;
+  for (const relay of pool.relays.values()) {
+    if (relay.status >= NDK_RELAY_STATUS_CONNECTED) {
+      connected++;
+    }
+  }
+  nostrStore.setConnectedRelays(connected);
+}
+
+// Listen for relay connect/disconnect events
+ndk.pool?.on('relay:connect', () => updateConnectedRelayCount());
+ndk.pool?.on('relay:disconnect', () => updateConnectedRelayCount());
+
+// Also poll periodically in case events are missed
+setInterval(updateConnectedRelayCount, 2000);
+
+// Initial counts - check quickly then again after connection settles
+setTimeout(updateConnectedRelayCount, 500);
+setTimeout(updateConnectedRelayCount, 1500);
+setTimeout(updateConnectedRelayCount, 3000);
 
 // Restore session after module initialization completes
 // Using queueMicrotask to avoid circular import issues with store.ts

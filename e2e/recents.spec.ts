@@ -180,8 +180,8 @@ test.describe('Recently Visited', () => {
     const fileInRecents = page.locator('button:has-text("visible-file.txt")');
     await expect(fileInRecents).toBeVisible({ timeout: 5000 });
 
-    // Check that the tree also appears
-    const treeInRecents = page.locator('button:has-text("ui-recents-test")');
+    // Check that the tree also appears (use first() since tree name also shows as subtitle)
+    const treeInRecents = page.locator('button:has-text("ui-recents-test")').first();
     await expect(treeInRecents).toBeVisible({ timeout: 5000 });
   });
 

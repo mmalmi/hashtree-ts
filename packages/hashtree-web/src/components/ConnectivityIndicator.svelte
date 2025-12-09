@@ -8,25 +8,25 @@
   import { nostrStore } from '../nostr';
 
   let peers = $derived($appStore.peerCount);
-  let relayList = $derived($nostrStore.relays);
+  let connectedRelays = $derived($nostrStore.connectedRelays);
   let loggedIn = $derived($nostrStore.isLoggedIn);
-  let relayCount = $derived(relayList.length);
 
   // Color logic: red = nothing, yellow = relays only, green = peers
   let color = $derived.by(() => {
-    if (!loggedIn) return '#f85149'; // red
+    if (!loggedIn || connectedRelays === 0) return '#f85149'; // red
     if (peers === 0) return '#d29922'; // yellow
     return '#3fb950'; // green
   });
 
   let title = $derived.by(() => {
     if (!loggedIn) return 'Not connected';
-    if (peers === 0) return `${relayCount} relays, no peers`;
-    return `${peers} peer${peers !== 1 ? 's' : ''}, ${relayCount} relays`;
+    if (connectedRelays === 0) return 'No relays connected';
+    if (peers === 0) return `${connectedRelays} relay${connectedRelays !== 1 ? 's' : ''}, no peers`;
+    return `${peers} peer${peers !== 1 ? 's' : ''}, ${connectedRelays} relay${connectedRelays !== 1 ? 's' : ''}`;
   });
 
   // Total connections = relays + peers
-  let totalConnections = $derived(relayCount + peers);
+  let totalConnections = $derived(connectedRelays + peers);
 </script>
 
 <a

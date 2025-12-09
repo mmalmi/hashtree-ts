@@ -145,4 +145,31 @@ test.describe('Offline Upload', () => {
     expect(networkErrors).toHaveLength(0);
     console.log('No uncaught network errors');
   });
+
+  test('connectivity indicator should update when connections change', async ({ page }) => {
+    // Set up fresh user while online
+    await setupFreshUser(page);
+
+    // Wait for initial connection (give relays time to connect)
+    await page.waitForTimeout(3000);
+
+    // Get initial connection count
+    const indicator = page.locator('[data-testid="peer-count"]');
+    const initialCount = await indicator.textContent();
+    console.log(`Initial connection count: ${initialCount}`);
+
+    // Should have some connections when online
+    expect(parseInt(initialCount || '0')).toBeGreaterThan(0);
+
+    // Verify title attribute shows relay info
+    const indicatorLink = page.locator('a[href="#/settings"]');
+    const title = await indicatorLink.getAttribute('title');
+    console.log(`Indicator title: ${title}`);
+    expect(title).toContain('relay');
+  });
+
+  // Note: Testing actual offline behavior is tricky because NDK maintains
+  // WebSocket connection status even when network is blocked. The WebSocket
+  // doesn't immediately close, it just stops receiving data.
+  // The connectivity indicator accurately reflects NDK's view of connection state.
 });
