@@ -157,4 +157,54 @@ test.describe('Recently Visited', () => {
     const fileRecent = parsed.find((r: any) => r.label?.includes('test-file.txt'));
     expect(fileRecent).toBeTruthy();
   });
+
+  test('should display recents in UI on home page', async ({ page }) => {
+    // Create tree with file
+    await createAndEnterTree(page, 'ui-recents-test');
+    await createFile(page, 'visible-file.txt', 'Test content');
+
+    // Navigate to file to add it to recents
+    await page.locator('a:has-text("ui-recents-test")').first().click();
+    await page.waitForTimeout(500);
+    await page.locator('a:has-text("visible-file.txt")').first().click();
+    await page.waitForTimeout(500);
+
+    // Go back to home page (tree list)
+    await goToTreeList(page);
+
+    // Look for the Recent section header - it should show our items
+    const recentSection = page.getByText('Recent', { exact: true });
+    await expect(recentSection).toBeVisible({ timeout: 5000 });
+
+    // Check that the file appears in the UI recents list
+    const fileInRecents = page.locator('button:has-text("visible-file.txt")');
+    await expect(fileInRecents).toBeVisible({ timeout: 5000 });
+
+    // Check that the tree also appears
+    const treeInRecents = page.locator('button:has-text("ui-recents-test")');
+    await expect(treeInRecents).toBeVisible({ timeout: 5000 });
+  });
+
+  test('clicking recent item navigates to it', async ({ page }) => {
+    // Create tree with file
+    await createAndEnterTree(page, 'click-recents-test');
+    await createFile(page, 'clickable.txt', 'Click me');
+
+    // Navigate to file
+    await page.locator('a:has-text("click-recents-test")').first().click();
+    await page.waitForTimeout(500);
+    await page.locator('a:has-text("clickable.txt")').first().click();
+    await page.waitForTimeout(500);
+
+    // Go back to home
+    await goToTreeList(page);
+
+    // Click on the file in recents
+    const fileInRecents = page.locator('button:has-text("clickable.txt")');
+    await expect(fileInRecents).toBeVisible({ timeout: 5000 });
+    await fileInRecents.click();
+
+    // Should navigate to the file
+    await expect(page).toHaveURL(/clickable\.txt/, { timeout: 5000 });
+  });
 });
