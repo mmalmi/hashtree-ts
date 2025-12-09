@@ -29,6 +29,7 @@ export interface UploadProgress {
   fileName: string;
   bytes?: number;
   totalBytes?: number;
+  status?: 'reading' | 'writing' | 'finalizing';
 }
 
 // Svelte store for upload progress
@@ -153,17 +154,21 @@ export async function uploadFiles(files: FileList): Promise<void> {
       const reader = file.stream().getReader();
 
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        bytesRead += value.length;
         setUploadProgress({
           current: i + 1,
           total,
           fileName: file.name,
           bytes: bytesRead,
           totalBytes,
+          status: 'reading',
         });
+        const readResult = await withStallDetection(
+          reader.read(),
+          `Reading ${file.name} is taking longer than expected...`
+        );
+        if (readResult.done) break;
+        chunks.push(readResult.value);
+        bytesRead += readResult.value.length;
       }
 
       // Combine chunks
@@ -195,7 +200,18 @@ export async function uploadFiles(files: FileList): Promise<void> {
       }
 
       // Use encrypted file storage (default)
-      const result = await tree.putFile(data);
+      setUploadProgress({
+        current: i + 1,
+        total,
+        fileName: file.name,
+        bytes: bytesRead,
+        totalBytes,
+        status: 'writing',
+      });
+      const result = await withStallDetection(
+        tree.putFile(data),
+        `Writing ${file.name} is taking longer than expected...`
+      );
       fileCid = result.cid;
       size = result.size;
     } else {
@@ -205,26 +221,46 @@ export async function uploadFiles(files: FileList): Promise<void> {
       const reader = file.stream().getReader();
 
       while (true) {
-        const readResult = await withStallDetection(
-          reader.read(),
-          `Reading ${file.name} is taking longer than expected...`
-        );
-        if (readResult.done) break;
-        await withStallDetection(
-          stream.append(readResult.value),
-          `Writing ${file.name} is taking longer than expected...`
-        );
-        bytesRead += readResult.value.length;
         setUploadProgress({
           current: i + 1,
           total,
           fileName: file.name,
           bytes: bytesRead,
           totalBytes,
+          status: 'reading',
         });
+        const readResult = await withStallDetection(
+          reader.read(),
+          `Reading ${file.name} is taking longer than expected...`
+        );
+        if (readResult.done) break;
+        setUploadProgress({
+          current: i + 1,
+          total,
+          fileName: file.name,
+          bytes: bytesRead,
+          totalBytes,
+          status: 'writing',
+        });
+        await withStallDetection(
+          stream.append(readResult.value),
+          `Writing ${file.name} is taking longer than expected...`
+        );
+        bytesRead += readResult.value.length;
       }
 
-      const result = await stream.finalize();
+      setUploadProgress({
+        current: i + 1,
+        total,
+        fileName: file.name,
+        bytes: bytesRead,
+        totalBytes,
+        status: 'finalizing',
+      });
+      const result = await withStallDetection(
+        stream.finalize(),
+        `Finalizing ${file.name} is taking longer than expected...`
+      );
       fileCid = cid(result.hash, result.key);
       size = result.size;
     }
@@ -450,6 +486,7 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
       fileName: relativePath,
       bytes: 0,
       totalBytes,
+      status: 'reading',
     });
 
     // Stream upload - no buffering needed
@@ -474,10 +511,22 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
         fileName: relativePath,
         bytes: bytesRead,
         totalBytes,
+        status: 'writing',
       });
     }
 
-    const result = await stream.finalize();
+    setUploadProgress({
+      current: i + 1,
+      total,
+      fileName: relativePath,
+      bytes: bytesRead,
+      totalBytes,
+      status: 'finalizing',
+    });
+    const result = await withStallDetection(
+      stream.finalize(),
+      `Finalizing ${relativePath} is taking longer than expected...`
+    );
     const fileCid = cid(result.hash, result.key);
     const size = result.size;
 

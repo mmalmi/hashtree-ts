@@ -55,7 +55,14 @@ export class IndexedDBStore implements Store {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.dbName, DB_VERSION);
 
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        console.error('IndexedDB open error:', request.error);
+        reject(request.error);
+      };
+
+      request.onblocked = () => {
+        console.warn('IndexedDB blocked - close other tabs using this database');
+      };
 
       request.onupgradeneeded = () => {
         const db = request.result;
@@ -88,7 +95,10 @@ export class IndexedDBStore implements Store {
     } else if (!this.flushTimer) {
       this.flushTimer = setTimeout(() => {
         this.flushTimer = null;
-        this.flush();
+        // Background flush - errors are logged but writes are preserved for retry
+        this.flush().catch(err => {
+          console.error('IndexedDB background flush failed (will retry):', err);
+        });
       }, this.flushDelay);
     }
 
@@ -123,6 +133,14 @@ export class IndexedDBStore implements Store {
     this.flushPromise = this.doFlush(writes);
     try {
       await this.flushPromise;
+    } catch (err) {
+      // On failure, restore writes back to pending so they can be retried
+      for (const [key, data] of writes) {
+        if (!this.pendingWrites.has(key)) {
+          this.pendingWrites.set(key, data);
+        }
+      }
+      throw err;
     } finally {
       this.flushPromise = null;
     }
@@ -135,7 +153,16 @@ export class IndexedDBStore implements Store {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
 
-      tx.onerror = () => reject(tx.error);
+      tx.onerror = () => {
+        const error = tx.error || new Error('IndexedDB transaction failed');
+        console.error('IndexedDB transaction error:', error);
+        reject(error);
+      };
+      tx.onabort = () => {
+        const error = tx.error || new Error('IndexedDB transaction aborted');
+        console.error('IndexedDB transaction aborted:', error);
+        reject(error);
+      };
       tx.oncomplete = () => resolve();
 
       // Write all items in single transaction

@@ -73,9 +73,10 @@
           />
         </div>
 
-        <!-- Count -->
-        <div class="text-xs text-text-3 text-right">
-          {$uploadProgress.current} / {$uploadProgress.total}
+        <!-- Status and count -->
+        <div class="flex items-center justify-between text-xs text-text-3">
+          <span class="capitalize">{$uploadProgress.status || 'uploading'}...</span>
+          <span>{$uploadProgress.current} / {$uploadProgress.total}</span>
         </div>
       </div>
     {/if}

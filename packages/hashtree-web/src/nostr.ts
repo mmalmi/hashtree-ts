@@ -69,6 +69,14 @@ export interface HashTreeEvent {
   created_at: number;
 }
 
+// Relay status type
+export type RelayStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+export interface RelayInfo {
+  url: string;
+  status: RelayStatus;
+}
+
 // Nostr state interface
 interface NostrState {
   pubkey: string | null;
@@ -76,6 +84,7 @@ interface NostrState {
   isLoggedIn: boolean;
   selectedTree: HashTreeEvent | null;
   relays: string[];
+  relayStatuses: Map<string, RelayStatus>;
   connectedRelays: number;
 }
 
@@ -87,6 +96,7 @@ function createNostrStore() {
     isLoggedIn: false,
     selectedTree: null,
     relays: DEFAULT_RELAYS,
+    relayStatuses: new Map(DEFAULT_RELAYS.map(url => [url, 'disconnected' as RelayStatus])),
     connectedRelays: 0,
   });
 
@@ -115,6 +125,18 @@ function createNostrStore() {
 
     setConnectedRelays: (count: number) => {
       update(state => ({ ...state, connectedRelays: count }));
+    },
+
+    setRelayStatus: (url: string, status: RelayStatus) => {
+      update(state => {
+        const newStatuses = new Map(state.relayStatuses);
+        newStatuses.set(url, status);
+        return { ...state, relayStatuses: newStatuses };
+      });
+    },
+
+    setRelayStatuses: (statuses: Map<string, RelayStatus>) => {
+      update(state => ({ ...state, relayStatuses: statuses }));
     },
 
     // Get current state synchronously
@@ -160,23 +182,50 @@ export const ndk = new NDK({
 // Connect on init
 ndk.connect().catch(console.error);
 
-// Track connected relay count
-// NDKRelayStatus: CONNECTED=5, AUTH_REQUESTED=6, AUTHENTICATING=7, AUTHENTICATED=8
+// Track connected relay count and individual statuses
+// NDKRelayStatus: DISCONNECTED=0, DISCONNECTING=1, RECONNECTING=2, FLAPPING=3, CONNECTING=4,
+//                 CONNECTED=5, AUTH_REQUESTED=6, AUTHENTICATING=7, AUTHENTICATED=8
+const NDK_RELAY_STATUS_CONNECTING = 4;
 const NDK_RELAY_STATUS_CONNECTED = 5;
+
+function ndkStatusToRelayStatus(ndkStatus: number): RelayStatus {
+  if (ndkStatus >= NDK_RELAY_STATUS_CONNECTED) return 'connected';
+  if (ndkStatus === NDK_RELAY_STATUS_CONNECTING) return 'connecting';
+  return 'disconnected';
+}
+
+// Normalize relay URL (remove trailing slash)
+function normalizeRelayUrl(url: string): string {
+  return url.replace(/\/$/, '');
+}
+
 function updateConnectedRelayCount() {
   const pool = ndk.pool;
   if (!pool) {
     nostrStore.setConnectedRelays(0);
     return;
   }
-  // Count relays with connected status (>= CONNECTED)
+  // Count relays with connected status (>= CONNECTED) and track individual statuses
   let connected = 0;
+  const statuses = new Map<string, RelayStatus>();
+
+  // Initialize all default relays as disconnected
+  for (const url of DEFAULT_RELAYS) {
+    statuses.set(normalizeRelayUrl(url), 'disconnected');
+  }
+
+  // Update with actual statuses from pool
   for (const relay of pool.relays.values()) {
+    const status = ndkStatusToRelayStatus(relay.status);
+    const normalizedUrl = normalizeRelayUrl(relay.url);
+    statuses.set(normalizedUrl, status);
     if (relay.status >= NDK_RELAY_STATUS_CONNECTED) {
       connected++;
     }
   }
+
   nostrStore.setConnectedRelays(connected);
+  nostrStore.setRelayStatuses(statuses);
 }
 
 // Listen for relay connect/disconnect events

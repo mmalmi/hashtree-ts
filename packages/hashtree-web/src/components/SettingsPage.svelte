@@ -4,18 +4,35 @@
    * Port of React SettingsPanel
    */
   import { onMount } from 'svelte';
-  import { nostrStore } from '../nostr';
+  import { nostrStore, type RelayStatus } from '../nostr';
   import { useAppStore, formatBytes, updateStorageStats } from '../store';
   import { BackButton } from './ui';
   import { UserRow } from './User';
 
   let relayList = $derived($nostrStore.relays);
+  let relayStatuses = $derived($nostrStore.relayStatuses);
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
+
+  function getStatusColor(status: RelayStatus): string {
+    switch (status) {
+      case 'connected': return 'bg-success';
+      case 'connecting': return 'bg-warning';
+      case 'error': return 'bg-danger';
+      default: return 'bg-text-3';
+    }
+  }
+
+  function getRelayStatus(url: string): RelayStatus {
+    // Normalize URL for lookup (remove trailing slash)
+    const normalized = url.replace(/\/$/, '');
+    return relayStatuses.get(normalized) || relayStatuses.get(url) || 'disconnected';
+  }
 
   // App store
   let peerList = $derived(useAppStore.getState().peers);
   let stats = $derived(useAppStore.getState().stats);
   let myPeerId = $derived(useAppStore.getState().myPeerId);
+  let wsFallback = $derived(useAppStore.getState().wsFallback);
 
   // Subscribe to app store updates
   onMount(() => {
@@ -26,6 +43,7 @@
       peerList = state.peers;
       stats = state.stats;
       myPeerId = state.myPeerId;
+      wsFallback = state.wsFallback;
     });
     return unsub;
   });
@@ -57,18 +75,16 @@
   <div class="flex-1 overflow-y-auto p-4 space-y-6 w-full max-w-md mx-auto">
     <!-- Relays -->
     <div>
-      <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-3 flex items-center gap-2">
+      <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-1">
         Relays ({relayList.length})
-        <span
-          class="i-lucide-info text-sm cursor-help"
-          title="Relays are used to find peers"
-        ></span>
       </h3>
+      <p class="text-xs text-text-3 mb-3">Nostr servers used to find peers</p>
       <div class="bg-surface-2 rounded divide-y divide-surface-3">
         {#each relayList as relay}
+          {@const status = getRelayStatus(relay)}
           <div class="flex items-center gap-2 p-3 text-sm">
-            <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
-            <span class="text-text-1 truncate">
+            <span class="w-2 h-2 rounded-full {getStatusColor(status)} shrink-0"></span>
+            <span class="text-text-1 truncate flex-1">
               {(() => {
                 try {
                   return new URL(relay).hostname;
@@ -77,20 +93,33 @@
                 }
               })()}
             </span>
+            <span class="text-xs text-text-3">{status.charAt(0).toUpperCase() + status.slice(1)}</span>
           </div>
         {/each}
+        {#if wsFallback.url}
+          <div class="flex items-center gap-2 p-3 text-sm">
+            <span class="w-2 h-2 rounded-full {wsFallback.connected ? 'bg-success' : 'bg-text-3'} shrink-0"></span>
+            <span class="text-text-1 truncate flex-1">
+              {(() => {
+                try {
+                  return new URL(wsFallback.url).hostname;
+                } catch {
+                  return wsFallback.url;
+                }
+              })()}
+            </span>
+            <span class="text-xs text-text-3">{wsFallback.connected ? 'Connected' : 'Disconnected'}</span>
+          </div>
+        {/if}
       </div>
     </div>
 
     <!-- Peers -->
     <div>
-      <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-3 flex items-center gap-2">
+      <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-1">
         Peers ({peerList.length})
-        <span
-          class="i-lucide-info text-sm cursor-help"
-          title="Peers are used to exchange data"
-        ></span>
       </h3>
+      <p class="text-xs text-text-3 mb-3">WebRTC connections for file exchange</p>
       {#if myPeerId}
         <div class="text-xs text-muted mb-2 font-mono">
           Your ID: {myPeerId}
