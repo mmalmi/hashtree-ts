@@ -4,7 +4,7 @@
    * Port of React Viewer component
    */
   import { toHex, nhashEncode } from 'hashtree';
-  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent, isViewingFileStore, recentlyChangedFiles } from '../../stores';
+  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent, isViewingFileStore, resolvingPathStore, recentlyChangedFiles } from '../../stores';
   import { getTree, decodeAsText, formatBytes } from '../../store';
   import { nostrStore, npubToPubkey } from '../../nostr';
   import { deleteEntry } from '../../actions';
@@ -42,9 +42,9 @@
   // Get filename from URL path - uses actual isDirectory check from hashtree
   let urlPath = $derived(route.path);
   let lastSegment = $derived(urlPath.length > 0 ? urlPath[urlPath.length - 1] : null);
-  // Don't treat .yjs files as viewable files - they are internal to Yjs documents
   let isViewingFile = $derived($isViewingFileStore);
-  let hasFile = $derived(isViewingFile && lastSegment && !lastSegment.endsWith('.yjs'));
+  let resolvingPath = $derived($resolvingPathStore);
+  let hasFile = $derived(isViewingFile && lastSegment);
   let urlFileName = $derived(hasFile ? lastSegment : null);
 
   // Parse query params from URL hash - use currentHash store for reactivity
@@ -428,7 +428,7 @@
   // Check if file is a live stream
   // Shows LIVE indicator when:
   // 1. URL has ?live=1 param, OR
-  // 2. File was recently changed AND viewing someone else's tree (not own files)
+  // 2. File is in recentlyChangedFiles (being actively updated)
   let recentlyChanged = $derived($recentlyChangedFiles);
   let isLiveStream = $derived.by(() => {
     // Check URL param first
@@ -439,9 +439,8 @@
       if (params.get('live') === '1') return true;
     }
 
-    // Show LIVE for files recently changed by others (not our own uploads)
-    // Only applies when viewing another user's tree
-    if (urlFileName && viewedNpub && viewedNpub !== userNpub && recentlyChanged.has(urlFileName)) {
+    // Show LIVE for files that are actively being updated
+    if (urlFileName && recentlyChanged.has(urlFileName)) {
       return true;
     }
 
@@ -730,10 +729,14 @@
     dirName={currentDirName}
     entries={entries}
   />
-{:else if hasTreeContext}
+{:else if hasTreeContext && !resolvingPath}
   <!-- Directory view - show DirectoryActions -->
   <div class="flex-1 flex flex-col min-h-0 bg-surface-0">
     <DirectoryActions />
+  </div>
+{:else if resolvingPath}
+  <!-- Resolving path - show empty placeholder to avoid flash of wrong content -->
+  <div class="flex-1 flex items-center justify-center bg-surface-0">
   </div>
 {:else}
   <!-- No content view -->

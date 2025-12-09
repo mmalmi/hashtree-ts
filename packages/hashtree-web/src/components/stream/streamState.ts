@@ -6,6 +6,7 @@ import { autosaveIfOwn, nostrStore } from '../../nostr';
 import { parseRoute } from '../../utils/route';
 import { getCurrentPathFromUrl } from '../../actions/route';
 import { getTreeRootSync } from '../../stores/treeRoot';
+import { markFilesChanged } from '../../stores/recentlyChanged';
 
 // Generate default stream filename
 export function getDefaultFilename(): string {
@@ -208,10 +209,12 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       const newRootCid = await tree.setEntry(rootCid, currentPath, filename, fileCid!, fileSize);
       // Publish to nostr - resolver will pick up the update
       autosaveIfOwn(newRootCid);
+      markFilesChanged(new Set([filename]));
     } else {
       // Create new tree - public directory but with encrypted file entries
       const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid!, size: fileSize }], { public: true })).cid;
       autosaveIfOwn(newRootCid);
+      markFilesChanged(new Set([filename]));
     }
   }, 3000);
 }

@@ -7,6 +7,7 @@
 import { writable, get, type Readable } from 'svelte/store';
 import { type CID, type TreeEntry, toHex } from 'hashtree';
 import { getTree } from '../store';
+import { markFilesChanged } from './recentlyChanged';
 
 // Sort entries: directories first, then alphabetically
 function sortEntries(entries: TreeEntry[]): TreeEntry[] {
@@ -25,7 +26,7 @@ export interface DirectoryEntriesState {
 /**
  * Create a store for directory entries for a given CID
  */
-export function createDirectoryEntriesStore(locationStore: Readable<CID | null>): Readable<DirectoryEntriesState> {
+export function createDirectoryEntriesStore(locationStore: Readable<CID | null>, trackChanges = false): Readable<DirectoryEntriesState> {
   const state = writable<DirectoryEntriesState>({
     entries: [],
     loading: false,
@@ -34,6 +35,8 @@ export function createDirectoryEntriesStore(locationStore: Readable<CID | null>)
 
   let prevHashKey: string | null = null;
   let prevEncKey: string | null = null;
+  // Track previous entries by name -> CID hash to detect changes
+  let prevEntryCids: Map<string, string> = new Map();
 
   // Subscribe to location changes
   locationStore.subscribe(async (location) => {
@@ -47,6 +50,7 @@ export function createDirectoryEntriesStore(locationStore: Readable<CID | null>)
 
     if (!location || !hashKey) {
       state.set({ entries: [], loading: false, isDirectory: true });
+      prevEntryCids.clear();
       return;
     }
 
@@ -54,23 +58,51 @@ export function createDirectoryEntriesStore(locationStore: Readable<CID | null>)
     const tree = getTree();
 
     try {
+      let newEntries: TreeEntry[] = [];
+
       if (location.key) {
         // Encrypted - try to list directory with key
-        const list = await tree.listDirectory(location);
-        state.set({ entries: sortEntries(list), loading: false, isDirectory: true });
+        newEntries = await tree.listDirectory(location);
       } else {
         // Public - first check if it's a directory
         const isDir = await tree.isDirectory(location);
 
         if (isDir) {
-          const list = await tree.listDirectory(location);
-          state.set({ entries: sortEntries(list), loading: false, isDirectory: true });
+          newEntries = await tree.listDirectory(location);
         } else {
           state.set({ entries: [], loading: false, isDirectory: false });
+          prevEntryCids.clear();
+          return;
         }
       }
+
+      // Detect changed files (CID changed for same filename)
+      if (trackChanges && prevEntryCids.size > 0) {
+        const changedFiles = new Set<string>();
+        for (const entry of newEntries) {
+          const prevCid = prevEntryCids.get(entry.name);
+          const newCid = entry.cid?.hash ? toHex(entry.cid.hash) : null;
+          if (prevCid && newCid && prevCid !== newCid) {
+            changedFiles.add(entry.name);
+          }
+        }
+        if (changedFiles.size > 0) {
+          markFilesChanged(changedFiles);
+        }
+      }
+
+      // Update prev entry CIDs for next comparison
+      prevEntryCids = new Map();
+      for (const entry of newEntries) {
+        if (entry.cid?.hash) {
+          prevEntryCids.set(entry.name, toHex(entry.cid.hash));
+        }
+      }
+
+      state.set({ entries: sortEntries(newEntries), loading: false, isDirectory: true });
     } catch {
       state.set({ entries: [], loading: false, isDirectory: false });
+      prevEntryCids.clear();
     }
   });
 
@@ -92,5 +124,6 @@ import { currentDirCidStore } from './currentDirHash';
 
 /**
  * Global directory entries store based on current directory CID
+ * trackChanges=true to detect when files change (for LIVE indicator)
  */
-export const directoryEntriesStore = createDirectoryEntriesStore(currentDirCidStore);
+export const directoryEntriesStore = createDirectoryEntriesStore(currentDirCidStore, true);

@@ -316,4 +316,123 @@ test.describe('Video Viewer', () => {
     expect(page.url()).not.toContain('live=1');
     console.log('URL after live param removed:', page.url());
   });
+
+  test('direct navigation to video URL should show video viewer, not directory', async ({ page }) => {
+    // This test simulates a viewer clicking on a link shared by a streamer
+    expect(fs.existsSync(TEST_VIDEO)).toBe(true);
+
+    // Set up user and upload video to get a valid URL
+    await setupFreshUser(page);
+
+    // Upload the video
+    const fileInput = page.locator('input[type="file"][multiple]').first();
+    await fileInput.setInputFiles(TEST_VIDEO);
+    await page.waitForTimeout(1000);
+
+    // Get the video URL
+    const videoLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'Big_Buck_Bunny_360_10s_1MB.mp4' }).first();
+    await expect(videoLink).toBeVisible({ timeout: 30000 });
+    const href = await videoLink.getAttribute('href');
+    expect(href).toBeTruthy();
+    console.log('Video URL:', href);
+
+    // Navigate away first using hash (keeps app in memory - no page reload)
+    await page.evaluate(() => { window.location.hash = '#/'; });
+    await page.waitForTimeout(500);
+
+    // Navigate DIRECTLY to the video URL (simulating clicking a shared link within the same session)
+    // NOTE: In a real "share link" scenario, the viewer would have a fresh page load
+    // and would get data from nostr. This test verifies the SPA navigation works correctly.
+    await page.evaluate((url: string) => { window.location.hash = url; }, href);
+    await page.waitForTimeout(2000);
+
+    // Should show video element, NOT directory listing
+    const videoElement = page.locator('video');
+    await expect(videoElement).toBeVisible({ timeout: 10000 });
+
+    // Should NOT show "Empty directory" or file list
+    const emptyDir = page.locator('text=Empty directory');
+    await expect(emptyDir).not.toBeVisible();
+
+    // Viewer header should show the filename
+    const viewerHeader = page.getByTestId('viewer-header');
+    await expect(viewerHeader).toContainText('Big_Buck_Bunny_360_10s_1MB.mp4');
+
+    // Video should have loaded metadata
+    await page.waitForFunction(() => {
+      const video = document.querySelector('video') as HTMLVideoElement;
+      return video && video.readyState >= 1;
+    }, { timeout: 15000 });
+
+    const videoState = await page.evaluate(() => {
+      const video = document.querySelector('video') as HTMLVideoElement;
+      if (!video) return null;
+      return {
+        readyState: video.readyState,
+        duration: video.duration,
+        src: video.src,
+      };
+    });
+
+    console.log('Video state after direct nav:', JSON.stringify(videoState, null, 2));
+    expect(videoState).not.toBeNull();
+    expect(videoState!.readyState).toBeGreaterThanOrEqual(1);
+  });
+
+  test('direct navigation to video URL with ?live=1 should show LIVE indicator', async ({ page }) => {
+    // Test that direct navigation with ?live=1 param shows LIVE indicator and video loads
+    expect(fs.existsSync(TEST_VIDEO)).toBe(true);
+
+    await setupFreshUser(page);
+
+    // Upload the video
+    const fileInput = page.locator('input[type="file"][multiple]').first();
+    await fileInput.setInputFiles(TEST_VIDEO);
+    await page.waitForTimeout(1000);
+
+    // Get the video URL
+    const videoLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'Big_Buck_Bunny_360_10s_1MB.mp4' }).first();
+    await expect(videoLink).toBeVisible({ timeout: 30000 });
+    const href = await videoLink.getAttribute('href');
+    expect(href).toBeTruthy();
+
+    // Navigate away using hash (keeps app in memory)
+    await page.evaluate(() => { window.location.hash = '#/'; });
+    await page.waitForTimeout(500);
+
+    // Navigate DIRECTLY to video with ?live=1 (simulating shared live stream link within same session)
+    const liveUrl = href + '?live=1';
+    await page.evaluate((url: string) => { window.location.hash = url; }, liveUrl);
+    await page.waitForTimeout(2000);
+
+    // Should show video element
+    const videoElement = page.locator('video');
+    await expect(videoElement).toBeVisible({ timeout: 10000 });
+
+    // Should show LIVE indicator (in header)
+    const liveIndicator = page.locator('text=LIVE').first();
+    await expect(liveIndicator).toBeVisible({ timeout: 5000 });
+
+    // Video should load and play
+    await page.waitForFunction(() => {
+      const video = document.querySelector('video') as HTMLVideoElement;
+      return video && video.readyState >= 1;
+    }, { timeout: 15000 });
+
+    // Duration should be near the end (live seek behavior)
+    const videoState = await page.evaluate(() => {
+      const video = document.querySelector('video') as HTMLVideoElement;
+      if (!video) return null;
+      return {
+        duration: video.duration,
+        currentTime: video.currentTime,
+      };
+    });
+
+    console.log('Video state for direct live nav:', JSON.stringify(videoState, null, 2));
+    expect(videoState).not.toBeNull();
+    expect(videoState!.duration).toBeGreaterThan(5);
+    // Should have seeked near end
+    expect(videoState!.currentTime).toBeGreaterThan(videoState!.duration - 6);
+  });
 });

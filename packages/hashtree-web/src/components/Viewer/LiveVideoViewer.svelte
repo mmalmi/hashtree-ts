@@ -19,7 +19,10 @@
     fileName: string;
   }
 
-  let { cid, fileName }: Props = $props();
+  let props: Props = $props();
+  // Derive from props to ensure reactivity
+  let cid = $derived(props.cid);
+  let fileName = $derived(props.fileName);
 
   let videoRef: HTMLVideoElement | undefined = $state();
   let mediaSource: MediaSource | null = $state(null);
@@ -280,10 +283,13 @@
   }
 
   // Watch for CID changes in live mode
+  // Access cid.hash directly to ensure reactivity
+  let currentCidHashReactive = $derived(cid?.hash ? toHex(cid.hash) : null);
+
   $effect(() => {
     if (!shouldTreatAsLive || loading) return;
 
-    const currentCidHash = cid?.hash ? toHex(cid.hash) : null;
+    const currentCidHash = currentCidHashReactive;
     if (currentCidHash && currentCidHash !== lastCidHash) {
       fetchNewData();
     }
@@ -293,6 +299,13 @@
   function handleTimeUpdate() {
     if (videoRef) {
       currentTime = videoRef.currentTime;
+    }
+  }
+
+  // Update duration when video metadata changes (new data appended)
+  function handleDurationChange() {
+    if (videoRef && !isNaN(videoRef.duration) && isFinite(videoRef.duration)) {
+      duration = videoRef.duration;
     }
   }
 
@@ -375,6 +388,7 @@
       class:invisible={loading || error}
       preload="metadata"
       ontimeupdate={handleTimeUpdate}
+      ondurationchange={handleDurationChange}
     >
       Your browser does not support the video tag.
     </video>

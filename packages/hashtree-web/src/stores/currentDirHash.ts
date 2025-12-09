@@ -16,10 +16,18 @@ const currentDirCidStore = writable<CID | null>(null);
 // Store for whether we're viewing a file (not a directory)
 const isViewingFileStore = writable<boolean>(false);
 
+// Store for whether path resolution is in progress (prevents flash of wrong content)
+// This is true when:
+// 1. We have path segments but no root CID yet (waiting for tree to load)
+// 2. We're actively resolving the path to determine if it's a file or directory
+const resolvingPathStore = writable<boolean>(false);
+
 // Track previous values to avoid redundant recalculations
 let prevRootHash: string | null = null;
 let prevRootKey: string | null = null;
 let prevPathKey: string | null = null;
+// Track if resolution has ever completed for this path
+let hasResolvedCurrentPath = false;
 
 // Reactive update based on rootCid and path changes
 async function updateCurrentDirCid() {
@@ -31,6 +39,11 @@ async function updateCurrentDirCid() {
   const rootKey = rootCid?.key ? toHex(rootCid.key) : null;
   const pathKey = urlPath.join('/');
 
+  // Check if path changed - reset resolution tracking
+  if (pathKey !== prevPathKey) {
+    hasResolvedCurrentPath = false;
+  }
+
   // Skip if no change
   if (rootHash === prevRootHash && rootKey === prevRootKey && pathKey === prevPathKey) {
     return;
@@ -39,17 +52,25 @@ async function updateCurrentDirCid() {
   prevRootKey = rootKey;
   prevPathKey = pathKey;
 
+  // If we have path segments but no root CID, we're waiting for tree to load
   if (!rootCid || !rootHash) {
     currentDirCidStore.set(null);
     isViewingFileStore.set(false);
+    // Set resolving=true if we have path segments (might be navigating to a file)
+    resolvingPathStore.set(urlPath.length > 0);
     return;
   }
 
   if (urlPath.length === 0) {
     currentDirCidStore.set(rootCid);
     isViewingFileStore.set(false);
+    resolvingPathStore.set(false);
+    hasResolvedCurrentPath = true;
     return;
   }
+
+  // Mark as resolving before async work
+  resolvingPathStore.set(true);
 
   const tree = getTree();
 
@@ -57,8 +78,9 @@ async function updateCurrentDirCid() {
     // Resolve full path first
     const result = await tree.resolvePath(rootCid, urlPath);
     if (!result) {
-      currentDirCidStore.set(null);
-      isViewingFileStore.set(false);
+      // Keep resolvingPath=true - root might be stale and updating
+      // The currentDirCid stays null but we don't mark as "resolved" yet
+      // If a new root comes in, we'll try again via the subscription
       return;
     }
 
@@ -82,9 +104,13 @@ async function updateCurrentDirCid() {
         currentDirCidStore.set(parentResult?.cid ?? null);
       }
     }
+    resolvingPathStore.set(false);
+    hasResolvedCurrentPath = true;
   } catch {
     currentDirCidStore.set(null);
     isViewingFileStore.set(false);
+    resolvingPathStore.set(false);
+    hasResolvedCurrentPath = true;
   }
 }
 
@@ -109,6 +135,12 @@ export { currentDirCidStore };
  * Store for whether current URL path points to a file (not a directory)
  */
 export { isViewingFileStore };
+
+/**
+ * Store for whether path resolution is in progress
+ * Use to wait before rendering to avoid flash of wrong content
+ */
+export { resolvingPathStore };
 
 // Compatibility functions for React-style usage
 export function currentDirHash(): Hash | null {

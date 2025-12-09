@@ -1,11 +1,12 @@
 <script lang="ts">
   /**
    * VisibilityIcon - displays icon for tree visibility level
+   * Shows nothing if visibility is undefined (not yet resolved)
    */
   import type { TreeVisibility } from 'hashtree';
 
   interface Props {
-    visibility: TreeVisibility;
+    visibility: TreeVisibility | undefined;
     class?: string;
   }
 
@@ -22,10 +23,12 @@
     }
   }
 
-  let info = $derived(getVisibilityInfo(visibility));
+  let info = $derived(visibility ? getVisibilityInfo(visibility) : null);
 </script>
 
-{#if visibility === 'unlisted'}
+{#if !visibility || !info}
+  <!-- Don't show anything if visibility not resolved -->
+{:else if visibility === 'unlisted'}
   <!-- LinkLockIcon - combined link icon with small lock in bottom-right corner -->
   <span class="relative inline-block shrink-0 {className}" title={info.title}>
     <span class="i-lucide-link"></span>

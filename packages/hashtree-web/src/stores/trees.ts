@@ -82,8 +82,8 @@ export interface TreeEntry {
   hashHex: string;  // Hex string of hash
   /** @deprecated Use visibility instead */
   encryptionKey?: Hash; // Encryption key (if encrypted, public)
-  /** Tree visibility: public, unlisted, or private */
-  visibility: TreeVisibility;
+  /** Tree visibility: public, unlisted, or private. Undefined if not yet resolved from Nostr. */
+  visibility: TreeVisibility | undefined;
   /** Encrypted key for unlisted trees */
   encryptedKey?: string;
   /** Key ID for unlisted trees */
@@ -124,7 +124,8 @@ export function createTreesStore(npub: string | null): Readable<TreeEntry[]> {
 
       store.set(entries.map(e => {
         const name = e.key.split('/')[1] || '';
-        const visibility = e.visibility ?? 'public';
+        // Don't default visibility - let it be undefined if not resolved from Nostr
+        const visibility = e.visibility;
         // Include stored link key for unlisted trees (own trees only)
         const linkKey = visibility === 'unlisted' && isOwnTrees
           ? storedLinkKeys[`${npub}/${name}`]
