@@ -166,7 +166,7 @@
             class="btn-ghost"
             title="Switch user"
           >
-            Users
+            Switch User
           </button>
           <button
             onclick={() => navigate(`/${npub}/edit`)}
