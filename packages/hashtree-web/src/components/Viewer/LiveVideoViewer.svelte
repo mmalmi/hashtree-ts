@@ -3,15 +3,16 @@
    * LiveVideoViewer - Video player with MSE for live streaming
    *
    * Uses MediaSource Extensions to progressively play video as chunks arrive.
-   * Detects live streams via:
-   * - ?live=1 hash param (from shared link or stream recording)
-   * - recentlyChangedFiles store (local session only)
-   * Seeks to near-live position (5s from end) for live streams.
+   * For live streams:
+   * - Detects live via ?live=1 hash param
+   * - Watches for CID changes (new data published)
+   * - Uses readFileRange to fetch only NEW bytes
+   * - Appends incrementally to SourceBuffer
    */
   import { getTree } from '../../store';
   import { recentlyChangedFiles } from '../../stores/recentlyChanged';
   import { currentHash } from '../../stores';
-  import type { CID } from 'hashtree';
+  import { toHex, type CID } from 'hashtree';
 
   interface Props {
     cid: CID;
@@ -29,6 +30,13 @@
   let duration = $state(0);
   let currentTime = $state(0);
   let bufferedEnd = $state(0);
+
+  // Track bytes loaded for incremental fetching
+  let bytesLoaded = $state(0);
+  let lastCidHash = $state<string | null>(null);
+
+  // Abort controller for cancelling streaming on unmount
+  let abortController: AbortController | null = null;
 
   // Check if live=1 is in URL hash params
   let hash = $derived($currentHash);
@@ -61,15 +69,11 @@
     isLive = false;
   }
 
-  // Watch for stream becoming non-live (file no longer being updated)
-  // Remove ?live=1 from URL when this happens
+  // Watch for stream becoming non-live
   let liveParamRemovalScheduled = false;
   $effect(() => {
-    // If we have ?live=1 in URL but file is no longer recently changed,
-    // the stream has ended - remove the param after video finishes loading
     if (isLiveFromUrl && !isRecentlyChanged && !loading && !liveParamRemovalScheduled) {
       liveParamRemovalScheduled = true;
-      // Small delay to allow any final processing
       setTimeout(() => {
         removeLiveParam();
       }, 500);
@@ -91,12 +95,54 @@
     return 'MediaSource' in window && MediaSource.isTypeSupported(mimeType);
   }
 
-  // Load video using MSE
+  // Append data to source buffer, waiting for it to be ready
+  async function appendToSourceBuffer(data: Uint8Array): Promise<void> {
+    if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
+      return;
+    }
+
+    // Wait for buffer to be ready (with timeout)
+    let waitCount = 0;
+    while (sourceBuffer.updating) {
+      await new Promise(r => setTimeout(r, 10));
+      waitCount++;
+      if (waitCount > 100) {
+        return;
+      }
+    }
+
+    try {
+      sourceBuffer.appendBuffer(data);
+
+      // Wait for append to complete
+      await new Promise<void>((resolve) => {
+        if (!sourceBuffer!.updating) {
+          resolve();
+        } else {
+          sourceBuffer!.addEventListener('updateend', () => resolve(), { once: true });
+        }
+      });
+
+      // Update buffered info
+      if (sourceBuffer.buffered.length > 0) {
+        bufferedEnd = sourceBuffer.buffered.end(sourceBuffer.buffered.length - 1);
+      }
+    } catch {
+      // Ignore errors - will fall back to blob URL if needed
+    }
+  }
+
+  // Initial load with MSE
   async function loadWithMse() {
+    if (!cid?.hash) {
+      error = 'No file CID';
+      loading = false;
+      return;
+    }
+
     const mimeType = getMimeType(fileName);
 
     if (!isMseSupported(mimeType)) {
-      // Fall back to blob URL for unsupported types
       await loadWithBlobUrl();
       return;
     }
@@ -107,45 +153,37 @@
       if (!videoRef) return;
       videoRef.src = URL.createObjectURL(mediaSource);
 
+      // Create abort controller for this load
+      abortController = new AbortController();
+      const signal = abortController.signal;
+
       await new Promise<void>((resolve, reject) => {
         mediaSource!.addEventListener('sourceopen', () => resolve(), { once: true });
         mediaSource!.addEventListener('error', (e) => reject(e), { once: true });
       });
 
+      if (signal.aborted) return;
+
       sourceBuffer = mediaSource.addSourceBuffer(mimeType);
 
-      // Stream chunks into the source buffer
+      // Stream all available chunks
       const tree = getTree();
-      let bytesLoaded = 0;
 
       for await (const chunk of tree.readFileStream(cid)) {
-        // Wait for buffer to be ready
-        while (sourceBuffer.updating) {
-          await new Promise(r => setTimeout(r, 10));
-        }
-
-        sourceBuffer.appendBuffer(chunk);
-        bytesLoaded += chunk.length;
-
-        // Update buffered info
-        if (sourceBuffer.buffered.length > 0) {
-          bufferedEnd = sourceBuffer.buffered.end(sourceBuffer.buffered.length - 1);
-        }
-
-        // Wait for append to complete
-        await new Promise<void>((resolve) => {
-          if (!sourceBuffer!.updating) {
-            resolve();
-          } else {
-            sourceBuffer!.addEventListener('updateend', () => resolve(), { once: true });
+        if (signal.aborted || mediaSource?.readyState !== 'open') {
+          // MSE closed - fall back to blob URL
+          if (!signal.aborted && mediaSource?.readyState === 'closed') {
+            await loadWithBlobUrl();
+            return;
           }
-        });
+          break;
+        }
+        await appendToSourceBuffer(chunk);
+        bytesLoaded += chunk.length;
       }
 
-      // End the stream
-      if (mediaSource.readyState === 'open') {
-        mediaSource.endOfStream();
-      }
+      // Store current CID hash for change detection
+      lastCidHash = toHex(cid.hash);
 
       // Update duration
       if (videoRef) {
@@ -158,10 +196,14 @@
         isLive = true;
       }
 
+      // For live streams, don't end the stream yet - keep it open for new data
+      if (!shouldTreatAsLive && mediaSource.readyState === 'open') {
+        mediaSource.endOfStream();
+      }
+
       loading = false;
     } catch (e) {
       console.error('MSE error:', e);
-      // Fall back to blob URL
       await loadWithBlobUrl();
     }
   }
@@ -178,6 +220,9 @@
         return;
       }
 
+      bytesLoaded = data.length;
+      lastCidHash = toHex(cid.hash);
+
       const mimeType = getMimeType(fileName).split(';')[0];
       const blob = new Blob([data], { type: mimeType });
 
@@ -187,7 +232,6 @@
         videoRef.addEventListener('loadedmetadata', () => {
           duration = videoRef!.duration;
 
-          // If live, seek to near the end
           if (shouldTreatAsLive && duration > 5) {
             videoRef!.currentTime = Math.max(0, duration - 5);
             isLive = true;
@@ -201,6 +245,49 @@
       loading = false;
     }
   }
+
+  // Fetch and append only new data when CID changes
+  async function fetchNewData() {
+    if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
+      return;
+    }
+
+    const currentCidHash = toHex(cid.hash);
+    if (currentCidHash === lastCidHash) {
+      return; // No change
+    }
+
+    try {
+      const tree = getTree();
+
+      // Fetch only bytes from our current offset onwards
+      const newData = await tree.readFileRange(cid, bytesLoaded);
+
+      if (newData && newData.length > 0) {
+        await appendToSourceBuffer(newData);
+        bytesLoaded += newData.length;
+
+        // Update duration
+        if (videoRef && !isNaN(videoRef.duration)) {
+          duration = videoRef.duration;
+        }
+      }
+
+      lastCidHash = currentCidHash;
+    } catch (e) {
+      console.error('Error fetching new data:', e);
+    }
+  }
+
+  // Watch for CID changes in live mode
+  $effect(() => {
+    if (!shouldTreatAsLive || loading) return;
+
+    const currentCidHash = cid?.hash ? toHex(cid.hash) : null;
+    if (currentCidHash && currentCidHash !== lastCidHash) {
+      fetchNewData();
+    }
+  });
 
   // Update current time
   function handleTimeUpdate() {
@@ -220,18 +307,34 @@
   // Cleanup on destroy
   $effect(() => {
     return () => {
+      // Abort any ongoing streaming
+      if (abortController) {
+        abortController.abort();
+        abortController = null;
+      }
+      if (mediaSource && mediaSource.readyState === 'open') {
+        try {
+          mediaSource.endOfStream();
+        } catch {
+          // Ignore errors during cleanup
+        }
+      }
       if (videoRef?.src) {
         URL.revokeObjectURL(videoRef.src);
       }
     };
   });
 
-  // Load video when component mounts - use flag to prevent re-running
+  // Load video when component mounts
   let hasStartedLoading = false;
   $effect(() => {
     if (videoRef && !hasStartedLoading) {
       hasStartedLoading = true;
-      loadWithMse();
+      loadWithMse().catch((e) => {
+        console.error('Failed to load video:', e);
+        error = e instanceof Error ? e.message : 'Failed to load video';
+        loading = false;
+      });
     }
   });
 </script>
@@ -280,6 +383,9 @@
     {#if !loading && !error}
       <div class="absolute bottom-16 right-3 z-10 px-2 py-1 bg-black/70 text-white text-sm rounded">
         {formatTime(currentTime)} / {formatTime(duration)}
+        {#if shouldTreatAsLive}
+          <span class="ml-2 text-xs text-gray-400">({Math.round(bytesLoaded / 1024)}KB)</span>
+        {/if}
       </div>
     {/if}
   </div>

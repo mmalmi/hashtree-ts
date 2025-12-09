@@ -275,4 +275,129 @@ describe('StreamWriter - Streaming scenarios', () => {
       expect(storeSize).toBeLessThan(5);
     });
   });
+
+  describe('live viewer - incremental reading', () => {
+    it('should read only new data when CID updates', async () => {
+      // This tests the core live viewing pattern:
+      // 1. Viewer joins stream, reads initial data
+      // 2. Stream adds more data, publishes new CID
+      // 3. Viewer reads from new CID starting at previous end offset
+      // 4. Viewer only receives the NEW bytes, not the whole file
+
+      const chunkSize = 100;
+      const streamTree = new HashTree({ store, chunkSize });
+      const stream = streamTree.createStream();
+
+      // Initial data
+      const chunk1 = new Uint8Array(50).fill(1);
+      await stream.append(chunk1);
+      const cid1 = await stream.currentRoot();
+
+      // Viewer joins and reads all available data
+      const initialData = await tree.readFile(cid1!);
+      expect(initialData).toEqual(chunk1);
+      const viewerOffset = initialData!.length; // 50 bytes
+
+      // More data arrives
+      const chunk2 = new Uint8Array(50).fill(2);
+      await stream.append(chunk2);
+      const cid2 = await stream.currentRoot();
+
+      // Viewer reads ONLY new data using readFileRange starting from offset
+      const newData = await tree.readFileRange(cid2!, viewerOffset);
+      expect(newData!.length).toBe(50);
+      expect(newData![0]).toBe(2); // This is chunk2 data
+
+      // Verify the full file contains both chunks
+      const fullData = await tree.readFile(cid2!);
+      expect(fullData!.length).toBe(100);
+      expect(fullData!.slice(0, 50)).toEqual(chunk1);
+      expect(fullData!.slice(50)).toEqual(chunk2);
+    });
+
+    it('should support continuous incremental reads as stream grows', async () => {
+      // Simulates a viewer watching a live stream for extended period
+      const chunkSize = 100;
+      const streamTree = new HashTree({ store, chunkSize });
+      const stream = streamTree.createStream();
+
+      let viewerOffset = 0;
+      const receivedChunks: Uint8Array[] = [];
+
+      // Simulate 10 "seconds" of streaming
+      for (let second = 0; second < 10; second++) {
+        // Streamer adds data
+        const newChunk = new Uint8Array(30).fill(second);
+        await stream.append(newChunk);
+        const currentCid = await stream.currentRoot();
+
+        // Viewer fetches new data from their last position
+        const newData = await tree.readFileRange(currentCid!, viewerOffset);
+
+        if (newData && newData.length > 0) {
+          receivedChunks.push(newData);
+          viewerOffset += newData.length;
+        }
+      }
+
+      // Verify viewer received all data incrementally
+      const totalReceived = receivedChunks.reduce((sum, c) => sum + c.length, 0);
+      expect(totalReceived).toBe(300); // 10 chunks * 30 bytes
+
+      // Verify data integrity - each 30-byte segment should be filled with its index
+      let offset = 0;
+      for (let i = 0; i < 10; i++) {
+        // Find the data at this offset across received chunks
+        let remaining = 30;
+        let chunkOffset = 0;
+        for (const chunk of receivedChunks) {
+          if (chunkOffset + chunk.length <= offset) {
+            chunkOffset += chunk.length;
+            continue;
+          }
+          const startInChunk = Math.max(0, offset - chunkOffset);
+          const available = chunk.length - startInChunk;
+          const toCheck = Math.min(available, remaining);
+          for (let j = 0; j < toCheck; j++) {
+            expect(chunk[startInChunk + j]).toBe(i);
+          }
+          remaining -= toCheck;
+          offset += toCheck;
+          chunkOffset += chunk.length;
+          if (remaining === 0) break;
+        }
+      }
+    });
+
+    it('should handle viewer joining mid-stream', async () => {
+      // Stream has been running, viewer joins late
+      const chunkSize = 100;
+      const streamTree = new HashTree({ store, chunkSize });
+      const stream = streamTree.createStream();
+
+      // Stream already has 5 seconds of content
+      for (let i = 0; i < 5; i++) {
+        await stream.append(new Uint8Array(50).fill(i));
+      }
+      const midStreamCid = await stream.currentRoot();
+      const midStreamSize = 250; // 5 * 50
+
+      // Viewer joins now - in live mode, seek to near end (e.g., last 100 bytes)
+      const seekPosition = Math.max(0, midStreamSize - 100);
+      const catchUpData = await tree.readFileRange(midStreamCid!, seekPosition);
+      expect(catchUpData!.length).toBe(100); // Last 100 bytes
+
+      // Now viewer tracks from this position
+      let viewerOffset = midStreamSize;
+
+      // More data arrives
+      await stream.append(new Uint8Array(50).fill(99));
+      const newCid = await stream.currentRoot();
+
+      // Viewer gets only the new 50 bytes
+      const newData = await tree.readFileRange(newCid!, viewerOffset);
+      expect(newData!.length).toBe(50);
+      expect(newData![0]).toBe(99);
+    });
+  });
 });

@@ -2,12 +2,12 @@
  * Tree reading operations
  */
 
-import { Store, Hash, TreeNode, toHex } from '../types.js';
+import { Store, Hash, TreeNode, toHex, CID, cid } from '../types.js';
 import { decodeTreeNode, isTreeNode, isDirectoryNode } from '../codec.js';
 
 export interface TreeEntry {
   name: string;
-  hash: Hash;
+  cid: CID;
   size?: number;
   isTree: boolean;
 }
@@ -282,7 +282,7 @@ export async function listDirectory(store: Store, hash: Hash): Promise<TreeEntry
     const childIsDir = link.isTree ?? await isDirectory(store, link.hash);
     entries.push({
       name: link.name ?? toHex(link.hash),
-      hash: link.hash,
+      cid: cid(link.hash, link.key),
       size: link.size,
       isTree: childIsDir,
     });

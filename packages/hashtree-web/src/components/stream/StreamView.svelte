@@ -64,8 +64,14 @@
   function handleStartRecording() {
     if (videoRef) {
       startRecording(videoRef);
-      // Don't navigate to file URL yet - file doesn't exist until saved
-      // The shareable URL is built dynamically in handleShare()
+      // Navigate to file URL so it's shareable immediately
+      const fullFilename = `${stream.streamFilename}.webm`;
+      const filePath = `${basePath}/${encodeURIComponent(fullFilename)}`;
+      const params = [
+        linkKey ? `k=${linkKey}` : '',
+        'stream=1',
+      ].filter(Boolean).join('&');
+      window.location.hash = `#${filePath}?${params}`;
     }
   }
 

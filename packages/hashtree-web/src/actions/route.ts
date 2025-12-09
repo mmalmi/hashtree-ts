@@ -41,6 +41,11 @@ export function getCurrentPathFromUrl(): string[] {
   const urlPath = route.path;
   if (urlPath.length === 0) return [];
 
+  // When streaming, the last path segment is the file being created (not a directory)
+  if (route.isStreaming && urlPath.length > 0) {
+    return urlPath.slice(0, -1);
+  }
+
   // Use actual isDirectory check from store
   const isViewingFile = get(isViewingFileStore);
   return isViewingFile ? urlPath.slice(0, -1) : urlPath;

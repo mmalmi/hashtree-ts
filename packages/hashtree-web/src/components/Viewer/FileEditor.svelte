@@ -5,6 +5,7 @@
    */
   import { saveFile } from '../../actions';
   import { openUnsavedChangesModal } from '../../stores/modals';
+  import { settingsStore } from '../../stores/settings';
 
   interface Props {
     fileName: string;
@@ -18,6 +19,9 @@
   let savedContent = $state(initialContent); // Track last saved content
   let saving = $state(false);
 
+  // Get autosave setting from store
+  let autoSaveEnabled = $derived($settingsStore.editor.autoSave);
+
   // Track if content has been modified since last save
   let isDirty = $derived(editContent !== savedContent);
 
@@ -30,6 +34,37 @@
 
   // Show "Saved!" briefly after saving
   let showSaved = $derived(!isDirty && savedContent !== initialContent);
+
+  // Autosave: debounce save after 1 second of no typing
+  let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    // Only autosave if enabled and content is dirty
+    if (!autoSaveEnabled || !isDirty) {
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = null;
+      }
+      return;
+    }
+
+    // Clear previous timer
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer);
+    }
+
+    // Set new timer for autosave (1 second debounce)
+    autoSaveTimer = setTimeout(() => {
+      handleSave();
+    }, 1000);
+
+    return () => {
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = null;
+      }
+    };
+  });
 
   function handleClose() {
     if (isDirty) {
@@ -53,19 +88,13 @@
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       handleSave();
-      return;
-    }
-
-    // ESC to close (with unsaved changes check)
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      handleClose();
     }
   }
 
-  // Global ESC handler (for when textarea doesn't have focus)
+  // Global keyboard handler (works even when textarea is focused)
   $effect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // ESC to close (with unsaved changes check)
       if (e.key === 'Escape') {
         // Don't handle if a modal is open (check if any modal backdrop exists)
         if (document.querySelector('[data-modal-backdrop]')) return;
@@ -85,10 +114,26 @@
   <div class="shrink-0 px-3 py-2 border-b border-surface-3 flex items-center gap-2 bg-surface-1">
     <span class="i-lucide-file-text text-text-2"></span>
     <span class="font-medium text-text-1">{fileName}</span>
-    <span class="text-xs text-muted">(editing{isDirty ? ' - unsaved' : ''})</span>
-    <div class="ml-auto flex items-center gap-2">
-      <button onclick={handleSave} disabled={saving} class="btn-success">
-        {saving ? 'Saving...' : showSaved ? 'Saved!' : 'Save'}
+    <span class="text-xs text-muted">
+      (editing{#if isDirty}{autoSaveEnabled ? ' - autosaving...' : ' - unsaved'}{/if})
+    </span>
+    <div class="ml-auto flex items-center gap-3">
+      <label class="flex items-center gap-1.5 text-sm text-text-2 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={autoSaveEnabled}
+          onchange={(e) => settingsStore.setEditorSettings({ autoSave: e.currentTarget.checked })}
+          class="w-4 h-4 accent-accent cursor-pointer"
+        />
+        Autosave
+      </label>
+      <button onclick={handleSave} disabled={saving || !isDirty} class="btn-success relative">
+        <!-- Invisible text to maintain button width -->
+        <span class="invisible">Saving...</span>
+        <!-- Visible text positioned absolutely -->
+        <span class="absolute inset-0 flex items-center justify-center">
+          {saving ? 'Saving...' : showSaved ? 'Saved!' : 'Save'}
+        </span>
       </button>
       <button onclick={handleClose} class="btn-ghost">
         Done
@@ -100,7 +145,7 @@
   <textarea
     bind:value={editContent}
     onkeydown={handleKeyDown}
-    class="flex-1 w-full p-4 bg-surface-0 text-text-1 font-mono text-sm resize-none focus:outline-none"
+    class="flex-1 w-full p-4 bg-surface-0 text-text-1 font-mono text-sm resize-none border border-transparent focus:border-accent focus:outline-none box-border"
     spellcheck="false"
   ></textarea>
 </div>

@@ -663,7 +663,10 @@
 
     <!-- Content -->
     {#if isVideo && entryFromStore?.cid}
-      <LiveVideoViewer cid={entryFromStore.cid} fileName={urlFileName} />
+      <!-- Key by filename to prevent remount on CID change during live streaming -->
+      {#key urlFileName}
+        <LiveVideoViewer cid={entryFromStore.cid} fileName={urlFileName} />
+      {/key}
     {:else if isHtml && fileContent !== null}
       <HtmlViewer content={fileContent} fileName={urlFileName} />
     {:else if isImage && blobUrl}

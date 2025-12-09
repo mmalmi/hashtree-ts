@@ -64,7 +64,7 @@ test.describe('Video Streaming', () => {
     page.on('console', msg => {
       const text = msg.text();
       if (msg.type() === 'error') console.log(`[Stream Error] ${text}`);
-      if (text.includes('[Stream]') || text.includes('stream')) console.log(`[Stream] ${text}`);
+      if (text.includes('[Stream]') || text.includes('stream') || text.includes('[LiveVideo]')) console.log(`[Stream] ${text}`);
     });
 
     // Set up fresh user and navigate to public folder
