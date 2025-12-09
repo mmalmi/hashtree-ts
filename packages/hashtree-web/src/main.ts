@@ -13,6 +13,11 @@ if (typeof window !== 'undefined') {
       uploadSingleFile
     };
   });
+
+  // Expose hashtree module for e2e tests (OpfsStore tests)
+  import('hashtree').then((hashtree) => {
+    (window as any).__hashtree = hashtree;
+  });
 }
 
 export default app;

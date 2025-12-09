@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createProfileStore, getProfileName } from '../../hooks/useProfile';
+  import { createProfileStore, getProfileName } from '../../stores/profile';
   import { animalName } from '../../utils/animalName';
 
   interface Props {

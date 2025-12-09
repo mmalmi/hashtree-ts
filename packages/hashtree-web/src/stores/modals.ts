@@ -36,7 +36,7 @@ interface GitignoreTarget {
   /** Root directory name */
   dirName: string;
   /** Callback when user makes a decision */
-  onDecision: (useGitignore: boolean, rememberGlobally: boolean) => void;
+  onDecision: (gitignore: boolean, rememberGlobally: boolean) => void;
 }
 
 interface GitHistoryTarget {

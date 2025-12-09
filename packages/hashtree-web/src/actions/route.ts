@@ -4,7 +4,7 @@
 import { navigate } from '../utils/navigate';
 import { parseRoute, looksLikeFile } from '../utils/route';
 import type { CID } from 'hashtree';
-import { getTreeRootSync } from '../hooks/useTreeRoot';
+import { getTreeRootSync } from '../stores/treeRoot';
 
 // Helper to get current rootCid from route via resolver cache
 export function getCurrentRootCid(): CID | null {

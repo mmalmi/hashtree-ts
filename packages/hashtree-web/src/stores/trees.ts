@@ -158,7 +158,7 @@ export function createTreesStore(npub: string | null): Readable<TreeEntry[]> {
 }
 
 // For backward compatibility with React-style usage in non-component code
-export function useTrees(npub: string | null): TreeEntry[] {
+export function trees(npub: string | null): TreeEntry[] {
   const store = createTreesStore(npub);
   return get(store);
 }

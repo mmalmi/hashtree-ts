@@ -4,7 +4,7 @@
    * Shows upload progress and general notifications at bottom of screen
    */
   import { toasts, dismissToast, type ToastType } from '../stores/toast';
-  import { uploadProgress, cancelUpload } from '../hooks/useUpload';
+  import { uploadProgress, cancelUpload } from '../stores/upload';
 
   const iconMap: Record<ToastType, string> = {
     info: 'i-lucide-info',

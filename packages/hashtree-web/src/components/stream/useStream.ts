@@ -4,7 +4,7 @@ import type { StreamWriter, CID } from 'hashtree';
 import { getTree } from '../../store';
 import { autosaveIfOwn, nostrStore } from '../../nostr';
 import { parseRoute, getCurrentPathFromUrl } from '../../utils/route';
-import { getTreeRootSync } from '../../hooks/useTreeRoot';
+import { getTreeRootSync } from '../../stores/treeRoot';
 
 // Generate default stream filename
 export function getDefaultFilename(): string {
@@ -206,11 +206,11 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       const currentPath = getCurrentPathFromUrl();
       const newRootCid = await tree.setEntry(rootCid, currentPath, filename, fileCid!, fileSize);
       // Publish to nostr - resolver will pick up the update
-      autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+      autosaveIfOwn(newRootCid);
     } else {
       // Create new tree - public directory but with encrypted file entries
       const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid!, size: fileSize }], { public: true })).cid;
-      autosaveIfOwn(toHex(newRootCid.hash));
+      autosaveIfOwn(newRootCid);
     }
   }, 3000);
 }
@@ -265,11 +265,11 @@ export async function stopRecording(): Promise<void> {
       const currentPath = getCurrentPathFromUrl();
       const newRootCid = await tree.setEntry(rootCid, currentPath, filename, fileCid, fileSize);
       // Publish to nostr - resolver will pick up the update
-      autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+      autosaveIfOwn(newRootCid);
     } else {
       // Create new tree - public directory but with encrypted file entries
       const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid, size: fileSize }], { public: true })).cid;
-      autosaveIfOwn(toHex(newRootCid.hash));
+      autosaveIfOwn(newRootCid);
       window.location.hash = '#/';
     }
   }

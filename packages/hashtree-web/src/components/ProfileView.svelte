@@ -5,10 +5,12 @@
    */
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../nostr';
-  import { createProfileStore } from '../hooks/useProfile';
-  import { openShareModal } from '../hooks/useModals';
-  import { Avatar, Name } from './User';
+  import { createProfileStore } from '../stores/profile';
+  import { createFollowsStore, followPubkey, unfollowPubkey } from '../stores/follows';
+  import { openShareModal } from '../stores/modals';
+  import { Avatar, Name, Badge, FollowedBy } from './User';
   import CopyText from './CopyText.svelte';
+  import { getFollowsMe, getFollowers, socialGraphStore } from '../utils/socialGraph';
 
   interface Props {
     npub: string;
@@ -43,10 +45,76 @@
     return unsub;
   });
 
+  // Follows store for my follows (to check if I'm following this user)
+  let myFollowsStore = $derived(myPubkey ? createFollowsStore(myPubkey) : null);
+  let myFollows = $state<string[]>([]);
+
+  $effect(() => {
+    if (!myFollowsStore) {
+      myFollows = [];
+      return;
+    }
+    const unsub = myFollowsStore.subscribe(value => {
+      myFollows = value?.follows || [];
+    });
+    return () => {
+      unsub();
+      myFollowsStore?.destroy();
+    };
+  });
+
+  // Follows store for the viewed profile (to show their following count)
+  let profileFollowsStore = $derived(pubkeyHex ? createFollowsStore(pubkeyHex) : null);
+  let profileFollows = $state<string[]>([]);
+
+  $effect(() => {
+    if (!profileFollowsStore) {
+      profileFollows = [];
+      return;
+    }
+    const unsub = profileFollowsStore.subscribe(value => {
+      profileFollows = value?.follows || [];
+    });
+    return () => {
+      unsub();
+      profileFollowsStore?.destroy();
+    };
+  });
+
+  // Social graph reactive state (subscribe to version changes)
+  let graphVersion = $derived($socialGraphStore.version);
+
+  // Follow state - recompute when graph changes
+  let isFollowing = $derived.by(() => {
+    graphVersion; // Subscribe to changes
+    return myFollows.includes(pubkeyHex);
+  });
+
+  let followsMe = $derived.by(() => {
+    graphVersion; // Subscribe to changes
+    return getFollowsMe(pubkeyHex);
+  });
+
+  let knownFollowers = $derived.by(() => {
+    graphVersion; // Subscribe to changes
+    return getFollowers(pubkeyHex);
+  });
+
   let bannerError = $state(false);
+  let followLoading = $state(false);
 
   function navigate(path: string) {
     window.location.hash = path;
+  }
+
+  async function handleFollow() {
+    followLoading = true;
+    if (isFollowing) {
+      await unfollowPubkey(pubkeyHex);
+    } else {
+      await followPubkey(pubkeyHex);
+    }
+    followLoading = false;
   }
 </script>
 
@@ -78,7 +146,16 @@
         </h1>
         {#if isOwnProfile}
           <span class="shrink-0 text-xs text-blue-500 flex items-center gap-1">
-            You
+            <Badge pubKeyHex={pubkeyHex} size="sm" /> You
+          </span>
+        {:else if isFollowing}
+          <span class="shrink-0 text-xs text-blue-500 flex items-center gap-1">
+            <Badge pubKeyHex={pubkeyHex} size="sm" /> Following
+          </span>
+        {/if}
+        {#if !isOwnProfile && followsMe}
+          <span class="shrink-0 text-xs bg-surface-2 text-text-2 px-2 py-0.5 rounded">
+            Follows you
           </span>
         {/if}
       </div>
@@ -96,6 +173,15 @@
             class="btn-ghost"
           >
             Edit Profile
+          </button>
+        {/if}
+        {#if isLoggedIn && !isOwnProfile}
+          <button
+            onclick={handleFollow}
+            disabled={followLoading}
+            class={isFollowing ? 'btn-ghost' : 'btn-success'}
+          >
+            {followLoading ? '...' : isFollowing ? 'Unfollow' : 'Follow'}
           </button>
         {/if}
         <button
@@ -120,12 +206,32 @@
       <div class="text-sm text-accent mt-1">{profile.nip05}</div>
     {/if}
 
+    <!-- Followed by friends -->
+    {#if !isOwnProfile && pubkeyHex}
+      <FollowedBy pubkey={pubkeyHex} class="mt-2" />
+    {/if}
+
     <!-- About -->
     {#if profile?.about}
       <p class="text-sm text-text-2 mt-3 whitespace-pre-wrap break-words">
         {profile.about}
       </p>
     {/if}
+
+    <!-- Stats -->
+    <div class="flex gap-4 mt-4 text-sm">
+      <button
+        onclick={() => navigate(`/${npub}/follows`)}
+        class="bg-transparent border-none cursor-pointer p-0 text-text-2 hover:text-text-1"
+      >
+        <span class="font-bold text-text-1">{profileFollows.length || '...'}</span> Following
+      </button>
+      {#if knownFollowers.size > 0}
+        <span class="text-text-2">
+          <span class="font-bold text-text-1">{knownFollowers.size}</span> known followers
+        </span>
+      {/if}
+    </div>
 
     <!-- Website -->
     {#if profile?.website}

@@ -4,9 +4,9 @@
    * Port of React CreateModal component
    */
   import type { TreeVisibility } from 'hashtree';
-  import { modalsStore, closeCreateModal, setModalInput, setCreateTreeVisibility } from '../../hooks/useModals';
+  import { modalsStore, closeCreateModal, setModalInput, setCreateTreeVisibility } from '../../stores/modals';
   import { createFile, createFolder, createTree, createDocument } from '../../actions';
-  import { routeStore } from '../../hooks';
+  import { routeStore } from '../../stores';
 
   let show = $derived($modalsStore.showCreateModal);
   let modalInput = $derived($modalsStore.modalInput);
@@ -15,6 +15,14 @@
   let route = $derived($routeStore);
 
   let isCreating = $state(false);
+  let inputRef = $state<HTMLInputElement | null>(null);
+
+  // Focus input when modal opens
+  $effect(() => {
+    if (show && inputRef) {
+      inputRef.focus();
+    }
+  });
 
   let isFolder = $derived(modalType === 'folder');
   let isTree = $derived(modalType === 'tree');
@@ -91,14 +99,14 @@
       onkeydown={handleKeyDown}
     >
       <h2 class="text-lg font-semibold mb-4">{title}</h2>
-      <form onsubmit={handleSubmit}>
+      <form onsubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
         <input
+          bind:this={inputRef}
           type="text"
           value={modalInput}
           oninput={(e) => setModalInput((e.target as HTMLInputElement).value)}
           placeholder={placeholder}
           class="input w-full mb-4"
-          autofocus
         />
 
         <!-- Visibility picker for trees -->

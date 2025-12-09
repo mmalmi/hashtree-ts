@@ -2,7 +2,7 @@
   /**
    * Modal for handling .gitignore detection in directory uploads
    */
-  import { modalsStore, closeGitignoreModal } from '../../hooks/useModals';
+  import { modalsStore, closeGitignoreModal } from '../../stores/modals';
   import { formatBytes } from '../../store';
 
   let show = $derived($modalsStore.showGitignoreModal);
@@ -10,9 +10,12 @@
 
   let rememberChoice = $state(false);
 
-  // Calculate excluded size
+  // Calculate sizes
   let excludedSize = $derived(
     target ? target.excludedFiles.reduce((sum, f) => sum + f.file.size, 0) : 0
+  );
+  let includedSize = $derived(
+    target ? target.includedFiles.reduce((sum, f) => sum + f.file.size, 0) : 0
   );
 
   function handleUseGitignore() {
@@ -41,13 +44,24 @@
       <div class="mb-4">
         <p class="text-text-2 mb-3">
           Found <strong>.gitignore</strong> in <strong>{target.dirName}</strong>.
-          Skip {target.excludedFiles.length} ignored file{target.excludedFiles.length !== 1 ? 's' : ''} ({formatBytes(excludedSize)})?
         </p>
+
+        <!-- Summary of what will happen -->
+        <div class="flex flex-col gap-1 mb-3 text-sm">
+          <div class="flex justify-between text-text-2">
+            <span>Files to upload:</span>
+            <span class="text-success">{target.includedFiles.length} files ({formatBytes(includedSize)})</span>
+          </div>
+          <div class="flex justify-between text-text-3">
+            <span>Files to skip:</span>
+            <span>{target.excludedFiles.length} files ({formatBytes(excludedSize)})</span>
+          </div>
+        </div>
 
         <!-- Show some excluded files -->
         {#if target.excludedFiles.length > 0}
           <div class="mb-3">
-            <div class="text-sm text-text-3 mb-1">Files to skip:</div>
+            <div class="text-sm text-text-3 mb-1">Ignored files:</div>
             <div class="max-h-30 overflow-y-auto bg-surface-2 rounded p-2 text-sm">
               {#each target.excludedFiles.slice(0, 15) as f}
                 <div class="flex justify-between py-0.5 text-text-3">
@@ -61,13 +75,6 @@
             </div>
           </div>
         {/if}
-
-        <div class="flex items-center gap-2 text-sm text-text-2 bg-surface-2 rounded p-2">
-          <span class="i-lucide-info text-accent"></span>
-          <span>
-            Will upload {target.includedFiles.length} of {target.allFiles.length} files
-          </span>
-        </div>
       </div>
 
       <!-- Remember choice checkbox -->

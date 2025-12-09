@@ -4,7 +4,7 @@
    * Port of React EditProfilePage
    */
   import { nostrStore, ndk } from '../nostr';
-  import { createProfileStore, invalidateProfile as invalidateProfileFn } from '../hooks/useProfile';
+  import { createProfileStore, invalidateProfile as invalidateProfileFn } from '../stores/profile';
   import { nip19 } from 'nostr-tools';
   import { NDKEvent } from '@nostr-dev-kit/ndk';
 

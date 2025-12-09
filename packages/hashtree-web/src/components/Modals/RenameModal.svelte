@@ -1,10 +1,19 @@
 <script lang="ts">
-  import { modalsStore, closeRenameModal, setModalInput } from '../../hooks/useModals';
+  import { modalsStore, closeRenameModal, setModalInput } from '../../stores/modals';
   import { renameEntry } from '../../actions';
 
   let show = $derived($modalsStore.showRenameModal);
   let modalInput = $derived($modalsStore.modalInput);
   let originalName = $derived($modalsStore.renameTarget || '');
+  let inputRef = $state<HTMLInputElement | null>(null);
+
+  // Focus input when modal opens
+  $effect(() => {
+    if (show && inputRef) {
+      inputRef.focus();
+      inputRef.select();
+    }
+  });
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
@@ -26,12 +35,12 @@
       <h2 class="text-lg font-semibold mb-4">Rename</h2>
       <form onsubmit={handleSubmit}>
         <input
+          bind:this={inputRef}
           type="text"
           placeholder="New name..."
           value={modalInput}
           oninput={(e) => setModalInput((e.target as HTMLInputElement).value)}
           class="input w-full mb-4"
-          autofocus
         />
         <div class="flex justify-end gap-2">
           <button type="button" onclick={closeRenameModal} class="btn-ghost">Cancel</button>

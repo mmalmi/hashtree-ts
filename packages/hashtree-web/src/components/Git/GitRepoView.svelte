@@ -5,9 +5,10 @@
    */
   import type { CID, TreeEntry } from 'hashtree';
   import { getTree, decodeAsText, formatBytes } from '../../store';
-  import { routeStore, createGitLogStore, openGitHistoryModal } from '../../hooks';
+  import { routeStore, createGitLogStore, openGitHistoryModal } from '../../stores';
   import FolderActions from '../FolderActions.svelte';
-  import ReadmePanel from './ReadmePanel.svelte';
+  import ReadmePanel from '../Viewer/ReadmePanel.svelte';
+  import Dropdown from '../ui/Dropdown.svelte';
 
   interface Props {
     dirCid: CID;
@@ -118,33 +119,31 @@
           {currentBranch || 'detached'}
         </span>
       {:else}
-        <div class="relative">
-          <button
-            onclick={() => isDropdownOpen = !isDropdownOpen}
-            class="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
-          >
-            <span class="i-lucide-git-branch"></span>
-            {currentBranch || 'detached'}
-            <span class="i-lucide-chevron-down text-xs"></span>
-          </button>
-          {#if isDropdownOpen}
-            <div class="absolute top-full left-0 mt-1 b-1 b-solid b-surface-3 rounded shadow-lg z-10 min-w-40 max-h-60 overflow-auto">
-              {#each branches as branch}
-                <button
-                  onclick={() => handleBranchSelect(branch)}
-                  class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0"
-                >
-                  {#if branch === currentBranch}
-                    <span class="i-lucide-check text-accent text-xs"></span>
-                  {:else}
-                    <span class="ml-4"></span>
-                  {/if}
-                  <span>{branch}</span>
-                </button>
-              {/each}
-            </div>
-          {/if}
-        </div>
+        <Dropdown bind:open={isDropdownOpen} onClose={() => isDropdownOpen = false}>
+          {#snippet trigger()}
+            <button
+              onclick={() => isDropdownOpen = !isDropdownOpen}
+              class="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
+            >
+              <span class="i-lucide-git-branch"></span>
+              {currentBranch || 'detached'}
+              <span class="i-lucide-chevron-down text-xs"></span>
+            </button>
+          {/snippet}
+          {#each branches as branch}
+            <button
+              onclick={() => handleBranchSelect(branch)}
+              class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0"
+            >
+              {#if branch === currentBranch}
+                <span class="i-lucide-check text-accent text-xs"></span>
+              {:else}
+                <span class="ml-4"></span>
+              {/if}
+              <span>{branch}</span>
+            </button>
+          {/each}
+        </Dropdown>
       {/if}
 
       <button

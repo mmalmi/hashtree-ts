@@ -9,7 +9,7 @@
 import { writable, derived, get, type Readable } from 'svelte/store';
 import { fromHex, cid, visibilityHex } from 'hashtree';
 import type { CID, SubscribeVisibilityInfo, Hash } from 'hashtree';
-import { routeStore, getRouteSync } from './useRoute';
+import { routeStore, getRouteSync } from './route';
 import { getRefResolver, getResolverKey } from '../refResolver';
 import { nostrStore, getSecretKey } from '../nostr';
 import { nip44 } from 'nostr-tools';

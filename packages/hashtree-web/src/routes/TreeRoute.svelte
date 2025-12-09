@@ -4,7 +4,7 @@
   import Viewer from '../components/Viewer/Viewer.svelte';
   import StreamView from '../components/stream/StreamView.svelte';
   import { nostrStore } from '../nostr';
-  import { routeStore } from '../hooks';
+  import { routeStore, addRecent } from '../stores';
 
   interface Props {
     npub?: string;
@@ -34,6 +34,15 @@
     // Load tree when route params change
     if (npub && treeName) {
       loadTree(npub, treeName);
+
+      // Track as recent
+      addRecent({
+        type: 'tree',
+        label: treeName,
+        path: `/${npub}/${treeName}`,
+        npub,
+        treeName,
+      });
     }
   });
 

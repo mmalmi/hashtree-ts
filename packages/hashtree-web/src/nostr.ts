@@ -18,7 +18,8 @@ import NDK, {
 } from '@nostr-dev-kit/ndk';
 import NDKCacheAdapterDexie from '@nostr-dev-kit/ndk-cache-dexie';
 import { initWebRTC, stopWebRTC } from './store';
-import type { EventSigner } from 'hashtree';
+import type { EventSigner, CID } from 'hashtree';
+import { toHex } from 'hashtree';
 import {
   type TreeVisibility,
   visibilityHex,
@@ -608,12 +609,14 @@ export function isOwnTree(): boolean {
 /**
  * Autosave current tree if it's our own.
  * Updates local cache immediately, publishing is throttled.
- * @param rootHash - Root hash (hex encoded)
- * @param rootKey - Decryption key (hex encoded, optional for encrypted trees)
+ * @param rootCid - Root CID (contains hash and optional encryption key)
  */
-export function autosaveIfOwn(rootHash: string, rootKey?: string): void {
+export function autosaveIfOwn(rootCid: CID): void {
   const state = nostrStore.getState();
   if (!isOwnTree() || !state.selectedTree || !state.npub) return;
+
+  const rootHash = toHex(rootCid.hash);
+  const rootKey = rootCid.key ? toHex(rootCid.key) : undefined;
 
   // Update local cache - this triggers throttled publish to Nostr
   updateLocalRootCacheHex(state.npub, state.selectedTree.name, rootHash, rootKey);
@@ -632,18 +635,26 @@ export function autosaveIfOwn(rootHash: string, rootKey?: string): void {
  */
 export async function publishTreeRoot(treeName: string, rootHash: string, rootKey?: string): Promise<boolean> {
   const state = nostrStore.getState();
-  if (!state.pubkey || !ndk.signer || !state.selectedTree) return false;
+  if (!state.pubkey || !ndk.signer) return false;
 
-  // Only publish if this is for the current tree
-  if (state.selectedTree.name !== treeName) return false;
+  // Check if this is for our own tree (either selected or a tree we own with the same name)
+  // This allows guest editors to publish to their own tree even when viewing someone else's
+  const isOwnSelectedTree = state.selectedTree?.name === treeName &&
+    state.selectedTree?.pubkey === state.pubkey;
 
-  const visibility = state.selectedTree.visibility;
-
-  // For unlisted trees, get the linkKey from the URL
+  // If we're viewing our own tree with this name, use its visibility settings
+  // Otherwise, default to public (guest editor creating their copy)
+  let visibility: TreeVisibility = 'public';
   let linkKey: string | undefined;
-  if (visibility === 'unlisted') {
-    const route = parseRoute();
-    linkKey = route.linkKey ?? undefined;
+
+  if (isOwnSelectedTree && state.selectedTree) {
+    visibility = state.selectedTree.visibility;
+
+    // For unlisted trees, get the linkKey from the URL
+    if (visibility === 'unlisted') {
+      const route = parseRoute();
+      linkKey = route.linkKey ?? undefined;
+    }
   }
 
   const result = await saveHashtree(treeName, rootHash, rootKey, {

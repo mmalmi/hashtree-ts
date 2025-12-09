@@ -107,7 +107,7 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-// Update storage stats from IndexedDB
+// Update storage stats from IDB
 export async function updateStorageStats(): Promise<void> {
   try {
     const items = await idbStore.count();

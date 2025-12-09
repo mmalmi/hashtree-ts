@@ -7,14 +7,14 @@
   import { formatBytes, getTree } from '../store';
   import { looksLikeFile } from '../utils/route';
   import { deleteEntry, moveEntry, moveToParent } from '../actions';
-  import { openCreateModal, openShareModal } from '../hooks/useModals';
-  import { uploadFiles, uploadDirectory } from '../hooks/useUpload';
-  import { recentlyChangedFiles } from '../hooks/useRecentlyChanged';
+  import { openCreateModal, openShareModal } from '../stores/modals';
+  import { uploadFiles, uploadDirectory } from '../stores/upload';
+  import { recentlyChangedFiles } from '../stores/recentlyChanged';
   import { nostrStore, npubToPubkey } from '../nostr';
   import { UserRow } from './User';
   import FolderActions from './FolderActions.svelte';
   import VisibilityIcon from './VisibilityIcon.svelte';
-  import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore } from '../hooks';
+  import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore } from '../stores';
   import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
   // Get icon class based on file extension

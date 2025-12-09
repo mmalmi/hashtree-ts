@@ -61,6 +61,7 @@ export {
 // Storage adapters
 export { MemoryStore } from './store/memory.js';
 export { IndexedDBStore, type IndexedDBStoreOptions } from './store/indexeddb.js';
+export { OpfsStore, type OpfsStoreOptions } from './store/opfs.js';
 export {
   BlossomStore,
   type BlossomStoreConfig,

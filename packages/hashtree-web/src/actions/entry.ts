@@ -3,7 +3,6 @@
  */
 import { navigate } from '../utils/navigate';
 import { parseRoute } from '../utils/route';
-import { toHex } from 'hashtree';
 import { autosaveIfOwn } from '../nostr';
 import { getTree } from '../store';
 import { getCurrentRootCid, getCurrentPathFromUrl, buildRouteUrl, updateRoute } from './route';
@@ -39,7 +38,7 @@ export async function renameEntry(oldName: string, newName: string) {
     newName
   );
   // Update local cache (publishes to nostr with throttle)
-  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  autosaveIfOwn(newRootCid);
 
   // Update URL if renamed file/dir was selected or we're inside it
   if (isRenamingCurrentDir) {
@@ -66,7 +65,7 @@ export async function deleteEntry(name: string) {
     name
   );
   // Update local cache (publishes to nostr with throttle)
-  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  autosaveIfOwn(newRootCid);
 
   // Navigate to directory if deleted file was active
   const route = parseRoute();
@@ -96,7 +95,7 @@ export async function deleteCurrentFolder() {
     folderName
   );
   // Update local cache (publishes to nostr with throttle)
-  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  autosaveIfOwn(newRootCid);
 
   // Navigate to parent directory
   const url = buildRouteUrl(route.npub, route.treeName, parentPath, undefined, route.linkKey);
@@ -135,7 +134,7 @@ export async function moveEntry(sourceName: string, targetDirName: string) {
 
   const newRootCid = await tree.moveEntry(rootCid, currentPath, sourceName, [...currentPath, targetDirName]);
   // Update local cache (publishes to nostr with throttle)
-  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  autosaveIfOwn(newRootCid);
 
   // Clear selection if moved file was active
   const route = parseRoute();
@@ -177,7 +176,7 @@ export async function moveToParent(sourceName: string) {
 
   const newRootCid = await tree.moveEntry(rootCid, currentPath, sourceName, parentPath);
   // Update local cache (publishes to nostr with throttle)
-  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  autosaveIfOwn(newRootCid);
 
   // Clear selection if moved file was active
   const route = parseRoute();

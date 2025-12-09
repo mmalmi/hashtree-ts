@@ -5,14 +5,14 @@
    */
   import { nhashEncode, toHex } from 'hashtree';
   import type { CID } from 'hashtree';
-  import { openCreateModal, openRenameModal, openForkModal, openShareModal } from '../hooks/useModals';
-  import { uploadFiles, uploadDirectory } from '../hooks/useUpload';
+  import { openCreateModal, openRenameModal, openForkModal, openShareModal } from '../stores/modals';
+  import { uploadFiles, uploadDirectory } from '../stores/upload';
   import { deleteCurrentFolder, buildRouteUrl } from '../actions';
   import { nostrStore } from '../nostr';
   import { getTree } from '../store';
   import { createZipFromDirectory, downloadBlob } from '../utils/compression';
   import { readFilesFromWebkitDirectory, supportsDirectoryUpload } from '../utils/directory';
-  import { routeStore, createTreesStore } from '../hooks';
+  import { routeStore, createTreesStore } from '../stores';
 
   interface Props {
     dirCid?: CID | null;

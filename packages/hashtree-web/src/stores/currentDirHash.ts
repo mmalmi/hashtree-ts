@@ -6,8 +6,8 @@
 import { writable, derived, get, type Readable } from 'svelte/store';
 import { toHex } from 'hashtree';
 import { getTree } from '../store';
-import { routeStore } from './useRoute';
-import { treeRootStore } from './useTreeRoot';
+import { routeStore } from './route';
+import { treeRootStore } from './treeRoot';
 import { looksLikeFile } from '../utils/route';
 import type { CID, Hash } from 'hashtree';
 
@@ -81,7 +81,7 @@ export const currentDirHashStore: Readable<Hash | null> = derived(
 export { currentDirCidStore };
 
 // Compatibility functions for React-style usage
-export function useCurrentDirHash(): Hash | null {
+export function currentDirHash(): Hash | null {
   return get(currentDirHashStore);
 }
 

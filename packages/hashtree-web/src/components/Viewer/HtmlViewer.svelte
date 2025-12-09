@@ -3,7 +3,7 @@
    * HtmlViewer - renders HTML content in a sandboxed iframe
    * Resources are resolved relative to the current directory
    */
-  import { routeStore, currentDirCidStore, directoryEntriesStore } from '../../hooks';
+  import { routeStore, currentDirCidStore, directoryEntriesStore } from '../../stores';
   import { getTree } from '../../store';
   import type { TreeEntry } from 'hashtree';
 

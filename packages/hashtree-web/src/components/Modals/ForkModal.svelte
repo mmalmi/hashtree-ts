@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { modalsStore, closeForkModal } from '../../hooks/useModals';
+  import { modalsStore, closeForkModal } from '../../stores/modals';
   let show = $derived($modalsStore.showForkModal);
 </script>
 

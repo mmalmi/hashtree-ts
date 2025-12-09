@@ -3,8 +3,8 @@
    * Modal for extracting archive files (ZIP)
    * Shows options to extract to current directory, subdirectory, or keep as ZIP
    */
-  import { modalsStore, closeExtractModal, setExtractLocation } from '../../hooks/useModals';
-  import type { ExtractLocation } from '../../hooks/useModals';
+  import { modalsStore, closeExtractModal, setExtractLocation } from '../../stores/modals';
+  import type { ExtractLocation } from '../../stores/modals';
   import { uploadSingleFile, uploadExtractedFiles } from '../../actions/file';
   import { formatBytes } from '../../store';
 

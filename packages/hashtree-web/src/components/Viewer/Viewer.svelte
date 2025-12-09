@@ -4,17 +4,18 @@
    * Port of React Viewer component
    */
   import { toHex, nhashEncode } from 'hashtree';
-  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore } from '../../hooks';
+  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent } from '../../stores';
   import { looksLikeFile } from '../../utils/route';
   import { getTree, decodeAsText } from '../../store';
   import { nostrStore, npubToPubkey } from '../../nostr';
   import { deleteEntry } from '../../actions';
-  import { openRenameModal, openShareModal } from '../../hooks/useModals';
+  import { openRenameModal, openShareModal } from '../../stores/modals';
   import DirectoryActions from './DirectoryActions.svelte';
   import FileEditor from './FileEditor.svelte';
   import HtmlViewer from './HtmlViewer.svelte';
   import VideoViewer from './VideoViewer.svelte';
   import YjsDocumentEditor from './YjsDocumentEditor.svelte';
+  import ZipPreview from './ZipPreview.svelte';
   import { Avatar } from '../User';
   import VisibilityIcon from '../VisibilityIcon.svelte';
 
@@ -41,7 +42,8 @@
   // Get filename from URL path - uses path type heuristic
   let urlPath = $derived(route.path);
   let lastSegment = $derived(urlPath.length > 0 ? urlPath[urlPath.length - 1] : null);
-  let hasFile = $derived(lastSegment && looksLikeFile(lastSegment));
+  // Don't treat .yjs files as viewable files - they are internal to Yjs documents
+  let hasFile = $derived(lastSegment && looksLikeFile(lastSegment) && !lastSegment.endsWith('.yjs'));
   let urlFileName = $derived(hasFile ? lastSegment : null);
 
   // Parse query params from URL hash - use currentHash store for reactivity
@@ -125,6 +127,8 @@
   let blobUrl = $state<string | null>(null);
   // Track current blob URL outside of reactive system for cleanup
   let currentBlobUrl: string | null = null;
+  // Fullscreen mode
+  let isFullscreen = $state(false);
 
   // MIME type detection
   function getMimeType(filename?: string): string | null {
@@ -235,6 +239,23 @@
         loadingTimer = null;
       }
     };
+  });
+
+  // Track file visits in recents
+  $effect(() => {
+    if (!urlFileName || !route.npub || !route.treeName) return;
+
+    // Build full path for the file
+    const pathParts = route.path.join('/');
+    const fullPath = `/${route.npub}/${route.treeName}${pathParts ? '/' + pathParts : ''}`;
+
+    addRecent({
+      type: 'file',
+      label: urlFileName,
+      path: fullPath,
+      npub: route.npub,
+      treeName: route.treeName,
+    });
   });
 
   function exitEditMode() {
@@ -362,6 +383,14 @@
   }
 
   let isPdf = $derived(urlFileName ? isPdfFile(urlFileName) : false);
+
+  // Check if file is ZIP archive
+  function isZipFile(filename: string): boolean {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    return ext === 'zip';
+  }
+
+  let isZip = $derived(urlFileName ? isZipFile(urlFileName) : false);
 
   // Build permalink URL for the current file
   let permalinkUrl = $derived.by(() => {
@@ -502,12 +531,14 @@
         </button>
         {#if permalinkUrl}
           <a href={permalinkUrl} class="btn-ghost no-underline" title={entryFromStore?.cid?.hash ? toHex(entryFromStore.cid.hash) : ''} data-testid="viewer-permalink">
-            <span class={entryFromStore?.cid?.key ? "i-lucide-link" : "i-lucide-lock"}></span>
             Permalink
           </a>
         {/if}
+        <button onclick={() => isFullscreen = true} class="btn-ghost" title="Fullscreen" data-testid="viewer-fullscreen">
+          <span class="i-lucide-maximize text-base"></span>
+        </button>
         <button onclick={handleShare} class="btn-ghost" title="Share" data-testid="viewer-share">
-          Share
+          <span class="i-lucide-share text-base"></span>
         </button>
         {#if canEdit}
           <button onclick={() => openRenameModal(entryFromStore.name)} class="btn-ghost" data-testid="viewer-rename">Rename</button>
@@ -570,6 +601,9 @@
         class="flex-1 w-full border-none"
         title={urlFileName}
       />
+    {:else if isZip && rawFileData}
+      <!-- ZIP preview -->
+      <ZipPreview data={rawFileData} filename={urlFileName} onDownload={handleDownload} />
     {:else}
       <div class="flex-1 overflow-auto p-4">
         {#if showLoading}
@@ -606,5 +640,41 @@
   <!-- No content view -->
   <div class="flex-1 flex items-center justify-center bg-surface-0 text-muted">
     <span>Select a file to view</span>
+  </div>
+{/if}
+
+<!-- Fullscreen overlay -->
+{#if isFullscreen && entryFromStore}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="fixed inset-0 z-50 bg-black flex items-center justify-center"
+    onclick={() => isFullscreen = false}
+    onkeydown={(e) => { if (e.key === 'Escape') isFullscreen = false; }}
+  >
+    <button
+      onclick={() => isFullscreen = false}
+      class="absolute top-4 right-4 btn-ghost text-white z-10"
+      title="Close fullscreen"
+    >
+      <span class="i-lucide-x text-2xl"></span>
+    </button>
+    {#if isImage && blobUrl}
+      <img
+        src={blobUrl}
+        alt={urlFileName}
+        class="max-w-full max-h-full object-contain"
+        onclick={(e) => e.stopPropagation()}
+      />
+    {:else if isVideo && entryFromStore?.cid}
+      <div class="w-full h-full" onclick={(e) => e.stopPropagation()}>
+        <VideoViewer cid={entryFromStore.cid} fileName={urlFileName || ''} />
+      </div>
+    {:else if fileContent !== null}
+      <pre
+        class="max-w-full max-h-full overflow-auto p-8 text-white font-mono text-sm whitespace-pre-wrap"
+        onclick={(e) => e.stopPropagation()}
+      >{fileContent}</pre>
+    {/if}
   </div>
 {/if}

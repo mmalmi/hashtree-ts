@@ -11,13 +11,13 @@ import { getTree } from '../store';
 import { autosaveIfOwn, saveHashtree, nostrStore } from '../nostr';
 import { navigate } from '../utils/navigate';
 import { getCurrentPathFromUrl, parseRoute } from '../utils/route';
-import { markFilesChanged } from './useRecentlyChanged';
-import { openExtractModal, openGitignoreModal, type ArchiveFile } from './useModals';
+import { markFilesChanged } from './recentlyChanged';
+import { openExtractModal, openGitignoreModal, type ArchiveFile } from './modals';
 import { isArchiveFile, extractArchive } from '../utils/compression';
 import { nip19 } from 'nostr-tools';
 import type { FileWithPath, DirectoryReadResult } from '../utils/directory';
 import { findGitignoreFile, parseGitignoreFromFile, applyGitignoreFilter, applyDefaultIgnoreFilter } from '../utils/directory';
-import { getTreeRootSync } from './useTreeRoot';
+import { getTreeRootSync } from './treeRoot';
 import { settingsStore } from '../stores/settings';
 import { toast } from '../stores/toast';
 
@@ -181,8 +181,7 @@ export async function uploadFiles(files: FileList): Promise<void> {
       // Mark this file as changed for pulse effect
       markFilesChanged(new Set([file.name]));
       // Update cache immediately so file appears in UI one by one
-      const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
-      autosaveIfOwn(toHex(newRootCid.hash), keyHex);
+      autosaveIfOwn(newRootCid);
     } else if (needsTreeInit) {
       // First file in a new virtual directory - create encrypted tree
       const { cid: newRootCid } = await tree.putDirectory([{ name: file.name, cid: fileCid, size }]);
@@ -437,8 +436,7 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
           markFilesChanged(new Set([fileName]));
         }
         // Update cache immediately so file appears in UI one by one
-        const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
-        autosaveIfOwn(toHex(newRootCid.hash), keyHex);
+        autosaveIfOwn(newRootCid);
       }
     } catch (err) {
       console.error(`Failed to add file ${relativePath}:`, err);
@@ -512,15 +510,15 @@ export async function uploadDirectory(result: DirectoryReadResult): Promise<void
       includedFiles: included,
       excludedFiles: excluded,
       dirName,
-      onDecision: async (useGitignore, rememberGlobally) => {
+      onDecision: async (gitignore, rememberGlobally) => {
         // If user checked "remember", update global setting
         if (rememberGlobally) {
           settingsStore.setUploadSettings({
-            gitignoreBehavior: useGitignore ? 'always' : 'never',
+            gitignoreBehavior: gitignore ? 'always' : 'never',
           });
         }
 
-        const filesToUpload = useGitignore ? included : files;
+        const filesToUpload = gitignore ? included : files;
         await uploadFilesWithPaths(filesToUpload);
         resolve();
       },

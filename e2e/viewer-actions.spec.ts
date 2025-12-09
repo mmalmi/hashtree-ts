@@ -124,8 +124,8 @@ test.describe('Viewer Actions', () => {
     // Click share button
     await shareButton.click();
 
-    // Share modal should open - look for heading in modal
-    await expect(page.getByRole('heading', { name: 'Share' })).toBeVisible({ timeout: 5000 });
+    // Share modal should open - look for modal or QR code
+    await expect(page.getByTestId('share-modal')).toBeVisible({ timeout: 5000 });
   });
 
   test('should show rename button for own files', async ({ page }) => {

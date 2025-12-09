@@ -5,10 +5,11 @@
    */
   import { getTree, decodeAsText } from '../../store';
   import { nostrStore } from '../../nostr';
-  import { routeStore, currentDirCidStore, treeRootStore, createTreesStore, directoryEntriesStore, createGitInfoStore } from '../../hooks';
+  import { routeStore, currentDirCidStore, treeRootStore, createTreesStore, directoryEntriesStore, createGitInfoStore } from '../../stores';
   import FolderActions from '../FolderActions.svelte';
   import GitRepoView from '../Git/GitRepoView.svelte';
-  import { uploadFiles } from '../../hooks/useUpload';
+  import ReadmePanel from './ReadmePanel.svelte';
+  import { uploadFiles } from '../../stores/upload';
   import type { TreeEntry as HashTreeEntry } from 'hashtree';
 
   let route = $derived($routeStore);
@@ -186,10 +187,8 @@
 
   <!-- README.md content -->
   {#if readmeContent}
-    <div class="flex-1 overflow-auto px-4 pb-4">
-      <div class="prose prose-invert max-w-none">
-        {@html readmeContent}
-      </div>
+    <div class="flex-1 overflow-auto px-3 pb-3">
+      <ReadmePanel content={readmeContent} {entries} {canEdit} />
     </div>
   {/if}
   </div>

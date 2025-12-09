@@ -4,7 +4,7 @@
    */
   import { marked } from 'marked';
   import type { TreeEntry } from 'hashtree';
-  import { routeStore } from '../../hooks';
+  import { routeStore } from '../../stores';
 
   interface Props {
     content: string;

@@ -3,7 +3,7 @@
  */
 import { navigate } from '../utils/navigate';
 import { parseRoute } from '../utils/route';
-import { toHex, verifyTree } from 'hashtree';
+import { verifyTree, toHex } from 'hashtree';
 import type { CID } from 'hashtree';
 import { saveHashtree, useNostrStore } from '../nostr';
 import { nip19 } from 'nostr-tools';
@@ -88,7 +88,7 @@ export async function createFolder(name: string) {
       true
     );
     // Publish to nostr - resolver will pick up the update
-    autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+    autosaveIfOwn(newRootCid);
   } else {
     // Initialize virtual tree with this folder
     await initVirtualTree([{ name, cid: emptyDirCid, size: 0, isTree: true }]);
@@ -125,7 +125,7 @@ export async function createDocument(name: string) {
       true
     );
     // Publish to nostr
-    autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+    autosaveIfOwn(newRootCid);
 
     // Update local cache for subsequent saves
     const route = parseRoute();
@@ -177,7 +177,7 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
   if (!name) return { success: false };
 
   const { saveHashtree } = await import('../nostr');
-  const { storeLinkKey } = await import('../hooks/useTrees');
+  const { storeLinkKey } = await import('../stores/trees');
 
   const tree = getTree();
   // Create encrypted empty directory (default)

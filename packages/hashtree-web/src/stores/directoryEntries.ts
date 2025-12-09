@@ -81,14 +81,14 @@ export function createDirectoryEntriesStore(locationStore: Readable<CID | null>)
  * Synchronous function to use directory entries (React-style hook compatibility)
  * For components that need to use the entries synchronously
  */
-export function useDirectoryEntries(location: CID | null): DirectoryEntriesState {
+export function directoryEntries(location: CID | null): DirectoryEntriesState {
   const locationStore = writable(location);
   const store = createDirectoryEntriesStore(locationStore);
   return get(store);
 }
 
 // Import currentDirCidStore for global entries store
-import { currentDirCidStore } from './useCurrentDirHash';
+import { currentDirCidStore } from './currentDirHash';
 
 /**
  * Global directory entries store based on current directory CID

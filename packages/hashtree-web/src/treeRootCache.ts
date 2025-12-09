@@ -8,7 +8,7 @@
  */
 import type { Hash } from 'hashtree';
 import { fromHex, toHex } from 'hashtree';
-import { updateSubscriptionCache } from './hooks/useTreeRoot';
+import { updateSubscriptionCache } from './stores/treeRoot';
 
 interface CacheEntry {
   hash: Hash;
