@@ -4,9 +4,9 @@
    * Port of React Viewer component
    */
   import { toHex, nhashEncode } from 'hashtree';
-  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent } from '../../stores';
+  import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent, recentlyChangedFiles } from '../../stores';
   import { looksLikeFile } from '../../utils/route';
-  import { getTree, decodeAsText } from '../../store';
+  import { getTree, decodeAsText, formatBytes } from '../../store';
   import { nostrStore, npubToPubkey } from '../../nostr';
   import { deleteEntry } from '../../actions';
   import { openRenameModal, openShareModal } from '../../stores/modals';
@@ -16,6 +16,7 @@
   import VideoViewer from './VideoViewer.svelte';
   import YjsDocumentEditor from './YjsDocumentEditor.svelte';
   import ZipPreview from './ZipPreview.svelte';
+  import DosBox from './DosBox.svelte';
   import { Avatar } from '../User';
   import VisibilityIcon from '../VisibilityIcon.svelte';
 
@@ -186,7 +187,8 @@
     if (!entry) return;
 
     // Skip loading for video files - they stream separately
-    if (isVideo) return;
+    // Skip loading for DOS executables - they use their own loader
+    if (isVideo || isDos) return;
 
     loading = true;
     let cancelled = false;
@@ -392,6 +394,18 @@
 
   let isZip = $derived(urlFileName ? isZipFile(urlFileName) : false);
 
+  // Check if file is DOS executable
+  function isDosExecutable(filename: string): boolean {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    return ext === 'exe' || ext === 'com' || ext === 'bat';
+  }
+
+  let isDos = $derived(urlFileName ? isDosExecutable(urlFileName) : false);
+
+  // Check if file was recently changed (for LIVE indicator)
+  let changedFiles = $derived($recentlyChangedFiles);
+  let isRecentlyChanged = $derived(urlFileName ? changedFiles.has(urlFileName) : false);
+
   // Build permalink URL for the current file
   let permalinkUrl = $derived.by(() => {
     if (!entryFromStore?.cid?.hash) return null;
@@ -524,6 +538,9 @@
         <!-- File type icon -->
         <span class="{fileIcon} text-text-2 shrink-0"></span>
         <span class="font-medium text-text-1 truncate">{entryFromStore.name}</span>
+        {#if isRecentlyChanged}
+          <span class="ml-2 px-1.5 py-0.5 text-xs font-bold bg-red-600 text-white rounded animate-pulse">LIVE</span>
+        {/if}
       </div>
       <div class="flex items-center gap-1 flex-wrap">
         <button onclick={handleDownload} class="btn-ghost" title="Download file" data-testid="viewer-download" disabled={loading && !isVideo}>
@@ -601,25 +618,34 @@
         class="flex-1 w-full border-none"
         title={urlFileName}
       />
-    {:else if isZip && rawFileData}
+    {:else if isZip && fileData}
       <!-- ZIP preview -->
-      <ZipPreview data={rawFileData} filename={urlFileName} onDownload={handleDownload} />
+      <ZipPreview data={fileData} filename={urlFileName} onDownload={handleDownload} />
+    {:else if isDos && currentDirCid}
+      <!-- DOS executable - show DOSBox viewer -->
+      <DosBox directoryCid={currentDirCid} exeName={urlFileName} />
     {:else}
       <div class="flex-1 overflow-auto p-4">
         {#if showLoading}
           <p class="text-muted animate-fade-in" data-testid="loading-indicator">Loading...</p>
         {:else if fileContent !== null}
           <pre class="text-sm text-text-1 font-mono whitespace-pre-wrap break-words">{fileContent}</pre>
-        {:else if blobUrl}
-          <!-- Binary file with blob URL but no specific viewer - show download option -->
-          <div class="w-full h-full flex flex-col items-center justify-center text-accent">
-            <span class="i-lucide-download text-4xl mb-2"></span>
-            <span class="text-sm mb-1">{urlFileName}</span>
-            <a href={blobUrl} download={urlFileName} class="btn-primary mt-2">Download</a>
+        {:else if !loading && entryFromStore}
+          <!-- Binary/unsupported format fallback - show download pane -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="w-full h-full p-3">
+            <div
+              class="w-full h-full flex flex-col items-center justify-center text-accent cursor-pointer hover:bg-accent/10 transition-colors border border-accent/50 rounded-lg"
+              onclick={handleDownload}
+            >
+              <span class="i-lucide-download text-4xl mb-2"></span>
+              <span class="text-sm mb-1">{urlFileName}</span>
+              {#if entryFromStore.size}
+                <span class="text-xs text-text-2">{formatBytes(entryFromStore.size)}</span>
+              {/if}
+            </div>
           </div>
-        {:else if !loading}
-          <!-- Only show error if not loading (avoid flash during load) -->
-          <p class="text-muted">Unable to display file content</p>
         {/if}
       </div>
     {/if}

@@ -17,7 +17,7 @@
     formatTime,
     setStreamFilename,
     setPersistStream,
-  } from './useStream';
+  } from './streamState';
 
   let videoRef: HTMLVideoElement | undefined = $state();
 

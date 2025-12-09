@@ -125,6 +125,116 @@ describe('HashTree read operations', () => {
     });
   });
 
+  describe('readFileRange', () => {
+    it('should read a range from small file', async () => {
+      const data = new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const result = await tree.readFileRange(cid, 2, 6);
+      expect(result).toEqual(new Uint8Array([2, 3, 4, 5]));
+    });
+
+    it('should read a range from chunked file', async () => {
+      const data = new Uint8Array(350);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = i % 256;
+      }
+      const { cid } = await tree.putFile(data, { public: true });
+
+      // Read across chunk boundaries (chunk size is 100)
+      const result = await tree.readFileRange(cid, 90, 110);
+      expect(result).toEqual(data.slice(90, 110));
+    });
+
+    it('should read from middle of file to end', async () => {
+      const data = new Uint8Array(350);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = i % 256;
+      }
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const result = await tree.readFileRange(cid, 300);
+      expect(result).toEqual(data.slice(300));
+    });
+
+    it('should handle end beyond file length', async () => {
+      const data = new Uint8Array([0, 1, 2, 3, 4]);
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const result = await tree.readFileRange(cid, 2, 100);
+      expect(result).toEqual(new Uint8Array([2, 3, 4]));
+    });
+
+    it('should return empty for start beyond file length', async () => {
+      const data = new Uint8Array([0, 1, 2, 3, 4]);
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const result = await tree.readFileRange(cid, 100, 200);
+      expect(result).toEqual(new Uint8Array(0));
+    });
+
+    it('should return null for non-existent hash', async () => {
+      const hash = new Uint8Array(32).fill(0);
+      const result = await tree.readFileRange({ hash }, 0, 10);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('readFileStream with offset', () => {
+    it('should stream from offset', async () => {
+      const data = new Uint8Array(350);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = i % 256;
+      }
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of tree.readFileStream(cid, 200)) {
+        chunks.push(chunk);
+      }
+
+      const total = new Uint8Array(chunks.reduce((sum, c) => sum + c.length, 0));
+      let offset = 0;
+      for (const chunk of chunks) {
+        total.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      expect(total).toEqual(data.slice(200));
+    });
+
+    it('should skip chunks before offset', async () => {
+      const data = new Uint8Array(350);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = i % 256;
+      }
+      const { cid } = await tree.putFile(data, { public: true });
+
+      // Track which chunks are yielded
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of tree.readFileStream(cid, 250)) {
+        chunks.push(chunk);
+      }
+
+      // Should not yield the first 2 full chunks (0-99, 100-199)
+      // Should yield partial of chunk 3 (200-249 skipped, 250-299) and full chunk 4 (300-349)
+      const totalBytes = chunks.reduce((sum, c) => sum + c.length, 0);
+      expect(totalBytes).toBe(100); // 350 - 250
+    });
+
+    it('should handle offset beyond file length', async () => {
+      const data = new Uint8Array([1, 2, 3]);
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of tree.readFileStream(cid, 100)) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks.length).toBe(0);
+    });
+  });
+
   describe('listDirectory', () => {
     it('should list directory entries', async () => {
       const { cid: c1 } = await tree.putFile(new Uint8Array([1]), { public: true });

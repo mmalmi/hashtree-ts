@@ -1,39 +1,33 @@
 ## Missing USER-FACING FEATURES from Svelte Port
 
 ### Major Missing Features
-1. [ ] ReadmePanel - Show README.md content in directory views
-2. [ ] LiveVideo - Streaming video playback from merkle tree with MediaSource API
-3. [ ] Yjs Document Editor - Collaborative rich text editing with Tiptap (partially done - needs delta storage)
-4. [ ] GitRepoView - Git repository visualization (commits, branches, diff)
-5. [ ] DosBox - DOS emulator for running .exe files in browser
+1. [x] LIVE indicator - Show when viewing live-updating directory (DONE - 2 tests passing)
+2. [ ] GitRepoView improvements - git visualization (commits, branches, diff) - basic exists
+3. [ ] Yjs Document Editor - complete delta storage (partially done)
+4. [ ] DosBox - DOS emulator for running .exe files in browser
 
 ### Missing UI Features
-6. [ ] WalletPanel - Full wallet UI (mint management, mnemonic backup, send/receive)
-7. [ ] SettingsPanel - Advanced settings (relay config, pool settings)
-8. [ ] StreamPanel - Live streaming controls
-9. [ ] MobileSearch - Responsive search that expands on mobile
-10. [ ] LIVE indicator - Show when viewing live-updating directory
+5. [x] MobileSearch - Responsive search that expands on mobile (DONE - 4 tests passing)
 
 ### Already Working (verified)
-- [x] ContentView - All file types: HTML, images, PDF, audio, video, ZIP, text, binary download
+- [x] ReadmePanel - README.md display with markdown (2 tests passing)
+- [x] ContentView - All file types: HTML, images, PDF, audio, video, ZIP, text
 - [x] Toolbar/Share/Copy - ShareModal and CopyText components (9 tests passing)
-- [x] Recents - Recently visited trees stored in localStorage (5 tests passing)
-- [x] Stats - IndexedDB store stats available via idbStore
+- [x] Recents - Recently visited trees in localStorage (5 tests passing)
+- [x] Stats - IndexedDB store stats via idbStore
+- [x] StreamPanel - StreamView.svelte exists
+- [x] SettingsPanel - SettingsPage.svelte exists
+- [x] WalletPanel - WalletPage.svelte exists
+- [x] LiveVideo - VideoViewer.svelte exists
 - [x] File selection and viewing - Works via URL routing
-- [x] Path type detection - looksLikeFile() utility handles this
 - [x] Delayed loading - Implemented inline in Viewer.svelte
-- [x] Recently changed pulse - recentlyChanged store implemented
+- [x] Recently changed pulse - recentlyChanged store
 
 ---
-## PRIORITY ORDER (user-facing features, easiest first):
+## PRIORITY ORDER (remaining features):
 
-[x] 1. ReadmePanel - find/display README.md in directory view (2 tests passing)
-[ ] 2. MobileSearch - responsive search expansion
-[ ] 3. LIVE indicator - real-time directory updates
-[ ] 4. StreamPanel - stream controls
-[ ] 5. SettingsPanel - advanced settings
-[ ] 6. WalletPanel - full wallet UI
-[ ] 7. LiveVideo - MediaSource streaming (complex)
-[ ] 8. GitRepoView - git visualization (complex)
-[ ] 9. Yjs Document Editor - complete delta storage (complex)
-[ ] 10. DosBox - DOS emulation (complex, external dependency)
+[x] 1. MobileSearch - responsive search expansion (DONE)
+[x] 2. LIVE indicator - real-time directory updates (DONE)
+[ ] 3. GitRepoView improvements - better visualization
+[ ] 4. Yjs Document Editor - complete delta storage (complex)
+[ ] 5. DosBox - DOS emulation (complex, external dependency)

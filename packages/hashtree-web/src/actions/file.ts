@@ -35,6 +35,9 @@ export async function saveFile(entryName: string | undefined, content: string): 
   // Publish to nostr - resolver will pick up the update automatically
   autosaveIfOwn(newRootCid);
 
+  // Mark file as recently changed for LIVE indicator
+  markFilesChanged(new Set([entryName]));
+
   return data;
 }
 
@@ -67,8 +70,34 @@ export async function createFile(name: string, content: string = '') {
     if (!result) return; // Failed to initialize
   }
 
+  // Mark file as recently changed for LIVE indicator
+  markFilesChanged(new Set([name]));
+
   // Navigate to the newly created file with edit mode
   updateRoute(name, { edit: true });
+}
+
+// Save binary file (used by DOSBox to sync files back)
+export async function saveBinaryFile(entryName: string, data: Uint8Array): Promise<void> {
+  if (!entryName) return;
+
+  const rootCid = getCurrentRootCid();
+  if (!rootCid) return;
+
+  const tree = getTree();
+  const currentPath = getCurrentPathFromUrl();
+
+  const { cid: fileCid, size } = await tree.putFile(data);
+  const newRootCid = await tree.setEntry(
+    rootCid,
+    currentPath,
+    entryName,
+    fileCid,
+    size
+  );
+
+  autosaveIfOwn(newRootCid);
+  markFilesChanged(new Set([entryName]));
 }
 
 // Upload a single file (used for "Keep as ZIP" option)

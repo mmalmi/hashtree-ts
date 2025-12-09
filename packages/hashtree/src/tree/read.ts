@@ -94,19 +94,20 @@ async function assembleChunks(store: Store, node: TreeNode): Promise<Uint8Array>
 }
 
 /**
- * Read a file with streaming
+ * Read a file with streaming, optionally starting from an offset
  */
-export async function* readFileStream(store: Store, hash: Hash): AsyncGenerator<Uint8Array> {
+export async function* readFileStream(store: Store, hash: Hash, offset: number = 0): AsyncGenerator<Uint8Array> {
   const data = await store.get(hash);
   if (!data) return;
 
   if (!isTreeNode(data)) {
-    yield data;
+    if (offset >= data.length) return;
+    yield offset > 0 ? data.slice(offset) : data;
     return;
   }
 
   const node = decodeTreeNode(data);
-  yield* streamChunks(store, node);
+  yield* streamChunksWithOffset(store, node, offset);
 }
 
 async function* streamChunks(store: Store, node: TreeNode): AsyncGenerator<Uint8Array> {
@@ -123,6 +124,157 @@ async function* streamChunks(store: Store, node: TreeNode): AsyncGenerator<Uint8
       yield childData;
     }
   }
+}
+
+/**
+ * Stream chunks starting from an offset
+ * Uses link.size to efficiently skip chunks before offset
+ */
+async function* streamChunksWithOffset(
+  store: Store,
+  node: TreeNode,
+  offset: number
+): AsyncGenerator<Uint8Array> {
+  let position = 0;
+
+  for (const link of node.links) {
+    const linkSize = link.size ?? 0;
+
+    // If we haven't reached offset yet and can skip this entire subtree
+    if (linkSize > 0 && position + linkSize <= offset) {
+      position += linkSize;
+      continue;
+    }
+
+    const childData = await store.get(link.hash);
+    if (!childData) {
+      throw new Error(`Missing chunk: ${toHex(link.hash)}`);
+    }
+
+    if (isTreeNode(childData)) {
+      const childNode = decodeTreeNode(childData);
+      // Recurse with adjusted offset
+      const childOffset = Math.max(0, offset - position);
+      yield* streamChunksWithOffset(store, childNode, childOffset);
+      position += linkSize;
+    } else {
+      // Leaf chunk
+      const chunkStart = position;
+      const chunkEnd = position + childData.length;
+      position = chunkEnd;
+
+      if (chunkEnd <= offset) {
+        // Entire chunk is before offset, skip
+        continue;
+      }
+
+      if (chunkStart >= offset) {
+        // Entire chunk is after offset, yield all
+        yield childData;
+      } else {
+        // Partial chunk - slice from offset
+        const sliceStart = offset - chunkStart;
+        yield childData.slice(sliceStart);
+      }
+    }
+  }
+}
+
+/**
+ * Read a range of bytes from a file
+ */
+export async function readFileRange(
+  store: Store,
+  hash: Hash,
+  start: number,
+  end?: number
+): Promise<Uint8Array | null> {
+  const data = await store.get(hash);
+  if (!data) return null;
+
+  if (!isTreeNode(data)) {
+    // Single blob
+    if (start >= data.length) return new Uint8Array(0);
+    const actualEnd = end !== undefined ? Math.min(end, data.length) : data.length;
+    return data.slice(start, actualEnd);
+  }
+
+  const node = decodeTreeNode(data);
+  return readRangeFromNode(store, node, start, end);
+}
+
+async function readRangeFromNode(
+  store: Store,
+  node: TreeNode,
+  start: number,
+  end?: number
+): Promise<Uint8Array> {
+  const parts: Uint8Array[] = [];
+  let position = 0;
+  let bytesCollected = 0;
+  const maxBytes = end !== undefined ? end - start : Infinity;
+
+  for (const link of node.links) {
+    if (bytesCollected >= maxBytes) break;
+
+    const linkSize = link.size ?? 0;
+
+    // Skip chunks entirely before start
+    if (linkSize > 0 && position + linkSize <= start) {
+      position += linkSize;
+      continue;
+    }
+
+    const childData = await store.get(link.hash);
+    if (!childData) {
+      throw new Error(`Missing chunk: ${toHex(link.hash)}`);
+    }
+
+    if (isTreeNode(childData)) {
+      const childNode = decodeTreeNode(childData);
+      const childStart = Math.max(0, start - position);
+      const childEnd = end !== undefined ? end - position : undefined;
+      const childData2 = await readRangeFromNode(store, childNode, childStart, childEnd);
+      if (childData2.length > 0) {
+        const take = Math.min(childData2.length, maxBytes - bytesCollected);
+        parts.push(childData2.slice(0, take));
+        bytesCollected += take;
+      }
+      position += linkSize;
+    } else {
+      // Leaf chunk
+      const chunkStart = position;
+      const chunkEnd = position + childData.length;
+      position = chunkEnd;
+
+      if (chunkEnd <= start) {
+        continue;
+      }
+
+      // Calculate slice bounds within this chunk
+      const sliceStart = Math.max(0, start - chunkStart);
+      const sliceEnd = end !== undefined
+        ? Math.min(childData.length, end - chunkStart)
+        : childData.length;
+
+      if (sliceStart < sliceEnd) {
+        const take = Math.min(sliceEnd - sliceStart, maxBytes - bytesCollected);
+        parts.push(childData.slice(sliceStart, sliceStart + take));
+        bytesCollected += take;
+      }
+    }
+  }
+
+  // Concatenate parts
+  const totalLength = parts.reduce((sum, p) => sum + p.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const part of parts) {
+    result.set(part, offset);
+    offset += part.length;
+  }
+
+  return result;
 }
 
 /**

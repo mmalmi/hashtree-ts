@@ -5,6 +5,7 @@
   import NostrLogin from './components/NostrLogin.svelte';
   import ConnectivityIndicator from './components/ConnectivityIndicator.svelte';
   import SearchInput from './components/SearchInput.svelte';
+  import MobileSearch from './components/MobileSearch.svelte';
   import WalletLink from './components/WalletLink.svelte';
   import FileBrowser from './components/FileBrowser.svelte';
   import Viewer from './components/Viewer/Viewer.svelte';
@@ -104,6 +105,7 @@
         <Logo />
       </a>
       <div class="flex items-center gap-2 md:gap-3">
+        <MobileSearch />
         <div class="hidden md:block"><SearchInput /></div>
         <ConnectivityIndicator />
         <WalletLink />

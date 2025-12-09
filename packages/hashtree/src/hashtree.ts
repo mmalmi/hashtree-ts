@@ -18,6 +18,7 @@ import {
   putFileEncrypted,
   readFileEncrypted,
   readFileEncryptedStream,
+  readFileEncryptedRange,
   putDirectoryEncrypted,
   listDirectoryEncrypted,
   getTreeNodeEncrypted,
@@ -174,14 +175,24 @@ export class HashTree {
   }
 
   /**
-   * Stream a file
+   * Stream a file, optionally starting from an offset
    */
-  async *readFileStream(id: CID): AsyncGenerator<Uint8Array> {
+  async *readFileStream(id: CID, offset: number = 0): AsyncGenerator<Uint8Array> {
     if (id.key) {
-      yield* readFileEncryptedStream(this.store, id.hash, id.key);
+      yield* readFileEncryptedStream(this.store, id.hash, id.key, offset);
     } else {
-      yield* read.readFileStream(this.store, id.hash);
+      yield* read.readFileStream(this.store, id.hash, offset);
     }
+  }
+
+  /**
+   * Read a range of bytes from a file
+   */
+  async readFileRange(id: CID, start: number, end?: number): Promise<Uint8Array | null> {
+    if (id.key) {
+      return readFileEncryptedRange(this.store, id.hash, id.key, start, end);
+    }
+    return read.readFileRange(this.store, id.hash, start, end);
   }
 
   /**
