@@ -35,9 +35,9 @@
       <button
         type="button"
         onclick={() => onchange(vis as TreeVisibility)}
-        class="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded border {value === vis
-          ? 'border-accent bg-accent/10 text-accent'
-          : 'border-surface-3 text-text-1 hover:border-surface-4 hover:bg-surface-2'}"
+        class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {value === vis
+          ? 'ring-2 ring-accent bg-surface-3'
+          : ''}"
         title={getVisibilityTitle(vis as TreeVisibility)}
       >
         <span class={getVisibilityIcon(vis as TreeVisibility)}></span>
