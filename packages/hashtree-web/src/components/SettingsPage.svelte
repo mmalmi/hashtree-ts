@@ -6,6 +6,7 @@
   import { onMount } from 'svelte';
   import { nostrStore } from '../nostr';
   import { useAppStore, formatBytes, updateStorageStats } from '../store';
+  import { BackButton } from './ui';
 
   let relayList = $derived($nostrStore.relays);
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
@@ -27,18 +28,12 @@
     });
     return unsub;
   });
-
-  function navigate(path: string) {
-    window.location.hash = path;
-  }
 </script>
 
 <div class="flex-1 flex flex-col min-h-0 bg-surface-0">
   <!-- Header -->
   <div class="h-12 px-4 flex items-center gap-3 border-b border-surface-3 bg-surface-1 shrink-0">
-    <button onclick={() => navigate('/')} class="btn-ghost p-2">
-      <span class="i-lucide-arrow-left"></span>
-    </button>
+    <BackButton href="/" />
     <span class="font-semibold text-text-1">Settings</span>
   </div>
 

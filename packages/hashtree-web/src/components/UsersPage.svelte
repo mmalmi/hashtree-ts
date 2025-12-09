@@ -7,6 +7,7 @@
   import { accountsStore, createAccountFromNsec, saveActiveAccountToStorage, hasNostrExtension, type Account } from '../accounts';
   import { nostrStore, loginWithNsec, loginWithExtension, generateNewKey, restoreSession } from '../nostr';
   import { Avatar, Name } from './User';
+  import { BackButton } from './ui';
 
   // State
   let showAddNsec = $state(false);
@@ -30,10 +31,6 @@
   let sortedAccounts = $derived(
     [...accounts].sort((a, b) => a.addedAt - b.addedAt)
   );
-
-  function goBack() {
-    navigate('/');
-  }
 
   function handleAddNsec() {
     nsecError = null;
@@ -116,10 +113,7 @@
 <div class="flex-1 flex flex-col min-h-0 bg-surface-0 p-6 max-w-2xl mx-auto w-full">
   <!-- Header -->
   <div class="flex items-center gap-4 mb-6">
-    <button onclick={goBack} class="btn-ghost">
-      <span class="i-lucide-arrow-left"></span>
-      Back
-    </button>
+    <BackButton href="/" label="Back" />
     <h1 class="text-xl font-semibold">Users</h1>
   </div>
 

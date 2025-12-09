@@ -59,7 +59,7 @@
           <span class="text-sm text-text-1 truncate flex-1">{$uploadProgress.fileName}</span>
           <button
             onclick={cancelUpload}
-            class="shrink-0 px-2 py-0.5 text-xs text-text-3 hover:text-text-1 transition-colors"
+            class="btn-ghost shrink-0 px-2 py-0.5 text-xs"
           >
             Cancel
           </button>

@@ -128,8 +128,30 @@
   let blobUrl = $state<string | null>(null);
   // Track current blob URL outside of reactive system for cleanup
   let currentBlobUrl: string | null = null;
-  // Fullscreen mode
-  let isFullscreen = $state(false);
+
+  // Fullscreen mode - check URL param
+  let isFullscreen = $derived.by(() => {
+    const qIdx = hash.indexOf('?');
+    if (qIdx === -1) return false;
+    const params = new URLSearchParams(hash.slice(qIdx + 1));
+    return params.get('fullscreen') === '1';
+  });
+
+  function toggleFullscreen() {
+    const currentHash = window.location.hash;
+    if (isFullscreen) {
+      // Remove fullscreen param
+      const newHash = currentHash
+        .replace(/[?&]fullscreen=1/g, '')
+        .replace(/\?$/, '')
+        .replace(/\?&/, '?');
+      window.location.hash = newHash;
+    } else {
+      // Add fullscreen param
+      const hasQuery = currentHash.includes('?');
+      window.location.hash = hasQuery ? `${currentHash}&fullscreen=1` : `${currentHash}?fullscreen=1`;
+    }
+  }
 
   // MIME type detection
   function getMimeType(filename?: string): string | null {
@@ -552,8 +574,8 @@
             Permalink
           </a>
         {/if}
-        <button onclick={() => isFullscreen = true} class="btn-ghost" title="Fullscreen" data-testid="viewer-fullscreen">
-          <span class="i-lucide-maximize text-base"></span>
+        <button onclick={toggleFullscreen} class="btn-ghost" title={isFullscreen ? "Exit fullscreen" : "Fullscreen"} data-testid="viewer-fullscreen">
+          <span class={isFullscreen ? "i-lucide-minimize text-base" : "i-lucide-maximize text-base"}></span>
         </button>
         <button onclick={handleShare} class="btn-ghost" title="Share" data-testid="viewer-share">
           <span class="i-lucide-share text-base"></span>
@@ -670,38 +692,3 @@
   </div>
 {/if}
 
-<!-- Fullscreen overlay -->
-{#if isFullscreen && entryFromStore}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="fixed inset-0 z-50 bg-black flex items-center justify-center"
-    onclick={() => isFullscreen = false}
-    onkeydown={(e) => { if (e.key === 'Escape') isFullscreen = false; }}
-  >
-    <button
-      onclick={() => isFullscreen = false}
-      class="absolute top-4 right-4 btn-ghost text-white z-10"
-      title="Close fullscreen"
-    >
-      <span class="i-lucide-x text-2xl"></span>
-    </button>
-    {#if isImage && blobUrl}
-      <img
-        src={blobUrl}
-        alt={urlFileName}
-        class="max-w-full max-h-full object-contain"
-        onclick={(e) => e.stopPropagation()}
-      />
-    {:else if isVideo && entryFromStore?.cid}
-      <div class="w-full h-full" onclick={(e) => e.stopPropagation()}>
-        <LiveVideoViewer cid={entryFromStore.cid} fileName={urlFileName || ''} />
-      </div>
-    {:else if fileContent !== null}
-      <pre
-        class="max-w-full max-h-full overflow-auto p-8 text-white font-mono text-sm whitespace-pre-wrap"
-        onclick={(e) => e.stopPropagation()}
-      >{fileContent}</pre>
-    {/if}
-  </div>
-{/if}

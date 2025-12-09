@@ -7,6 +7,7 @@
   import { createProfileStore, invalidateProfile as invalidateProfileFn } from '../stores/profile';
   import { nip19 } from 'nostr-tools';
   import { NDKEvent } from '@nostr-dev-kit/ndk';
+  import { BackButton } from './ui';
 
   interface Props {
     npub?: string;
@@ -132,9 +133,7 @@
   <div class="flex-1 flex flex-col min-h-0 bg-surface-0 overflow-y-auto">
     <!-- Header -->
     <div class="sticky top-0 z-10 bg-surface-1 border-b border-surface-3 px-4 py-3 flex items-center gap-3">
-      <button onclick={handleCancel} disabled={saving} class="btn-ghost p-2">
-        <span class="i-lucide-chevron-left"></span>
-      </button>
+      <BackButton onclick={handleCancel} />
       <h1 class="text-lg font-semibold flex-1">Edit Profile</h1>
       <button
         onclick={handleSave}

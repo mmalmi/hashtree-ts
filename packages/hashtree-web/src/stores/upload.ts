@@ -190,10 +190,12 @@ export async function uploadFiles(files: FileList): Promise<void> {
       markFilesChanged(new Set([file.name]));
 
       if (isOwnTree && routePubkey) {
-        // Save to nostr and set up for autosave
+        // Save to nostr and set up for autosave (fire-and-forget, works offline)
         const hashHex = toHex(newRootCid.hash);
         const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
-        await saveHashtree(route.treeName!, hashHex, keyHex);
+        saveHashtree(route.treeName!, hashHex, keyHex).catch(() => {
+          // Network error is OK - local changes are saved, will sync when online
+        });
         nostrStore.setSelectedTree({
           id: '',
           name: route.treeName!,
@@ -331,7 +333,9 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
       if (isOwnTree && routePubkey) {
         const hashHex = toHex(newRootCid.hash);
         const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
-        await saveHashtree(route.treeName!, hashHex, keyHex);
+        saveHashtree(route.treeName!, hashHex, keyHex).catch(() => {
+          // Network error is OK - local changes are saved, will sync when online
+        });
         nostrStore.setSelectedTree({
           id: '',
           name: route.treeName!,

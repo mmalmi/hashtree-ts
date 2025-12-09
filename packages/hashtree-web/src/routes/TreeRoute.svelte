@@ -4,7 +4,7 @@
   import Viewer from '../components/Viewer/Viewer.svelte';
   import StreamView from '../components/stream/StreamView.svelte';
   import { nostrStore } from '../nostr';
-  import { routeStore, addRecent, isViewingFileStore } from '../stores';
+  import { routeStore, addRecent, isViewingFileStore, currentHash } from '../stores';
 
   interface Props {
     npub?: string;
@@ -16,6 +16,15 @@
 
   // Use derived from routeStore for reactivity
   let route = $derived($routeStore);
+  let hash = $derived($currentHash);
+
+  // Check if fullscreen mode from URL
+  let isFullscreen = $derived.by(() => {
+    const qIdx = hash.indexOf('?');
+    if (qIdx === -1) return false;
+    const params = new URLSearchParams(hash.slice(qIdx + 1));
+    return params.get('fullscreen') === '1';
+  });
 
   // Check if viewing own tree (streaming only allowed on own trees)
   let userNpub = $derived($nostrStore.npub);
@@ -96,14 +105,16 @@
   }
 </script>
 
-<!-- File browser - hidden on mobile when file/stream selected -->
-<div class={hasFileSelected
-  ? 'hidden lg:flex lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col'
-  : 'flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col'}>
-  <FileBrowser />
-</div>
+<!-- File browser - hidden on mobile when file/stream selected, hidden completely in fullscreen -->
+{#if !isFullscreen}
+  <div class={hasFileSelected
+    ? 'hidden lg:flex lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col'
+    : 'flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col'}>
+    <FileBrowser />
+  </div>
+{/if}
 <!-- Right panel (Viewer or StreamView) - shown on mobile when file/stream selected -->
-<div class={hasFileSelected
+<div class={hasFileSelected || isFullscreen
   ? 'flex flex-1 flex-col min-w-0 min-h-0'
   : 'hidden lg:flex flex-1 flex-col min-w-0 min-h-0'}>
   {#if showStreamView}
