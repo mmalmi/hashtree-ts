@@ -370,7 +370,7 @@
     <video
       bind:this={videoRef}
       controls
-      autoplay={isLive || shouldTreatAsLive}
+      autoplay
       class="w-full h-full object-contain"
       class:invisible={loading || error}
       preload="metadata"
