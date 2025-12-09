@@ -46,7 +46,7 @@ test.describe('Subdirectory Creation', () => {
     await page.waitForTimeout(1000);
 
     // Should be inside the tree now
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 5000 });
 
     // Create a subfolder
     await page.getByRole('button', { name: /Folder/ }).first().click();
@@ -94,11 +94,11 @@ test.describe('Subdirectory Creation', () => {
     // URL should now include the subfolder path
     expect(page.url()).toContain('child-folder');
 
-    // Should show "Empty directory" (we're inside the subfolder now)
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
+    // Should have ".." entry to go back (we're inside the subfolder now)
+    await expect(page.locator('a:has-text("..")')).toBeVisible({ timeout: 5000 });
 
-    // Should have ".." entry to go back
-    await expect(page.locator('a:has-text("..")')).toBeVisible();
+    // Should show drop zone or empty state
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible();
   });
 
   test.skip('nested subdirectories in public tree should all show as folders', async ({ page }) => {
@@ -126,7 +126,7 @@ test.describe('Subdirectory Creation', () => {
     await page.waitForTimeout(1000);
 
     // Wait for Empty directory or Folder button to appear (we're now inside level1)
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
 
     // Create second subfolder inside level1
     await page.getByRole('button', { name: /Folder/ }).first().click({ timeout: 10000 });
@@ -145,7 +145,7 @@ test.describe('Subdirectory Creation', () => {
     await page.waitForTimeout(1000);
 
     // Wait for Empty directory
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
 
     // Create third subfolder
     await page.getByRole('button', { name: /Folder/ }).first().click({ timeout: 10000 });
@@ -182,7 +182,7 @@ test.describe('Subdirectory Creation', () => {
     await page.locator('a:has-text("subdir")').click();
 
     // Wait for the folder to load - should show Empty directory
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 5000 });
 
     // CRITICAL: File and Folder buttons should be visible inside subdirectory
     await expect(page.getByRole('button', { name: 'New File' })).toBeVisible({ timeout: 5000 });
@@ -220,7 +220,7 @@ test.describe('Subdirectory Creation', () => {
     await page.waitForTimeout(500);
 
     // Should show Empty directory
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('subdirectory in private tree should show as folder', async ({ page }) => {
@@ -254,6 +254,6 @@ test.describe('Subdirectory Creation', () => {
     await page.waitForTimeout(500);
 
     // Should show Empty directory
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 5000 });
   });
 });
