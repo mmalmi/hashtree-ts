@@ -17,8 +17,7 @@ test.describe('Permalink Navigation', () => {
     }
   });
 
-  // SKIP: File permalink viewer displays directory instead of content - needs investigation
-  test.skip('file permalink should display file content', async ({ page }) => {
+  test('file permalink should display file content', async ({ page }) => {
     // Navigate to public folder
     await page.getByRole('link', { name: 'public' }).first().click();
     await page.waitForTimeout(1000);

@@ -62,6 +62,32 @@ async function updateCurrentDirCid() {
   }
 
   if (urlPath.length === 0) {
+    // For permalinks, the hash might point to a file directly (not a tree)
+    // Check if it's a directory before assuming
+    const route = get(routeStore);
+    if (route.isPermalink) {
+      resolvingPathStore.set(true);
+      const tree = getTree();
+      try {
+        const isDir = await tree.isDirectory(rootCid);
+        if (isDir) {
+          currentDirCidStore.set(rootCid);
+          isViewingFileStore.set(false);
+        } else {
+          // The nhash points directly to a file, not a tree
+          currentDirCidStore.set(null);
+          isViewingFileStore.set(true);
+        }
+      } catch {
+        // If we can't determine, assume it's a directory
+        currentDirCidStore.set(rootCid);
+        isViewingFileStore.set(false);
+      }
+      resolvingPathStore.set(false);
+      hasResolvedCurrentPath = true;
+      return;
+    }
+
     currentDirCidStore.set(rootCid);
     isViewingFileStore.set(false);
     resolvingPathStore.set(false);

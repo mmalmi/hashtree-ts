@@ -8,9 +8,12 @@
 
   interface Props {
     fullWidth?: boolean;
+    autofocus?: boolean;
   }
 
-  let { fullWidth = false }: Props = $props();
+  let { fullWidth = false, autofocus = false }: Props = $props();
+
+  let inputRef: HTMLInputElement | undefined = $state();
 
   // Match 64 hex chars optionally followed by /filename
   const HASH_PATTERN = /^([a-f0-9]{64})(\/.*)?$/i;
@@ -63,6 +66,13 @@
     selectedIndex = 0;
   });
 
+  // Autofocus when requested
+  $effect(() => {
+    if (autofocus && inputRef) {
+      inputRef.focus();
+    }
+  });
+
   // Close dropdown when clicking outside
   $effect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -77,15 +87,23 @@
   function navigateTo(input: string): boolean {
     let trimmed = input.trim();
 
-    // Extract hash fragment from full URL
+    // Extract hash fragment from full URL and navigate directly
     try {
       const url = new URL(trimmed);
-      if (url.hash) {
-        trimmed = url.hash.slice(1);
-        if (trimmed.startsWith('/')) trimmed = trimmed.slice(1);
+      if (url.hash && url.hash.startsWith('#/')) {
+        window.location.hash = url.hash;
+        value = '';
+        return true;
       }
     } catch {
       // Not a URL
+    }
+
+    // Handle raw #/ paths pasted directly
+    if (trimmed.startsWith('#/')) {
+      window.location.hash = trimmed;
+      value = '';
+      return true;
     }
 
     // npub
@@ -171,6 +189,7 @@
   <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-2 border transition-colors {focused ? 'border-accent' : 'border-surface-3'}">
     <span class="i-lucide-search text-sm text-muted shrink-0" />
     <input
+      bind:this={inputRef}
       type="text"
       {value}
       oninput={handleInput}

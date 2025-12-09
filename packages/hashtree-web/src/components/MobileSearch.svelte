@@ -34,7 +34,7 @@
     <!-- Expanded search overlay -->
     <div class="absolute left-0 right-0 top-0 h-12 bg-surface-1 flex items-center px-3 z-50">
       <div class="flex-1">
-        <SearchInput fullWidth />
+        <SearchInput fullWidth autofocus />
       </div>
       <button
         onclick={() => (expanded = false)}
