@@ -26,6 +26,7 @@ npm run test:e2e # E2E tests
 
 ## Code Style
 - UnoCSS: use `b-` prefix for borders
+- Buttons: use `btn-ghost` class (default) or `btn-primary`/`btn-danger`/`btn-success` for colored buttons (defined in uno.config.ts)
 
 ## Testing
 - When tests are failing, increasing timeouts is usually not the solution. The app should work fast

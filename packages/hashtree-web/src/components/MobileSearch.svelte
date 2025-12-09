@@ -35,7 +35,7 @@
       </div>
       <button
         onclick={() => (expanded = false)}
-        class="p-2 text-muted hover:text-text-1"
+        class="btn-ghost p-2"
         aria-label="Close search"
       >
         <span class="i-lucide-x text-lg" />
@@ -45,7 +45,7 @@
     <!-- Search icon button -->
     <button
       onclick={() => (expanded = true)}
-      class="p-2 text-muted hover:text-text-1"
+      class="btn-ghost p-2"
       aria-label="Search"
     >
       <span class="i-lucide-search text-lg" />
