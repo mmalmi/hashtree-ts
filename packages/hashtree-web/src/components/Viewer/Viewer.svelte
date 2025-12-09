@@ -13,7 +13,7 @@
   import DirectoryActions from './DirectoryActions.svelte';
   import FileEditor from './FileEditor.svelte';
   import HtmlViewer from './HtmlViewer.svelte';
-  import VideoViewer from './VideoViewer.svelte';
+  import LiveVideoViewer from './LiveVideoViewer.svelte';
   import YjsDocumentEditor from './YjsDocumentEditor.svelte';
   import ZipPreview from './ZipPreview.svelte';
   import DosBox from './DosBox.svelte';
@@ -593,7 +593,7 @@
 
     <!-- Content -->
     {#if isVideo && entryFromStore?.cid}
-      <VideoViewer cid={entryFromStore.cid} fileName={urlFileName} />
+      <LiveVideoViewer cid={entryFromStore.cid} fileName={urlFileName} />
     {:else if isHtml && fileContent !== null}
       <HtmlViewer content={fileContent} fileName={urlFileName} />
     {:else if isImage && blobUrl}
@@ -694,7 +694,7 @@
       />
     {:else if isVideo && entryFromStore?.cid}
       <div class="w-full h-full" onclick={(e) => e.stopPropagation()}>
-        <VideoViewer cid={entryFromStore.cid} fileName={urlFileName || ''} />
+        <LiveVideoViewer cid={entryFromStore.cid} fileName={urlFileName || ''} />
       </div>
     {:else if fileContent !== null}
       <pre

@@ -4,10 +4,14 @@
 1. [x] LIVE indicator - Show when viewing live-updating directory (DONE - 2 tests passing)
 2. [ ] GitRepoView improvements - git visualization (commits, branches, diff) - basic exists
 3. [ ] Yjs Document Editor - complete delta storage (partially done)
-4. [ ] DosBox - DOS emulator for running .exe files in browser
+4. [x] DosBox - DOS emulator for running .exe files in browser (DONE)
 
 ### Missing UI Features
 5. [x] MobileSearch - Responsive search that expands on mobile (DONE - 4 tests passing)
+
+### New Features Added
+- [x] LiveVideoViewer with MSE - Progressive video streaming with LIVE indicator (2 tests passing)
+- [x] readFileRange/readFileStream with offset - Random access file reads for seeking (9 tests passing)
 
 ### Already Working (verified)
 - [x] ReadmePanel - README.md display with markdown (2 tests passing)
@@ -18,7 +22,7 @@
 - [x] StreamPanel - StreamView.svelte exists
 - [x] SettingsPanel - SettingsPage.svelte exists
 - [x] WalletPanel - WalletPage.svelte exists
-- [x] LiveVideo - VideoViewer.svelte exists
+- [x] LiveVideo - LiveVideoViewer.svelte with MSE support
 - [x] File selection and viewing - Works via URL routing
 - [x] Delayed loading - Implemented inline in Viewer.svelte
 - [x] Recently changed pulse - recentlyChanged store
@@ -28,6 +32,7 @@
 
 [x] 1. MobileSearch - responsive search expansion (DONE)
 [x] 2. LIVE indicator - real-time directory updates (DONE)
-[ ] 3. GitRepoView improvements - better visualization
-[ ] 4. Yjs Document Editor - complete delta storage (complex)
-[ ] 5. DosBox - DOS emulation (complex, external dependency)
+[x] 3. LiveVideoViewer with MSE - streaming playback (DONE)
+[x] 4. DosBox - DOS emulation (DONE)
+[ ] 5. GitRepoView improvements - better visualization
+[ ] 6. Yjs Document Editor - complete delta storage (complex)
