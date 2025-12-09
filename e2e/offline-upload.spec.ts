@@ -166,10 +166,49 @@ test.describe('Offline Upload', () => {
     const title = await indicatorLink.getAttribute('title');
     console.log(`Indicator title: ${title}`);
     expect(title).toContain('relay');
+
+    // "offline" text should NOT be visible when online
+    const offlineText = page.locator('text=offline');
+    await expect(offlineText).not.toBeVisible();
   });
 
-  // Note: Testing actual offline behavior is tricky because NDK maintains
-  // WebSocket connection status even when network is blocked. The WebSocket
-  // doesn't immediately close, it just stops receiving data.
-  // The connectivity indicator accurately reflects NDK's view of connection state.
+  test('connectivity indicator shows offline text when browser is offline', async ({ page, context }) => {
+    // Set up fresh user while online
+    await setupFreshUser(page);
+
+    // Wait for initial connection
+    await page.waitForTimeout(2000);
+
+    // "offline" text should NOT be visible when online
+    const offlineText = page.getByText('offline', { exact: true });
+    await expect(offlineText).not.toBeVisible();
+
+    // Go offline
+    await context.setOffline(true);
+    console.log('Going offline...');
+
+    // Small wait for browser to detect offline state
+    await page.waitForTimeout(500);
+
+    // "offline" text should now be visible
+    await expect(offlineText).toBeVisible({ timeout: 5000 });
+    console.log('Offline text visible');
+
+    // Connection count should NOT change to 0 (NDK still reports cached state)
+    const indicator = page.locator('[data-testid="peer-count"]');
+    const count = await indicator.textContent();
+    console.log(`Connection count while offline: ${count}`);
+    // Count stays the same (not forced to 0)
+
+    // Go back online
+    await context.setOffline(false);
+    console.log('Going back online...');
+
+    // Wait for browser to detect online state
+    await page.waitForTimeout(500);
+
+    // "offline" text should disappear
+    await expect(offlineText).not.toBeVisible({ timeout: 5000 });
+    console.log('Offline text hidden');
+  });
 });
