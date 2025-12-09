@@ -55,8 +55,7 @@ test.describe('Video Streaming', () => {
   // This test takes longer due to recording simulation
   test.setTimeout(60000);
 
-  // SKIP: MediaRecorder mock doesn't work reliably in test environment
-  test.skip('streamed video can be recorded and played back', async ({ page }) => {
+  test('streamed video can be recorded and played back', async ({ page }) => {
     // Verify test file exists
     expect(fs.existsSync(TEST_VIDEO)).toBe(true);
     const videoBase64 = getTestVideoBase64();
@@ -184,6 +183,11 @@ test.describe('Video Streaming', () => {
     console.log('Starting recording...');
     const startRecordingBtn = page.getByRole('button', { name: /Start Recording/ });
     await expect(startRecordingBtn).toBeVisible({ timeout: 5000 });
+
+    // Log the current URL and route state before starting
+    const urlBefore = await page.evaluate(() => window.location.hash);
+    console.log('URL before recording:', urlBefore);
+
     await startRecordingBtn.click();
 
     // Wait for recording to process (mock feeds chunks over time)
@@ -199,6 +203,10 @@ test.describe('Video Streaming', () => {
     // Wait for file to be saved
     console.log('Waiting for file to be saved...');
     await page.waitForTimeout(3000);
+
+    // Log final URL
+    const urlAfter = await page.evaluate(() => window.location.hash);
+    console.log('URL after recording:', urlAfter);
 
     // Navigate back to public folder
     const publicLink = page.getByRole('link', { name: 'public' }).first();

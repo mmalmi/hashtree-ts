@@ -64,29 +64,23 @@
   function handleStartRecording() {
     if (videoRef) {
       startRecording(videoRef);
-      // Navigate to file URL when recording starts
-      const fullFilename = `${stream.streamFilename}.webm`;
-      const filePath = `${basePath}/${encodeURIComponent(fullFilename)}`;
-      const params = [
-        linkKey ? `k=${linkKey}` : '',
-        'stream=1',
-      ].filter(Boolean).join('&');
-      window.location.hash = `#${filePath}?${params}`;
+      // Don't navigate to file URL yet - file doesn't exist until saved
+      // The shareable URL is built dynamically in handleShare()
     }
   }
 
   function handleShare() {
-    // Build viewer URL with ?live=1 for live playback behavior
-    let viewerUrl = window.location.href
-      .replace(/[&?]stream=1/, '')
-      .replace(/\?$/, '');
+    // Build viewer URL with filename and ?live=1 for live playback behavior
+    const fullFilename = `${stream.streamFilename}.webm`;
+    const filePath = `${basePath}/${encodeURIComponent(fullFilename)}`;
+    const base = window.location.origin + window.location.pathname + '#';
 
-    // Add live=1 param if recording (so viewers see it as live stream)
-    if (stream.isRecording) {
-      const hasQuery = viewerUrl.includes('?');
-      viewerUrl += hasQuery ? '&live=1' : '?live=1';
-    }
+    // Build query params
+    const params: string[] = [];
+    if (linkKey) params.push(`k=${linkKey}`);
+    if (stream.isRecording) params.push('live=1');
 
+    const viewerUrl = base + filePath + (params.length ? '?' + params.join('&') : '');
     openShareModal(viewerUrl);
   }
 
