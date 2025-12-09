@@ -289,8 +289,8 @@ test.describe('Hashtree Explorer', () => {
     // Should have Start Camera button
     await expect(page.getByRole('button', { name: 'Start Camera' })).toBeVisible({ timeout: 5000 });
 
-    // Close panel by clicking X button (navigates back)
-    await page.locator('button:has(span.i-lucide-x)').click();
+    // Close panel by clicking Back link (navigates back)
+    await page.getByRole('link', { name: 'Back' }).click();
     await page.waitForTimeout(200);
 
     // Panel should be closed - Stream link should be visible again

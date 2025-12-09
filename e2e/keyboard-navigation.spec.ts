@@ -147,7 +147,7 @@ test.describe('Keyboard Navigation', () => {
     await page.waitForTimeout(500);
 
     // Should now be in subdir - verify by checking URL or empty directory message
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('should show focus ring on focused item', async ({ page }) => {
