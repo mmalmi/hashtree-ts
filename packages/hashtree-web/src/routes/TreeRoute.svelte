@@ -114,8 +114,8 @@
 <!-- File browser - hidden on mobile when file/stream selected, hidden completely in fullscreen -->
 {#if !isFullscreen}
   <div class={hasFileSelected
-    ? 'hidden lg:flex lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col'
-    : 'flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col'}>
+    ? 'hidden lg:flex lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col min-h-0'
+    : 'flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col min-h-0'}>
     <FileBrowser />
   </div>
 {/if}

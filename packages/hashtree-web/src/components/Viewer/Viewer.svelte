@@ -139,17 +139,21 @@
     return params.get('fullscreen') === '1';
   });
 
-  function toggleFullscreen() {
+  function exitFullscreen() {
     const currentHash = window.location.hash;
+    const newHash = currentHash
+      .replace(/[?&]fullscreen=1/g, '')
+      .replace(/\?$/, '')
+      .replace(/\?&/, '?');
+    window.location.hash = newHash;
+  }
+
+  function toggleFullscreen() {
     if (isFullscreen) {
-      // Remove fullscreen param
-      const newHash = currentHash
-        .replace(/[?&]fullscreen=1/g, '')
-        .replace(/\?$/, '')
-        .replace(/\?&/, '?');
-      window.location.hash = newHash;
+      exitFullscreen();
     } else {
       // Add fullscreen param
+      const currentHash = window.location.hash;
       const hasQuery = currentHash.includes('?');
       window.location.hash = hasQuery ? `${currentHash}&fullscreen=1` : `${currentHash}?fullscreen=1`;
     }
@@ -351,11 +355,15 @@
 
       const key = e.key.toLowerCase();
 
-      // Escape: back to directory
+      // Escape: exit fullscreen first, or back to directory
       if (key === 'escape') {
         e.preventDefault();
-        (document.activeElement as HTMLElement)?.blur();
-        window.location.hash = backUrl.slice(1); // Remove leading #
+        if (isFullscreen) {
+          exitFullscreen();
+        } else {
+          (document.activeElement as HTMLElement)?.blur();
+          window.location.hash = backUrl.slice(1); // Remove leading #
+        }
         return;
       }
 
@@ -600,7 +608,8 @@
 {:else if urlFileName && entryFromStore}
   <!-- File view - show content -->
   <div class="flex-1 flex flex-col min-h-0 bg-surface-0">
-    <!-- Header -->
+    <!-- Header - hidden in fullscreen -->
+    {#if !isFullscreen}
     <div class="shrink-0 px-3 py-2 border-b border-surface-3 flex flex-wrap items-center justify-between gap-2 bg-surface-1" data-testid="viewer-header">
       <div class="flex items-center gap-2 min-w-0">
         <a href={backUrl} class="btn-ghost p-1 no-underline" title="Back to folder" data-testid="viewer-back">
@@ -681,6 +690,7 @@
         {/if}
       </div>
     </div>
+    {/if}
 
     <!-- Content -->
     {#if isVideo && entryFromStore?.cid}

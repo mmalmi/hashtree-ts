@@ -99,20 +99,18 @@
 
 <div class="h-full flex flex-col bg-surface-0">
   <!-- Top bar -->
-  {#if !fullscreen}
-    <header class="h-12 shrink-0 bg-surface-1 border-b border-surface-3 flex items-center justify-between px-3 md:px-4 gap-2 relative">
-      <a href="#/" onclick={handleLogoClick} class="no-underline">
-        <Logo />
-      </a>
-      <div class="flex items-center gap-2 md:gap-3">
-        <MobileSearch />
-        <div class="hidden md:block"><SearchInput /></div>
-        <ConnectivityIndicator />
-        <WalletLink />
-        <NostrLogin />
-      </div>
-    </header>
-  {/if}
+  <header class="h-12 shrink-0 bg-surface-1 border-b border-surface-3 flex items-center justify-between px-3 md:px-4 gap-2 relative">
+    <a href="#/" onclick={handleLogoClick} class="no-underline">
+      <Logo />
+    </a>
+    <div class="flex items-center gap-2 md:gap-3">
+      <MobileSearch />
+      <div class="hidden md:block"><SearchInput /></div>
+      <ConnectivityIndicator />
+      <WalletLink />
+      <NostrLogin />
+    </div>
+  </header>
 
   <!-- Main area -->
   <div class="flex-1 flex flex-col min-h-0">
