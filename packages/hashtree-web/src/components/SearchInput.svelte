@@ -191,7 +191,7 @@
     <input
       bind:this={inputRef}
       type="text"
-      {value}
+      bind:value
       oninput={handleInput}
       onkeydown={handleKeyDown}
       onfocus={() => { focused = true; showDropdown = true; }}

@@ -4,7 +4,7 @@
   import Viewer from '../components/Viewer/Viewer.svelte';
   import StreamView from '../components/stream/StreamView.svelte';
   import { nostrStore } from '../nostr';
-  import { routeStore, addRecent, isViewingFileStore, currentHash } from '../stores';
+  import { routeStore, addRecent, isViewingFileStore, currentHash, currentDirCidStore, createGitInfoStore } from '../stores';
   import { updateRecentVisibility } from '../stores/recents';
 
   interface Props {
@@ -36,7 +36,15 @@
   let isStreaming = $derived(route.isStreaming && isOwnTree);
   // Check if a file is selected (actual check from hashtree, not heuristic)
   let isViewingFile = $derived($isViewingFileStore);
-  let hasFileSelected = $derived(isViewingFile || isStreaming);
+
+  // Check if current directory is a git repo
+  let currentDirCid = $derived($currentDirCidStore);
+  let gitInfoStore = $derived(createGitInfoStore(currentDirCid));
+  let gitInfo = $derived($gitInfoStore);
+  let isGitRepo = $derived(gitInfo.isRepo);
+
+  // On mobile, show viewer for git repos or when file/stream selected
+  let hasFileSelected = $derived(isViewingFile || isStreaming || isGitRepo);
 
   // Show stream view if streaming and logged in
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
