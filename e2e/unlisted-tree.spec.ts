@@ -92,8 +92,8 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(500);
 
-    // Find the unlisted-icons tree row and check for link icon
-    const treeRow = page.locator('a:has-text("unlisted-icons")');
+    // Find the unlisted-icons tree row and check for link icon (use file-list to avoid matching recent folders)
+    const treeRow = page.getByTestId('file-list').locator('a:has-text("unlisted-icons")').first();
     await expect(treeRow).toBeVisible({ timeout: 5000 });
 
     // Should have link icon (i-lucide-link) for unlisted visibility
@@ -501,7 +501,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(500);
 
     // CRITICAL: Verify the tree still has link icon (unlisted), NOT globe icon (public)
-    const treeRow = page.locator('a:has-text("unlisted-stays-unlisted")');
+    const treeRow = page.getByTestId('file-list').locator('a:has-text("unlisted-stays-unlisted")').first();
     await expect(treeRow).toBeVisible({ timeout: 5000 });
 
     // Should have link icon (unlisted), not globe icon (public)
@@ -555,23 +555,22 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(1000);
 
-    // Verify icons for each tree type
+    // Verify icons for each tree type (use file-list testid to avoid matching recent folders)
+    const fileList = page.getByTestId('file-list');
+
     // Public tree should have globe icon
-    const publicRow = page.locator('a:has-text("public-tree")');
+    const publicRow = fileList.locator('a:has-text("public-tree")').first();
     await expect(publicRow).toBeVisible({ timeout: 5000 });
-    console.log('Public row HTML:', await publicRow.innerHTML());
     await expect(publicRow.locator('span.i-lucide-globe')).toBeVisible({ timeout: 5000 });
 
     // Unlisted tree should have link icon
-    const unlistedRow = page.locator('a:has-text("unlisted-tree")');
+    const unlistedRow = fileList.locator('a:has-text("unlisted-tree")').first();
     await expect(unlistedRow).toBeVisible({ timeout: 5000 });
-    console.log('Unlisted row HTML:', await unlistedRow.innerHTML());
     await expect(unlistedRow.locator('span.i-lucide-link')).toBeVisible({ timeout: 5000 });
 
     // Private tree should have lock icon
-    const privateRow = page.locator('a:has-text("private-tree")');
+    const privateRow = fileList.locator('a:has-text("private-tree")').first();
     await expect(privateRow).toBeVisible({ timeout: 5000 });
-    console.log('Private row HTML:', await privateRow.innerHTML());
     await expect(privateRow.locator('span.i-lucide-lock')).toBeVisible({ timeout: 5000 });
   });
 
@@ -671,7 +670,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(500);
 
     // Click on the private tree
-    await page.locator('a:has-text("my-private")').click();
+    await page.getByTestId('file-list').locator('a:has-text("my-private")').first().click();
     await page.waitForTimeout(2000);
 
     // Should still not show the locked message

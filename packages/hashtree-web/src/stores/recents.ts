@@ -3,6 +3,7 @@
  * Persists to localStorage, uses Svelte stores
  */
 import { writable, get } from 'svelte/store';
+import type { TreeVisibility } from 'hashtree';
 
 const STORAGE_KEY = 'hashtree:recents';
 const MAX_RECENTS = 20;
@@ -19,6 +20,8 @@ export interface RecentItem {
   npub?: string;
   /** Optional tree name */
   treeName?: string;
+  /** Optional visibility for tree/file types */
+  visibility?: TreeVisibility;
 }
 
 function loadRecents(): RecentItem[] {
@@ -71,6 +74,19 @@ export function addRecent(item: Omit<RecentItem, 'timestamp'>) {
 
     // Add to front, trim to max
     const updated = [newItem, ...filtered].slice(0, MAX_RECENTS);
+    saveRecents(updated);
+    return updated;
+  });
+}
+
+/**
+ * Update a recent item's visibility by path
+ */
+export function updateRecentVisibility(path: string, visibility: TreeVisibility) {
+  recentsStore.update(current => {
+    const updated = current.map(item =>
+      item.path === path ? { ...item, visibility } : item
+    );
     saveRecents(updated);
     return updated;
   });

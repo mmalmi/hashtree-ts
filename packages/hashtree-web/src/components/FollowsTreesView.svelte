@@ -1,8 +1,14 @@
 <script lang="ts">
   /**
    * FollowsTreesView - shows trees from followed users
-   * Placeholder for now
    */
+  import { nostrStore } from '../nostr';
+  import { createFollowsStore } from '../stores/follows';
+
+  let pubkey = $derived($nostrStore.pubkey);
+  let followsStore = $derived(pubkey ? createFollowsStore(pubkey) : null);
+  let follows = $derived(followsStore ? $followsStore : null);
+  let followCount = $derived(follows?.follows?.length ?? 0);
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
@@ -10,6 +16,10 @@
     <span class="text-sm font-medium text-text-1">Following</span>
   </div>
   <div class="flex-1 overflow-auto p-4 text-muted text-sm">
-    No trees from followed users
+    {#if followCount === 0}
+      Not following anyone
+    {:else}
+      No trees from followed users
+    {/if}
   </div>
 </div>

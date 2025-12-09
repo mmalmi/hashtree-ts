@@ -255,7 +255,9 @@ export async function uploadFiles(files: FileList): Promise<void> {
         // Save to nostr and set up for autosave (fire-and-forget, works offline)
         const hashHex = toHex(newRootCid.hash);
         const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
-        saveHashtree(route.treeName!, hashHex, keyHex).catch(() => {
+        // Preserve current tree's visibility
+        const currentVisibility = nostrStore.getState().selectedTree?.visibility ?? 'public';
+        saveHashtree(route.treeName!, hashHex, keyHex, { visibility: currentVisibility }).catch(() => {
           // Network error is OK - local changes are saved, will sync when online
         });
         nostrStore.setSelectedTree({
@@ -264,6 +266,7 @@ export async function uploadFiles(files: FileList): Promise<void> {
           pubkey: routePubkey,
           rootHash: hashHex,
           rootKey: keyHex,
+          visibility: currentVisibility,
           created_at: Math.floor(Date.now() / 1000),
         });
       }
@@ -395,7 +398,9 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
       if (isOwnTree && routePubkey) {
         const hashHex = toHex(newRootCid.hash);
         const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
-        saveHashtree(route.treeName!, hashHex, keyHex).catch(() => {
+        // Preserve current tree's visibility
+        const currentVisibility = nostrStore.getState().selectedTree?.visibility ?? 'public';
+        saveHashtree(route.treeName!, hashHex, keyHex, { visibility: currentVisibility }).catch(() => {
           // Network error is OK - local changes are saved, will sync when online
         });
         nostrStore.setSelectedTree({
@@ -404,6 +409,7 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
           pubkey: routePubkey,
           rootHash: hashHex,
           rootKey: keyHex,
+          visibility: currentVisibility,
           created_at: Math.floor(Date.now() / 1000),
         });
       }

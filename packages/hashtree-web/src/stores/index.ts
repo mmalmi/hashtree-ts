@@ -8,5 +8,5 @@ export { createTreesStore, trees, storeLinkKey, getLinkKey, type TreeEntry } fro
 export { createDirectoryEntriesStore, directoryEntries, directoryEntriesStore, type DirectoryEntriesState } from './directoryEntries';
 export { currentDirCidStore, currentDirHashStore, useCurrentDirCid, currentDirHash, isViewingFileStore, resolvingPathStore } from './currentDirHash';
 export { createGitInfoStore, createGitLogStore, type GitInfo, type CommitInfo } from './git';
-export { recentsStore, addRecent, clearRecents, getRecentsSync, type RecentItem } from './recents';
+export { recentsStore, addRecent, updateRecentVisibility, clearRecents, getRecentsSync, type RecentItem } from './recents';
 export { createFollowsStore, getFollowsSync, followPubkey, unfollowPubkey, invalidateFollows, type Follows } from './follows';

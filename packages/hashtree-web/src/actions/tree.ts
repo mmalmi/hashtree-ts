@@ -45,9 +45,13 @@ export async function initVirtualTree(entries: { name: string; cid: CID; size: n
   const hashHex = toHex(newRootCid.hash);
   const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
 
+  // Preserve current tree's visibility when updating
+  const currentVisibility = nostrStore.selectedTree?.visibility ?? 'public';
+
   // Update local cache FIRST for immediate UI update (before async nostr publish)
+  // Include visibility so throttled publish uses correct tags
   if (nostrStore.npub) {
-    updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid.hash, newRootCid.key);
+    updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid.hash, newRootCid.key, currentVisibility);
   }
 
   useNostrStore.setSelectedTree({
@@ -56,12 +60,13 @@ export async function initVirtualTree(entries: { name: string; cid: CID; size: n
     pubkey: routePubkey,
     rootHash: hashHex,
     rootKey: keyHex,
-    visibility: 'public',
+    visibility: currentVisibility,
     created_at: Math.floor(Date.now() / 1000),
   });
 
   // Now publish to Nostr (fire-and-forget for UI responsiveness)
-  void saveHashtree(route.treeName, hashHex, keyHex);
+  // Pass visibility to preserve it in the published event
+  void saveHashtree(route.treeName, hashHex, keyHex, { visibility: currentVisibility });
 
   return newRootCid;
 }
@@ -127,11 +132,11 @@ export async function createDocument(name: string) {
     // Publish to nostr
     autosaveIfOwn(newRootCid);
 
-    // Update local cache for subsequent saves
+    // Update local cache for subsequent saves (visibility is preserved from selectedTree)
     const route = parseRoute();
     const nostrStore = useNostrStore.getState();
     if (nostrStore.npub && route.treeName) {
-      updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid.hash, newRootCid.key);
+      updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid.hash, newRootCid.key, nostrStore.selectedTree?.visibility);
     }
   } else {
     // Initialize virtual tree with this document folder
@@ -205,7 +210,8 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
     // Update local cache IMMEDIATELY so subsequent operations can find the root
     // This is critical - without this, createFolder called right after createTree
     // would see rootCid as null and create a new tree instead of adding to this one
-    updateLocalRootCache(nostrState.npub, name, rootCid.hash, rootCid.key);
+    // Include visibility for correct throttled publish
+    updateLocalRootCache(nostrState.npub, name, rootCid.hash, rootCid.key, visibility);
 
     // Publish to nostr and update local cache
     // The await ensures local cache is updated before navigation

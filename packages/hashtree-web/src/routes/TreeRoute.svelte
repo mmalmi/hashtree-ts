@@ -5,6 +5,7 @@
   import StreamView from '../components/stream/StreamView.svelte';
   import { nostrStore } from '../nostr';
   import { routeStore, addRecent, isViewingFileStore, currentHash } from '../stores';
+  import { updateRecentVisibility } from '../stores/recents';
 
   interface Props {
     npub?: string;
@@ -78,6 +79,11 @@
           if (cidObj) {
             const hashHex = toHex(cidObj.hash);
             const keyHex = cidObj.key ? toHex(cidObj.key) : undefined;
+
+            // Update recent item's visibility when resolved
+            if (visibilityInfo?.visibility) {
+              updateRecentVisibility(`/${npubStr}/${treeNameVal}`, visibilityInfo.visibility);
+            }
 
             if (pubkey) {
               const currentSelected = nostrStore.getState().selectedTree;

@@ -531,9 +531,14 @@ export async function saveHashtree(
 
   const visibility = options.visibility ?? 'public';
 
+  // Set created_at now (before any async work) so all events from this save have same timestamp
+  // This prevents async-published events from having later timestamps that override local cache
+  const now = Math.floor(Date.now() / 1000);
+
   const event = new NDKEvent(ndk);
   event.kind = 30078;
   event.content = '';
+  event.created_at = now;
   event.tags = [
     ['d', name],
     ['l', 'hashtree'],
@@ -669,29 +674,30 @@ export function autosaveIfOwn(rootCid: CID): void {
 /**
  * Publish tree root to Nostr (called by treeRootCache after throttle)
  * This is the ONLY place that should publish merkle roots.
+ *
+ * @param cachedVisibility - Visibility from the root cache. Use this first, then fall back to selectedTree.
  */
-export async function publishTreeRoot(treeName: string, rootHash: string, rootKey?: string): Promise<boolean> {
+export async function publishTreeRoot(treeName: string, rootHash: string, rootKey?: string, cachedVisibility?: TreeVisibility): Promise<boolean> {
   const state = nostrStore.getState();
   if (!state.pubkey || !ndk.signer) return false;
 
-  // Check if this is for our own tree (either selected or a tree we own with the same name)
-  // This allows guest editors to publish to their own tree even when viewing someone else's
-  const isOwnSelectedTree = state.selectedTree?.name === treeName &&
-    state.selectedTree?.pubkey === state.pubkey;
-
-  // If we're viewing our own tree with this name, use its visibility settings
-  // Otherwise, default to public (guest editor creating their copy)
-  let visibility: TreeVisibility = 'public';
+  // Priority: cached visibility > selectedTree visibility > 'public'
+  let visibility: TreeVisibility = cachedVisibility ?? 'public';
   let linkKey: string | undefined;
 
-  if (isOwnSelectedTree && state.selectedTree) {
-    visibility = state.selectedTree.visibility;
-
-    // For unlisted trees, get the linkKey from the URL
-    if (visibility === 'unlisted') {
-      const route = parseRoute();
-      linkKey = route.linkKey ?? undefined;
+  // If no cached visibility, try to get from selectedTree
+  if (!cachedVisibility) {
+    const isOwnSelectedTree = state.selectedTree?.name === treeName &&
+      state.selectedTree?.pubkey === state.pubkey;
+    if (isOwnSelectedTree && state.selectedTree?.visibility) {
+      visibility = state.selectedTree.visibility;
     }
+  }
+
+  // For unlisted trees, get the linkKey from the URL
+  if (visibility === 'unlisted') {
+    const route = parseRoute();
+    linkKey = route.linkKey ?? undefined;
   }
 
   const result = await saveHashtree(treeName, rootHash, rootKey, {

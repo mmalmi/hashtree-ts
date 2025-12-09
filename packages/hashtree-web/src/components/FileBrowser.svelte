@@ -16,34 +16,8 @@
   import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore, isViewingFileStore } from '../stores';
   import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
-  // Get icon class based on file extension
-  function getFileIcon(filename: string): string {
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
-    switch (ext) {
-      case 'jpg': case 'jpeg': case 'png': case 'gif': case 'webp': case 'svg': case 'ico': case 'bmp':
-        return 'i-lucide-image';
-      case 'mp4': case 'webm': case 'mkv': case 'avi': case 'mov':
-        return 'i-lucide-video';
-      case 'mp3': case 'wav': case 'ogg': case 'flac': case 'm4a':
-        return 'i-lucide-music';
-      case 'js': case 'ts': case 'jsx': case 'tsx': case 'py': case 'rb': case 'go': case 'rs': case 'c': case 'cpp': case 'h': case 'java': case 'php': case 'sh': case 'bash':
-        return 'i-lucide-file-code';
-      case 'json': case 'yaml': case 'yml': case 'toml': case 'xml': case 'ini': case 'env':
-        return 'i-lucide-file-json';
-      case 'pdf': case 'doc': case 'docx': case 'txt': case 'md': case 'markdown': case 'rst':
-        return 'i-lucide-file-text';
-      case 'xls': case 'xlsx': case 'csv':
-        return 'i-lucide-file-spreadsheet';
-      case 'ppt': case 'pptx':
-        return 'i-lucide-file-presentation';
-      case 'zip': case 'tar': case 'gz': case 'rar': case '7z':
-        return 'i-lucide-file-archive';
-      case 'html': case 'htm': case 'css': case 'scss': case 'sass': case 'less':
-        return 'i-lucide-file-code';
-      default:
-        return 'i-lucide-file';
-    }
-  }
+  import { getFileIcon } from '../utils/fileIcon';
+  import { BREAKPOINTS } from '../utils/breakpoints';
 
   // Build href for an entry
   function buildEntryHref(
@@ -312,6 +286,18 @@
   let focusedIndex = $state(-1);
   let treeFocusedIndex = $state(-1);
 
+  // Detect when only file browser is shown (no side-by-side viewer)
+  // Below lg breakpoint, viewer is hidden so arrow keys should just focus
+  let isFileBrowserOnly = $state(false);
+  $effect(() => {
+    const checkLayout = () => {
+      isFileBrowserOnly = window.innerWidth < BREAKPOINTS.lg;
+    };
+    checkLayout();
+    window.addEventListener('resize', checkLayout);
+    return () => window.removeEventListener('resize', checkLayout);
+  });
+
   // Navigation item counts
   let specialItemCount = $derived((hasParent ? 1 : 0) + 1); // parent? + current
   let navItemCount = $derived(specialItemCount + entries.length);
@@ -402,11 +388,12 @@
       const entryIndex = newIndex - specialItemCount;
       const newEntry = entries[entryIndex];
       if (newEntry) {
-        if (newEntry.isTree) {
-          // Directory: just focus it, don't navigate
+        if (newEntry.isTree || isFileBrowserOnly) {
+          // Directory or single-pane layout: just focus it, don't navigate
+          // When viewer isn't visible, files also just focus - use Enter to navigate
           focusedIndex = newIndex;
         } else {
-          // File: navigate to it and clear focus
+          // File on desktop with side-by-side layout: navigate to show in viewer
           focusedIndex = -1;
           const href = buildEntryHref(newEntry, currentNpub, currentTreeName, currentPath, rootCid, linkKey);
           window.location.hash = href.slice(1);

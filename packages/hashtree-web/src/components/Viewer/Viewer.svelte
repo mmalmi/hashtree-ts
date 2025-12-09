@@ -12,7 +12,7 @@
   import DirectoryActions from './DirectoryActions.svelte';
   import FileEditor from './FileEditor.svelte';
   import HtmlViewer from './HtmlViewer.svelte';
-  import LiveVideoViewer from './LiveVideoViewer.svelte';
+  import MediaPlayer from './MediaPlayer.svelte';
   import YjsDocumentEditor from './YjsDocumentEditor.svelte';
   import ZipPreview from './ZipPreview.svelte';
   import DosBox from './DosBox.svelte';
@@ -124,6 +124,8 @@
   // Only show loading indicator after 2 seconds (avoid flash for fast loads)
   let showLoading = $state(false);
   let loadingTimer: ReturnType<typeof setTimeout> | null = null;
+  // Track bytes loaded for progress display
+  let bytesLoaded = $state(0);
   // Blob URL for binary content (images, etc)
   let blobUrl = $state<string | null>(null);
   // Track current blob URL outside of reactive system for cleanup
@@ -204,13 +206,14 @@
     blobUrl = null;
     loading = false;
     showLoading = false;
+    bytesLoaded = 0;
 
     const entry = entryFromStore;
     if (!entry) return;
 
-    // Skip loading for video files - they stream separately
+    // Skip loading for video/audio files - they stream separately via MediaPlayer
     // Skip loading for DOS executables - they use their own loader
-    if (isVideo || isDos) return;
+    if (isVideo || isAudio || isDos) return;
 
     loading = true;
     let cancelled = false;
@@ -222,38 +225,57 @@
       }
     }, 2000);
 
-    getTree().readFile(entry.cid).then(data => {
-      if (!cancelled && data) {
-        fileData = data;
-        // Try to decode as text
-        const text = decodeAsText(data);
-        fileContent = text;
+    // Use streaming to track progress for large files
+    (async () => {
+      try {
+        const tree = getTree();
+        const chunks: Uint8Array[] = [];
 
-        // If not text, create blob URL for binary viewing
-        if (text === null && urlFileName) {
-          const mimeType = getMimeType(urlFileName);
-          if (mimeType) {
-            const blob = new Blob([data], { type: mimeType });
-            const newUrl = URL.createObjectURL(blob);
-            currentBlobUrl = newUrl;
-            blobUrl = newUrl;
+        for await (const chunk of tree.readFileStream(entry.cid)) {
+          if (cancelled) break;
+          chunks.push(chunk);
+          bytesLoaded += chunk.length;
+        }
+
+        if (cancelled) return;
+
+        // Combine chunks into single array
+        const totalLength = chunks.reduce((sum, c) => sum + c.length, 0);
+        const data = new Uint8Array(totalLength);
+        let offset = 0;
+        for (const chunk of chunks) {
+          data.set(chunk, offset);
+          offset += chunk.length;
+        }
+
+        if (data.length > 0) {
+          fileData = data;
+          // Try to decode as text
+          const text = decodeAsText(data);
+          fileContent = text;
+
+          // If not text, create blob URL for binary viewing
+          if (text === null && urlFileName) {
+            const mimeType = getMimeType(urlFileName);
+            if (mimeType) {
+              const blob = new Blob([data], { type: mimeType });
+              const newUrl = URL.createObjectURL(blob);
+              currentBlobUrl = newUrl;
+              blobUrl = newUrl;
+            }
           }
         }
+      } catch {
+        // Ignore errors
+      } finally {
+        loading = false;
+        showLoading = false;
+        if (loadingTimer) {
+          clearTimeout(loadingTimer);
+          loadingTimer = null;
+        }
       }
-      loading = false;
-      showLoading = false;
-      if (loadingTimer) {
-        clearTimeout(loadingTimer);
-        loadingTimer = null;
-      }
-    }).catch(() => {
-      loading = false;
-      showLoading = false;
-      if (loadingTimer) {
-        clearTimeout(loadingTimer);
-        loadingTimer = null;
-      }
-    });
+    })();
 
     return () => {
       cancelled = true;
@@ -664,7 +686,7 @@
     {#if isVideo && entryFromStore?.cid}
       <!-- Key by filename to prevent remount on CID change during live streaming -->
       {#key urlFileName}
-        <LiveVideoViewer cid={entryFromStore.cid} fileName={urlFileName} />
+        <MediaPlayer cid={entryFromStore.cid} fileName={urlFileName} type="video" />
       {/key}
     {:else if isHtml && fileContent !== null}
       <HtmlViewer content={fileContent} fileName={urlFileName} />
@@ -678,11 +700,11 @@
           data-testid="image-viewer"
         />
       </div>
-    {:else if isAudio && blobUrl}
+    {:else if isAudio && entryFromStore?.cid}
       <!-- Audio player -->
-      <div class="flex-1 flex items-center justify-center p-4">
-        <audio src={blobUrl} controls class="w-full max-w-md" />
-      </div>
+      {#key urlFileName}
+        <MediaPlayer cid={entryFromStore.cid} fileName={urlFileName} type="audio" />
+      {/key}
     {:else if isPdf && blobUrl}
       <!-- PDF viewer -->
       <iframe
@@ -699,7 +721,16 @@
     {:else}
       <div class="flex-1 overflow-auto p-4">
         {#if showLoading}
-          <p class="text-muted animate-fade-in" data-testid="loading-indicator">Loading...</p>
+          <div class="text-muted animate-fade-in flex flex-col items-start gap-1" data-testid="loading-indicator">
+            <span>Loading...</span>
+            {#if bytesLoaded > 0}
+              <span class="text-sm opacity-70">
+                {bytesLoaded < 1024 * 1024
+                  ? `${Math.round(bytesLoaded / 1024)}KB`
+                  : `${(bytesLoaded / (1024 * 1024)).toFixed(1)}MB`}
+              </span>
+            {/if}
+          </div>
         {:else if fileContent !== null}
           <pre class="text-sm text-text-1 font-mono whitespace-pre-wrap break-words">{fileContent}</pre>
         {:else if !loading && entryFromStore}

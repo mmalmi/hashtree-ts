@@ -2,19 +2,32 @@
   /**
    * RecentsView - shows recently accessed files and trees
    */
-  import { recentsStore, type RecentItem } from '../stores/recents';
-  import { navigate } from '../utils/navigate';
+  import { nip19 } from 'nostr-tools';
+  import { recentsStore, clearRecents, type RecentItem } from '../stores/recents';
+  import { getFileIcon } from '../utils/fileIcon';
+  import Avatar from './User/Avatar.svelte';
+  import VisibilityIcon from './VisibilityIcon.svelte';
 
   let recents = $derived($recentsStore);
 
-  function getIcon(type: RecentItem['type']): { icon: string; color: string } {
-    switch (type) {
-      case 'tree': return { icon: 'i-lucide-folder', color: 'text-warning' };
-      case 'dir': return { icon: 'i-lucide-folder', color: 'text-warning' };
-      case 'file': return { icon: 'i-lucide-file', color: 'text-text-2' };
-      case 'hash': return { icon: 'i-lucide-link', color: 'text-accent' };
-      default: return { icon: 'i-lucide-file', color: 'text-text-2' };
+  function getIcon(item: RecentItem): string {
+    switch (item.type) {
+      case 'tree': return 'i-lucide-folder';
+      case 'dir': return 'i-lucide-folder';
+      case 'file': return getFileIcon(item.label);
+      case 'hash': return 'i-lucide-folder';
+      default: return 'i-lucide-file';
     }
+  }
+
+  function npubToPubkey(npub: string): string | null {
+    try {
+      const decoded = nip19.decode(npub);
+      if (decoded.type === 'npub') {
+        return decoded.data as string;
+      }
+    } catch {}
+    return null;
   }
 
   function formatTime(timestamp: number): string {
@@ -30,10 +43,6 @@
     if (days < 7) return `${days}d ago`;
     return new Date(timestamp).toLocaleDateString();
   }
-
-  function handleClick(item: RecentItem) {
-    navigate(item.path);
-  }
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
@@ -41,6 +50,13 @@
     <span class="text-sm font-medium text-text-1">Recent</span>
     {#if recents.length > 0}
       <span class="ml-2 text-xs text-text-3">{recents.length}</span>
+      <button
+        class="ml-auto btn-ghost text-xs px-2 py-1"
+        onclick={() => clearRecents()}
+        title="Clear recents"
+      >
+        Clear
+      </button>
     {/if}
   </div>
   <div class="flex-1 overflow-auto">
@@ -49,22 +65,32 @@
         No recent items
       </div>
     {:else}
-      <div class="divide-y divide-surface-2">
+      <div>
         {#each recents as item (item.path)}
-          {@const iconInfo = getIcon(item.type)}
-          <button
-            class="w-full px-4 py-2 flex items-center gap-3 hover:bg-surface-1 transition-colors text-left"
-            onclick={() => handleClick(item)}
+          {@const icon = getIcon(item)}
+          {@const pubkey = item.npub ? npubToPubkey(item.npub) : null}
+          {@const isFolder = item.type === 'tree' || item.type === 'dir' || item.type === 'hash'}
+          <a
+            href="#{item.path}"
+            class="w-full px-4 py-2 flex items-center gap-3 bg-surface-0 hover:bg-surface-1 transition-colors text-left b-0 no-underline"
           >
-            <span class="{iconInfo.icon} {iconInfo.color} shrink-0"></span>
+            {#if pubkey}
+              <Avatar {pubkey} size={20} class="shrink-0" />
+            {:else}
+              <span class="i-lucide-hash text-accent shrink-0"></span>
+            {/if}
+            <span class="{icon} shrink-0 {isFolder ? 'text-warning' : 'text-text-2'}"></span>
             <div class="flex-1 min-w-0">
               <div class="text-sm text-text-1 truncate">{item.label}</div>
               {#if item.treeName}
                 <div class="text-xs text-text-3 truncate">{item.treeName}</div>
               {/if}
             </div>
+            {#if item.visibility}
+              <VisibilityIcon visibility={item.visibility} class="text-text-3 shrink-0" />
+            {/if}
             <span class="text-xs text-text-3 shrink-0">{formatTime(item.timestamp)}</span>
-          </button>
+          </a>
         {/each}
       </div>
     {/if}

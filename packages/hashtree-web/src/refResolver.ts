@@ -81,10 +81,11 @@ export async function updateLocalTreeCache(
   const key = `${npub}/${treeName}`;
   const res = getRefResolver();
 
-  // Use the resolver's publish method which updates local cache only (no Nostr publish)
+  // Use the resolver's publish method which updates local cache only
+  // IMPORTANT: skipNostrPublish=true to avoid re-publishing without visibility tags
   const { fromHex, cid } = await import('hashtree');
   const hash = fromHex(hashHex);
   const encryptionKey = keyHex ? fromHex(keyHex) : undefined;
-  await res.publish?.(key, cid(hash, encryptionKey), { visibility });
+  await res.publish?.(key, cid(hash, encryptionKey), { visibility }, true);
 }
 

@@ -489,10 +489,15 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           if (!parsed) return;
 
           const existing = entriesByDTag.get(dTag);
-          if (!existing || (event.created_at || 0) > existing.created_at) {
+          const eventTime = event.created_at || 0;
+
+
+          // Only update if this event is strictly newer than existing
+          // If same timestamp, prefer existing (local cache has full visibility info)
+          if (!existing || eventTime > existing.created_at) {
             entriesByDTag.set(dTag, {
               ...parsed,
-              created_at: event.created_at || 0,
+              created_at: eventTime,
             });
             emitCurrentState();
           }
