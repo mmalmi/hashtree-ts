@@ -112,7 +112,7 @@ export class WebRTCStore implements Store {
 
     this.config = {
       helloInterval: config.helloInterval ?? 10000,
-      messageTimeout: config.messageTimeout ?? 15000,
+      messageTimeout: config.messageTimeout ?? 60000, // 60 seconds for relay propagation
       requestTimeout: config.requestTimeout ?? 5000,
       peerQueryDelay: config.peerQueryDelay ?? 500,
       relays: config.relays ?? DEFAULT_RELAYS,
