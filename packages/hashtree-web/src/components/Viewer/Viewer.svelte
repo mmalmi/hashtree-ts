@@ -735,7 +735,7 @@
     {:else}
       <!-- Text/binary fallback - keyed by CID -->
       {#key cidKey}
-        <div class="flex-1 overflow-auto p-4">
+        <div class="flex-1 overflow-auto p-4 b-1 b-solid b-transparent">
           {#if showLoading}
             <div class="text-muted animate-fade-in flex flex-col items-start gap-1" data-testid="loading-indicator">
               <span>Loading...</span>

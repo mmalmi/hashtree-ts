@@ -121,13 +121,15 @@
 
 <div class="flex-1 flex flex-col min-h-0 bg-surface-0">
   <!-- Header -->
-  <div class="shrink-0 px-3 py-2 border-b border-surface-3 flex items-center gap-2 bg-surface-1">
-    <span class="i-lucide-file-text text-text-2"></span>
-    <span class="font-medium text-text-1">{fileName}</span>
-    <span class="text-xs text-muted">
-      (editing{#if isDirty && !autoSaveEnabled} - unsaved{/if})
-    </span>
-    <div class="ml-auto flex items-center gap-3">
+  <div class="shrink-0 px-3 py-2 border-b border-surface-3 flex flex-wrap items-center justify-between gap-2 bg-surface-1">
+    <div class="flex items-center gap-2 min-w-0">
+      <span class="i-lucide-file-text text-text-2"></span>
+      <span class="font-medium text-text-1">{fileName}</span>
+      <span class="text-xs text-muted">
+        (editing{#if isDirty && !autoSaveEnabled} - unsaved{/if})
+      </span>
+    </div>
+    <div class="flex items-center gap-3">
       <label class="flex items-center gap-1.5 text-sm text-text-2 cursor-pointer select-none">
         <input
           type="checkbox"
@@ -152,10 +154,12 @@
   </div>
 
   <!-- Editor -->
-  <textarea
-    bind:value={editContent}
-    onkeydown={handleKeyDown}
-    class="flex-1 w-full p-4 bg-surface-0 text-text-1 font-mono text-sm resize-none border border-transparent focus:border-accent focus:outline-none box-border"
-    spellcheck="false"
-  ></textarea>
+  <div class="flex-1 overflow-auto p-4 b-1 b-solid b-surface-3">
+    <textarea
+      bind:value={editContent}
+      onkeydown={handleKeyDown}
+      class="w-full h-full bg-transparent text-text-1 font-mono text-sm resize-none border-none focus:outline-none"
+      spellcheck="false"
+    ></textarea>
+  </div>
 </div>
