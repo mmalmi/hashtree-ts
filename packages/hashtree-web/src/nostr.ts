@@ -507,11 +507,12 @@ export function generateNewKey(): { nsec: string; npub: string } {
   // Initialize WebRTC with signer
   initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt);
 
-  // Start background sync for followed users' trees
-  startBackgroundSync();
-
   // Create default folders for new user (public, link, private)
+  // Do this BEFORE starting background sync so folders exist
   createDefaultFolders();
+
+  // Start background sync for followed users' trees (delayed to not block init)
+  setTimeout(() => startBackgroundSync(), 1000);
 
   return { nsec, npub: npubStr };
 }

@@ -3,16 +3,16 @@
  */
 import { writable, get } from 'svelte/store';
 import {
-  IndexedDBStore,
   HashTree,
   WebRTCStore,
 } from 'hashtree';
 import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClassifier } from 'hashtree';
 import { getSocialGraph, socialGraphStore } from './utils/socialGraph';
 import { settingsStore, DEFAULT_POOL_SETTINGS } from './stores/settings';
+import { DexieStore } from 'hashtree-dexie';
 
-// Store instances - using IndexedDB for persistence
-export const idbStore = new IndexedDBStore('hashtree-explorer');
+// Store instances - using Dexie for more robust IndexedDB handling
+export const idbStore = new DexieStore('hashtree-explorer');
 
 // HashTree instance - single class for all tree operations
 let _tree = new HashTree({ store: idbStore, chunkSize: 1024 });

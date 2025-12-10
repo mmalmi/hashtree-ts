@@ -240,8 +240,7 @@
     </div>
 
     <!-- Synced Storage (from background sync) -->
-    {#if syncedStorage.length > 0}
-      <div>
+    <div>
         <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-1">
           Synced Storage
         </h3>
@@ -278,8 +277,10 @@
             </a>
           {/each}
         </div>
+        {#if syncedStorage.length === 0}
+          <p class="text-xs text-text-3 mt-2">No synced trees yet</p>
+        {/if}
       </div>
-    {/if}
 
     <!-- Account (only show when logged in with nsec) -->
     {#if nsec}

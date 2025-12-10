@@ -94,33 +94,59 @@ async function getStorageStats(page: Page): Promise<{ items: number; bytes: numb
   });
 }
 
-// Helper to wait for synced storage to show a user on settings page
-async function waitForSyncedUser(page: Page, npubPrefix: string, timeout = 30000): Promise<boolean> {
-  const start = Date.now();
-  let lastContent = '';
-  while (Date.now() - start < timeout) {
-    await page.goto('http://localhost:5173/#/settings');
-    await page.waitForTimeout(1000); // Give time for async load
+// Helper to get synced storage bytes for a user from settings page
+async function getSyncedStorageBytes(page: Page, npub: string): Promise<number | null> {
+  await page.goto('http://localhost:5173/#/settings');
+  await page.waitForTimeout(1000);
 
-    // Check if the synced storage section exists and contains the npub
-    const syncedStorage = page.getByTestId('synced-storage');
-    const isVisible = await syncedStorage.isVisible().catch(() => false);
+  // Check if synced storage section exists
+  const syncedStorage = page.getByTestId('synced-storage');
+  const sectionVisible = await syncedStorage.isVisible().catch(() => false);
+  if (!sectionVisible) {
+    console.log('Synced storage section not visible');
+    return null;
+  }
 
-    if (isVisible) {
-      const content = await syncedStorage.textContent();
-      lastContent = content || '';
-      // Check if it contains the expected user (first 8 chars of npub, after 'npub1')
-      const searchTerm = npubPrefix.slice(5, 13); // Get unique part after 'npub1'
-      if (content && content.includes(searchTerm)) {
-        console.log(`Found user in synced storage: ${searchTerm}`);
-        return true;
+  // Get all text from the section to debug
+  const sectionText = await syncedStorage.textContent();
+  console.log(`Synced storage section text: "${sectionText?.slice(0, 200)}..."`);
+
+  // Find all links within synced storage and look for one containing this npub
+  // We need to find by href attribute containing the npub
+  const allLinks = syncedStorage.locator('a');
+  const linkCount = await allLinks.count();
+  console.log(`Found ${linkCount} links in synced storage`);
+
+  for (let i = 0; i < linkCount; i++) {
+    const link = allLinks.nth(i);
+    const href = await link.getAttribute('href');
+
+    if (href && href.includes(npub)) {
+      // Found the user link - get the size from the row text
+      const rowText = await link.textContent();
+      console.log(`Found link for npub, row text: "${rowText}"`);
+
+      if (!rowText) continue;
+
+      // Parse size like "121 B" or "1.5 KB" or "2.3 MB"
+      const sizeMatch = rowText.match(/(\d+(?:\.\d+)?)\s*(B|KB|MB|GB)/i);
+      if (!sizeMatch) continue;
+
+      const value = parseFloat(sizeMatch[1]);
+      const unit = sizeMatch[2].toUpperCase();
+
+      switch (unit) {
+        case 'B': return value;
+        case 'KB': return value * 1024;
+        case 'MB': return value * 1024 * 1024;
+        case 'GB': return value * 1024 * 1024 * 1024;
+        default: continue;
       }
     }
-
-    await page.waitForTimeout(2000);
   }
-  console.log(`Synced storage not found. Last content: "${lastContent.slice(0, 100)}..."`);
-  return false;
+
+  console.log(`Link for npub ${npub.slice(0, 20)} not found`);
+  return null;
 }
 
 test.describe('Background Sync', () => {
@@ -165,8 +191,9 @@ test.describe('Background Sync', () => {
       await pageA.waitForTimeout(1000);
 
       const testContent = 'Hello from User A! This is test content for background sync.';
+      const testContentSize = Buffer.from(testContent).length; // ~61 bytes
       await uploadFile(pageA, 'sync-test.txt', testContent);
-      console.log('User A: File uploaded');
+      console.log(`User A: File uploaded (${testContentSize} bytes content)`);
 
       // Get A's storage stats
       const statsA = await getStorageStats(pageA);
@@ -184,11 +211,11 @@ test.describe('Background Sync', () => {
       // === Wait for background sync by polling storage stats ===
       console.log('Waiting for background sync...');
       let statsBAfter = statsBBefore;
-      for (let i = 0; i < 15; i++) {
-        await pageB.waitForTimeout(1000);
+      for (let i = 0; i < 30; i++) {
+        await pageB.waitForTimeout(500);
         statsBAfter = await getStorageStats(pageB);
         if (statsBAfter.items > statsBBefore.items) {
-          console.log(`Background sync complete after ${i + 1}s`);
+          console.log(`Background sync started at ${(i + 1) * 0.5}s: ${statsBAfter.items} items`);
           break;
         }
       }
@@ -209,6 +236,15 @@ test.describe('Background Sync', () => {
       await fileLink.click();
       const content = pageB.locator('pre, .viewer-content').first();
       await expect(content).toContainText('Hello from User A', { timeout: 5000 });
+
+      // === Verify synced storage shows User A ===
+      // Note: The synced storage size reflects what background sync pulled,
+      // which is at minimum the tree root. File content may be fetched on-demand.
+      const syncedBytes = await getSyncedStorageBytes(pageB, npubA);
+      console.log(`User B synced storage for A: ${syncedBytes} bytes`);
+      expect(syncedBytes).not.toBeNull();
+      // Synced size should be at least the tree overhead (non-zero)
+      expect(syncedBytes!).toBeGreaterThan(0);
 
       console.log('\n=== Background Sync Test Passed ===');
       console.log(`User A's npub: ${npubA}`);

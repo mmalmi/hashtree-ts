@@ -13,7 +13,7 @@
  */
 import { get } from 'svelte/store';
 import type { CID, RefResolverListEntry } from 'hashtree';
-import { toHex } from 'hashtree';
+import { toHex, fromHex } from 'hashtree';
 import { getRefResolver } from '../refResolver';
 import { createFollowsStore, type Follows } from '../stores/follows';
 import { settingsStore, type SyncSettings, DEFAULT_SYNC_SETTINGS } from '../stores/settings';
