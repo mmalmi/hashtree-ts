@@ -18,6 +18,7 @@ import NDK, {
 } from '@nostr-dev-kit/ndk';
 import NDKCacheAdapterDexie from '@nostr-dev-kit/ndk-cache-dexie';
 import { initWebRTC, stopWebRTC } from './store';
+import { startBackgroundSync, stopBackgroundSync } from './services/backgroundSync';
 import type { EventSigner, CID } from 'hashtree';
 import { toHex } from 'hashtree';
 import {
@@ -168,6 +169,15 @@ let secretKey: Uint8Array | null = null;
  */
 export function getSecretKey(): Uint8Array | null {
   return secretKey;
+}
+
+/**
+ * Get the nsec string (only available for nsec login)
+ * Returns null for extension logins
+ */
+export function getNsec(): string | null {
+  if (!secretKey) return null;
+  return nip19.nsecEncode(secretKey);
 }
 
 // NDK instance with Dexie cache
@@ -382,6 +392,9 @@ export async function loginWithExtension(): Promise<boolean> {
     // Initialize WebRTC with signer
     initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt);
 
+    // Start background sync for followed users' trees
+    startBackgroundSync();
+
     return true;
   } catch (e) {
     console.error('Extension login failed:', e);
@@ -441,6 +454,9 @@ export function loginWithNsec(nsec: string, save = true): boolean {
     // Initialize WebRTC with signer
     initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt);
 
+    // Start background sync for followed users' trees
+    startBackgroundSync();
+
     return true;
   } catch (e) {
     console.error('Nsec login failed:', e);
@@ -491,6 +507,9 @@ export function generateNewKey(): { nsec: string; npub: string } {
   // Initialize WebRTC with signer
   initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt);
 
+  // Start background sync for followed users' trees
+  startBackgroundSync();
+
   // Create default folders for new user (public, link, private)
   createDefaultFolders();
 
@@ -522,6 +541,9 @@ export function logout() {
   nostrStore.setSelectedTree(null);
   secretKey = null;
   ndk.signer = undefined;
+
+  // Stop background sync
+  stopBackgroundSync();
 
   // Stop WebRTC
   stopWebRTC();

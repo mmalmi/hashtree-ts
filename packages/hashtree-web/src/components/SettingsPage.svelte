@@ -5,11 +5,36 @@
    */
   import { onMount } from 'svelte';
   import { nip19 } from 'nostr-tools';
-  import { nostrStore, type RelayStatus } from '../nostr';
+  import { nostrStore, type RelayStatus, getNsec } from '../nostr';
   import { useAppStore, formatBytes, updateStorageStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
+  import { getStorageBreakdown, type UserStorageStats } from '../stores/chunkMetadata';
   import { BackButton } from './ui';
   import { UserRow } from './User';
+
+  // Check if user is logged in with nsec (can copy secret key)
+  let nsec = $derived(getNsec());
+  let copiedNsec = $state(false);
+
+  async function copySecretKey() {
+    const key = getNsec();
+    if (!key) return;
+    try {
+      await navigator.clipboard.writeText(key);
+      copiedNsec = true;
+      setTimeout(() => (copiedNsec = false), 2000);
+    } catch (e) {
+      console.error('Failed to copy:', e);
+    }
+  }
+
+  // Synced storage breakdown
+  let syncedStorage = $state<UserStorageStats[]>([]);
+  let syncedStorageTotal = $derived(syncedStorage.reduce((sum, s) => sum + s.bytes, 0));
+
+  async function loadSyncedStorage() {
+    syncedStorage = await getStorageBreakdown();
+  }
 
   let relayList = $derived($nostrStore.relays);
   let relayStatuses = $derived($nostrStore.relayStatuses);
@@ -52,6 +77,7 @@
   // Subscribe to app store updates
   onMount(() => {
     updateStorageStats();
+    loadSyncedStorage();
 
     // Subscribe to store changes
     const unsub = useAppStore.subscribe((state) => {
@@ -212,6 +238,69 @@
         </div>
       </div>
     </div>
+
+    <!-- Synced Storage (from background sync) -->
+    {#if syncedStorage.length > 0}
+      <div>
+        <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-1">
+          Synced Storage
+        </h3>
+        <p class="text-xs text-text-3 mb-3">
+          Background-synced trees ({formatBytes(syncedStorageTotal)} total)
+        </p>
+        <div class="bg-surface-2 rounded divide-y divide-surface-3" data-testid="synced-storage">
+          {#each syncedStorage as userStats}
+            {@const pubkey = (() => {
+              try { return nip19.decode(userStats.npub).data as string; }
+              catch { return ''; }
+            })()}
+            <div class="flex items-center gap-2 p-3 text-sm">
+              {#if pubkey}
+                <UserRow
+                  pubkey={pubkey}
+                  description={`${userStats.treeCount} tree${userStats.treeCount > 1 ? 's' : ''}`}
+                  avatarSize={28}
+                  showBadge
+                  class="flex-1 min-w-0"
+                />
+              {:else}
+                <span class="flex-1 text-muted truncate">{userStats.npub.slice(0, 16)}...</span>
+              {/if}
+              <span class="text-xs text-muted shrink-0">
+                {formatBytes(userStats.bytes)}
+              </span>
+              {#if userStats.isOwn}
+                <span class="text-xs text-accent">(you)</span>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
+
+    <!-- Account (only show when logged in with nsec) -->
+    {#if nsec}
+      <div>
+        <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-3">
+          Account
+        </h3>
+        <div class="bg-surface-2 rounded p-3">
+          <button
+            onclick={copySecretKey}
+            class="btn-ghost flex items-center gap-2 text-sm w-full justify-start"
+            data-testid="copy-secret-key"
+          >
+            {#if copiedNsec}
+              <span class="i-lucide-check text-success"></span>
+              <span>Copied!</span>
+            {:else}
+              <span class="i-lucide-key"></span>
+              <span>Copy secret key</span>
+            {/if}
+          </button>
+        </div>
+      </div>
+    {/if}
 
     <!-- About -->
     <div>

@@ -44,6 +44,29 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   autoSave: true,
 };
 
+// Sync settings for background data synchronization
+export interface SyncSettings {
+  /** Master toggle for background sync */
+  enabled: boolean;
+  /** Storage cap in bytes (default: 2GB) */
+  storageCap: number;
+  /** Percentage reserved for user's own trees (default: 50) */
+  ownQuotaPercent: number;
+  /** Sync public trees from followed users */
+  syncFollowedPublic: boolean;
+  /** Sync unlisted trees when visited via link */
+  syncVisitedUnlisted: boolean;
+}
+
+// Default sync settings
+export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
+  enabled: true,
+  storageCap: 2 * 1024 * 1024 * 1024, // 2GB
+  ownQuotaPercent: 50,
+  syncFollowedPublic: true,
+  syncVisitedUnlisted: true,
+};
+
 // Dexie database for settings persistence
 class SettingsDB extends Dexie {
   settings!: Table<{ key: string; value: unknown }>;
@@ -80,6 +103,9 @@ export interface SettingsState {
 
   // Editor settings
   editor: EditorSettings;
+
+  // Sync settings
+  sync: SyncSettings;
 }
 
 function createSettingsStore() {
@@ -105,6 +131,9 @@ function createSettingsStore() {
 
     // Editor settings
     editor: DEFAULT_EDITOR_SETTINGS,
+
+    // Sync settings
+    sync: DEFAULT_SYNC_SETTINGS,
   });
 
   return {
@@ -142,6 +171,21 @@ function createSettingsStore() {
       });
     },
 
+    setSyncSettings: (sync: Partial<SyncSettings>) => {
+      update(state => {
+        const updated = { ...state.sync, ...sync };
+        db.settings.put({ key: 'sync', value: updated }).catch(console.error);
+        return { ...state, sync: updated };
+      });
+    },
+
+    resetSyncSettings: () => {
+      update(state => {
+        db.settings.put({ key: 'sync', value: DEFAULT_SYNC_SETTINGS }).catch(console.error);
+        return { ...state, sync: DEFAULT_SYNC_SETTINGS };
+      });
+    },
+
     // Get current state synchronously
     getState: (): SettingsState => get(settingsStore),
 
@@ -160,10 +204,11 @@ export const useSettingsStore = settingsStore;
 // Load settings from Dexie on startup
 async function loadSettings() {
   try {
-    const [poolsRow, uploadRow, editorRow] = await Promise.all([
+    const [poolsRow, uploadRow, editorRow, syncRow] = await Promise.all([
       db.settings.get('pools'),
       db.settings.get('upload'),
       db.settings.get('editor'),
+      db.settings.get('sync'),
     ]);
 
     const updates: Partial<SettingsState> = { poolsLoaded: true };
@@ -189,6 +234,17 @@ async function loadSettings() {
       const editor = editorRow.value as EditorSettings;
       updates.editor = {
         autoSave: editor.autoSave ?? DEFAULT_EDITOR_SETTINGS.autoSave,
+      };
+    }
+
+    if (syncRow?.value) {
+      const sync = syncRow.value as SyncSettings;
+      updates.sync = {
+        enabled: sync.enabled ?? DEFAULT_SYNC_SETTINGS.enabled,
+        storageCap: sync.storageCap ?? DEFAULT_SYNC_SETTINGS.storageCap,
+        ownQuotaPercent: sync.ownQuotaPercent ?? DEFAULT_SYNC_SETTINGS.ownQuotaPercent,
+        syncFollowedPublic: sync.syncFollowedPublic ?? DEFAULT_SYNC_SETTINGS.syncFollowedPublic,
+        syncVisitedUnlisted: sync.syncVisitedUnlisted ?? DEFAULT_SYNC_SETTINGS.syncVisitedUnlisted,
       };
     }
 
