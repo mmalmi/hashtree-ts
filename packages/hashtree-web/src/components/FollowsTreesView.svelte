@@ -131,17 +131,11 @@
     <!-- Following section -->
     <div class="h-10 shrink-0 px-4 border-b border-surface-3 flex items-center">
       <span class="text-sm font-medium text-text-1">Following</span>
-      {#if allTrees.length > 0}
-        <span class="ml-2 text-xs text-text-3">{allTrees.length}</span>
-      {/if}
+      <span class="ml-2 text-xs text-text-3">{allTrees.length}</span>
     </div>
-    {#if follows.length === 0}
+    {#if allTrees.length === 0}
       <div class="p-4 text-muted text-sm">
-        Not following anyone
-      </div>
-    {:else if allTrees.length === 0}
-      <div class="p-4 text-muted text-sm">
-        No public trees from followed users
+        {follows.length === 0 ? 'Not following anyone' : 'No public trees from followed users'}
       </div>
     {:else}
       <div>

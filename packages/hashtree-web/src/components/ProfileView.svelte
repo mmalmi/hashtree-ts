@@ -224,7 +224,7 @@
         href="#/{npub}/follows"
         class="text-text-2 hover:text-text-1"
       >
-        <span class="font-bold text-text-1">{profileFollows.length || '...'}</span> Following
+        <span class="font-bold text-text-1">{profileFollows.length}</span> Following
       </a>
       <a
         href="#/{npub}/followers"

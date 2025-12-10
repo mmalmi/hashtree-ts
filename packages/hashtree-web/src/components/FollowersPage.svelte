@@ -102,7 +102,6 @@
       {#if knownFollowers.length === 0}
         <div class="p-6 text-center text-muted">
           <p>No known followers yet</p>
-          <p class="text-xs mt-1">Discovered through the social graph</p>
         </div>
       {:else}
         <div class="divide-y divide-surface-2">
