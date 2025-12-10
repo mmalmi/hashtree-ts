@@ -2,8 +2,7 @@ import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
 
 test.describe('Git integration features', () => {
-  // Skip: Folder creation timing is flaky in parallel test environment
-  test.skip('navigating to .git directory should show directory view not file download', { timeout: 30000 }, async ({ page }) => {
+  test('navigating to .git directory should show directory view not file download', { timeout: 30000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);
@@ -336,8 +335,7 @@ test.describe('Git integration features', () => {
     }
   });
 
-  // Skip: Complex git repo upload via page.evaluate times out unreliably
-  test.skip('git history should return commits from uploaded git repo', async ({ page }) => {
+  test('git history should return commits from uploaded git repo', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);
@@ -558,7 +556,7 @@ test.describe('Git integration features', () => {
     expect(result.error).toBeNull();
   });
 
-  // Skip: Complex git repo upload via page.evaluate times out unreliably
+  // Skip: checkoutCommit doesn't fully restore files - needs investigation
   test.skip('checkout commit should restore files from that commit', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
@@ -721,7 +719,7 @@ test.describe('Git integration features', () => {
     }
   });
 
-  // Skip: Complex git repo upload via page.evaluate times out unreliably
+  // Skip: Times out - needs investigation
   test.skip('checkout commit should return a valid directory CID that can be listed', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');

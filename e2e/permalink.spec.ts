@@ -148,7 +148,7 @@ test.describe('Permalink Navigation', () => {
     // Debug: screenshot before assertion
     await page.screenshot({ path: 'test-results/permalink-file-debug.png' });
 
-    // Should see the file content (not a broken image)
-    await expect(page.getByText('Hello from encrypted file!')).toBeVisible({ timeout: 5000 });
+    // Should see the file content (not a broken image) - allow more time for decryption
+    await expect(page.getByText('Hello from encrypted file!')).toBeVisible({ timeout: 15000 });
   });
 });

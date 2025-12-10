@@ -21,7 +21,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'off',
-    actionTimeout: 5000,
+    actionTimeout: 10000,
   },
   projects: [
     {

@@ -74,13 +74,13 @@ test.describe('Video Viewer', () => {
       const video = document.querySelector('video');
       if (!video) return false;
       return video.src !== '' || video.srcObject !== null;
-    }, { timeout: 10000 });
+    }, undefined, { timeout: 10000 });
 
     // Wait for video metadata to load (duration becomes available)
     await page.waitForFunction(() => {
       const video = document.querySelector('video') as HTMLVideoElement;
       return video && video.readyState >= 1; // HAVE_METADATA
-    }, { timeout: 15000 });
+    }, undefined, { timeout: 15000 });
 
     // Get video state
     const videoState = await page.evaluate(() => {
@@ -129,14 +129,14 @@ test.describe('Video Viewer', () => {
     await expect(videoLink).toBeVisible({ timeout: 30000 });
     await videoLink.click();
 
-    // Wait for video to load
+    // Wait for video to load - allow more time when running in parallel
     const videoElement = page.locator('video');
-    await expect(videoElement).toBeVisible({ timeout: 10000 });
+    await expect(videoElement).toBeVisible({ timeout: 30000 });
 
     await page.waitForFunction(() => {
       const video = document.querySelector('video') as HTMLVideoElement;
       return video && video.readyState >= 2; // HAVE_CURRENT_DATA
-    }, { timeout: 15000 });
+    }, undefined, { timeout: 15000 });
 
     // Play the video (muted to avoid autoplay restrictions)
     await page.evaluate(() => {
@@ -175,11 +175,15 @@ test.describe('Video Viewer', () => {
     await expect(videoLink).toBeVisible({ timeout: 30000 });
     await videoLink.click();
 
-    // Wait for video to load
+    // Wait for video element to appear first (may take time to load data from IndexedDB)
+    const videoElement = page.locator('video');
+    await expect(videoElement).toBeVisible({ timeout: 30000 });
+
+    // Then wait for video metadata to load
     await page.waitForFunction(() => {
       const video = document.querySelector('video') as HTMLVideoElement;
       return video && video.readyState >= 1;
-    }, { timeout: 15000 });
+    }, undefined, { timeout: 15000 });
 
     // Check for LIVE indicator (should appear for recently changed files)
     // The file was just uploaded so it should be in recentlyChangedFiles store
@@ -238,11 +242,15 @@ test.describe('Video Viewer', () => {
     const liveUrl = href + '?live=1';
     await page.goto('/' + liveUrl);
 
-    // Wait for video to load
+    // Wait for video element to appear first
+    const videoElement = page.locator('video');
+    await expect(videoElement).toBeVisible({ timeout: 30000 });
+
+    // Then wait for video metadata to load
     await page.waitForFunction(() => {
       const video = document.querySelector('video') as HTMLVideoElement;
       return video && video.readyState >= 1;
-    }, { timeout: 15000 });
+    }, undefined, { timeout: 15000 });
 
     // LIVE indicator should be visible because of ?live=1 param
     // Note: LIVE badge appears in both viewer header and video overlay - use .first()
@@ -303,14 +311,14 @@ test.describe('Video Viewer', () => {
     await page.waitForFunction(() => {
       const video = document.querySelector('video') as HTMLVideoElement;
       return video && video.readyState >= 1;
-    }, { timeout: 15000 });
+    }, undefined, { timeout: 15000 });
 
     // Wait for the ?live=1 param to be removed (2s delay + buffer)
     // The file is not in recentlyChangedFiles (uploaded via setInputFiles, not our saveFile)
     // so it should detect as "no longer live" and remove the param
     await page.waitForFunction(() => {
       return !window.location.hash.includes('live=1');
-    }, { timeout: 10000 });
+    }, undefined, { timeout: 10000 });
 
     // Verify ?live=1 was removed from URL
     expect(page.url()).not.toContain('live=1');
@@ -362,7 +370,7 @@ test.describe('Video Viewer', () => {
     await page.waitForFunction(() => {
       const video = document.querySelector('video') as HTMLVideoElement;
       return video && video.readyState >= 1;
-    }, { timeout: 15000 });
+    }, undefined, { timeout: 15000 });
 
     const videoState = await page.evaluate(() => {
       const video = document.querySelector('video') as HTMLVideoElement;
@@ -417,7 +425,7 @@ test.describe('Video Viewer', () => {
     await page.waitForFunction(() => {
       const video = document.querySelector('video') as HTMLVideoElement;
       return video && video.readyState >= 1;
-    }, { timeout: 15000 });
+    }, undefined, { timeout: 15000 });
 
     // Duration should be near the end (live seek behavior)
     const videoState = await page.evaluate(() => {

@@ -88,7 +88,7 @@ test.describe('Multi-Account Management', () => {
     // Enter invalid nsec
     const nsecInput = page.locator('input[placeholder="nsec1..."]');
     await nsecInput.fill('invalid-nsec');
-    await page.getByRole('button', { name: 'Add' }).click();
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.waitForTimeout(200);
 
     // Should show error
@@ -119,7 +119,7 @@ test.describe('Multi-Account Management', () => {
     // Add a second account
     await page.getByRole('button', { name: 'Add with Secret Key' }).click();
     await page.locator('input[placeholder="nsec1..."]').fill(generateTestNsec());
-    await page.getByRole('button', { name: 'Add' }).click();
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.waitForTimeout(500);
 
     // Should have 2 accounts now - click on the non-active account row to switch
@@ -152,7 +152,7 @@ test.describe('Multi-Account Management', () => {
     // Add a second account first
     await page.getByRole('button', { name: 'Add with Secret Key' }).click();
     await page.locator('input[placeholder="nsec1..."]').fill(generateTestNsec());
-    await page.getByRole('button', { name: 'Add' }).click();
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.waitForTimeout(500);
 
     // Should have 2 accounts now - non-active row should be visible
@@ -185,7 +185,7 @@ test.describe('Multi-Account Management', () => {
     // Add a second account first
     await page.getByRole('button', { name: 'Add with Secret Key' }).click();
     await page.locator('input[placeholder="nsec1..."]').fill(generateTestNsec());
-    await page.getByRole('button', { name: 'Add' }).click();
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.waitForTimeout(500);
 
     // Find the remove button - use first() since both accounts have one
@@ -218,7 +218,7 @@ test.describe('Multi-Account Management', () => {
     // Add a second account
     await page.getByRole('button', { name: 'Add with Secret Key' }).click();
     await page.locator('input[placeholder="nsec1..."]').fill(generateTestNsec());
-    await page.getByRole('button', { name: 'Add' }).click();
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.waitForTimeout(500);
 
     // Should have 2 accounts - non-active row should be visible
@@ -244,7 +244,7 @@ test.describe('Multi-Account Management', () => {
     // Add first account
     await page.getByRole('button', { name: 'Add with Secret Key' }).click();
     await page.locator('input[placeholder="nsec1..."]').fill(testNsec);
-    await page.getByRole('button', { name: 'Add' }).click();
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.waitForTimeout(500);
 
     // Should have 2 accounts - non-active row should be visible
@@ -253,7 +253,7 @@ test.describe('Multi-Account Management', () => {
     // Try to add the same account again
     await page.getByRole('button', { name: 'Add with Secret Key' }).click();
     await page.locator('input[placeholder="nsec1..."]').fill(testNsec);
-    await page.getByRole('button', { name: 'Add' }).click();
+    await page.getByRole('button', { name: 'Add', exact: true }).click();
     await page.waitForTimeout(500);
 
     // Should show error about duplicate

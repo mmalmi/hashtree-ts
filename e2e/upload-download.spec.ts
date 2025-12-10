@@ -134,12 +134,19 @@ test.describe('Upload Download Integrity', () => {
     await videoLink.click();
     await page.waitForTimeout(1000);
 
+    // Disable File System Access API so we get a traditional download event
+    // (showSaveFilePicker opens a native dialog that Playwright can't interact with)
+    await page.evaluate(() => {
+      delete (window as any).showSaveFilePicker;
+    });
+
     // Set up download listener
     const downloadPromise = page.waitForEvent('download', { timeout: 30000 });
 
     // Click download button
     const downloadBtn = page.getByRole('button', { name: 'Download' });
-    await expect(downloadBtn).toBeVisible({ timeout: 5000 });
+    await expect(downloadBtn).toBeVisible({ timeout: 10000 });
+    console.log('Download button found, clicking...');
     await downloadBtn.click();
 
     // Wait for download

@@ -163,9 +163,9 @@ test.describe('Compression features', () => {
     await expect(page.locator('button:has-text("unlisted")')).toBeVisible();
     await expect(page.locator('button:has-text("private")')).toBeVisible();
 
-    // Public should be selected by default
+    // Public should be selected by default (uses ring-accent for selected state)
     const publicButton = page.locator('.fixed.inset-0').locator('button:has-text("public")');
-    await expect(publicButton).toHaveClass(/border-accent/);
+    await expect(publicButton).toHaveClass(/ring-accent/);
 
     // Change the name and select unlisted visibility
     await forkInput.fill('my-unlisted-fork');
