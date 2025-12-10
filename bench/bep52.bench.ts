@@ -1,19 +1,18 @@
 /**
- * Comprehensive TreeBuilder Benchmark
+ * TreeBuilder Benchmark
  *
- * Tests all combinations of:
+ * Tests different configurations:
  * - Chunk size: 256KB vs 16KB
- * - Merkle algorithm: Default (MessagePack tree nodes) vs Binary
  * - Hashing: Sequential vs Parallel
  * - Store: MemoryStore vs MockIDB (batched vs unbatched)
  *
  * Run with: npx tsx bench/bep52.bench.ts
  */
 
-import { TreeBuilder, DEFAULT_CHUNK_SIZE, BEP52_CHUNK_SIZE, MerkleAlgorithm } from '../src/builder.js';
-import { TreeReader } from '../src/reader.js';
-import { MemoryStore } from '../src/store/memory.js';
-import { Store, Hash, toHex } from '../src/types.js';
+import { TreeBuilder, DEFAULT_CHUNK_SIZE, BEP52_CHUNK_SIZE } from '../packages/hashtree/src/builder.js';
+import { TreeReader } from '../packages/hashtree/src/reader.js';
+import { MemoryStore } from '../packages/hashtree/src/store/memory.js';
+import { Store, Hash, toHex } from '../packages/hashtree/src/types.js';
 
 /**
  * Mock IndexedDB store - unbatched (one transaction per put)
@@ -102,8 +101,8 @@ class MockIDBStoreBatched implements Store {
   }
 
   async get(hash: Hash): Promise<Uint8Array | null> {
-    const key = toHex(hash);
-    return this.pending.get(key) ?? this.data.get(key) ?? null;
+    await this.flush(); // Ensure pending writes are visible
+    return this.data.get(toHex(hash)) ?? null;
   }
 
   async has(hash: Hash): Promise<boolean> {
@@ -118,36 +117,31 @@ class MockIDBStoreBatched implements Store {
 
 interface BenchConfig {
   chunkSize: number;
-  merkleAlgorithm: MerkleAlgorithm;
   parallel: boolean;
 }
 
-interface WriteReadResult {
+interface BenchResult {
   name: string;
-  size: number;
   writeMs: number;
   readMs: number;
-  writeThroughput: number;
-  readThroughput: number;
-  blockCount: number;
+  writeMBps: number;
+  readMBps: number;
 }
 
-async function benchmarkWriteRead(
+async function benchmark(
   name: string,
+  store: Store,
   data: Uint8Array,
   config: BenchConfig,
-  iterations: number = 3,
-): Promise<WriteReadResult> {
+  iterations: number = 3
+): Promise<BenchResult> {
   const writeTimes: number[] = [];
   const readTimes: number[] = [];
-  let blockCount = 0;
 
   for (let i = 0; i < iterations; i++) {
-    const store = new MemoryStore();
     const builder = new TreeBuilder({
       store,
       chunkSize: config.chunkSize,
-      merkleAlgorithm: config.merkleAlgorithm,
       parallel: config.parallel,
     });
 
@@ -156,40 +150,16 @@ async function benchmarkWriteRead(
     const result = await builder.putFile(data);
     const writeEnd = performance.now();
     writeTimes.push(writeEnd - writeStart);
-    blockCount = result.leafHashes?.length ?? 0;
 
     // Read
-    if (config.merkleAlgorithm === 'default') {
-      const reader = new TreeReader({ store });
-      const readStart = performance.now();
-      const readData = await reader.readFile(result.hash);
-      const readEnd = performance.now();
-      readTimes.push(readEnd - readStart);
+    const reader = new TreeReader({ store });
+    const readStart = performance.now();
+    const readData = await reader.readFile(result.hash);
+    const readEnd = performance.now();
+    readTimes.push(readEnd - readStart);
 
-      if (!readData || readData.length !== data.length) {
-        throw new Error('Read verification failed');
-      }
-    } else {
-      // Binary: read leaf hashes directly
-      const readStart = performance.now();
-      const parts: Uint8Array[] = [];
-      for (const leafHash of result.leafHashes!) {
-        const block = await store.get(leafHash);
-        if (block) parts.push(block);
-      }
-      const totalLen = parts.reduce((sum, p) => sum + p.length, 0);
-      const readData = new Uint8Array(totalLen);
-      let offset = 0;
-      for (const part of parts) {
-        readData.set(part, offset);
-        offset += part.length;
-      }
-      const readEnd = performance.now();
-      readTimes.push(readEnd - readStart);
-
-      if (readData.length !== data.length) {
-        throw new Error('Read verification failed');
-      }
+    if (!readData || readData.length !== data.length) {
+      throw new Error('Read verification failed');
     }
   }
 
@@ -199,100 +169,63 @@ async function benchmarkWriteRead(
 
   return {
     name,
-    size: data.length,
     writeMs: avgWrite,
     readMs: avgRead,
-    writeThroughput: sizeMB / (avgWrite / 1000),
-    readThroughput: sizeMB / (avgRead / 1000),
-    blockCount,
+    writeMBps: sizeMB / (avgWrite / 1000),
+    readMBps: sizeMB / (avgRead / 1000),
   };
 }
 
-function formatResult(r: WriteReadResult): string {
-  const sizeMB = (r.size / 1024 / 1024).toFixed(0);
-  return `${r.name.padEnd(32)} | W: ${r.writeMs.toFixed(1).padStart(7)}ms (${r.writeThroughput.toFixed(0).padStart(5)} MB/s) | R: ${r.readMs.toFixed(1).padStart(7)}ms (${r.readThroughput.toFixed(0).padStart(5)} MB/s) | ${r.blockCount.toString().padStart(5)} blks`;
-}
-
 async function main() {
-  console.log('TreeBuilder Comprehensive Benchmark');
-  console.log('='.repeat(100));
-  console.log();
-  console.log('Configurations:');
-  console.log('  Chunk sizes: 256KB (default), 16KB (BEP52)');
-  console.log('  Algorithms:  Default (MessagePack tree nodes), Binary (hash pairs)');
-  console.log('  Hashing:     Sequential (seq), Parallel (par)');
-  console.log();
+  console.log('TreeBuilder Benchmark');
+  console.log('=====================\n');
 
-  const configs: { name: string; config: BenchConfig }[] = [
-    // 256KB configurations
-    { name: '256KB Default seq', config: { chunkSize: DEFAULT_CHUNK_SIZE, merkleAlgorithm: 'default', parallel: false } },
-    { name: '256KB Default par', config: { chunkSize: DEFAULT_CHUNK_SIZE, merkleAlgorithm: 'default', parallel: true } },
-    { name: '256KB Binary seq', config: { chunkSize: DEFAULT_CHUNK_SIZE, merkleAlgorithm: 'binary', parallel: false } },
-    { name: '256KB Binary par', config: { chunkSize: DEFAULT_CHUNK_SIZE, merkleAlgorithm: 'binary', parallel: true } },
-    // 16KB configurations
-    { name: '16KB Default seq', config: { chunkSize: BEP52_CHUNK_SIZE, merkleAlgorithm: 'default', parallel: false } },
-    { name: '16KB Default par', config: { chunkSize: BEP52_CHUNK_SIZE, merkleAlgorithm: 'default', parallel: true } },
-    { name: '16KB Binary seq', config: { chunkSize: BEP52_CHUNK_SIZE, merkleAlgorithm: 'binary', parallel: false } },
-    { name: '16KB Binary par', config: { chunkSize: BEP52_CHUNK_SIZE, merkleAlgorithm: 'binary', parallel: true } },
-  ];
-
+  // Test data sizes
   const sizes = [
-    { name: '1 MB', bytes: 1 * 1024 * 1024 },
-    { name: '10 MB', bytes: 10 * 1024 * 1024 },
-    { name: '50 MB', bytes: 50 * 1024 * 1024 },
+    { name: '1 MB', size: 1 * 1024 * 1024 },
+    { name: '10 MB', size: 10 * 1024 * 1024 },
   ];
 
-  for (const size of sizes) {
-    console.log(`\n${size.name} Write + Read:`);
-    console.log('-'.repeat(100));
+  // Configurations to test
+  const configs: { name: string; config: BenchConfig }[] = [
+    { name: '256KB seq', config: { chunkSize: DEFAULT_CHUNK_SIZE, parallel: false } },
+    { name: '256KB par', config: { chunkSize: DEFAULT_CHUNK_SIZE, parallel: true } },
+    { name: '16KB seq', config: { chunkSize: BEP52_CHUNK_SIZE, parallel: false } },
+    { name: '16KB par', config: { chunkSize: BEP52_CHUNK_SIZE, parallel: true } },
+  ];
 
-    const data = new Uint8Array(size.bytes);
-    for (let i = 0; i < data.length; i++) data[i] = i % 256;
+  // Run benchmarks with MemoryStore
+  console.log('MemoryStore Benchmarks');
+  console.log('----------------------');
 
-    const results: WriteReadResult[] = [];
+  for (const { name: sizeName, size } of sizes) {
+    console.log(`\n${sizeName}:`);
+    const data = new Uint8Array(size);
+    crypto.getRandomValues(data);
+
     for (const { name, config } of configs) {
-      const result = await benchmarkWriteRead(name, data, config, 3);
-      results.push(result);
-      console.log(formatResult(result));
+      const store = new MemoryStore();
+      const result = await benchmark(name, store, data, config);
+      console.log(`  ${result.name.padEnd(12)} Write: ${result.writeMs.toFixed(1).padStart(6)}ms (${result.writeMBps.toFixed(1).padStart(6)} MB/s)  Read: ${result.readMs.toFixed(1).padStart(6)}ms (${result.readMBps.toFixed(1).padStart(6)} MB/s)`);
     }
-
-    // Summary for this size
-    const best256Write = results.slice(0, 4).reduce((a, b) => a.writeThroughput > b.writeThroughput ? a : b);
-    const best16Write = results.slice(4, 8).reduce((a, b) => a.writeThroughput > b.writeThroughput ? a : b);
-    const best256Read = results.slice(0, 4).reduce((a, b) => a.readThroughput > b.readThroughput ? a : b);
-    const best16Read = results.slice(4, 8).reduce((a, b) => a.readThroughput > b.readThroughput ? a : b);
-
-    console.log();
-    console.log(`  Best 256KB write: ${best256Write.name} (${best256Write.writeThroughput.toFixed(0)} MB/s)`);
-    console.log(`  Best 256KB read:  ${best256Read.name} (${best256Read.readThroughput.toFixed(0)} MB/s)`);
-    console.log(`  Best 16KB write:  ${best16Write.name} (${best16Write.writeThroughput.toFixed(0)} MB/s)`);
-    console.log(`  Best 16KB read:   ${best16Read.name} (${best16Read.readThroughput.toFixed(0)} MB/s)`);
   }
 
-  // IDB batching comparison
-  console.log();
-  console.log('='.repeat(100));
-  console.log();
-  console.log('MockIDB Batching Comparison (1ms transaction latency):');
-  console.log('-'.repeat(100));
+  // Run IDB simulation benchmarks
+  console.log('\n\nMock IndexedDB Benchmarks (1ms latency)');
+  console.log('---------------------------------------');
 
-  const idbData = new Uint8Array(1 * 1024 * 1024); // 1 MB
-  for (let i = 0; i < idbData.length; i++) idbData[i] = i % 256;
+  const idbData = new Uint8Array(1 * 1024 * 1024); // 1 MB for IDB tests
+  crypto.getRandomValues(idbData);
 
-  const idbConfigs = [
-    { name: '256KB', chunkSize: DEFAULT_CHUNK_SIZE },
-    { name: '16KB', chunkSize: BEP52_CHUNK_SIZE },
-  ];
-
-  for (const { name, chunkSize } of idbConfigs) {
-    const blockCount = Math.ceil(idbData.length / chunkSize);
+  for (const chunkSize of [DEFAULT_CHUNK_SIZE, BEP52_CHUNK_SIZE]) {
+    const chunkName = chunkSize === DEFAULT_CHUNK_SIZE ? '256KB' : '16KB';
+    console.log(`\n${chunkName} chunks:`);
 
     // Unbatched
     const unbatchedStore = new MockIDBStoreUnbatched(1);
     const unbatchedBuilder = new TreeBuilder({
       store: unbatchedStore,
       chunkSize,
-      merkleAlgorithm: 'default',
       parallel: true,
     });
     const unbatchedStart = performance.now();
@@ -305,7 +238,6 @@ async function main() {
     const batchedBuilder = new TreeBuilder({
       store: batchedStore,
       chunkSize,
-      merkleAlgorithm: 'default',
       parallel: true,
     });
     const batchedStart = performance.now();
@@ -314,21 +246,16 @@ async function main() {
     const batchedTime = performance.now() - batchedStart;
     const batchedThroughput = (idbData.length / 1024 / 1024) / (batchedTime / 1000);
 
-    const speedup = unbatchedTime / batchedTime;
-    console.log(`${name} unbatched: ${unbatchedTime.toFixed(1)}ms (${unbatchedThroughput.toFixed(0)} MB/s) - ${blockCount} transactions`);
-    console.log(`${name} batched:   ${batchedTime.toFixed(1)}ms (${batchedThroughput.toFixed(0)} MB/s) - ${Math.ceil(blockCount / 100)} transactions`);
-    console.log(`  -> Batching is ${speedup.toFixed(1)}x faster`);
-    console.log();
+    console.log(`  Unbatched: ${unbatchedTime.toFixed(1).padStart(6)}ms (${unbatchedThroughput.toFixed(1).padStart(6)} MB/s)`);
+    console.log(`  Batched:   ${batchedTime.toFixed(1).padStart(6)}ms (${batchedThroughput.toFixed(1).padStart(6)} MB/s)`);
   }
 
-  console.log('='.repeat(100));
-  console.log();
-  console.log('Notes:');
-  console.log('- Default: Variable fanout MessagePack tree nodes, supports TreeReader for traversal');
-  console.log('- Binary: BEP52-style power-of-2 padded merkle tree, no intermediate nodes stored');
-  console.log('- Parallel hashing fires all sha256 calls at once via Promise.all');
-  console.log('- 16KB chunks = 16x more blocks than 256KB');
-  console.log('- IDB batching reduces transaction overhead by combining writes');
+  console.log('\n\nSummary');
+  console.log('-------');
+  console.log('- 256KB chunks: Fewer blocks, faster with slow stores (IndexedDB)');
+  console.log('- 16KB chunks: More blocks, useful for fine-grained deduplication');
+  console.log('- Parallel hashing: Faster for CPU-bound operations');
+  console.log('- Batched writes: Critical for IndexedDB performance');
 }
 
 main().catch(console.error);

@@ -25,20 +25,13 @@ export const BEP52_CHUNK_SIZE = 16 * 1024;
  */
 export const DEFAULT_MAX_LINKS = 174;
 
-/**
- * Merkle tree algorithm for file chunking
- */
-export type MerkleAlgorithm = 'default' | 'binary';
-
 export interface BuilderConfig {
   store: Store;
   /** Chunk size for splitting blobs */
   chunkSize?: number;
-  /** Max links per tree node (only used for default algorithm) */
+  /** Max links per tree node */
   maxLinks?: number;
-  /** Merkle algorithm: 'default' (variable fanout) or 'binary' (BEP52 style) */
-  merkleAlgorithm?: MerkleAlgorithm;
-  /** Hash chunks in parallel (default: false) */
+  /** Hash chunks in parallel (default: true) */
   parallel?: boolean;
 }
 
@@ -60,14 +53,12 @@ export class TreeBuilder {
   private store: Store;
   private chunkSize: number;
   private maxLinks: number;
-  private merkleAlgorithm: MerkleAlgorithm;
   private parallel: boolean;
 
   constructor(config: BuilderConfig) {
     this.store = config.store;
     this.chunkSize = config.chunkSize ?? DEFAULT_CHUNK_SIZE;
     this.maxLinks = config.maxLinks ?? DEFAULT_MAX_LINKS;
-    this.merkleAlgorithm = config.merkleAlgorithm ?? 'default';
     this.parallel = config.parallel ?? true;
   }
 
@@ -85,13 +76,13 @@ export class TreeBuilder {
    * Store a file, chunking if necessary
    * Returns root hash and total size
    */
-  async putFile(data: Uint8Array): Promise<{ hash: Hash; size: number; leafHashes?: Hash[] }> {
+  async putFile(data: Uint8Array): Promise<{ hash: Hash; size: number }> {
     const size = data.length;
 
     // Small file - store as single blob
     if (data.length <= this.chunkSize) {
       const hash = await this.putBlob(data);
-      return { hash, size, leafHashes: [hash] };
+      return { hash, size };
     }
 
     // Split into chunks
@@ -114,19 +105,13 @@ export class TreeBuilder {
       }
     }
 
-    // Build tree from chunks using selected algorithm
-    if (this.merkleAlgorithm === 'binary') {
-      const rootHash = await this.buildBinaryTree(chunkHashes);
-      return { hash: rootHash, size, leafHashes: chunkHashes };
-    }
-
-    // Default algorithm (variable fanout tree)
+    // Build tree from chunks
     const chunks: Link[] = chunkHashes.map((hash, i) => ({
       hash,
       size: i < chunkHashes.length - 1 ? this.chunkSize : data.length - i * this.chunkSize,
     }));
     const rootHash = await this.buildTree(chunks, size);
-    return { hash: rootHash, size, leafHashes: chunkHashes };
+    return { hash: rootHash, size };
   }
 
   /**
@@ -171,45 +156,6 @@ export class TreeBuilder {
 
     // Recursively build parent level
     return this.buildTree(subTrees, totalSize);
-  }
-
-  /**
-   * Build a binary merkle tree (BEP52 style)
-   * Uses hash pairs with zero-padding to power of 2
-   * Does not store intermediate nodes - only computes root
-   */
-  private async buildBinaryTree(leafHashes: Hash[]): Promise<Hash> {
-    if (leafHashes.length === 0) {
-      return new Uint8Array(32); // Zero hash
-    }
-    if (leafHashes.length === 1) {
-      return leafHashes[0];
-    }
-
-    // Pad to power of 2
-    const numLeafs = nextPowerOf2(leafHashes.length);
-    const ZERO: Hash = new Uint8Array(32);
-
-    let current = leafHashes.slice();
-    let padHash: Hash = ZERO;
-    let levelSize = numLeafs;
-
-    while (levelSize > 1) {
-      const nextLevel: Hash[] = [];
-
-      for (let i = 0; i < levelSize; i += 2) {
-        const left = i < current.length ? current[i] : padHash;
-        const right = i + 1 < current.length ? current[i + 1] : padHash;
-        nextLevel.push(await hashPair(left, right));
-      }
-
-      // Update pad hash for next level
-      padHash = await hashPair(padHash, padHash);
-      current = nextLevel;
-      levelSize = levelSize / 2;
-    }
-
-    return current[0];
   }
 
   /**
@@ -488,20 +434,3 @@ export class StreamBuilder {
   }
 }
 
-/**
- * Hash two 32-byte values together
- */
-async function hashPair(left: Uint8Array, right: Uint8Array): Promise<Hash> {
-  const combined = new Uint8Array(64);
-  combined.set(left, 0);
-  combined.set(right, 32);
-  return sha256(combined);
-}
-
-/**
- * Next power of 2 >= n
- */
-function nextPowerOf2(n: number): number {
-  if (n <= 1) return 1;
-  return 1 << Math.ceil(Math.log2(n));
-}
