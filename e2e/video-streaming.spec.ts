@@ -64,7 +64,7 @@ test.describe('Video Streaming', () => {
     page.on('console', msg => {
       const text = msg.text();
       if (msg.type() === 'error') console.log(`[Stream Error] ${text}`);
-      if (text.includes('[Stream]') || text.includes('stream')) console.log(`[Stream] ${text}`);
+      if (text.includes('[Stream]') || text.includes('stream') || text.includes('[LiveVideo]')) console.log(`[Stream] ${text}`);
     });
 
     // Set up fresh user and navigate to public folder
@@ -183,6 +183,11 @@ test.describe('Video Streaming', () => {
     console.log('Starting recording...');
     const startRecordingBtn = page.getByRole('button', { name: /Start Recording/ });
     await expect(startRecordingBtn).toBeVisible({ timeout: 5000 });
+
+    // Log the current URL and route state before starting
+    const urlBefore = await page.evaluate(() => window.location.hash);
+    console.log('URL before recording:', urlBefore);
+
     await startRecordingBtn.click();
 
     // Wait for recording to process (mock feeds chunks over time)
@@ -198,6 +203,10 @@ test.describe('Video Streaming', () => {
     // Wait for file to be saved
     console.log('Waiting for file to be saved...');
     await page.waitForTimeout(3000);
+
+    // Log final URL
+    const urlAfter = await page.evaluate(() => window.location.hash);
+    console.log('URL after recording:', urlAfter);
 
     // Navigate back to public folder
     const publicLink = page.getByRole('link', { name: 'public' }).first();

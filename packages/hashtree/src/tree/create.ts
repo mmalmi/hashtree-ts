@@ -2,7 +2,7 @@
  * Tree creation operations
  */
 
-import { Store, Hash, TreeNode, Link, NodeType } from '../types.js';
+import { Store, Hash, TreeNode, Link, NodeType, CID } from '../types.js';
 import { sha256 } from '../hash.js';
 import { encodeAndHash } from '../codec.js';
 
@@ -14,7 +14,7 @@ export interface CreateConfig {
 
 export interface DirEntry {
   name: string;
-  hash: Hash;
+  cid: CID;
   size?: number;
   isTree?: boolean;
 }
@@ -77,7 +77,8 @@ export async function putDirectory(
   const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
 
   const links: Link[] = sorted.map(e => ({
-    hash: e.hash,
+    hash: e.cid.hash,
+    key: e.cid.key,
     name: e.name,
     size: e.size,
     isTree: e.isTree,

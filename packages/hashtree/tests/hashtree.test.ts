@@ -189,6 +189,27 @@ describe('HashTree', () => {
       expect(dir2Entries[0].name).toBe('file.txt');
     });
 
+    it('should add encrypted file to public directory (streaming use case)', async () => {
+      // This mirrors the streaming scenario: public directory with encrypted file entries
+      const { cid: rootCid } = await tree.putDirectory([], { public: true });
+
+      // Create encrypted file (default behavior)
+      const data = new TextEncoder().encode('stream content');
+      const { cid: fileCid, size } = await tree.putFile(data);
+
+      // Add encrypted file to public directory at root path
+      const newRoot = await tree.setEntry(rootCid, [], 'stream.webm', fileCid, size);
+
+      // Verify file was added
+      const entries = await tree.listDirectory(newRoot);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].name).toBe('stream.webm');
+
+      // Verify file is readable
+      const content = await tree.readFile(entries[0].cid);
+      expect(content).toEqual(data);
+    });
+
     it('should handle nested path edits', async () => {
       const { cid: cCid } = await tree.putDirectory([], { public: true });
       const { cid: bCid } = await tree.putDirectory([{ name: 'c', cid: cCid, size: 0, isTree: true }], { public: true });
@@ -404,6 +425,14 @@ describe('HashTree', () => {
 
       const resolved = await tree.resolvePath(rootCid, ['nonexistent']);
       expect(resolved).toBeNull();
+    });
+
+    it('should correctly identify empty encrypted directory with isDirectory', async () => {
+      // This is the bug: isDirectory returns false for empty encrypted directories
+      const { cid: emptyDirCid } = await tree.putDirectory([]);
+
+      expect(emptyDirCid.key).toBeDefined(); // Confirm it's encrypted
+      expect(await tree.isDirectory(emptyDirCid)).toBe(true);
     });
 
     it('should resolve empty path to root directory with resolvePath', async () => {

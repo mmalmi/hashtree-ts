@@ -1,11 +1,10 @@
 /**
  * File operations - create, save, upload files
  */
-import { toHex } from 'hashtree';
 import type { CID } from 'hashtree';
 import { autosaveIfOwn } from '../nostr';
 import { getTree } from '../store';
-import { markFilesChanged } from '../hooks/useRecentlyChanged';
+import { markFilesChanged } from '../stores/recentlyChanged';
 import { parseRoute } from '../utils/route';
 import { getCurrentRootCid, getCurrentPathFromUrl, updateRoute } from './route';
 import { initVirtualTree } from './tree';
@@ -34,7 +33,10 @@ export async function saveFile(entryName: string | undefined, content: string): 
   );
 
   // Publish to nostr - resolver will pick up the update automatically
-  autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+  autosaveIfOwn(newRootCid);
+
+  // Mark file as recently changed for LIVE indicator
+  markFilesChanged(new Set([entryName]));
 
   return data;
 }
@@ -61,15 +63,41 @@ export async function createFile(name: string, content: string = '') {
       size
     );
     // Publish to nostr - resolver will pick up the update
-    autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+    autosaveIfOwn(newRootCid);
   } else {
     // Initialize virtual tree with this file
     const result = await initVirtualTree([{ name, cid: fileCid, size }]);
     if (!result) return; // Failed to initialize
   }
 
+  // Mark file as recently changed for LIVE indicator
+  markFilesChanged(new Set([name]));
+
   // Navigate to the newly created file with edit mode
   updateRoute(name, { edit: true });
+}
+
+// Save binary file (used by DOSBox to sync files back)
+export async function saveBinaryFile(entryName: string, data: Uint8Array): Promise<void> {
+  if (!entryName) return;
+
+  const rootCid = getCurrentRootCid();
+  if (!rootCid) return;
+
+  const tree = getTree();
+  const currentPath = getCurrentPathFromUrl();
+
+  const { cid: fileCid, size } = await tree.putFile(data);
+  const newRootCid = await tree.setEntry(
+    rootCid,
+    currentPath,
+    entryName,
+    fileCid,
+    size
+  );
+
+  autosaveIfOwn(newRootCid);
+  markFilesChanged(new Set([entryName]));
 }
 
 // Upload a single file (used for "Keep as ZIP" option)
@@ -107,8 +135,7 @@ export async function uploadSingleFile(fileName: string, data: Uint8Array): Prom
   }
 
   if (rootCid) {
-    const keyHex = rootCid.key ? toHex(rootCid.key) : undefined;
-    autosaveIfOwn(toHex(rootCid.hash), keyHex);
+    autosaveIfOwn(rootCid);
   }
 }
 
@@ -195,7 +222,6 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
 
   if (rootCid) {
     // Publish to nostr - resolver will pick up the update
-    const keyHex = rootCid.key ? toHex(rootCid.key) : undefined;
-    autosaveIfOwn(toHex(rootCid.hash), keyHex);
+    autosaveIfOwn(rootCid);
   }
 }

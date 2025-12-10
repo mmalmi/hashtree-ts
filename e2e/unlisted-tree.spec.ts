@@ -61,7 +61,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Verify unlisted is selected (has accent styling)
     const unlistedBtn = page.locator('button:has-text("unlisted")');
-    await expect(unlistedBtn).toHaveClass(/border-accent/);
+    await expect(unlistedBtn).toHaveClass(/ring-accent/);
 
     // Create the tree
     await page.getByRole('button', { name: 'Create' }).click();
@@ -92,8 +92,8 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(500);
 
-    // Find the unlisted-icons tree row and check for link icon
-    const treeRow = page.locator('a:has-text("unlisted-icons")');
+    // Find the unlisted-icons tree row and check for link icon (use file-list to avoid matching recent folders)
+    const treeRow = page.getByTestId('file-list').locator('a:has-text("unlisted-icons")').first();
     await expect(treeRow).toBeVisible({ timeout: 5000 });
 
     // Should have link icon (i-lucide-link) for unlisted visibility
@@ -186,8 +186,15 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(500);
 
-    // Click on the unlisted tree
-    await page.locator('a:has-text("unlisted-click")').click();
+    // There are two links - one in file-list (already has ?k=) and one in RecentsView (shows "Just now")
+    // We want to verify the RecentsView link also has ?k= param
+    const recentsLink = page.locator('a:has-text("unlisted-click"):has-text("Just now")');
+
+    // Verify the href includes ?k= param BEFORE clicking
+    const href = await recentsLink.getAttribute('href');
+    expect(href).toContain(`?k=${kParam}`);
+
+    await recentsLink.click();
     await page.waitForTimeout(500);
 
     // URL should have ?k= param
@@ -228,8 +235,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(page.locator('pre')).toHaveText('This is secret content!');
   });
 
-  // Skip: WebRTC sync between browser contexts unreliable in CI
-  test.skip('should access unlisted tree from fresh browser with link', async ({ page, browser }) => {
+  test('should access unlisted tree from fresh browser with link', { timeout: 60000 }, async ({ page, browser }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
 
@@ -326,10 +332,6 @@ test.describe('Unlisted Tree Visibility', () => {
     const treeUrlWithoutKey = `http://localhost:5173/#/${npub}/${treeName}`;
     await page2.goto(treeUrlWithoutKey);
     await page2.waitForTimeout(3000);
-
-    // Debug: take screenshot and log URL
-    console.log('Non-owner URL:', page2.url());
-    await page2.screenshot({ path: 'test-results/non-owner-debug.png' });
 
     // Should see "Link Required" message
     await expect(page2.getByText('Link Required')).toBeVisible({ timeout: 10000 });
@@ -503,7 +505,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(500);
 
     // CRITICAL: Verify the tree still has link icon (unlisted), NOT globe icon (public)
-    const treeRow = page.locator('a:has-text("unlisted-stays-unlisted")');
+    const treeRow = page.getByTestId('file-list').locator('a:has-text("unlisted-stays-unlisted")').first();
     await expect(treeRow).toBeVisible({ timeout: 5000 });
 
     // Should have link icon (unlisted), not globe icon (public)
@@ -522,7 +524,7 @@ test.describe('Unlisted Tree Visibility', () => {
   test('should show correct visibility icons for different tree types', async ({ page }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
 
     // Create a public tree
     await page.getByRole('button', { name: 'New Folder' }).click();
@@ -533,7 +535,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Go back to tree list
     await page.locator('header a:has-text("hashtree")').click();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
 
     // Create an unlisted tree
     await page.getByRole('button', { name: 'New Folder' }).click();
@@ -544,7 +546,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Go back to tree list
     await page.locator('header a:has-text("hashtree")').click();
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(500);
 
     // Create a private tree
     await page.getByRole('button', { name: 'New Folder' }).click();
@@ -555,20 +557,25 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Go back to tree list
     await page.locator('header a:has-text("hashtree")').click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
 
-    // Verify icons for each tree type
+    // Verify icons for each tree type (use file-list testid to avoid matching recent folders)
+    const fileList = page.getByTestId('file-list');
+
     // Public tree should have globe icon
-    const publicRow = page.locator('a:has-text("public-tree")');
-    await expect(publicRow.locator('span.i-lucide-globe')).toBeVisible();
+    const publicRow = fileList.locator('a:has-text("public-tree")').first();
+    await expect(publicRow).toBeVisible({ timeout: 5000 });
+    await expect(publicRow.locator('span.i-lucide-globe')).toBeVisible({ timeout: 5000 });
 
     // Unlisted tree should have link icon
-    const unlistedRow = page.locator('a:has-text("unlisted-tree")');
-    await expect(unlistedRow.locator('span.i-lucide-link')).toBeVisible();
+    const unlistedRow = fileList.locator('a:has-text("unlisted-tree")').first();
+    await expect(unlistedRow).toBeVisible({ timeout: 5000 });
+    await expect(unlistedRow.locator('span.i-lucide-link')).toBeVisible({ timeout: 5000 });
 
     // Private tree should have lock icon
-    const privateRow = page.locator('a:has-text("private-tree")');
-    await expect(privateRow.locator('span.i-lucide-lock')).toBeVisible();
+    const privateRow = fileList.locator('a:has-text("private-tree")').first();
+    await expect(privateRow).toBeVisible({ timeout: 5000 });
+    await expect(privateRow.locator('span.i-lucide-lock')).toBeVisible({ timeout: 5000 });
   });
 
   test('files in unlisted trees should be encrypted (have CHK)', async ({ page }) => {
@@ -588,7 +595,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
 
     // Create a file with content
-    await page.getByRole('button', { name: 'File' }).click();
+    await page.getByRole('button', { name: 'New File' }).click();
     await page.locator('input[placeholder="File name..."]').fill('encrypted-file.txt');
     await page.getByRole('button', { name: 'Create' }).click();
 
@@ -644,8 +651,8 @@ test.describe('Unlisted Tree Visibility', () => {
     // Wait for the UI to be ready and find the New file button
     await page.waitForTimeout(1000);
 
-    // Create a new file in the private tree (button is labeled "File")
-    await page.getByRole('button', { name: 'File' }).click({ timeout: 10000 });
+    // Create a new file in the private tree
+    await page.getByRole('button', { name: 'New File' }).click({ timeout: 10000 });
     await page.locator('input[placeholder="File name..."]').fill('secret.txt');
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(500);
@@ -667,7 +674,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(500);
 
     // Click on the private tree
-    await page.locator('a:has-text("my-private")').click();
+    await page.getByTestId('file-list').locator('a:has-text("my-private")').first().click();
     await page.waitForTimeout(2000);
 
     // Should still not show the locked message

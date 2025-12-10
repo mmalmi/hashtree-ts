@@ -17,7 +17,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 test.describe('DOSBox integration', () => {
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
+  // Requires ZIP file upload via setInputFiles which doesn't trigger upload handler in Playwright
+  // The functionality is tested manually - keeping skipped
   test.skip('should show extract modal when uploading a ZIP with DOS files', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
@@ -67,7 +68,7 @@ test.describe('DOSBox integration', () => {
     await expect(page.locator('text=GAME.EXE')).toBeVisible({ timeout: 10000 });
   });
 
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
+  // Requires ZIP file upload via setInputFiles which doesn't trigger upload handler in Playwright
   test.skip('should show DOSBox viewer when clicking on .exe file', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
@@ -122,7 +123,7 @@ test.describe('DOSBox integration', () => {
     await expect(page.locator('button:has-text("Run in DOSBox")')).toBeVisible({ timeout: 5000 });
   });
 
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
+  // Requires ZIP file upload via setInputFiles which doesn't trigger upload handler in Playwright
   test.skip('should load directory context when starting DOSBox', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
@@ -171,7 +172,7 @@ test.describe('DOSBox integration', () => {
     await expect(page.locator('text=HASHTREE').or(page.locator('text=Loading'))).toBeVisible({ timeout: 10000 });
   });
 
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
+  // Requires ZIP file upload via setInputFiles which doesn't trigger upload handler in Playwright
   test.skip('should display terminal icon for .exe files in file list', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');

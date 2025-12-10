@@ -4,14 +4,16 @@
  * This is the SINGLE SOURCE OF TRUTH for the current merkle root.
  * All writes go here immediately, publishing to Nostr is throttled.
  *
- * Key: "npub/treeName", Value: { hash, key, dirty }
+ * Key: "npub/treeName", Value: { hash, key, visibility, dirty }
  */
-import type { Hash } from 'hashtree';
+import type { Hash, TreeVisibility } from 'hashtree';
 import { fromHex, toHex } from 'hashtree';
+import { updateSubscriptionCache } from './stores/treeRoot';
 
 interface CacheEntry {
   hash: Hash;
   key?: Hash;
+  visibility?: TreeVisibility;
   dirty: boolean; // true if not yet published to Nostr
 }
 
@@ -49,26 +51,37 @@ function notifyListeners(npub: string, treeName: string) {
  * This should be the ONLY place that tracks merkle root changes.
  * Publishing to Nostr is throttled - multiple rapid updates result in one publish.
  */
-export function updateLocalRootCache(npub: string, treeName: string, rootCid: { hash: Hash; key?: Hash }) {
+export function updateLocalRootCache(npub: string, treeName: string, hash: Hash, key?: Hash, visibility?: TreeVisibility) {
   const cacheKey = `${npub}/${treeName}`;
-  localRootCache.set(cacheKey, { hash: rootCid.hash, key: rootCid.key, dirty: true });
+  // Preserve existing visibility if not provided (for incremental updates that don't change visibility)
+  const existing = localRootCache.get(cacheKey);
+  const finalVisibility = visibility ?? existing?.visibility;
+  localRootCache.set(cacheKey, { hash, key, visibility: finalVisibility, dirty: true });
   notifyListeners(npub, treeName);
   schedulePublish(npub, treeName);
 
   // Update subscription cache to trigger immediate UI update
-  import('./hooks/useTreeRoot').then(({ updateSubscriptionCache }) => {
-    updateSubscriptionCache(cacheKey, rootCid.hash, rootCid.key);
-  });
+  updateSubscriptionCache(cacheKey, hash, key);
+}
+
+/**
+ * Get the visibility for a cached tree
+ */
+export function getCachedVisibility(npub: string, treeName: string): TreeVisibility | undefined {
+  return localRootCache.get(`${npub}/${treeName}`)?.visibility;
 }
 
 /**
  * Update the local root cache (hex version)
  */
-export function updateLocalRootCacheHex(npub: string, treeName: string, hashHex: string, keyHex?: string) {
-  updateLocalRootCache(npub, treeName, {
-    hash: fromHex(hashHex),
-    key: keyHex ? fromHex(keyHex) : undefined,
-  });
+export function updateLocalRootCacheHex(npub: string, treeName: string, hashHex: string, keyHex?: string, visibility?: TreeVisibility) {
+  updateLocalRootCache(
+    npub,
+    treeName,
+    fromHex(hashHex),
+    keyHex ? fromHex(keyHex) : undefined,
+    visibility
+  );
 }
 
 /**
@@ -127,8 +140,10 @@ async function doPublish(npub: string, treeName: string) {
 
     const hashHex = toHex(entry.hash);
     const keyHex = entry.key ? toHex(entry.key) : undefined;
+    // Use cached visibility to ensure correct tags are published even after navigation
+    const visibility = entry.visibility;
 
-    const success = await publishTreeRoot(treeName, hashHex, keyHex);
+    const success = await publishTreeRoot(treeName, hashHex, keyHex, visibility);
 
     if (success) {
       // Mark as clean (published)

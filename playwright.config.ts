@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Workers: use PW_WORKERS env var, or default to 50% of CPU cores
+const workers = process.env.PW_WORKERS ?? '50%';
+
 /**
  * Playwright E2E test configuration.
  *
@@ -8,10 +11,10 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: false,
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  workers: 4,
+  workers,
   reporter: 'list',
   timeout: 10000,
   expect: { timeout: 5000 },

@@ -7,8 +7,8 @@
  * render cycle. Components can subscribe to hash changes and update directly
  * (e.g., MediaSource append) without triggering re-renders.
  */
-import type { RefResolver, Hash, RefResolverListEntry, SubscribeVisibilityInfo } from '../types.js';
-import { fromHex, toHex } from '../types.js';
+import type { RefResolver, CID, RefResolverListEntry, SubscribeVisibilityInfo } from '../types.js';
+import { fromHex, toHex, cid } from '../types.js';
 
 // Nostr event structure (minimal)
 export interface NostrEvent {
@@ -37,7 +37,7 @@ export interface NostrFilter {
 // Subscription entry
 interface SubscriptionEntry {
   unsubscribe: () => void;
-  callbacks: Set<(hash: Hash | null, key?: Hash, visibilityInfo?: SubscribeVisibilityInfo) => void>;
+  callbacks: Set<(cid: CID | null, visibilityInfo?: SubscribeVisibilityInfo) => void>;
   currentHash: string | null;
   currentKey: string | null;
   currentVisibility: SubscribeVisibilityInfo | null;
@@ -120,6 +120,19 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
   // Active subscriptions by key
   const subscriptions = new Map<string, SubscriptionEntry>();
 
+  // Active list subscriptions by npub prefix
+  interface ListSubscriptionEntry {
+    npub: string;
+    entriesByDTag: Map<string, ParsedTreeVisibility & { created_at: number }>;
+    callback: (entries: RefResolverListEntry[]) => void;
+    unsubscribe: () => void;
+  }
+  const listSubscriptions = new Map<string, ListSubscriptionEntry>();
+
+  // Persistent local cache for list entries (survives subscription lifecycle)
+  // Key is npub, value is map of tree name -> entry
+  const localListCache = new Map<string, Map<string, ParsedTreeVisibility & { created_at: number }>>();
+
   /**
    * Parse a pointer key into pubkey and tree name
    */
@@ -139,17 +152,17 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
   return {
     /**
-     * Resolve a key to its current hash.
-     * Waits indefinitely until a hash is found - caller should apply timeout if needed.
+     * Resolve a key to its current CID.
+     * Waits indefinitely until found - caller should apply timeout if needed.
      */
-    async resolve(key: string): Promise<Hash | null> {
+    async resolve(key: string): Promise<CID | null> {
       const parsed = parseKey(key);
       if (!parsed) return null;
 
       const { pubkey, treeName } = parsed;
 
       return new Promise((resolve) => {
-        let latestHash: string | null = null;
+        let latestData: { hash: string; key?: string } | null = null;
         let latestCreatedAt = 0;
 
         const unsubscribe = nostrSubscribe(
@@ -168,13 +181,13 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
             if ((event.created_at || 0) > latestCreatedAt) {
               latestCreatedAt = event.created_at || 0;
-              latestHash = hashAndKey.hash;
+              latestData = hashAndKey;
             }
 
-            // Got a hash, resolve immediately
-            if (latestHash) {
+            // Got data, resolve immediately
+            if (latestData) {
               unsubscribe();
-              resolve(fromHex(latestHash));
+              resolve(cid(fromHex(latestData.hash), latestData.key ? fromHex(latestData.key) : undefined));
             }
           }
         );
@@ -182,11 +195,11 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
     },
 
     /**
-     * Subscribe to hash changes for a key.
+     * Subscribe to CID changes for a key.
      * Callback fires on each update (including initial value).
      * This runs outside React render cycle.
      */
-    subscribe(key: string, callback: (hash: Hash | null, encryptionKey?: Hash, visibilityInfo?: SubscribeVisibilityInfo) => void): () => void {
+    subscribe(key: string, callback: (cid: CID | null, visibilityInfo?: SubscribeVisibilityInfo) => void): () => void {
       const parsed = parseKey(key);
       if (!parsed) {
         callback(null);
@@ -204,7 +217,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
         // Fire immediately with current value
         if (sub.currentHash) {
           const keyBytes = sub.currentKey ? fromHex(sub.currentKey) : undefined;
-          callback(fromHex(sub.currentHash), keyBytes, sub.currentVisibility ?? undefined);
+          callback(cid(fromHex(sub.currentHash), keyBytes), sub.currentVisibility ?? undefined);
         }
       } else {
         // Create new subscription
@@ -244,12 +257,11 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
               };
               subEntry.currentVisibility = visibilityInfo;
 
-              const hashBytes = fromHex(newHash);
               const keyBytes = newKey ? fromHex(newKey) : undefined;
-              // Notify all callbacks
+              // Notify all callbacks with CID
               for (const cb of subEntry.callbacks) {
                 try {
-                  cb(hashBytes, keyBytes, visibilityInfo);
+                  cb(cid(fromHex(newHash), keyBytes), visibilityInfo);
                 } catch (e) {
                   console.error('Resolver callback error:', e);
                 }
@@ -258,15 +270,30 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           }
         );
 
+        // Check localListCache for initial values (from recent publish calls)
+        const npubStr = key.split('/')[0];
+        const cachedEntry = localListCache.get(npubStr)?.get(treeName);
+
         sub = {
           unsubscribe,
           callbacks: new Set([callback]),
-          currentHash: null,
-          currentKey: null,
-          currentVisibility: null,
-          latestCreatedAt: 0,
+          currentHash: cachedEntry?.hash ?? null,
+          currentKey: cachedEntry?.key ?? null,
+          currentVisibility: cachedEntry ? {
+            visibility: cachedEntry.visibility,
+            encryptedKey: cachedEntry.encryptedKey,
+            keyId: cachedEntry.keyId,
+            selfEncryptedKey: cachedEntry.selfEncryptedKey,
+          } : null,
+          latestCreatedAt: cachedEntry?.created_at ?? 0,
         };
         subscriptions.set(key, sub);
+
+        // Fire callback immediately with cached value if available
+        if (cachedEntry?.hash) {
+          const keyBytes = cachedEntry.key ? fromHex(cachedEntry.key) : undefined;
+          callback(cid(fromHex(cachedEntry.hash), keyBytes), sub.currentVisibility ?? undefined);
+        }
       }
 
       // Return unsubscribe function
@@ -286,11 +313,12 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
     /**
      * Publish/update a pointer
+     * Updates local cache immediately (optimistic), then fire-and-forget to network.
      * @param key - The key to publish to
-     * @param hash - The hash to publish
-     * @param encryptionKey - Optional encryption key for encrypted trees
+     * @param rootCid - The CID to publish
+     * @param visibilityInfo - Optional visibility info for list subscriptions
      */
-    async publish(key: string, hash: Hash, encryptionKey?: Hash): Promise<boolean> {
+    async publish(key: string, rootCid: CID, visibilityInfo?: SubscribeVisibilityInfo, skipNostrPublish = false): Promise<boolean> {
       const parsed = parseKey(key);
       if (!parsed) return false;
 
@@ -299,11 +327,78 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
       if (!pubkey) return false;
 
-      try {
-        const hashHex = toHex(hash);
-        const keyHex = encryptionKey ? toHex(encryptionKey) : undefined;
+      const hashHex = toHex(rootCid.hash);
+      const keyHex = rootCid.key ? toHex(rootCid.key) : undefined;
+      const now = Math.floor(Date.now() / 1000);
+      const npubStr = key.split('/')[0];
 
-        // Build tags - new format with hash/key in tags
+      // 1. Update local caches FIRST (optimistic update for instant UI)
+
+      // Update local list cache (persists even without active subscription)
+      let npubCache = localListCache.get(npubStr);
+      if (!npubCache) {
+        npubCache = new Map();
+        localListCache.set(npubStr, npubCache);
+      }
+      npubCache.set(treeName, {
+        hash: hashHex,
+        visibility: visibilityInfo?.visibility ?? 'public',
+        key: keyHex,
+        encryptedKey: visibilityInfo?.encryptedKey,
+        keyId: visibilityInfo?.keyId,
+        selfEncryptedKey: visibilityInfo?.selfEncryptedKey,
+        created_at: now,
+      });
+
+      // Update active subscription state
+      const sub = subscriptions.get(key);
+      if (sub) {
+        sub.currentHash = hashHex;
+        sub.currentKey = keyHex || null;
+        sub.latestCreatedAt = now;
+        sub.currentVisibility = visibilityInfo ?? null;
+        // Notify callbacks with CID
+        for (const cb of sub.callbacks) {
+          try {
+            cb(rootCid, visibilityInfo);
+          } catch (e) {
+            console.error('Resolver callback error:', e);
+          }
+        }
+      }
+
+      // Update active list subscriptions
+      const listSub = listSubscriptions.get(npubStr);
+      if (listSub) {
+        listSub.entriesByDTag.set(treeName, {
+          hash: hashHex,
+          visibility: visibilityInfo?.visibility ?? 'public',
+          key: keyHex,
+          encryptedKey: visibilityInfo?.encryptedKey,
+          keyId: visibilityInfo?.keyId,
+          selfEncryptedKey: visibilityInfo?.selfEncryptedKey,
+          created_at: now,
+        });
+        // Emit updated state immediately
+        const result: RefResolverListEntry[] = [];
+        for (const [dTag, entry] of listSub.entriesByDTag) {
+          result.push({
+            key: `${npubStr}/${dTag}`,
+            cid: cid(fromHex(entry.hash), entry.key ? fromHex(entry.key) : undefined),
+            visibility: entry.visibility,
+            encryptedKey: entry.encryptedKey,
+            keyId: entry.keyId,
+            selfEncryptedKey: entry.selfEncryptedKey,
+            createdAt: entry.created_at,
+          });
+        }
+        listSub.callback(result);
+      }
+
+      // 2. Fire-and-forget to network (unless skipped)
+      // skipNostrPublish is used when the caller handles Nostr publishing separately
+      // (e.g., saveHashtree publishes with full visibility tags)
+      if (!skipNostrPublish) {
         const tags: string[][] = [
           ['d', treeName],
           ['l', 'hashtree'],
@@ -313,36 +408,14 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           tags.push(['key', keyHex]);
         }
 
-        const success = await nostrPublish({
+        nostrPublish({
           kind: 30078,
-          content: '', // Empty content in new format
+          content: '',
           tags,
-        });
-
-        if (success) {
-          // Update local subscription state immediately
-          const sub = subscriptions.get(key);
-          if (sub) {
-            sub.currentHash = hashHex;
-            sub.currentKey = keyHex || null;
-            sub.latestCreatedAt = Math.floor(Date.now() / 1000);
-            const keyBytes = keyHex ? fromHex(keyHex) : undefined;
-            // Notify callbacks
-            for (const cb of sub.callbacks) {
-              try {
-                cb(hash, keyBytes);
-              } catch (e) {
-                console.error('Resolver callback error:', e);
-              }
-            }
-          }
-        }
-
-        return success;
-      } catch (e) {
-        console.error('Failed to publish:', e);
-        return false;
+        }).catch(e => console.error('Failed to publish to nostr:', e));
       }
+
+      return true; // Optimistic - local cache updated
     },
 
     /**
@@ -375,23 +448,34 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
       // Track entries by d-tag with full visibility info
       const entriesByDTag = new Map<string, ParsedTreeVisibility & { created_at: number }>();
 
+      // Pre-populate from local cache (for instant display of locally-created trees)
+      const cachedEntries = localListCache.get(npubStr);
+      if (cachedEntries) {
+        for (const [treeName, entry] of cachedEntries) {
+          entriesByDTag.set(treeName, entry);
+        }
+      }
+
       const emitCurrentState = () => {
         const result: RefResolverListEntry[] = [];
         for (const [dTag, entry] of entriesByDTag) {
           result.push({
             key: `${npubStr}/${dTag}`,
-            hash: fromHex(entry.hash),
-            // Legacy field for backwards compatibility
-            encryptionKey: entry.key ? fromHex(entry.key) : undefined,
-            // New visibility fields
+            cid: cid(fromHex(entry.hash), entry.key ? fromHex(entry.key) : undefined),
             visibility: entry.visibility,
             encryptedKey: entry.encryptedKey,
             keyId: entry.keyId,
             selfEncryptedKey: entry.selfEncryptedKey,
+            createdAt: entry.created_at,
           });
         }
         callback(result);
       };
+
+      // Emit cached entries immediately if any
+      if (entriesByDTag.size > 0) {
+        emitCurrentState();
+      }
 
       const unsubscribe = nostrSubscribe(
         {
@@ -407,17 +491,33 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           if (!parsed) return;
 
           const existing = entriesByDTag.get(dTag);
-          if (!existing || (event.created_at || 0) > existing.created_at) {
+          const eventTime = event.created_at || 0;
+
+
+          // Only update if this event is strictly newer than existing
+          // If same timestamp, prefer existing (local cache has full visibility info)
+          if (!existing || eventTime > existing.created_at) {
             entriesByDTag.set(dTag, {
               ...parsed,
-              created_at: event.created_at || 0,
+              created_at: eventTime,
             });
             emitCurrentState();
           }
         }
       );
 
-      return unsubscribe;
+      // Register this list subscription so publish() can update it immediately
+      listSubscriptions.set(npubStr, {
+        npub: npubStr,
+        entriesByDTag,
+        callback,
+        unsubscribe,
+      });
+
+      return () => {
+        unsubscribe();
+        listSubscriptions.delete(npubStr);
+      };
     },
 
     /**
@@ -428,6 +528,70 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
         sub.unsubscribe();
       }
       subscriptions.clear();
+      listSubscriptions.clear();
+    },
+
+    /**
+     * Inject a local list entry (for instant UI updates)
+     * This updates the local cache to make trees appear immediately.
+     */
+    injectListEntry(entry: RefResolverListEntry): void {
+      const parts = entry.key.split('/');
+      if (parts.length !== 2) return;
+      const [npubStr, treeName] = parts;
+
+      const now = Math.floor(Date.now() / 1000);
+
+      // Update the local list cache
+      let npubCache = localListCache.get(npubStr);
+      if (!npubCache) {
+        npubCache = new Map();
+        localListCache.set(npubStr, npubCache);
+      }
+
+      const existing = npubCache.get(treeName);
+      if (!existing || now >= existing.created_at) {
+        npubCache.set(treeName, {
+          hash: toHex(entry.cid.hash),
+          visibility: entry.visibility ?? 'public',
+          key: entry.cid.key ? toHex(entry.cid.key) : undefined,
+          encryptedKey: entry.encryptedKey,
+          keyId: entry.keyId,
+          selfEncryptedKey: entry.selfEncryptedKey,
+          created_at: now,
+        });
+      }
+
+      // If there's an active list subscription for this npub, update it too
+      const listSub = listSubscriptions.get(npubStr);
+      if (listSub) {
+        const existingSub = listSub.entriesByDTag.get(treeName);
+        if (!existingSub || now >= existingSub.created_at) {
+          listSub.entriesByDTag.set(treeName, {
+            hash: toHex(entry.cid.hash),
+            visibility: entry.visibility ?? 'public',
+            key: entry.cid.key ? toHex(entry.cid.key) : undefined,
+            encryptedKey: entry.encryptedKey,
+            keyId: entry.keyId,
+            selfEncryptedKey: entry.selfEncryptedKey,
+            created_at: now,
+          });
+          // Emit updated state
+          const result: RefResolverListEntry[] = [];
+          for (const [dTag, e] of listSub.entriesByDTag) {
+            result.push({
+              key: `${npubStr}/${dTag}`,
+              cid: cid(fromHex(e.hash), e.key ? fromHex(e.key) : undefined),
+              visibility: e.visibility,
+              encryptedKey: e.encryptedKey,
+              keyId: e.keyId,
+              selfEncryptedKey: e.selfEncryptedKey,
+              createdAt: e.created_at,
+            });
+          }
+          listSub.callback(result);
+        }
+      }
     },
   };
 }

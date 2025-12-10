@@ -1,21 +1,21 @@
 /**
- * Shared state and store instances using zustand
+ * Shared state and store instances using Svelte stores
  */
-import { create } from 'zustand';
+import { writable, get } from 'svelte/store';
 import {
-  OpfsStore,
+  IndexedDBStore,
   HashTree,
   WebRTCStore,
 } from 'hashtree';
 import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClassifier } from 'hashtree';
-import { getSocialGraph, useSocialGraphStore } from './utils/socialGraph';
-import { useSettingsStore, DEFAULT_POOL_SETTINGS } from './stores/settings';
+import { getSocialGraph, socialGraphStore } from './utils/socialGraph';
+import { settingsStore, DEFAULT_POOL_SETTINGS } from './stores/settings';
 
-// Store instances - using OPFS for persistence (replaces IndexedDB)
-export const opfsStore = new OpfsStore('hashtree-explorer');
+// Store instances - using IndexedDB for persistence
+export const idbStore = new IndexedDBStore('hashtree-explorer');
 
 // HashTree instance - single class for all tree operations
-let _tree = new HashTree({ store: opfsStore, chunkSize: 1024 });
+let _tree = new HashTree({ store: idbStore, chunkSize: 1024 });
 
 // Getter for tree - always returns current instance
 export function getTree(): HashTree {
@@ -38,8 +38,7 @@ export interface WsFallbackStatus {
   connected: boolean;
 }
 
-// App state store
-// Note: rootCid is now derived from URL via useTreeRoot hook (see hooks/useTreeRoot.ts)
+// App state store interface
 interface AppState {
   // WebRTC state
   peerCount: number;
@@ -49,34 +48,56 @@ interface AppState {
 
   // Storage stats
   stats: StorageStats;
-
-  // Actions
-  setPeerCount: (count: number) => void;
-  setPeers: (peers: PeerStatus[]) => void;
-  setMyPeerId: (id: string | null) => void;
-  setWsFallback: (status: WsFallbackStatus) => void;
-  setStats: (stats: StorageStats) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  peerCount: 0,
-  peers: [],
-  myPeerId: null,
-  wsFallback: { url: null, connected: false },
-  stats: { items: 0, bytes: 0 },
+// Create Svelte store for app state
+function createAppStore() {
+  const { subscribe, update } = writable<AppState>({
+    peerCount: 0,
+    peers: [],
+    myPeerId: null,
+    wsFallback: { url: null, connected: false },
+    stats: { items: 0, bytes: 0 },
+  });
 
-  setPeerCount: (count) => set({ peerCount: count }),
-  setPeers: (peers) => set({ peers }),
-  setMyPeerId: (id) => set({ myPeerId: id }),
-  setWsFallback: (status) => set({ wsFallback: status }),
-  setStats: (stats) => set({ stats }),
-}));
+  return {
+    subscribe,
+
+    setPeerCount: (count: number) => {
+      update(state => ({ ...state, peerCount: count }));
+    },
+
+    setPeers: (peers: PeerStatus[]) => {
+      update(state => ({ ...state, peers }));
+    },
+
+    setMyPeerId: (id: string | null) => {
+      update(state => ({ ...state, myPeerId: id }));
+    },
+
+    setWsFallback: (status: WsFallbackStatus) => {
+      update(state => ({ ...state, wsFallback: status }));
+    },
+
+    setStats: (stats: StorageStats) => {
+      update(state => ({ ...state, stats }));
+    },
+
+    // Get current state synchronously (for compatibility)
+    getState: (): AppState => get(appStore),
+  };
+}
+
+export const appStore = createAppStore();
+
+// Legacy compatibility alias
+export const useAppStore = appStore;
 
 // Expose for debugging in tests
 if (typeof window !== 'undefined') {
-  const win = window as Window & { __appStore?: typeof useAppStore; __opfsStore?: typeof opfsStore };
-  win.__appStore = useAppStore;
-  win.__opfsStore = opfsStore;
+  const win = window as Window & { __appStore?: typeof appStore; __idbStore?: typeof idbStore };
+  win.__appStore = appStore;
+  win.__idbStore = idbStore;
 }
 
 // Format bytes
@@ -86,12 +107,12 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-// Update storage stats from OPFS
+// Update storage stats from IDB
 export async function updateStorageStats(): Promise<void> {
   try {
-    const items = await opfsStore.count();
-    const bytes = await opfsStore.totalBytes();
-    useAppStore.getState().setStats({ items, bytes });
+    const items = await idbStore.count();
+    const bytes = await idbStore.totalBytes();
+    appStore.setStats({ items, bytes });
   } catch {
     // Ignore errors
   }
@@ -132,7 +153,7 @@ function createPeerClassifier(): PeerClassifier {
  * Get pool config from settings store
  */
 function getPoolConfigFromSettings() {
-  const settings = useSettingsStore.getState();
+  const settings = get(settingsStore);
   const pools = settings.poolsLoaded ? settings.pools : DEFAULT_POOL_SETTINGS;
   return {
     follows: { maxConnections: pools.followsMax, satisfiedConnections: pools.followsSatisfied },
@@ -156,7 +177,7 @@ export function initWebRTC(
     pubkey,
     encrypt,
     decrypt,
-    localStore: opfsStore,
+    localStore: idbStore,
     debug: true,
     // Pool-based peer management
     peerClassifier: createPeerClassifier(),
@@ -167,41 +188,53 @@ export function initWebRTC(
 
   webrtcStore.on((event) => {
     if (event.type === 'update') {
-      useAppStore.getState().setPeerCount(webrtcStore?.getConnectedCount() ?? 0);
-      useAppStore.getState().setPeers(webrtcStore?.getPeers() ?? []);
-      useAppStore.getState().setWsFallback(webrtcStore?.getWsFallbackStatus() ?? { url: null, connected: false });
+      appStore.setPeerCount(webrtcStore?.getConnectedCount() ?? 0);
+      appStore.setPeers(webrtcStore?.getPeers() ?? []);
+      appStore.setWsFallback(webrtcStore?.getWsFallbackStatus() ?? { url: null, connected: false });
     }
   });
 
   // Update peer classifier when social graph changes
-  useSocialGraphStore.subscribe(() => {
+  const unsubSocialGraph = socialGraphStore.subscribe(() => {
     if (webrtcStore) {
       webrtcStore.setPeerClassifier(createPeerClassifier());
     }
   });
 
   // Update pool config when settings change
-  useSettingsStore.subscribe((state, prevState) => {
-    if (webrtcStore && state.pools !== prevState.pools) {
+  let prevPools = get(settingsStore).pools;
+  const unsubSettings = settingsStore.subscribe((state) => {
+    if (webrtcStore && state.pools !== prevPools) {
       webrtcStore.setPoolConfig(getPoolConfigFromSettings());
+      prevPools = state.pools;
     }
   });
 
-  useAppStore.getState().setMyPeerId(webrtcStore.getMyPeerId());
-  useAppStore.getState().setWsFallback(webrtcStore.getWsFallbackStatus());
+  // Store unsubscribe functions for cleanup
+  (webrtcStore as WebRTCStore & { _unsubscribers?: (() => void)[] })._unsubscribers = [
+    unsubSocialGraph,
+    unsubSettings,
+  ];
+
+  appStore.setMyPeerId(webrtcStore.getMyPeerId());
+  appStore.setWsFallback(webrtcStore.getWsFallbackStatus());
   webrtcStore.start();
 }
 
 // Stop WebRTC store
 export function stopWebRTC() {
   if (webrtcStore) {
+    // Cleanup subscriptions
+    const store = webrtcStore as WebRTCStore & { _unsubscribers?: (() => void)[] };
+    store._unsubscribers?.forEach(unsub => unsub());
+
     webrtcStore.stop();
     webrtcStore = null;
-    useAppStore.getState().setPeerCount(0);
-    useAppStore.getState().setPeers([]);
-    useAppStore.getState().setMyPeerId(null);
-    useAppStore.getState().setWsFallback({ url: null, connected: false });
-    _tree = new HashTree({ store: opfsStore, chunkSize: 1024 });
+    appStore.setPeerCount(0);
+    appStore.setPeers([]);
+    appStore.setMyPeerId(null);
+    appStore.setWsFallback({ url: null, connected: false });
+    _tree = new HashTree({ store: idbStore, chunkSize: 1024 });
   }
 }
 

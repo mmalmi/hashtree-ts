@@ -1,8 +1,9 @@
 /**
  * Multi-account management for HashTree Explorer
  * Stores multiple accounts and allows switching between them
+ * Uses Svelte writable stores instead of Zustand
  */
-import { create } from 'zustand';
+import { writable, get } from 'svelte/store';
 import { nip19, getPublicKey } from 'nostr-tools';
 
 // Storage key for accounts list
@@ -22,50 +23,75 @@ export interface Account {
 interface AccountsState {
   accounts: Account[];
   activeAccountPubkey: string | null;
-
-  // Actions
-  setAccounts: (accounts: Account[]) => void;
-  setActiveAccount: (pubkey: string | null) => void;
-  addAccount: (account: Account) => void;
-  removeAccount: (pubkey: string) => boolean; // Returns false if trying to remove last account
 }
 
-export const useAccountsStore = create<AccountsState>((set, get) => ({
-  accounts: [],
-  activeAccountPubkey: null,
+// Create the Svelte store
+function createAccountsStore() {
+  const { subscribe, set, update } = writable<AccountsState>({
+    accounts: [],
+    activeAccountPubkey: null,
+  });
 
-  setAccounts: (accounts) => set({ accounts }),
-  setActiveAccount: (pubkey) => set({ activeAccountPubkey: pubkey }),
+  const store = {
+    subscribe,
 
-  addAccount: (account) => {
-    const { accounts } = get();
-    // Don't add duplicates
-    if (accounts.some(a => a.pubkey === account.pubkey)) {
-      return;
-    }
-    const newAccounts = [...accounts, account];
-    set({ accounts: newAccounts });
-    saveAccountsToStorage(newAccounts);
-  },
+    setAccounts: (accounts: Account[]) => {
+      update(state => ({ ...state, accounts }));
+    },
 
-  removeAccount: (pubkey) => {
-    const { accounts, activeAccountPubkey } = get();
-    // Don't allow removing the last account
-    if (accounts.length <= 1) {
-      return false;
-    }
-    const newAccounts = accounts.filter(a => a.pubkey !== pubkey);
-    set({ accounts: newAccounts });
-    saveAccountsToStorage(newAccounts);
+    setActiveAccount: (pubkey: string | null) => {
+      update(state => ({ ...state, activeAccountPubkey: pubkey }));
+    },
 
-    // If removing active account, switch to another
-    if (activeAccountPubkey === pubkey && newAccounts.length > 0) {
-      set({ activeAccountPubkey: newAccounts[0].pubkey });
-      localStorage.setItem(STORAGE_KEY_ACTIVE_ACCOUNT, newAccounts[0].pubkey);
-    }
-    return true;
-  },
-}));
+    addAccount: (account: Account) => {
+      update(state => {
+        // Don't add duplicates
+        if (state.accounts.some(a => a.pubkey === account.pubkey)) {
+          return state;
+        }
+        const newAccounts = [...state.accounts, account];
+        saveAccountsToStorage(newAccounts);
+        return { ...state, accounts: newAccounts };
+      });
+    },
+
+    removeAccount: (pubkey: string): boolean => {
+      const state = get(accountsStore);
+      // Don't allow removing the last account
+      if (state.accounts.length <= 1) {
+        return false;
+      }
+
+      const newAccounts = state.accounts.filter(a => a.pubkey !== pubkey);
+      saveAccountsToStorage(newAccounts);
+
+      let newActiveAccountPubkey = state.activeAccountPubkey;
+      // If removing active account, switch to another
+      if (state.activeAccountPubkey === pubkey && newAccounts.length > 0) {
+        newActiveAccountPubkey = newAccounts[0].pubkey;
+        localStorage.setItem(STORAGE_KEY_ACTIVE_ACCOUNT, newAccounts[0].pubkey);
+      }
+
+      set({ accounts: newAccounts, activeAccountPubkey: newActiveAccountPubkey });
+      return true;
+    },
+
+    // Get current state synchronously (for compatibility with Zustand patterns)
+    getState: (): AccountsState => get(accountsStore),
+
+    // Set state directly (for compatibility with Zustand patterns)
+    setState: (newState: Partial<AccountsState>) => {
+      update(state => ({ ...state, ...newState }));
+    },
+  };
+
+  return store;
+}
+
+export const accountsStore = createAccountsStore();
+
+// Legacy compatibility alias (matches Zustand API)
+export const useAccountsStore = accountsStore;
 
 /**
  * Save accounts to localStorage (nsec stored for nsec accounts)
@@ -149,8 +175,8 @@ export function createExtensionAccount(pubkey: string): Account {
  * Check if extension account already exists
  */
 export function hasExtensionAccount(): boolean {
-  const accounts = useAccountsStore.getState().accounts;
-  return accounts.some(a => a.type === 'extension');
+  const state = accountsStore.getState();
+  return state.accounts.some(a => a.type === 'extension');
 }
 
 /**
@@ -167,7 +193,7 @@ export function initAccountsStore() {
   const accounts = loadAccountsFromStorage();
   const activeAccountPubkey = getActiveAccountFromStorage();
 
-  useAccountsStore.setState({
+  accountsStore.setState({
     accounts,
     activeAccountPubkey: activeAccountPubkey && accounts.some(a => a.pubkey === activeAccountPubkey)
       ? activeAccountPubkey

@@ -111,46 +111,6 @@ test.describe('Git integration features', () => {
     expect(result.entries).toContainEqual({ name: 'readme.txt', isTree: false });
   });
 
-  test('looksLikeFile utility should correctly identify files vs directories', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
-    await navigateToPublicFolder(page);
-
-    const result = await page.evaluate(async () => {
-      const { looksLikeFile } = await import('/src/utils/route.ts');
-
-      return {
-        // Should be files (have extension after non-empty prefix)
-        'readme.txt': looksLikeFile('readme.txt'),
-        'file.js': looksLikeFile('file.js'),
-        'image.PNG': looksLikeFile('image.PNG'),
-        'doc.md': looksLikeFile('doc.md'),
-        'a.b': looksLikeFile('a.b'),
-
-        // Should NOT be files (dotfiles/dotdirs)
-        '.git': looksLikeFile('.git'),
-        '.claude': looksLikeFile('.claude'),
-        '.env': looksLikeFile('.env'),
-        '.gitignore': looksLikeFile('.gitignore'),
-        '.DS_Store': looksLikeFile('.DS_Store'),
-      };
-    });
-
-    // Files should return true
-    expect(result['readme.txt']).toBe(true);
-    expect(result['file.js']).toBe(true);
-    expect(result['image.PNG']).toBe(true);
-    expect(result['doc.md']).toBe(true);
-    expect(result['a.b']).toBe(true);
-
-    // Dotfiles should return false (treated as directories)
-    expect(result['.git']).toBe(false);
-    expect(result['.claude']).toBe(false);
-    expect(result['.env']).toBe(false);
-    expect(result['.gitignore']).toBe(false);
-    expect(result['.DS_Store']).toBe(false);
-  });
-
   test('should detect git repo and show git features when .git directory exists', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');

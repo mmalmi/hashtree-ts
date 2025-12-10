@@ -11,11 +11,11 @@ test.describe('Directory rename', () => {
 
     // Now we're in the user's public folder, which starts empty
     // Wait for the Folder button to be available (may take a moment for UI to settle)
-    await expect(page.getByRole('button', { name: 'Folder' })).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
 
     // Create a subdirectory - use the Folder button in the toolbar
-    await page.getByRole('button', { name: 'Folder' }).click();
+    await page.getByRole('button', { name: 'New Folder' }).click();
 
     // Enter subdirectory name in modal
     const subInput = page.locator('input[placeholder="Folder name..."]');
@@ -38,7 +38,7 @@ test.describe('Directory rename', () => {
     await page.click('[data-testid="file-list"] a:has-text("old-folder-name")');
 
     // Wait for navigation - should see empty directory inside the subfolder
-    await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
 
     // URL should now include the folder name
     await expect(page).toHaveURL(/old-folder-name/);
@@ -72,25 +72,24 @@ test.describe('Directory rename', () => {
     await navigateToPublicFolder(page);
 
     // Now we're in the user's public folder (which is a root tree)
-    await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
 
     // Should NOT see a Rename button for root directory (public folder)
     // The "Folder" button should exist (for creating subfolders) but not Rename
-    await expect(page.getByRole('button', { name: 'Folder' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible();
     await expect(page.locator('button:has-text("Rename")')).not.toBeVisible();
   });
 
-  // Skip: Folder creation timing is flaky in parallel test environment
-  test.skip('should delete a subdirectory', async ({ page }) => {
+  test('should delete a subdirectory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Now we're in the user's public folder, which starts empty
-    await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
 
     // Create a subdirectory - use visible button with folder-plus icon
-    await page.getByRole('button', { name: /Folder/ }).click();
+    await page.getByRole('button', { name: 'New Folder' }).click();
     const subInput = page.locator('input[placeholder="Folder name..."]');
     await subInput.waitFor({ timeout: 5000 });
     await subInput.fill('folder-to-delete');
@@ -103,7 +102,7 @@ test.describe('Directory rename', () => {
     // Wait for and navigate into the subdirectory
     await expect(page.locator('[data-testid="file-list"] a:has-text("folder-to-delete")')).toBeVisible({ timeout: 15000 });
     await page.click('[data-testid="file-list"] a:has-text("folder-to-delete")');
-    await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
 
     // Set up dialog handler for the confirmation prompt
     page.on('dialog', async (dialog) => {
@@ -117,7 +116,7 @@ test.describe('Directory rename', () => {
     await page.waitForURL(/\/public$/, { timeout: 10000 });
 
     // Should show empty directory in parent
-    await expect(page.locator('text=Empty directory')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
 
     // URL should no longer include the deleted folder name
     expect(page.url()).not.toContain('folder-to-delete');

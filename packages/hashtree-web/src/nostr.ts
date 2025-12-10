@@ -1,8 +1,9 @@
 /**
  * Nostr integration for HashTree Explorer
  * Uses NDK with Dexie cache for IndexedDB persistence
+ * Svelte version using writable stores
  */
-import { create } from 'zustand';
+import { writable, get } from 'svelte/store';
 import {
   generateSecretKey,
   getPublicKey,
@@ -17,22 +18,21 @@ import NDK, {
 } from '@nostr-dev-kit/ndk';
 import NDKCacheAdapterDexie from '@nostr-dev-kit/ndk-cache-dexie';
 import { initWebRTC, stopWebRTC } from './store';
-import type { EventSigner } from 'hashtree';
+import type { EventSigner, CID } from 'hashtree';
+import { toHex } from 'hashtree';
 import {
   type TreeVisibility,
   visibilityHex,
 } from 'hashtree';
 import { updateLocalRootCacheHex } from './treeRootCache';
 import {
-  useAccountsStore,
+  accountsStore,
   initAccountsStore,
   createAccountFromNsec,
   createExtensionAccount,
   saveActiveAccountToStorage,
 } from './accounts';
 import { parseRoute } from './utils/route';
-
-// Using global Window.nostr interface from NDK types
 
 // Default relays
 const DEFAULT_RELAYS = [
@@ -69,38 +69,94 @@ export interface HashTreeEvent {
   created_at: number;
 }
 
-// Nostr state store
+// Relay status type
+export type RelayStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+export interface RelayInfo {
+  url: string;
+  status: RelayStatus;
+}
+
+// Nostr state interface
 interface NostrState {
   pubkey: string | null;
   npub: string | null;
   isLoggedIn: boolean;
   selectedTree: HashTreeEvent | null;
   relays: string[];
-
-  setPubkey: (pk: string | null) => void;
-  setNpub: (npub: string | null) => void;
-  setIsLoggedIn: (loggedIn: boolean) => void;
-  setSelectedTree: (tree: HashTreeEvent | null) => void;
-  setRelays: (relays: string[]) => void;
+  relayStatuses: Map<string, RelayStatus>;
+  connectedRelays: number;
 }
 
-export const useNostrStore = create<NostrState>((set) => ({
-  pubkey: null,
-  npub: null,
-  isLoggedIn: false,
-  selectedTree: null,
-  relays: DEFAULT_RELAYS,
+// Create Svelte store for nostr state
+function createNostrStore() {
+  const { subscribe, update } = writable<NostrState>({
+    pubkey: null,
+    npub: null,
+    isLoggedIn: false,
+    selectedTree: null,
+    relays: DEFAULT_RELAYS,
+    relayStatuses: new Map(DEFAULT_RELAYS.map(url => [url, 'disconnected' as RelayStatus])),
+    connectedRelays: 0,
+  });
 
-  setPubkey: (pk) => set({ pubkey: pk }),
-  setNpub: (npub) => set({ npub }),
-  setIsLoggedIn: (loggedIn) => set({ isLoggedIn: loggedIn }),
-  setSelectedTree: (tree) => set({ selectedTree: tree }),
-  setRelays: (relays) => set({ relays }),
-}));
+  return {
+    subscribe,
+
+    setPubkey: (pk: string | null) => {
+      update(state => ({ ...state, pubkey: pk }));
+    },
+
+    setNpub: (npub: string | null) => {
+      update(state => ({ ...state, npub }));
+    },
+
+    setIsLoggedIn: (loggedIn: boolean) => {
+      update(state => ({ ...state, isLoggedIn: loggedIn }));
+    },
+
+    setSelectedTree: (tree: HashTreeEvent | null) => {
+      update(state => ({ ...state, selectedTree: tree }));
+    },
+
+    setRelays: (relays: string[]) => {
+      update(state => ({ ...state, relays }));
+    },
+
+    setConnectedRelays: (count: number) => {
+      update(state => ({ ...state, connectedRelays: count }));
+    },
+
+    setRelayStatus: (url: string, status: RelayStatus) => {
+      update(state => {
+        const newStatuses = new Map(state.relayStatuses);
+        newStatuses.set(url, status);
+        return { ...state, relayStatuses: newStatuses };
+      });
+    },
+
+    setRelayStatuses: (statuses: Map<string, RelayStatus>) => {
+      update(state => ({ ...state, relayStatuses: statuses }));
+    },
+
+    // Get current state synchronously
+    getState: (): NostrState => get(nostrStore),
+
+    // Set state directly
+    setState: (newState: Partial<NostrState>) => {
+      update(state => ({ ...state, ...newState }));
+    },
+  };
+}
+
+export const nostrStore = createNostrStore();
+
+// Legacy compatibility alias
+export const useNostrStore = nostrStore;
 
 // Expose for debugging in tests
 if (typeof window !== 'undefined') {
-  (window as Window & { __nostrStore?: typeof useNostrStore }).__nostrStore = useNostrStore;
+  (window as Window & { __nostrStore?: typeof nostrStore }).__nostrStore = nostrStore;
 }
 
 // Private key (only set for nsec login)
@@ -125,6 +181,64 @@ export const ndk = new NDK({
 
 // Connect on init
 ndk.connect().catch(console.error);
+
+// Track connected relay count and individual statuses
+// NDKRelayStatus: DISCONNECTED=0, DISCONNECTING=1, RECONNECTING=2, FLAPPING=3, CONNECTING=4,
+//                 CONNECTED=5, AUTH_REQUESTED=6, AUTHENTICATING=7, AUTHENTICATED=8
+const NDK_RELAY_STATUS_CONNECTING = 4;
+const NDK_RELAY_STATUS_CONNECTED = 5;
+
+function ndkStatusToRelayStatus(ndkStatus: number): RelayStatus {
+  if (ndkStatus >= NDK_RELAY_STATUS_CONNECTED) return 'connected';
+  if (ndkStatus === NDK_RELAY_STATUS_CONNECTING) return 'connecting';
+  return 'disconnected';
+}
+
+// Normalize relay URL (remove trailing slash)
+function normalizeRelayUrl(url: string): string {
+  return url.replace(/\/$/, '');
+}
+
+function updateConnectedRelayCount() {
+  const pool = ndk.pool;
+  if (!pool) {
+    nostrStore.setConnectedRelays(0);
+    return;
+  }
+  // Count relays with connected status (>= CONNECTED) and track individual statuses
+  let connected = 0;
+  const statuses = new Map<string, RelayStatus>();
+
+  // Initialize all default relays as disconnected
+  for (const url of DEFAULT_RELAYS) {
+    statuses.set(normalizeRelayUrl(url), 'disconnected');
+  }
+
+  // Update with actual statuses from pool
+  for (const relay of pool.relays.values()) {
+    const status = ndkStatusToRelayStatus(relay.status);
+    const normalizedUrl = normalizeRelayUrl(relay.url);
+    statuses.set(normalizedUrl, status);
+    if (relay.status >= NDK_RELAY_STATUS_CONNECTED) {
+      connected++;
+    }
+  }
+
+  nostrStore.setConnectedRelays(connected);
+  nostrStore.setRelayStatuses(statuses);
+}
+
+// Listen for relay connect/disconnect events
+ndk.pool?.on('relay:connect', () => updateConnectedRelayCount());
+ndk.pool?.on('relay:disconnect', () => updateConnectedRelayCount());
+
+// Also poll periodically in case events are missed
+setInterval(updateConnectedRelayCount, 2000);
+
+// Initial counts - check quickly then again after connection settles
+setTimeout(updateConnectedRelayCount, 500);
+setTimeout(updateConnectedRelayCount, 1500);
+setTimeout(updateConnectedRelayCount, 3000);
 
 // Restore session after module initialization completes
 // Using queueMicrotask to avoid circular import issues with store.ts
@@ -155,15 +269,15 @@ export async function restoreSession(): Promise<boolean> {
   // Migrate legacy single account to multi-account storage if needed
   const legacyLoginType = localStorage.getItem(STORAGE_KEY_LOGIN_TYPE);
   const legacyNsec = localStorage.getItem(STORAGE_KEY_NSEC);
-  const accountsState = useAccountsStore.getState();
+  const accountsState = accountsStore.getState();
 
   if (accountsState.accounts.length === 0 && (legacyLoginType || legacyNsec)) {
     // Migrate existing login to accounts store
     if (legacyLoginType === 'nsec' && legacyNsec) {
       const account = createAccountFromNsec(legacyNsec);
       if (account) {
-        accountsState.addAccount(account);
-        accountsState.setActiveAccount(account.pubkey);
+        accountsStore.addAccount(account);
+        accountsStore.setActiveAccount(account.pubkey);
         saveActiveAccountToStorage(account.pubkey);
       }
     }
@@ -219,7 +333,6 @@ async function waitForNostrExtension(timeoutMs = 2000): Promise<boolean> {
  * Login with NIP-07 browser extension (window.nostr)
  */
 export async function loginWithExtension(): Promise<boolean> {
-  const store = useNostrStore.getState();
   try {
     // Wait for extension to be injected (may take a moment on page load)
     const extensionAvailable = await waitForNostrExtension();
@@ -233,9 +346,9 @@ export async function loginWithExtension(): Promise<boolean> {
     const user = await signer.user();
     const pk = user.pubkey;
 
-    store.setPubkey(pk);
-    store.setNpub(nip19.npubEncode(pk));
-    store.setIsLoggedIn(true);
+    nostrStore.setPubkey(pk);
+    nostrStore.setNpub(nip19.npubEncode(pk));
+    nostrStore.setIsLoggedIn(true);
     secretKey = null;
 
     // Save login type (extension handles its own key storage)
@@ -243,8 +356,8 @@ export async function loginWithExtension(): Promise<boolean> {
     localStorage.removeItem(STORAGE_KEY_NSEC);
 
     // Add to accounts store if not already present
-    const accountsStore = useAccountsStore.getState();
-    if (!accountsStore.accounts.some(a => a.pubkey === pk)) {
+    const accountsState = accountsStore.getState();
+    if (!accountsState.accounts.some(a => a.pubkey === pk)) {
       const account = createExtensionAccount(pk);
       accountsStore.addAccount(account);
     }
@@ -280,7 +393,6 @@ export async function loginWithExtension(): Promise<boolean> {
  * Login with nsec
  */
 export function loginWithNsec(nsec: string, save = true): boolean {
-  const store = useNostrStore.getState();
   try {
     const decoded = nip19.decode(nsec);
     if (decoded.type !== 'nsec') {
@@ -294,9 +406,9 @@ export function loginWithNsec(nsec: string, save = true): boolean {
     const signer = new NDKPrivateKeySigner(nsec);
     ndk.signer = signer;
 
-    store.setPubkey(pk);
-    store.setNpub(nip19.npubEncode(pk));
-    store.setIsLoggedIn(true);
+    nostrStore.setPubkey(pk);
+    nostrStore.setNpub(nip19.npubEncode(pk));
+    nostrStore.setIsLoggedIn(true);
 
     // Save to localStorage
     if (save) {
@@ -304,8 +416,8 @@ export function loginWithNsec(nsec: string, save = true): boolean {
       localStorage.setItem(STORAGE_KEY_NSEC, nsec);
 
       // Add to accounts store if not already present
-      const accountsStore = useAccountsStore.getState();
-      if (!accountsStore.accounts.some(a => a.pubkey === pk)) {
+      const accountsState = accountsStore.getState();
+      if (!accountsState.accounts.some(a => a.pubkey === pk)) {
         const account = createAccountFromNsec(nsec);
         if (account) {
           accountsStore.addAccount(account);
@@ -340,7 +452,6 @@ export function loginWithNsec(nsec: string, save = true): boolean {
  * Generate new keypair
  */
 export function generateNewKey(): { nsec: string; npub: string } {
-  const store = useNostrStore.getState();
   secretKey = generateSecretKey();
   const pk = getPublicKey(secretKey);
   const nsec = nip19.nsecEncode(secretKey);
@@ -349,17 +460,16 @@ export function generateNewKey(): { nsec: string; npub: string } {
   const signer = new NDKPrivateKeySigner(nsec);
   ndk.signer = signer;
 
-  store.setPubkey(pk);
+  nostrStore.setPubkey(pk);
   const npubStr = nip19.npubEncode(pk);
-  store.setNpub(npubStr);
-  store.setIsLoggedIn(true);
+  nostrStore.setNpub(npubStr);
+  nostrStore.setIsLoggedIn(true);
 
   // Save to localStorage
   localStorage.setItem(STORAGE_KEY_LOGIN_TYPE, 'nsec');
   localStorage.setItem(STORAGE_KEY_NSEC, nsec);
 
   // Add to accounts store
-  const accountsStore = useAccountsStore.getState();
   const account = createAccountFromNsec(nsec);
   if (account) {
     accountsStore.addAccount(account);
@@ -406,11 +516,10 @@ async function createDefaultFolders() {
  * Logout
  */
 export function logout() {
-  const store = useNostrStore.getState();
-  store.setPubkey(null);
-  store.setNpub(null);
-  store.setIsLoggedIn(false);
-  store.setSelectedTree(null);
+  nostrStore.setPubkey(null);
+  nostrStore.setNpub(null);
+  nostrStore.setIsLoggedIn(false);
+  nostrStore.setSelectedTree(null);
   secretKey = null;
   ndk.signer = undefined;
 
@@ -460,20 +569,25 @@ export interface SaveHashtreeOptions {
  * @param options - Visibility options
  * @returns Object with success status and linkKey (for unlisted trees)
  */
-export function saveHashtree(
+export async function saveHashtree(
   name: string,
   rootHash: string,
   rootKey?: string,
   options: SaveHashtreeOptions = {}
-): { success: boolean; linkKey?: string } {
-  const store = useNostrStore.getState();
-  if (!store.pubkey || !ndk.signer) return { success: false };
+): Promise<{ success: boolean; linkKey?: string }> {
+  const state = nostrStore.getState();
+  if (!state.pubkey || !ndk.signer) return { success: false };
 
   const visibility = options.visibility ?? 'public';
+
+  // Set created_at now (before any async work) so all events from this save have same timestamp
+  // This prevents async-published events from having later timestamps that override local cache
+  const now = Math.floor(Date.now() / 1000);
 
   const event = new NDKEvent(ndk);
   event.kind = 30078;
   event.content = '';
+  event.created_at = now;
   event.tags = [
     ['d', name],
     ['l', 'hashtree'],
@@ -499,7 +613,7 @@ export function saveHashtree(
           event.tags.push(['encryptedKey', encryptedKey]);
           event.tags.push(['keyId', keyId]);
           // Also self-encrypt so owner can always access without link key
-          const conversationKey = nip44.v2.utils.getConversationKey(secretKey!, store.pubkey!);
+          const conversationKey = nip44.v2.utils.getConversationKey(secretKey!, state.pubkey!);
           const selfEncryptedUnlisted = nip44.v2.encrypt(rootKey, conversationKey);
           event.tags.push(['selfEncryptedKey', selfEncryptedUnlisted]);
           event.publish().catch(e => console.error('Failed to publish hashtree:', e));
@@ -509,7 +623,7 @@ export function saveHashtree(
       case 'private':
         // Encrypt key to self using NIP-44 - do async work in background
         (async () => {
-          const conversationKey = nip44.v2.utils.getConversationKey(secretKey!, store.pubkey!);
+          const conversationKey = nip44.v2.utils.getConversationKey(secretKey!, state.pubkey!);
           const selfEncrypted = nip44.v2.encrypt(rootKey, conversationKey);
           event.tags.push(['selfEncryptedKey', selfEncrypted]);
           event.publish().catch(e => console.error('Failed to publish hashtree:', e));
@@ -524,15 +638,31 @@ export function saveHashtree(
   }
 
   // Update selectedTree if it matches
-  const currentSelected = store.selectedTree;
-  if (currentSelected && currentSelected.name === name && currentSelected.pubkey === store.pubkey) {
-    useNostrStore.getState().setSelectedTree({
+  const currentSelected = state.selectedTree;
+  if (currentSelected && currentSelected.name === name && currentSelected.pubkey === state.pubkey) {
+    nostrStore.setSelectedTree({
       ...currentSelected,
       rootHash,
       rootKey: visibility === 'public' ? rootKey : undefined,
       visibility,
       created_at: event.created_at || Math.floor(Date.now() / 1000),
     });
+  }
+
+  // Update local cache SYNCHRONOUSLY for instant UI (tree appears immediately in list)
+  // This must happen before navigation so the new tree list subscription sees the cached entry
+  // skipNostrPublish=true because we handle Nostr publishing above with proper visibility tags
+  const npub = state.npub;
+  if (npub) {
+    const { getRefResolver } = await import('./refResolver');
+    const { fromHex, cid } = await import('hashtree');
+    const resolver = getRefResolver();
+    const hash = fromHex(rootHash);
+    // Include the encryption key for ALL visibility levels when owner is saving
+    // This allows immediate access without waiting for selfEncryptedKey decryption
+    const encryptionKey = rootKey ? fromHex(rootKey) : undefined;
+    // This synchronously updates the resolver's localListCache (skips Nostr publish)
+    resolver.publish?.(`${npub}/${name}`, cid(hash, encryptionKey), { visibility }, true);
   }
 
   return { success: true, linkKey };
@@ -562,47 +692,58 @@ export function npubToPubkey(npubStr: string): string | null {
  * Check if the selected tree belongs to the logged-in user
  */
 export function isOwnTree(): boolean {
-  const store = useNostrStore.getState();
-  if (!store.isLoggedIn || !store.selectedTree || !store.pubkey) return false;
-  return store.selectedTree.pubkey === store.pubkey;
+  const state = nostrStore.getState();
+  if (!state.isLoggedIn || !state.selectedTree || !state.pubkey) return false;
+  return state.selectedTree.pubkey === state.pubkey;
 }
 
 /**
  * Autosave current tree if it's our own.
  * Updates local cache immediately, publishing is throttled.
- * @param rootHash - Root hash (hex encoded)
- * @param rootKey - Decryption key (hex encoded, optional for encrypted trees)
+ * @param rootCid - Root CID (contains hash and optional encryption key)
  */
-export function autosaveIfOwn(rootHash: string, rootKey?: string): void {
-  const store = useNostrStore.getState();
-  if (!isOwnTree() || !store.selectedTree || !store.npub) return;
+export function autosaveIfOwn(rootCid: CID): void {
+  const state = nostrStore.getState();
+  if (!isOwnTree() || !state.selectedTree || !state.npub) return;
+
+  const rootHash = toHex(rootCid.hash);
+  const rootKey = rootCid.key ? toHex(rootCid.key) : undefined;
 
   // Update local cache - this triggers throttled publish to Nostr
-  updateLocalRootCacheHex(store.npub, store.selectedTree.name, rootHash, rootKey);
+  updateLocalRootCacheHex(state.npub, state.selectedTree.name, rootHash, rootKey);
 
   // Update selectedTree state immediately for UI
-  useNostrStore.getState().setSelectedTree({
-    ...store.selectedTree,
+  nostrStore.setSelectedTree({
+    ...state.selectedTree,
     rootHash,
-    rootKey: store.selectedTree.visibility === 'public' ? rootKey : store.selectedTree.rootKey,
+    rootKey: state.selectedTree.visibility === 'public' ? rootKey : state.selectedTree.rootKey,
   });
 }
 
 /**
  * Publish tree root to Nostr (called by treeRootCache after throttle)
  * This is the ONLY place that should publish merkle roots.
+ *
+ * @param cachedVisibility - Visibility from the root cache. Use this first, then fall back to selectedTree.
  */
-export async function publishTreeRoot(treeName: string, rootHash: string, rootKey?: string): Promise<boolean> {
-  const store = useNostrStore.getState();
-  if (!store.pubkey || !ndk.signer || !store.selectedTree) return false;
+export async function publishTreeRoot(treeName: string, rootHash: string, rootKey?: string, cachedVisibility?: TreeVisibility): Promise<boolean> {
+  const state = nostrStore.getState();
+  if (!state.pubkey || !ndk.signer) return false;
 
-  // Only publish if this is for the current tree
-  if (store.selectedTree.name !== treeName) return false;
+  // Priority: cached visibility > selectedTree visibility > 'public'
+  let visibility: TreeVisibility = cachedVisibility ?? 'public';
+  let linkKey: string | undefined;
 
-  const visibility = store.selectedTree.visibility;
+  // If no cached visibility, try to get from selectedTree
+  if (!cachedVisibility) {
+    const isOwnSelectedTree = state.selectedTree?.name === treeName &&
+      state.selectedTree?.pubkey === state.pubkey;
+    if (isOwnSelectedTree && state.selectedTree?.visibility) {
+      visibility = state.selectedTree.visibility;
+    }
+  }
 
   // For unlisted trees, get the linkKey from the URL
-  let linkKey: string | undefined;
   if (visibility === 'unlisted') {
     const route = parseRoute();
     linkKey = route.linkKey ?? undefined;

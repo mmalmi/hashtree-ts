@@ -18,6 +18,7 @@ import {
   putFileEncrypted,
   readFileEncrypted,
   readFileEncryptedStream,
+  readFileEncryptedRange,
   putDirectoryEncrypted,
   listDirectoryEncrypted,
   getTreeNodeEncrypted,
@@ -105,12 +106,13 @@ export class HashTree {
   ): Promise<{ cid: CID; size: number }> {
     const size = entries.reduce((sum, e) => sum + (e.size ?? 0), 0);
     if (options?.public) {
-      const legacyEntries = entries.map(e => ({
+      const dirEntries: create.DirEntry[] = entries.map(e => ({
         name: e.name,
-        hash: e.cid.hash,
+        cid: e.cid,
         size: e.size ?? 0,
+        isTree: e.isTree,
       }));
-      const hash = await create.putDirectory(this.config, legacyEntries, options.metadata);
+      const hash = await create.putDirectory(this.config, dirEntries, options.metadata);
       return { cid: { hash }, size };
     }
     // Encrypted by default
@@ -154,7 +156,9 @@ export class HashTree {
         // Try to get the tree node (will decrypt and validate)
         const node = await getTreeNodeEncrypted(this.store, id.hash, id.key);
         if (!node) return false;
-        // Check if it's a directory (has named entries)
+        // Empty directory is still a directory
+        if (node.links.length === 0) return true;
+        // Check if it's a directory (has named entries) vs chunked file (no names)
         return node.links.some(l => l.name !== undefined && !l.name.startsWith('_'));
       } catch {
         return false;
@@ -174,14 +178,24 @@ export class HashTree {
   }
 
   /**
-   * Stream a file
+   * Stream a file, optionally starting from an offset
    */
-  async *readFileStream(id: CID): AsyncGenerator<Uint8Array> {
+  async *readFileStream(id: CID, offset: number = 0): AsyncGenerator<Uint8Array> {
     if (id.key) {
-      yield* readFileEncryptedStream(this.store, id.hash, id.key);
+      yield* readFileEncryptedStream(this.store, id.hash, id.key, offset);
     } else {
-      yield* read.readFileStream(this.store, id.hash);
+      yield* read.readFileStream(this.store, id.hash, offset);
     }
+  }
+
+  /**
+   * Read a range of bytes from a file
+   */
+  async readFileRange(id: CID, start: number, end?: number): Promise<Uint8Array | null> {
+    if (id.key) {
+      return readFileEncryptedRange(this.store, id.hash, id.key, start, end);
+    }
+    return read.readFileRange(this.store, id.hash, start, end);
   }
 
   /**
@@ -200,7 +214,7 @@ export class HashTree {
     const entries = await read.listDirectory(this.store, id.hash);
     return entries.map(e => ({
       name: e.name,
-      cid: { hash: e.hash },
+      cid: e.cid,
       size: e.size,
       isTree: e.isTree,
     }));
@@ -283,7 +297,7 @@ export class HashTree {
       );
       return cid(result.hash, result.key);
     }
-    const hash = await edit.setEntry(this.config, root.hash, path, name, entry.hash, size, isTree);
+    const hash = await edit.setEntry(this.config, root.hash, path, name, entry, size, isTree);
     return { hash };
   }
 
@@ -443,10 +457,12 @@ export class StreamWriter {
       this.chunks.push({ hash, size: chunk.length });
     } else {
       // Encrypted mode: CHK encrypt the chunk
+      // Store PLAINTEXT size in link.size for correct range seeking
+      const plaintextSize = chunk.length;
       const { ciphertext, key } = await encryptChk(chunk);
       const hash = await sha256(ciphertext);
       await this.store.put(hash, ciphertext);
-      this.chunks.push({ hash, size: ciphertext.length, key });
+      this.chunks.push({ hash, size: plaintextSize, key });
     }
 
     this.bufferOffset = 0;
@@ -472,10 +488,12 @@ export class StreamWriter {
         await this.store.put(hash, chunk);
         tempChunks.push({ hash, size: chunk.length });
       } else {
+        // Store PLAINTEXT size in link.size for correct range seeking
+        const plaintextSize = chunk.length;
         const { ciphertext, key } = await encryptChk(chunk);
         const hash = await sha256(ciphertext);
         await this.store.put(hash, ciphertext);
-        tempChunks.push({ hash, size: ciphertext.length, key });
+        tempChunks.push({ hash, size: plaintextSize, key });
       }
     }
 

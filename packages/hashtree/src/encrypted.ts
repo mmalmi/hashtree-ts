@@ -222,15 +222,17 @@ async function assembleEncryptedChunks(
 }
 
 /**
- * Stream an encrypted file
+ * Stream an encrypted file, optionally starting from an offset
  * @param store - Storage backend
  * @param hash - Root hash of encrypted file
  * @param key - CHK decryption key (content hash)
+ * @param offset - Byte offset to start streaming from
  */
 export async function* readFileEncryptedStream(
   store: Store,
   hash: Hash,
-  key: EncryptionKey
+  key: EncryptionKey,
+  offset: number = 0
 ): AsyncGenerator<Uint8Array> {
   const encryptedData = await store.get(hash);
   if (!encryptedData) return;
@@ -240,21 +242,36 @@ export async function* readFileEncryptedStream(
 
   if (isTreeNode(decrypted)) {
     const node = decodeTreeNode(decrypted);
-    yield* streamEncryptedChunks(store, node);
+    yield* streamEncryptedChunksWithOffset(store, node, offset);
   } else {
     // Single blob (small file)
-    yield decrypted;
+    if (offset >= decrypted.length) return;
+    yield offset > 0 ? decrypted.slice(offset) : decrypted;
   }
 }
 
-async function* streamEncryptedChunks(
+/**
+ * Stream encrypted chunks starting from an offset
+ */
+async function* streamEncryptedChunksWithOffset(
   store: Store,
-  node: TreeNode
+  node: TreeNode,
+  offset: number
 ): AsyncGenerator<Uint8Array> {
+  let position = 0;
+
   for (const link of node.links) {
     const chunkKey = link.key;
     if (!chunkKey) {
       throw new Error(`Missing decryption key for chunk: ${toHex(link.hash)}`);
+    }
+
+    const linkSize = link.size ?? 0;
+
+    // Skip chunks entirely before offset
+    if (linkSize > 0 && position + linkSize <= offset) {
+      position += linkSize;
+      continue;
     }
 
     const encryptedChild = await store.get(link.hash);
@@ -262,16 +279,135 @@ async function* streamEncryptedChunks(
       throw new Error(`Missing chunk: ${toHex(link.hash)}`);
     }
 
-    // CHK decrypt the child
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
     if (isTreeNode(decrypted)) {
       const childNode = decodeTreeNode(decrypted);
-      yield* streamEncryptedChunks(store, childNode);
+      const childOffset = Math.max(0, offset - position);
+      yield* streamEncryptedChunksWithOffset(store, childNode, childOffset);
+      position += linkSize;
     } else {
-      yield decrypted;
+      const chunkStart = position;
+      const chunkEnd = position + decrypted.length;
+      position = chunkEnd;
+
+      if (chunkEnd <= offset) {
+        continue;
+      }
+
+      if (chunkStart >= offset) {
+        yield decrypted;
+      } else {
+        const sliceStart = offset - chunkStart;
+        yield decrypted.slice(sliceStart);
+      }
     }
   }
+}
+
+/**
+ * Read a range of bytes from an encrypted file
+ */
+export async function readFileEncryptedRange(
+  store: Store,
+  hash: Hash,
+  key: EncryptionKey,
+  start: number,
+  end?: number
+): Promise<Uint8Array | null> {
+  const encryptedData = await store.get(hash);
+  if (!encryptedData) return null;
+
+  const decrypted = await decryptChk(encryptedData, key);
+
+  if (!isTreeNode(decrypted)) {
+    // Single blob
+    if (start >= decrypted.length) return new Uint8Array(0);
+    const actualEnd = end !== undefined ? Math.min(end, decrypted.length) : decrypted.length;
+    return decrypted.slice(start, actualEnd);
+  }
+
+  const node = decodeTreeNode(decrypted);
+  return readEncryptedRangeFromNode(store, node, start, end);
+}
+
+async function readEncryptedRangeFromNode(
+  store: Store,
+  node: TreeNode,
+  start: number,
+  end?: number
+): Promise<Uint8Array> {
+  const parts: Uint8Array[] = [];
+  let position = 0;
+  let bytesCollected = 0;
+  const maxBytes = end !== undefined ? end - start : Infinity;
+
+  for (const link of node.links) {
+    if (bytesCollected >= maxBytes) break;
+
+    const chunkKey = link.key;
+    if (!chunkKey) {
+      throw new Error(`Missing decryption key for chunk: ${toHex(link.hash)}`);
+    }
+
+    const linkSize = link.size ?? 0;
+
+    // Skip chunks entirely before start
+    if (linkSize > 0 && position + linkSize <= start) {
+      position += linkSize;
+      continue;
+    }
+
+    const encryptedChild = await store.get(link.hash);
+    if (!encryptedChild) {
+      throw new Error(`Missing chunk: ${toHex(link.hash)}`);
+    }
+
+    const decrypted = await decryptChk(encryptedChild, chunkKey);
+
+    if (isTreeNode(decrypted)) {
+      const childNode = decodeTreeNode(decrypted);
+      const childStart = Math.max(0, start - position);
+      const childEnd = end !== undefined ? end - position : undefined;
+      const childData = await readEncryptedRangeFromNode(store, childNode, childStart, childEnd);
+      if (childData.length > 0) {
+        const take = Math.min(childData.length, maxBytes - bytesCollected);
+        parts.push(childData.slice(0, take));
+        bytesCollected += take;
+      }
+      position += linkSize;
+    } else {
+      const chunkStart = position;
+      const chunkEnd = position + decrypted.length;
+      position = chunkEnd;
+
+      if (chunkEnd <= start) {
+        continue;
+      }
+
+      const sliceStart = Math.max(0, start - chunkStart);
+      const sliceEnd = end !== undefined
+        ? Math.min(decrypted.length, end - chunkStart)
+        : decrypted.length;
+
+      if (sliceStart < sliceEnd) {
+        const take = Math.min(sliceEnd - sliceStart, maxBytes - bytesCollected);
+        parts.push(decrypted.slice(sliceStart, sliceStart + take));
+        bytesCollected += take;
+      }
+    }
+  }
+
+  // Concatenate parts
+  const totalLength = parts.reduce((sum, p) => sum + p.length, 0);
+  const result = new Uint8Array(totalLength);
+  let concatOffset = 0;
+  for (const part of parts) {
+    result.set(part, concatOffset);
+    concatOffset += part.length;
+  }
+
+  return result;
 }
 
 /**

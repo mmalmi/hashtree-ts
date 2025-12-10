@@ -3,16 +3,6 @@
  * Parses URL hash to extract route info without needing React Router context
  */
 
-/**
- * Check if a path segment looks like a file (has extension)
- * Dotfiles like .git, .claude are NOT considered files
- * Examples: "file.txt" -> true, ".git" -> false, "README.md" -> true
- */
-export function looksLikeFile(segment: string): boolean {
-  // Must have at least one char before the dot
-  return /[^/]\.[a-zA-Z0-9]+$/.test(segment);
-}
-
 /** CID in hex format for routing (hash + optional key) */
 export interface RouteCid {
   hash: string;
@@ -85,13 +75,13 @@ export function parseRoute(): RouteInfo {
   if (parts[0]?.startsWith('npub')) {
     const npub = parts[0];
 
-    // Special user routes (profile, follows, edit)
-    if (['profile', 'follows', 'edit'].includes(parts[1])) {
+    // Special user routes (profile, follows, followers, edit)
+    if (['profile', 'follows', 'followers', 'edit'].includes(parts[1])) {
       return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
     }
 
     // Tree route: #/npub/treeName/path...
-    if (parts[1] && !['profile', 'follows', 'edit'].includes(parts[1])) {
+    if (parts[1] && !['profile', 'follows', 'followers', 'edit'].includes(parts[1])) {
       return {
         npub,
         treeName: parts[1],
@@ -109,18 +99,4 @@ export function parseRoute(): RouteInfo {
 
   // Home route
   return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
-}
-
-/**
- * Get current directory path from URL (excludes file if selected)
- * Uses file extension heuristic - no entries needed
- */
-export function getCurrentPathFromUrl(): string[] {
-  const route = parseRoute();
-  const urlPath = route.path;
-  if (urlPath.length === 0) return [];
-
-  // Check if last segment looks like a file (has extension, not just dotfile like .git)
-  const lastSegment = urlPath[urlPath.length - 1];
-  return looksLikeFile(lastSegment) ? urlPath.slice(0, -1) : urlPath;
 }

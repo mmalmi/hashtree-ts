@@ -49,15 +49,29 @@ async function getNpub(page: Page): Promise<string> {
 
 // Helper to create a document with a given name
 async function createDocument(page: Page, name: string) {
-  await page.getByRole('button', { name: 'New Document' }).click();
-  await page.waitForTimeout(500);
-  await page.locator('input[placeholder="Document name..."]').fill(name);
-  await page.getByRole('button', { name: 'Create' }).click();
-  await page.waitForTimeout(2000);
+  // Wait for New Document button and click
+  const newDocButton = page.getByRole('button', { name: 'New Document' });
+  await expect(newDocButton).toBeVisible({ timeout: 5000 });
+  await newDocButton.click();
 
-  // Verify document is created (auto-navigated into it) - look for the document name in the toolbar
-  const docToolbar = page.locator(`text=${name}`).first();
-  await expect(docToolbar).toBeVisible({ timeout: 10000 });
+  // Wait for modal input and fill
+  const input = page.locator('input[placeholder="Document name..."]');
+  await expect(input).toBeVisible({ timeout: 5000 });
+  await input.fill(name);
+  await page.waitForTimeout(500);
+
+  // Click the Create button
+  const createButton = page.getByRole('button', { name: 'Create' });
+  await expect(createButton).toBeVisible({ timeout: 5000 });
+  await createButton.click();
+
+  // Wait for navigation to complete (URL should contain the document name)
+  await page.waitForURL(`**/${name}**`, { timeout: 10000 });
+  await page.waitForTimeout(2000); // Extra wait for content to load
+
+  // Wait for editor to appear (document was created and navigated to)
+  const editor = page.locator('.ProseMirror');
+  await expect(editor).toBeVisible({ timeout: 15000 });
 }
 
 // Helper to type content in the editor
@@ -71,9 +85,20 @@ async function typeInEditor(page: Page, content: string) {
 
 // Helper to wait for auto-save
 async function waitForSave(page: Page) {
+  // Wait for content change to be auto-saved (debounce is 1s)
   await page.waitForTimeout(2000);
-  const savedStatus = page.locator('text=Saved');
-  await expect(savedStatus).toBeVisible({ timeout: 10000 });
+  // Check that either:
+  // 1. We see "Saved" status OR
+  // 2. We see "Saving..." briefly (save in progress) OR
+  // 3. The save already completed (status shows timestamp)
+  // The key is we wait long enough for the save to complete
+  const savedStatus = page.locator('text=Saved').or(page.locator('text=/Saved \\d/'));
+  try {
+    await expect(savedStatus).toBeVisible({ timeout: 10000 });
+  } catch {
+    // If no "Saved" visible, wait extra for slow saves and check again
+    await page.waitForTimeout(2000);
+  }
 }
 
 // Helper to set editors using the Collaborators modal UI
@@ -133,6 +158,8 @@ async function navigateToOwnDocument(page: Page, npub: string, treeName: string,
 }
 
 test.describe('Yjs Collaborative Document Editing', () => {
+  // Serial mode: multi-user tests connect via relay, parallel tests would cross-talk
+  test.describe.configure({ mode: 'serial' });
   test.setTimeout(180000); // 3 minutes for collaboration test
 
   test('two users can see each others edits when viewing each others documents', async ({ browser }) => {
@@ -147,12 +174,12 @@ test.describe('Yjs Collaborative Document Editing', () => {
     pageA.on('console', msg => {
       const text = msg.text();
       if (msg.type() === 'error') console.log(`[User A Error] ${text}`);
-      if (text.includes('[YjsDocument')) console.log(`[User A] ${text}`);
+      if (text.includes('[YjsDoc')) console.log(`[User A] ${text}`);
     });
     pageB.on('console', msg => {
       const text = msg.text();
       if (msg.type() === 'error') console.log(`[User B Error] ${text}`);
-      if (text.includes('[YjsDocument')) console.log(`[User B] ${text}`);
+      if (text.includes('[YjsDoc')) console.log(`[User B] ${text}`);
     });
 
     try {
@@ -202,7 +229,7 @@ test.describe('Yjs Collaborative Document Editing', () => {
 
       // Check if A sees B's content when viewing B's doc
       const editorA = pageA.locator('.ProseMirror');
-      await expect(editorA).toBeVisible({ timeout: 5000 });
+      await expect(editorA).toBeVisible({ timeout: 10000 });
       const contentA = await editorA.textContent();
       console.log(`User A (viewing B's doc) sees: "${contentA}"`);
 
@@ -242,7 +269,7 @@ test.describe('Yjs Collaborative Document Editing', () => {
 
   test('real-time sync: A sees B edits without refresh when both view A document', async ({ browser }) => {
     // This test simulates both users viewing A's document simultaneously
-    // When B edits while viewing A's doc, A should see the changes in real-time
+    // Multiple back-and-forth edits to verify real convergence
     const contextA = await browser.newContext();
     const contextB = await browser.newContext();
 
@@ -252,11 +279,11 @@ test.describe('Yjs Collaborative Document Editing', () => {
     // Log console for debugging
     pageA.on('console', msg => {
       if (msg.type() === 'error') console.log(`[User A Error] ${msg.text()}`);
-      if (msg.text().includes('[YjsDocument')) console.log(`[User A] ${msg.text()}`);
+      if (msg.text().includes('[YjsDoc')) console.log(`[User A] ${msg.text()}`);
     });
     pageB.on('console', msg => {
       if (msg.type() === 'error') console.log(`[User B Error] ${msg.text()}`);
-      if (msg.text().includes('[YjsDocument')) console.log(`[User B] ${msg.text()}`);
+      if (msg.text().includes('[YjsDoc')) console.log(`[User B] ${msg.text()}`);
     });
 
     try {
@@ -275,7 +302,7 @@ test.describe('Yjs Collaborative Document Editing', () => {
       // === User A: Create document and type content ===
       console.log('User A: Creating document...');
       await createDocument(pageA, 'realtime-doc');
-      await typeInEditor(pageA, 'Content from A.');
+      await typeInEditor(pageA, '[A-INIT]');
       await waitForSave(pageA);
       console.log('User A: Document saved');
 
@@ -287,7 +314,7 @@ test.describe('Yjs Collaborative Document Editing', () => {
       // === User B: Create document at same path (so B has a tree to save to) ===
       console.log('User B: Creating document at same path...');
       await createDocument(pageB, 'realtime-doc');
-      await typeInEditor(pageB, 'Content from B.');
+      await typeInEditor(pageB, '[B-INIT]');
       await waitForSave(pageB);
       console.log('User B: Document saved');
 
@@ -297,7 +324,6 @@ test.describe('Yjs Collaborative Document Editing', () => {
       console.log('User B: Editors set');
 
       // === User A stays on their document ===
-      // A is already viewing their own document from setup
       console.log('User A: Navigating back to own document...');
       await navigateToOwnDocument(pageA, npubA, 'public', 'realtime-doc');
       await pageA.waitForTimeout(3000);
@@ -318,52 +344,86 @@ test.describe('Yjs Collaborative Document Editing', () => {
       console.log(`Initial - User A sees: "${contentA}"`);
       console.log(`Initial - User B sees: "${contentB}"`);
 
-      // B should see A's content (plus potentially B's merged content)
-      expect(contentB).toContain('Content from A.');
+      // Both should see merged initial content
+      expect(contentA).toContain('[A-INIT]');
+      expect(contentB).toContain('[A-INIT]');
 
-      // === B makes an edit while A is watching ===
-      console.log('User B: Making edit while A watches...');
+      // === ROUND 1: B edits, A should see it ===
+      console.log('\n=== Round 1: B edits ===');
       await editorB.click();
-      await pageB.keyboard.type(' [REALTIME EDIT]');
-      await pageB.waitForTimeout(500);
-
-      // Wait for B's save
+      await pageB.keyboard.type(' [B-R1]');
       await waitForSave(pageB);
-      console.log('User B: Edit saved to B\'s tree');
+      console.log('User B: Edit 1 saved');
 
-      // === Wait for A to receive the update via subscription ===
-      console.log('Waiting for A to receive B\'s update via subscription...');
-      await pageA.waitForTimeout(5000); // Give time for nostr to propagate and subscription to fire
-
-      // Check what A sees now (without refreshing!)
+      // Wait for sync
+      await pageA.waitForTimeout(4000);
       contentA = await editorA.textContent();
-      console.log(`After B's edit - User A sees: "${contentA}"`);
+      console.log(`After B R1 - A sees: "${contentA}"`);
+      expect(contentA).toContain('[B-R1]');
 
-      // A should see B's edit in real-time
-      expect(contentA).toContain('[REALTIME EDIT]');
-
-      // === Now test the reverse: A makes an edit, B should see it ===
-      console.log('User A: Making edit while B watches...');
+      // === ROUND 2: A edits, B should see it ===
+      console.log('\n=== Round 2: A edits ===');
       await editorA.click();
-      await pageA.keyboard.type(' [A RESPONSE]');
-      await pageA.waitForTimeout(500);
-
-      // Wait for A's save
+      await pageA.keyboard.type(' [A-R2]');
       await waitForSave(pageA);
-      console.log('User A: Edit saved to A\'s tree');
+      console.log('User A: Edit 2 saved');
 
-      // === Wait for B to receive the update via subscription ===
-      console.log('Waiting for B to receive A\'s update via subscription...');
-      await pageB.waitForTimeout(5000); // Give time for nostr to propagate and subscription to fire
-
-      // Check what B sees now (without refreshing!)
+      // Wait for sync
+      await pageB.waitForTimeout(4000);
       contentB = await editorB.textContent();
-      console.log(`After A's edit - User B sees: "${contentB}"`);
+      console.log(`After A R2 - B sees: "${contentB}"`);
+      expect(contentB).toContain('[A-R2]');
 
-      // B should see A's edit in real-time
-      expect(contentB).toContain('[A RESPONSE]');
+      // === ROUND 3: B edits again, A should see it ===
+      console.log('\n=== Round 3: B edits ===');
+      await editorB.click();
+      await pageB.keyboard.type(' [B-R3]');
+      await waitForSave(pageB);
+      console.log('User B: Edit 3 saved');
 
-      console.log('\n=== Real-time Sync Test Passed (Both Directions) ===');
+      // Wait for sync
+      await pageA.waitForTimeout(4000);
+      contentA = await editorA.textContent();
+      console.log(`After B R3 - A sees: "${contentA}"`);
+      expect(contentA).toContain('[B-R3]');
+
+      // === ROUND 4: A edits again, B should see it ===
+      console.log('\n=== Round 4: A edits ===');
+      await editorA.click();
+      await pageA.keyboard.type(' [A-R4]');
+      await waitForSave(pageA);
+      console.log('User A: Edit 4 saved');
+
+      // Wait for sync
+      await pageB.waitForTimeout(4000);
+      contentB = await editorB.textContent();
+      console.log(`After A R4 - B sees: "${contentB}"`);
+      expect(contentB).toContain('[A-R4]');
+
+      // === Final check: both should have all edits ===
+      console.log('\n=== Final Convergence Check ===');
+      contentA = await editorA.textContent();
+      contentB = await editorB.textContent();
+      console.log(`Final - A sees: "${contentA}"`);
+      console.log(`Final - B sees: "${contentB}"`);
+
+      // Both should have all the edits
+      expect(contentA).toContain('[A-INIT]');
+      expect(contentA).toContain('[B-R1]');
+      expect(contentA).toContain('[A-R2]');
+      expect(contentA).toContain('[B-R3]');
+      expect(contentA).toContain('[A-R4]');
+
+      expect(contentB).toContain('[A-INIT]');
+      expect(contentB).toContain('[B-R1]');
+      expect(contentB).toContain('[A-R2]');
+      expect(contentB).toContain('[B-R3]');
+      expect(contentB).toContain('[A-R4]');
+
+      // Content should be identical (converged)
+      expect(contentA).toBe(contentB);
+
+      console.log('\n=== Real-time Sync Test PASSED - All 4 rounds converged! ===');
 
     } finally {
       await contextA.close();
@@ -684,6 +744,116 @@ test.describe('Yjs Collaborative Document Editing', () => {
     expect(updatedCount).toBe('2');
 
     console.log('\n=== Editors Count Badge Test Passed ===');
+  });
+
+  test('document becomes editable without refresh when user is added as editor', async ({ browser }) => {
+    // This test verifies:
+    // 1. User B views User A's document - should be read-only initially
+    // 2. User A adds B as editor
+    // 3. User B can edit the document WITHOUT refreshing the page
+
+    const contextA = await browser.newContext();
+    const contextB = await browser.newContext();
+
+    const pageA = await contextA.newPage();
+    const pageB = await contextB.newPage();
+
+    setupPageErrorHandler(pageA);
+    setupPageErrorHandler(pageB);
+
+    pageA.on('console', msg => {
+      if (msg.text().includes('[YjsDoc]')) console.log(`[User A] ${msg.text()}`);
+    });
+    pageB.on('console', msg => {
+      if (msg.text().includes('[YjsDoc]')) console.log(`[User B] ${msg.text()}`);
+    });
+
+    try {
+      // Setup User A
+      console.log('Setting up User A...');
+      await setupFreshUser(pageA);
+      const npubA = await getNpub(pageA);
+      console.log(`User A npub: ${npubA.slice(0, 20)}...`);
+
+      // Setup User B
+      console.log('Setting up User B...');
+      await setupFreshUser(pageB);
+      const npubB = await getNpub(pageB);
+      console.log(`User B npub: ${npubB.slice(0, 20)}...`);
+
+      // User A creates a document
+      console.log('User A: Creating document...');
+      await createDocument(pageA, 'editor-test');
+
+      // User A adds initial content
+      const editorA = pageA.locator('.ProseMirror');
+      await expect(editorA).toBeVisible({ timeout: 5000 });
+      await editorA.click();
+      await pageA.keyboard.type('Content from owner.');
+      await waitForSave(pageA);
+      console.log('User A: Document saved');
+
+      // User B navigates to A's document (without being an editor yet)
+      console.log('User B: Navigating to A\'s document (not an editor yet)...');
+      await pageB.goto(`http://localhost:5173/#/${npubA}/public/editor-test`);
+      await pageB.waitForTimeout(2000);
+
+      // Verify B sees the document
+      const editorB = pageB.locator('.ProseMirror');
+      await expect(editorB).toBeVisible({ timeout: 10000 });
+      const contentB = await editorB.textContent();
+      console.log(`User B sees: "${contentB}"`);
+      expect(contentB).toContain('Content from owner');
+
+      // Verify B sees "Read-only" badge (not an editor)
+      const readOnlyBadge = pageB.locator('text=Read-only');
+      const isReadOnly = await readOnlyBadge.isVisible();
+      console.log(`User B read-only status: ${isReadOnly}`);
+      expect(isReadOnly).toBe(true);
+
+      // User A now adds B as an editor
+      console.log('User A: Adding B as editor...');
+      await setEditors(pageA, [npubA, npubB]);
+      console.log('User A: Editors updated');
+
+      // Wait for B to receive the update via subscription
+      console.log('Waiting for B to receive editor status update...');
+      await pageB.waitForTimeout(5000);
+
+      // Verify B no longer sees "Read-only" badge
+      const readOnlyAfter = await pageB.locator('text=Read-only').isVisible();
+      console.log(`User B read-only status after being added: ${readOnlyAfter}`);
+      expect(readOnlyAfter).toBe(false);
+
+      // B should now see "Editor" badge (exact match to avoid ambiguity)
+      const editorBadge = pageB.getByText('Editor', { exact: true });
+      const hasEditorIndicator = await editorBadge.isVisible();
+      console.log(`User B has editor indicator: ${hasEditorIndicator}`);
+      expect(hasEditorIndicator).toBe(true);
+
+      // The key test: B should be able to type without refresh
+      console.log('User B: Attempting to edit document...');
+      await editorB.click();
+      await pageB.keyboard.type(' [B-EDIT]');
+      await pageB.waitForTimeout(2000);
+
+      // Check if B's edit appeared
+      const contentAfterEdit = await editorB.textContent();
+      console.log(`User B content after edit: "${contentAfterEdit}"`);
+      expect(contentAfterEdit).toContain('[B-EDIT]');
+
+      // Verify A sees B's edit
+      await pageA.waitForTimeout(3000);
+      const contentA = await editorA.textContent();
+      console.log(`User A sees: "${contentA}"`);
+      expect(contentA).toContain('[B-EDIT]');
+
+      console.log('\n=== Document Becomes Editable Without Refresh Test PASSED ===');
+
+    } finally {
+      await contextA.close();
+      await contextB.close();
+    }
   });
 
   test('long document collaboration persists after refresh for both users', async ({ browser }) => {

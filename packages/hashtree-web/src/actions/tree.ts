@@ -3,11 +3,11 @@
  */
 import { navigate } from '../utils/navigate';
 import { parseRoute } from '../utils/route';
-import { toHex, verifyTree } from 'hashtree';
+import { verifyTree, toHex } from 'hashtree';
 import type { CID } from 'hashtree';
 import { saveHashtree, useNostrStore } from '../nostr';
 import { nip19 } from 'nostr-tools';
-import { opfsStore, getTree } from '../store';
+import { idbStore, getTree } from '../store';
 import { autosaveIfOwn } from '../nostr';
 import { getCurrentRootCid, getCurrentPathFromUrl } from './route';
 import { updateLocalRootCache } from '../treeRootCache';
@@ -44,20 +44,29 @@ export async function initVirtualTree(entries: { name: string; cid: CID; size: n
   // Save to nostr with key - resolver will pick up the update automatically
   const hashHex = toHex(newRootCid.hash);
   const keyHex = newRootCid.key ? toHex(newRootCid.key) : undefined;
-  await saveHashtree(route.treeName, hashHex, keyHex);
-  nostrStore.setSelectedTree({
+
+  // Preserve current tree's visibility when updating
+  const currentVisibility = nostrStore.selectedTree?.visibility ?? 'public';
+
+  // Update local cache FIRST for immediate UI update (before async nostr publish)
+  // Include visibility so throttled publish uses correct tags
+  if (nostrStore.npub) {
+    updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid.hash, newRootCid.key, currentVisibility);
+  }
+
+  useNostrStore.setSelectedTree({
     id: '',
     name: route.treeName,
     pubkey: routePubkey,
     rootHash: hashHex,
     rootKey: keyHex,
+    visibility: currentVisibility,
     created_at: Math.floor(Date.now() / 1000),
   });
 
-  // Update local cache for subsequent saves
-  if (nostrStore.npub) {
-    updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid);
-  }
+  // Now publish to Nostr (fire-and-forget for UI responsiveness)
+  // Pass visibility to preserve it in the published event
+  void saveHashtree(route.treeName, hashHex, keyHex, { visibility: currentVisibility });
 
   return newRootCid;
 }
@@ -84,7 +93,7 @@ export async function createFolder(name: string) {
       true
     );
     // Publish to nostr - resolver will pick up the update
-    autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+    autosaveIfOwn(newRootCid);
   } else {
     // Initialize virtual tree with this folder
     await initVirtualTree([{ name, cid: emptyDirCid, size: 0, isTree: true }]);
@@ -120,8 +129,15 @@ export async function createDocument(name: string) {
       0,
       true
     );
-    // Publish to nostr (also updates local cache)
-    autosaveIfOwn(toHex(newRootCid.hash), newRootCid.key ? toHex(newRootCid.key) : undefined);
+    // Publish to nostr
+    autosaveIfOwn(newRootCid);
+
+    // Update local cache for subsequent saves (visibility is preserved from selectedTree)
+    const route = parseRoute();
+    const nostrStore = useNostrStore.getState();
+    if (nostrStore.npub && route.treeName) {
+      updateLocalRootCache(nostrStore.npub, route.treeName, newRootCid.hash, newRootCid.key, nostrStore.selectedTree?.visibility);
+    }
   } else {
     // Initialize virtual tree with this document folder
     await initVirtualTree([{ name, cid: docDirCid, size: 0, isTree: true }]);
@@ -130,32 +146,44 @@ export async function createDocument(name: string) {
 
 // Fork a directory as a new top-level tree
 // Preserves the key if forking from an encrypted tree
-export async function forkTree(dirCid: CID, name: string): Promise<boolean> {
-  if (!name) return false;
+export async function forkTree(dirCid: CID, name: string, visibility: import('hashtree').TreeVisibility = 'public'): Promise<{ success: boolean; linkKey?: string }> {
+  if (!name) return { success: false };
 
   const { saveHashtree } = await import('../nostr');
+  const { storeLinkKey } = await import('../stores/trees');
   const rootHex = toHex(dirCid.hash);
   const keyHex = dirCid.key ? toHex(dirCid.key) : undefined;
 
   const nostrState = useNostrStore.getState();
 
-  if (!nostrState.npub || !nostrState.pubkey) return false;
+  if (!nostrState.npub || !nostrState.pubkey) return { success: false };
 
-  useNostrStore.getState().setSelectedTree({
+  useNostrStore.setSelectedTree({
     id: '',
     name,
     pubkey: nostrState.pubkey,
     rootHash: rootHex,
-    rootKey: keyHex,
+    rootKey: visibility === 'public' ? keyHex : undefined,
+    visibility,
     created_at: Math.floor(Date.now() / 1000),
   });
 
+  // Update local cache IMMEDIATELY for subsequent operations
+  updateLocalRootCache(nostrState.npub, name, dirCid.hash, dirCid.key, visibility);
+
   // Publish to nostr - resolver will pick up the update when we navigate
-  const success = await saveHashtree(name, rootHex, keyHex);
-  if (success) {
-    navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}`);
+  const result = await saveHashtree(name, rootHex, keyHex, { visibility });
+
+  // For unlisted trees, store link key locally and append to URL
+  if (result.linkKey) {
+    storeLinkKey(nostrState.npub, name, result.linkKey);
   }
-  return success;
+
+  if (result.success) {
+    const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
+    navigate(`/${encodeURIComponent(nostrState.npub)}/${encodeURIComponent(name)}${linkKeyParam}`);
+  }
+  return result;
 }
 
 // Create a new tree (top-level folder on nostr or local)
@@ -165,7 +193,7 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
   if (!name) return { success: false };
 
   const { saveHashtree } = await import('../nostr');
-  const { storeLinkKey } = await import('../hooks/useTrees');
+  const { storeLinkKey } = await import('../stores/trees');
 
   const tree = getTree();
   // Create encrypted empty directory (default)
@@ -179,7 +207,7 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
   if (nostrState.isLoggedIn && nostrState.npub && nostrState.pubkey) {
     // Set selectedTree BEFORE saving so updates work (only if we're navigating)
     if (!skipNavigation) {
-      useNostrStore.getState().setSelectedTree({
+      useNostrStore.setSelectedTree({
         id: '', // Will be set by actual nostr event
         name,
         pubkey: nostrState.pubkey,
@@ -190,8 +218,15 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
       });
     }
 
-    // Publish to nostr - fire and forget, don't block UI
-    const result = saveHashtree(name, rootHex, keyHex, { visibility });
+    // Update local cache IMMEDIATELY so subsequent operations can find the root
+    // This is critical - without this, createFolder called right after createTree
+    // would see rootCid as null and create a new tree instead of adding to this one
+    // Include visibility for correct throttled publish
+    updateLocalRootCache(nostrState.npub, name, rootCid.hash, rootCid.key, visibility);
+
+    // Publish to nostr and update local cache
+    // The await ensures local cache is updated before navigation
+    const result = await saveHashtree(name, rootHex, keyHex, { visibility });
 
     // For unlisted trees, store link key locally and append to URL
     if (result.linkKey) {
@@ -214,12 +249,12 @@ export async function verifyCurrentTree(): Promise<{ valid: boolean; missing: nu
   const rootCid = getCurrentRootCid();
   if (!rootCid) return { valid: false, missing: 0 };
 
-  const { valid, missing } = await verifyTree(opfsStore, rootCid.hash);
+  const { valid, missing } = await verifyTree(idbStore, rootCid.hash);
   return { valid, missing: missing.length };
 }
 
 // Clear store
 export function clearStore() {
-  opfsStore.clear();
+  idbStore.clear();
   navigate('/');
 }

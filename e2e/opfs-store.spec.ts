@@ -253,6 +253,7 @@ test.describe('OpfsStore', () => {
       // Store with first instance
       const store1 = new OpfsStore('persist-test');
       await store1.put(hash, data);
+      await store1.close(); // Flush pending writes before creating new instance
 
       // Retrieve with new instance
       const store2 = new OpfsStore('persist-test');

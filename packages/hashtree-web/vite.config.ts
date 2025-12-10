@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 import UnoCSS from 'unocss/vite';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -8,7 +8,7 @@ import { resolve } from 'path';
 export default defineConfig({
   plugins: [
     UnoCSS(),
-    react(),
+    svelte(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
@@ -76,6 +76,7 @@ export default defineConfig({
     alias: {
       'hashtree': resolve(__dirname, '../hashtree/src/index.ts'),
       'hashtree/webrtc': resolve(__dirname, '../hashtree/src/webrtc/index.ts'),
+      '$lib': resolve(__dirname, 'src/lib'),
     },
   },
   build: {
@@ -101,7 +102,7 @@ export default defineConfig({
           }
 
           // Markdown rendering - statically split for caching
-          if (id.includes('markdown-to-jsx')) {
+          if (id.includes('marked')) {
             return 'markdown';
           }
 
@@ -130,16 +131,13 @@ export default defineConfig({
             return 'dexie';
           }
 
-          // Core vendor libraries - React, crypto, state management
+          // Core vendor libraries - Svelte, crypto, state management
           const vendorLibs = [
-            'react',
-            'react-dom',
-            'react-router-dom',
+            'svelte',
             'nostr-tools',
             '@noble/hashes',
             '@noble/curves',
             '@scure/base',
-            'zustand',
             'idb-keyval',
           ];
           if (vendorLibs.some((lib) => id.includes(`node_modules/${lib}`))) {
@@ -152,6 +150,10 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
-    allowedHosts: ['mayhem.iris.to'],
+    allowedHosts: ['mayhem.iris.to', 'mayhem1.iris.to'],
+    hmr: {
+      // Ensure HMR websocket connection is stable
+      overlay: true,
+    },
   },
 });

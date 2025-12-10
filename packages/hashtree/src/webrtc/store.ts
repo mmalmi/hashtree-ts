@@ -620,11 +620,13 @@ export class WebRTCStore implements Store {
   }
 
   /**
-   * Get number of connected peers
+   * Get number of connected peers (including WS fallback)
    */
   getConnectedCount(): number {
-    return Array.from(this.peers.values())
+    const webrtcCount = Array.from(this.peers.values())
       .filter(({ peer }) => peer.isConnected).length;
+    const wsCount = this.wsPeer?.isConnected ? 1 : 0;
+    return webrtcCount + wsCount;
   }
 
   /**

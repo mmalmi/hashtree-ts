@@ -2,7 +2,7 @@
  * Toast notification store
  * Manages toast messages with auto-dismiss
  */
-import { useSyncExternalStore } from 'react';
+import { writable } from 'svelte/store';
 
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
 
@@ -14,33 +14,16 @@ export interface Toast {
 }
 
 // Module-level state
-let toasts: Toast[] = [];
 let nextId = 1;
 
-const listeners = new Set<() => void>();
-
-function emit() {
-  listeners.forEach(l => l());
-}
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
-function getSnapshot() {
-  return toasts;
-}
-
-export function useToasts() {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
+// Svelte store for toasts
+export const toasts = writable<Toast[]>([]);
 
 export function showToast(type: ToastType, message: string, duration = 4000): string {
   const id = String(nextId++);
   const toast: Toast = { id, type, message, duration };
-  toasts = [...toasts, toast];
-  emit();
+
+  toasts.update(t => [...t, toast]);
 
   if (duration > 0) {
     setTimeout(() => dismissToast(id), duration);
@@ -50,8 +33,7 @@ export function showToast(type: ToastType, message: string, duration = 4000): st
 }
 
 export function dismissToast(id: string) {
-  toasts = toasts.filter(t => t.id !== id);
-  emit();
+  toasts.update(t => t.filter(toast => toast.id !== id));
 }
 
 // Convenience functions

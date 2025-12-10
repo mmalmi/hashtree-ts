@@ -2,11 +2,12 @@
  * Social Graph integration using nostr-social-graph
  * Provides follow distance calculations and trust indicators for avatars
  * Persisted to Dexie for non-blocking load
+ * Svelte version using writable stores
  */
-import { create } from 'zustand';
+import { writable, get } from 'svelte/store';
 import { SocialGraph, type NostrEvent } from 'nostr-social-graph';
 import Dexie, { type Table } from 'dexie';
-import { ndk, useNostrStore } from '../nostr';
+import { ndk, nostrStore } from '../nostr';
 import type { NDKEvent, NDKSubscription } from '@nostr-dev-kit/ndk';
 
 // Default root pubkey (used when not logged in)
@@ -15,7 +16,7 @@ const KIND_CONTACTS = 3;
 const DEFAULT_CRAWL_DEPTH = 2; // Crawl follows of follows
 
 // Debug logging
-const DEBUG = false;
+const DEBUG = true;
 const log = (...args: unknown[]) => DEBUG && console.log('[socialGraph]', ...args);
 
 // Dexie database for social graph persistence
@@ -42,23 +43,37 @@ export const socialGraphLoaded = new Promise<boolean>((resolve) => {
   resolveLoaded = resolve;
 });
 
-// Zustand store for reactive updates
+// Svelte store for reactive updates
 interface SocialGraphState {
   version: number;
   isRecrawling: boolean;
-  incrementVersion: () => void;
-  setIsRecrawling: (value: boolean) => void;
 }
 
-export const useSocialGraphStore = create<SocialGraphState>((set) => ({
-  version: 0,
-  isRecrawling: false,
-  incrementVersion: () => set((state) => ({ version: state.version + 1 })),
-  setIsRecrawling: (value) => set({ isRecrawling: value }),
-}));
+function createSocialGraphStore() {
+  const { subscribe, update } = writable<SocialGraphState>({
+    version: 0,
+    isRecrawling: false,
+  });
+
+  return {
+    subscribe,
+    incrementVersion: () => {
+      update(state => ({ ...state, version: state.version + 1 }));
+    },
+    setIsRecrawling: (value: boolean) => {
+      update(state => ({ ...state, isRecrawling: value }));
+    },
+    getState: (): SocialGraphState => get(socialGraphStore),
+  };
+}
+
+export const socialGraphStore = createSocialGraphStore();
+
+// Legacy compatibility alias
+export const useSocialGraphStore = socialGraphStore;
 
 function notifyGraphChange() {
-  useSocialGraphStore.getState().incrementVersion();
+  socialGraphStore.incrementVersion();
 }
 
 /**
@@ -132,7 +147,7 @@ async function initializeInstance(publicKey = DEFAULT_SOCIAL_GRAPH_ROOT) {
  * Initialize social graph (call on app startup)
  */
 export async function initializeSocialGraph() {
-  const currentPublicKey = useNostrStore.getState().pubkey;
+  const currentPublicKey = get(nostrStore).pubkey;
   await initializeInstance(currentPublicKey || undefined);
 
   if (!currentPublicKey) {
@@ -155,7 +170,10 @@ export function handleSocialGraphEvent(evs: NostrEvent | NostrEvent[]) {
   const hasFollowListUpdate = events.some((e) => e.kind === KIND_CONTACTS);
 
   if (hasFollowListUpdate) {
-    notifyGraphChange();
+    // Recalculate follow distances so getFollowersByUser works correctly
+    instance.recalculateFollowDistances().then(() => {
+      notifyGraphChange();
+    });
   }
 }
 
@@ -195,8 +213,7 @@ async function fetchOwnFollowList(publicKey: string): Promise<void> {
 async function crawlFollowLists(publicKey: string, depth = DEFAULT_CRAWL_DEPTH): Promise<void> {
   if (depth <= 0) return;
 
-  const store = useSocialGraphStore.getState();
-  store.setIsRecrawling(true);
+  socialGraphStore.setIsRecrawling(true);
 
   try {
     // Get users at current depth that we need to fetch
@@ -243,7 +260,7 @@ async function crawlFollowLists(publicKey: string, depth = DEFAULT_CRAWL_DEPTH):
     notifyGraphChange();
     scheduleSave();
   } finally {
-    store.setIsRecrawling(false);
+    socialGraphStore.setIsRecrawling(false);
   }
 }
 
@@ -283,6 +300,7 @@ async function fetchFollowListsBatch(pubkeys: string[]): Promise<void> {
  * Setup subscriptions to crawl follow lists
  */
 async function setupSubscription(publicKey: string) {
+  log('setting root to', publicKey);
   instance.setRoot(publicKey);
 
   // First, fetch our own follow list
@@ -321,97 +339,88 @@ async function setupSubscription(publicKey: string) {
  * Setup social graph subscriptions (call after initialization)
  */
 export async function setupSocialGraphSubscriptions() {
-  const currentPublicKey = useNostrStore.getState().pubkey;
+  const currentPublicKey = get(nostrStore).pubkey;
   if (currentPublicKey) {
     await setupSubscription(currentPublicKey);
   }
 
   // Subscribe to public key changes
-  useNostrStore.subscribe((state, prevState) => {
-    if (state.pubkey !== prevState.pubkey) {
+  let prevPubkey = currentPublicKey;
+  log('subscribing to nostrStore changes, initial pubkey:', currentPublicKey);
+  nostrStore.subscribe((state) => {
+    log('nostrStore changed, pubkey:', state.pubkey, 'prev:', prevPubkey);
+    if (state.pubkey !== prevPubkey) {
       if (state.pubkey) {
+        log('pubkey changed, calling setupSubscription');
         setupSubscription(state.pubkey);
       } else {
+        log('pubkey cleared, resetting to default root');
         instance.setRoot(DEFAULT_SOCIAL_GRAPH_ROOT);
         notifyGraphChange();
       }
+      prevPubkey = state.pubkey;
     }
   });
 }
 
-// React hooks for components
+// Utility functions for getting data from the graph
 
 /**
- * Hook to get the social graph instance (reactive)
+ * Get follow distance for a pubkey
  */
-export function useSocialGraph(): SocialGraph {
-  useSocialGraphStore((state) => state.version);
-  return instance;
-}
-
-/**
- * Hook to get follow distance for a pubkey
- */
-export function useFollowDistance(pubkey: string | null | undefined): number {
-  useSocialGraphStore((state) => state.version);
+export function getFollowDistance(pubkey: string | null | undefined): number {
   if (!pubkey || !instance) return 1000;
   return instance.getFollowDistance(pubkey);
 }
 
 /**
- * Hook to check if one user follows another
+ * Check if one user follows another
  */
-export function useIsFollowing(
+export function isFollowing(
   follower: string | null | undefined,
   followedUser: string | null | undefined
 ): boolean {
-  useSocialGraphStore((state) => state.version);
   if (!follower || !followedUser || !instance) return false;
   return instance.isFollowing(follower, followedUser);
 }
 
 /**
- * Hook to get users who follow a given pubkey (from friends)
+ * Get users who follow a given pubkey (from friends)
  */
-export function useFollowedByFriends(pubkey: string | null | undefined): Set<string> {
-  useSocialGraphStore((state) => state.version);
+export function getFollowedByFriends(pubkey: string | null | undefined): Set<string> {
   if (!pubkey || !instance) return new Set();
   return instance.followedByFriends(pubkey);
 }
 
 /**
- * Hook to check if a user follows the current logged-in user
+ * Check if a user follows the current logged-in user
  */
-export function useFollowsMe(pubkey: string | null | undefined): boolean {
-  useSocialGraphStore((state) => state.version);
-  const myPubkey = useNostrStore.getState().pubkey;
+export function getFollowsMe(pubkey: string | null | undefined): boolean {
+  const myPubkey = get(nostrStore).pubkey;
   if (!pubkey || !myPubkey || !instance) return false;
   return instance.isFollowing(pubkey, myPubkey);
 }
 
 /**
- * Hook to get followers of a user (known from the graph)
+ * Get followers of a user (known from the graph)
  */
-export function useFollowers(pubkey: string | null | undefined): Set<string> {
-  useSocialGraphStore((state) => state.version);
+export function getFollowers(pubkey: string | null | undefined): Set<string> {
   if (!pubkey || !instance) return new Set();
   return instance.getFollowersByUser(pubkey);
 }
 
 /**
- * Hook to get users followed by a user
+ * Get users followed by a user
  */
-export function useFollows(pubkey: string | null | undefined): Set<string> {
-  useSocialGraphStore((state) => state.version);
+export function getFollows(pubkey: string | null | undefined): Set<string> {
   if (!pubkey || !instance) return new Set();
   return instance.getFollowedByUser(pubkey);
 }
 
 /**
- * Hook to get the graph size (number of users)
+ * Get the graph size (number of users)
  */
-export function useGraphSize(): number {
-  useSocialGraphStore((state) => state.version);
+export function getGraphSize(): number {
   if (!instance) return 0;
   const size = instance.size();
   // size() returns an object with users, follows, mutes, sizeByDistance
@@ -419,7 +428,7 @@ export function useGraphSize(): number {
 }
 
 /**
- * Get users at a specific follow distance (non-hook, for use outside React)
+ * Get users at a specific follow distance
  * Distance 1 = direct follows, Distance 2 = follows of follows, etc.
  */
 export function getUsersByFollowDistance(distance: number): Set<string> {
@@ -427,22 +436,24 @@ export function getUsersByFollowDistance(distance: number): Set<string> {
   return instance.getUsersByFollowDistance(distance);
 }
 
-/**
- * Hook to check if the graph is currently recrawling
- */
-export function useIsRecrawling(): boolean {
-  return useSocialGraphStore((state) => state.isRecrawling);
-}
+// Aliases for components that use different naming
+export const followDistance = getFollowDistance;
+export const followedByFriends = getFollowedByFriends;
+export const follows = getFollows;
 
 // Initialize on module load (non-blocking)
-initializeSocialGraph()
-  .then(() => {
-    log('initialized');
-    return setupSocialGraphSubscriptions();
-  })
-  .then(() => {
-    log('subscriptions ready');
-  })
-  .catch((err) => {
-    console.error('[socialGraph] initialization error:', err);
-  });
+// Use queueMicrotask to defer until after module initialization completes
+// This avoids circular dependency issues with nostr.ts -> store.ts -> socialGraph.ts
+queueMicrotask(() => {
+  initializeSocialGraph()
+    .then(() => {
+      log('initialized');
+      return setupSocialGraphSubscriptions();
+    })
+    .then(() => {
+      log('subscriptions ready');
+    })
+    .catch((err) => {
+      console.error('[socialGraph] initialization error:', err);
+    });
+});
