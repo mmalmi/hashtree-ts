@@ -14,7 +14,7 @@
   import FolderActions from './FolderActions.svelte';
   import VisibilityIcon from './VisibilityIcon.svelte';
   import { TreeRow } from './ui';
-  import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore, isViewingFileStore } from '../stores';
+  import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore, isViewingFileStore, resolvingPathStore } from '../stores';
   import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
   import { getFileIcon } from '../utils/fileIcon';
@@ -146,6 +146,8 @@
   // Directory entries - fetch from tree
   let entries = $state<HashTreeEntry[]>([]);
   let isDirectory = $state(true);
+  let loadingEntries = $state(false);
+  let resolvingPath = $derived($resolvingPathStore);
 
   // Fetch directory entries when currentDirCid changes
   $effect(() => {
@@ -153,9 +155,11 @@
     if (!cid) {
       entries = [];
       isDirectory = true;
+      loadingEntries = false;
       return;
     }
 
+    loadingEntries = true;
     const tree = getTree();
 
     // Sort entries: directories first, then alphabetically
@@ -171,9 +175,11 @@
       tree.listDirectory(cid).then(list => {
         entries = sortEntries(list);
         isDirectory = true;
+        loadingEntries = false;
       }).catch(() => {
         entries = [];
         isDirectory = false;
+        loadingEntries = false;
       });
     } else {
       // Public - first check if it's a directory
@@ -182,13 +188,16 @@
         if (isDir) {
           return tree.listDirectory(cid).then(list => {
             entries = sortEntries(list);
+            loadingEntries = false;
           });
         } else {
           entries = [];
+          loadingEntries = false;
         }
       }).catch(() => {
         entries = [];
         isDirectory = true;
+        loadingEntries = false;
       });
     }
   });
@@ -566,92 +575,100 @@
         </div>
       {/if}
 
-      <!-- Parent directory row -->
-      {#if hasParent}
-        <a
-          href={currentPath.length > 0 ? buildDirHref(currentPath.slice(0, -1)) : buildRootHref()}
-          class="p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {focusedIndex === 0 ? 'ring-2 ring-inset ring-accent' : ''}"
-        >
-          <span class="i-lucide-folder text-warning shrink-0"></span>
-          <span class="truncate">..</span>
-        </a>
-      {/if}
-
-      <!-- Current directory row -->
-      <a
-        href={buildDirHref(currentPath)}
-        class="p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {!selectedEntry && focusedIndex < 0 ? 'bg-surface-2' : ''} {focusedIndex === (hasParent ? 1 : 0) ? 'ring-2 ring-inset ring-accent' : ''}"
-      >
-        <span class="shrink-0 i-lucide-folder-open text-warning"></span>
-        <span class="truncate flex-1">{currentDirName}</span>
-        {#if currentPath.length === 0}
-          {#if route.isPermalink}
-            <!-- Permalink view: show link-lock if has key, globe if no key -->
-            {#if rootCid?.key}
-              <span class="relative inline-block shrink-0 text-text-2" title="Encrypted (has key)">
-                <span class="i-lucide-link"></span>
-                <span class="i-lucide-lock absolute -bottom-0.5 -right-1.5 text-[0.6em]"></span>
-              </span>
-            {:else}
-              <span class="i-lucide-globe text-text-2" title="Public"></span>
-            {/if}
-          {:else}
-            <VisibilityIcon visibility={currentTreeVisibility} class="text-text-2" />
-          {/if}
+      {#if resolvingPath}
+        <!-- Loading state - show minimal placeholder while resolving path -->
+        <div class="p-4"></div>
+      {:else}
+        <!-- Parent directory row -->
+        {#if hasParent}
+          <a
+            href={currentPath.length > 0 ? buildDirHref(currentPath.slice(0, -1)) : buildRootHref()}
+            class="p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {focusedIndex === 0 ? 'ring-2 ring-inset ring-accent' : ''}"
+          >
+            <span class="i-lucide-folder text-warning shrink-0"></span>
+            <span class="truncate">..</span>
+          </a>
         {/if}
-      </a>
 
-      {#if isProtectedTreeWithoutAccess}
-        <!-- Protected tree without access - show appropriate message -->
-        <div class="p-8 text-center">
-          <div class="inline-flex items-center justify-center mb-4">
-            {#if effectiveTree?.visibility === 'unlisted'}
-              {#if linkKey}
-                <span class="i-lucide-key-round text-3xl text-danger"></span>
-              {:else}
-                <span class="relative inline-block shrink-0 text-3xl text-text-3">
+        <!-- Current directory row -->
+        <a
+          href={buildDirHref(currentPath)}
+          class="p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {!selectedEntry && focusedIndex < 0 ? 'bg-surface-2' : ''} {focusedIndex === (hasParent ? 1 : 0) ? 'ring-2 ring-inset ring-accent' : ''}"
+        >
+          <span class="shrink-0 i-lucide-folder-open text-warning"></span>
+          <span class="truncate flex-1">{currentDirName}</span>
+          {#if currentPath.length === 0}
+            {#if route.isPermalink}
+              <!-- Permalink view: show link-lock if has key, globe if no key -->
+              {#if rootCid?.key}
+                <span class="relative inline-block shrink-0 text-text-2" title="Encrypted (has key)">
                   <span class="i-lucide-link"></span>
                   <span class="i-lucide-lock absolute -bottom-0.5 -right-1.5 text-[0.6em]"></span>
                 </span>
+              {:else}
+                <span class="i-lucide-globe text-text-2" title="Public"></span>
               {/if}
             {:else}
-              <span class="i-lucide-lock text-3xl text-text-3"></span>
+              <VisibilityIcon visibility={currentTreeVisibility} class="text-text-2" />
             {/if}
+          {/if}
+        </a>
+
+        {#if isProtectedTreeWithoutAccess}
+          <!-- Protected tree without access - show appropriate message -->
+          <div class="p-8 text-center">
+            <div class="inline-flex items-center justify-center mb-4">
+              {#if effectiveTree?.visibility === 'unlisted'}
+                {#if linkKey}
+                  <span class="i-lucide-key-round text-3xl text-danger"></span>
+                {:else}
+                  <span class="relative inline-block shrink-0 text-3xl text-text-3">
+                    <span class="i-lucide-link"></span>
+                    <span class="i-lucide-lock absolute -bottom-0.5 -right-1.5 text-[0.6em]"></span>
+                  </span>
+                {/if}
+              {:else}
+                <span class="i-lucide-lock text-3xl text-text-3"></span>
+              {/if}
+            </div>
+            <div class="text-text-2 font-medium mb-2">
+              {#if effectiveTree?.visibility === 'unlisted'}
+                {linkKey ? 'Invalid Link Key' : 'Link Required'}
+              {:else}
+                Private Folder
+              {/if}
+            </div>
+            <div class="text-text-3 text-sm max-w-xs mx-auto">
+              {#if effectiveTree?.visibility === 'unlisted'}
+                {linkKey
+                  ? 'The link key provided is invalid or has expired. Ask the owner for a new link.'
+                  : 'This folder requires a special link to access. Ask the owner for the link with the access key.'}
+              {:else}
+                This folder is private and can only be accessed by its owner.
+              {/if}
+            </div>
           </div>
-          <div class="text-text-2 font-medium mb-2">
-            {#if effectiveTree?.visibility === 'unlisted'}
-              {linkKey ? 'Invalid Link Key' : 'Link Required'}
-            {:else}
-              Private Folder
-            {/if}
+        {:else if loadingEntries}
+          <!-- Loading entries - show nothing to avoid flash -->
+          <div class="p-4 pl-6"></div>
+        {:else if entries.length === 0}
+          <div class="p-4 pl-6 text-center text-muted text-sm">
+            {isDraggingOver ? '' : 'Empty directory'}
           </div>
-          <div class="text-text-3 text-sm max-w-xs mx-auto">
-            {#if effectiveTree?.visibility === 'unlisted'}
-              {linkKey
-                ? 'The link key provided is invalid or has expired. Ask the owner for a new link.'
-                : 'This folder requires a special link to access. Ask the owner for the link with the access key.'}
-            {:else}
-              This folder is private and can only be accessed by its owner.
-            {/if}
-          </div>
-        </div>
-      {:else if entries.length === 0}
-        <div class="p-4 pl-6 text-center text-muted text-sm">
-          {isDraggingOver ? '' : 'Empty directory'}
-        </div>
-      {:else}
-        {#each entries as entry, idx}
-          <a
-            href={buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootCid, linkKey)}
-            class="p-3 pl-9 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {selectedEntry?.name === entry.name && focusedIndex < 0 ? 'bg-surface-2' : ''} {focusedIndex === idx + specialItemCount ? 'ring-2 ring-inset ring-accent' : ''} {recentlyChanged.has(entry.name) && selectedEntry?.name !== entry.name ? 'animate-pulse-live' : ''}"
-          >
-            <span class="shrink-0 {entry.isTree ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}"></span>
-            <span class="truncate flex-1 min-w-0" title={entry.name}>{entry.name}</span>
-            <span class="shrink-0 text-muted text-sm min-w-12 text-right">
-              {!entry.isTree && entry.size !== undefined ? formatBytes(entry.size) : ''}
-            </span>
-          </a>
-        {/each}
+        {:else}
+          {#each entries as entry, idx}
+            <a
+              href={buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootCid, linkKey)}
+              class="p-3 pl-9 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {selectedEntry?.name === entry.name && focusedIndex < 0 ? 'bg-surface-2' : ''} {focusedIndex === idx + specialItemCount ? 'ring-2 ring-inset ring-accent' : ''} {recentlyChanged.has(entry.name) && selectedEntry?.name !== entry.name ? 'animate-pulse-live' : ''}"
+            >
+              <span class="shrink-0 {entry.isTree ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}"></span>
+              <span class="truncate flex-1 min-w-0" title={entry.name}>{entry.name}</span>
+              <span class="shrink-0 text-muted text-sm min-w-12 text-right">
+                {!entry.isTree && entry.size !== undefined ? formatBytes(entry.size) : ''}
+              </span>
+            </a>
+          {/each}
+        {/if}
       {/if}
     </div>
   {/if}
