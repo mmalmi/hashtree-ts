@@ -1,19 +1,17 @@
 <script lang="ts">
   /**
-   * FollowsTreesView - shows trees from followed users and recent nhash visits
+   * FollowsTreesView - shows trees from followed users
    * Displays a flat list of trees sorted by created_at (most recent first)
    */
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../nostr';
   import { createFollowsStore } from '../stores/follows';
   import { createTreesStore, type TreeEntry } from '../stores/trees';
-  import { recentNhashesStore } from '../stores/recentNhashes';
   import { TreeRow } from './ui';
 
   let pubkey = $derived($nostrStore.pubkey);
   let followsStore = $derived(pubkey ? createFollowsStore(pubkey) : null);
   let follows = $state<string[]>([]);
-  let recentNhashes = $derived($recentNhashesStore);
 
   // Subscribe to follows store
   $effect(() => {
@@ -130,26 +128,6 @@
 
 <div class="flex-1 flex flex-col min-h-0">
   <div class="flex-1 overflow-auto">
-    <!-- Recent nhashes section -->
-    {#if recentNhashes.length > 0}
-      <div class="h-10 shrink-0 px-4 border-b border-surface-3 flex items-center">
-        <span class="text-sm font-medium text-text-1">Recents</span>
-        <span class="ml-2 text-xs text-text-3">{recentNhashes.length}</span>
-      </div>
-      <div>
-        {#each recentNhashes as recent (recent.hash)}
-          <TreeRow
-            href="#/{recent.nhash}"
-            name="{recent.nhash.slice(0, 16)}..."
-            showHashIcon
-            hasKey={recent.hasKey}
-            time={formatTime(recent.visitedAt)}
-            class="font-mono"
-          />
-        {/each}
-      </div>
-    {/if}
-
     <!-- Following section -->
     <div class="h-10 shrink-0 px-4 border-b border-surface-3 flex items-center">
       <span class="text-sm font-medium text-text-1">Following</span>

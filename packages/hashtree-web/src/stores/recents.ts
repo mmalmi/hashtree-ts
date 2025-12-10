@@ -4,6 +4,7 @@
  */
 import { writable, get } from 'svelte/store';
 import type { TreeVisibility } from 'hashtree';
+import { routeStore } from './route';
 
 const STORAGE_KEY = 'hashtree:recents';
 const MAX_RECENTS = 20;
@@ -24,6 +25,8 @@ export interface RecentItem {
   visibility?: TreeVisibility;
   /** Optional link key for unlisted trees */
   linkKey?: string;
+  /** For hash type: whether it has an encryption key */
+  hasKey?: boolean;
 }
 
 function loadRecents(): RecentItem[] {
@@ -107,4 +110,29 @@ export function clearRecents() {
  */
 export function getRecentsSync(): RecentItem[] {
   return get(recentsStore);
+}
+
+// Track nhash visits automatically
+const HMR_KEY = '__recentsNhashInitialized';
+const globalObj = typeof globalThis !== 'undefined' ? globalThis : window;
+
+if (!(globalObj as Record<string, unknown>)[HMR_KEY]) {
+  (globalObj as Record<string, unknown>)[HMR_KEY] = true;
+
+  routeStore.subscribe((route) => {
+    if (route.isPermalink && route.cid?.hash) {
+      // Build nhash from current URL
+      const hashPath = window.location.hash.replace(/^#\/?/, '');
+      const nhash = hashPath.split('/')[0];
+
+      if (!nhash) return;
+
+      addRecent({
+        type: 'hash',
+        label: nhash.slice(0, 16) + '...',
+        path: '/' + nhash,
+        hasKey: !!route.cid.key,
+      });
+    }
+  });
 }

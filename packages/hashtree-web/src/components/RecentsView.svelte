@@ -69,9 +69,11 @@
             name={item.label}
             isFolder={isFolder(item)}
             ownerPubkey={item.npub ? npubToPubkey(item.npub) : null}
-            showHashIcon={!item.npub}
+            showHashIcon={item.type === 'hash'}
+            hasKey={item.hasKey}
             visibility={item.visibility}
             time={formatTime(item.timestamp)}
+            class={item.type === 'hash' ? 'font-mono' : ''}
           />
         {/each}
       </div>
