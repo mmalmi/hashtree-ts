@@ -232,9 +232,15 @@ export function invalidateTreeRoot(npub: string | null | undefined, treeName: st
   // The resolver subscription will automatically pick up the new value
 }
 
-// Initialize the store
+// Initialize the store once - guard against HMR re-initialization
+// Store the flag on a global to persist across HMR module reloads
+const HMR_KEY = '__treeRootStoreInitialized';
+const globalObj = typeof globalThis !== 'undefined' ? globalThis : window;
+
 // Use queueMicrotask to defer until after module initialization completes
 // This avoids circular dependency issues with nostr.ts -> store.ts
 queueMicrotask(() => {
+  if ((globalObj as Record<string, unknown>)[HMR_KEY]) return;
+  (globalObj as Record<string, unknown>)[HMR_KEY] = true;
   createTreeRootStore();
 });

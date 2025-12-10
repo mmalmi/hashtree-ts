@@ -21,10 +21,13 @@ export const currentPath = {
 };
 
 // Initialize hashchange listener (call once from App.svelte onMount)
-let initialized = false;
+// Store the flag on a global to persist across HMR module reloads
+const HMR_KEY = '__routerInitialized';
+const globalObj = typeof globalThis !== 'undefined' ? globalThis : window;
+
 export function initRouter() {
-  if (initialized || typeof window === 'undefined') return;
-  initialized = true;
+  if ((globalObj as Record<string, unknown>)[HMR_KEY] || typeof window === 'undefined') return;
+  (globalObj as Record<string, unknown>)[HMR_KEY] = true;
 
   window.addEventListener('hashchange', () => {
     const newPath = getHashPath();

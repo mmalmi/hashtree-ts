@@ -151,5 +151,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     allowedHosts: ['mayhem.iris.to', 'mayhem1.iris.to'],
+    hmr: {
+      // Ensure HMR websocket connection is stable
+      overlay: true,
+    },
   },
 });

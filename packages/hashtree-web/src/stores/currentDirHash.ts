@@ -4,6 +4,7 @@
  * Svelte version using stores
  */
 import { writable, derived, get, type Readable } from 'svelte/store';
+import { toHex } from 'hashtree';
 import { getTree } from '../store';
 import { routeStore } from './route';
 import { treeRootStore } from './treeRoot';
@@ -139,13 +140,25 @@ async function updateCurrentDirCid() {
   }
 }
 
-// Subscribe to changes in root and route
-treeRootStore.subscribe(() => {
-  updateCurrentDirCid();
-});
-routeStore.subscribe(() => {
-  updateCurrentDirCid();
-});
+// Subscribe to changes in root and route - use lazy initialization for HMR compatibility
+// Store the flag on a global to persist across HMR module reloads
+const HMR_KEY = '__currentDirHashInitialized';
+const globalObj = typeof globalThis !== 'undefined' ? globalThis : window;
+
+function initSubscriptions() {
+  if ((globalObj as Record<string, unknown>)[HMR_KEY]) return;
+  (globalObj as Record<string, unknown>)[HMR_KEY] = true;
+
+  treeRootStore.subscribe(() => {
+    updateCurrentDirCid();
+  });
+  routeStore.subscribe(() => {
+    updateCurrentDirCid();
+  });
+}
+
+// Initialize on first access
+initSubscriptions();
 
 /**
  * Store for current directory hash
