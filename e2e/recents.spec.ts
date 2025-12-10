@@ -176,12 +176,12 @@ test.describe('Recently Visited', () => {
     const recentSection = page.getByText('Recent', { exact: true });
     await expect(recentSection).toBeVisible({ timeout: 5000 });
 
-    // Check that the file appears in the UI recents list
-    const fileInRecents = page.locator('button:has-text("visible-file.txt")');
+    // Check that the file appears in the UI recents list (TreeRow renders as <a>)
+    const fileInRecents = page.locator('a:has-text("visible-file.txt")');
     await expect(fileInRecents).toBeVisible({ timeout: 5000 });
 
     // Check that the tree also appears (use first() since tree name also shows as subtitle)
-    const treeInRecents = page.locator('button:has-text("ui-recents-test")').first();
+    const treeInRecents = page.locator('a:has-text("ui-recents-test")').first();
     await expect(treeInRecents).toBeVisible({ timeout: 5000 });
   });
 
@@ -199,8 +199,8 @@ test.describe('Recently Visited', () => {
     // Go back to home
     await goToTreeList(page);
 
-    // Click on the file in recents
-    const fileInRecents = page.locator('button:has-text("clickable.txt")');
+    // Click on the file in recents (TreeRow renders as <a>)
+    const fileInRecents = page.locator('a:has-text("clickable.txt")');
     await expect(fileInRecents).toBeVisible({ timeout: 5000 });
     await fileInRecents.click();
 

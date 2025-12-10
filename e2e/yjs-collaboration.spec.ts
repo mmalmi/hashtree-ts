@@ -158,6 +158,8 @@ async function navigateToOwnDocument(page: Page, npub: string, treeName: string,
 }
 
 test.describe('Yjs Collaborative Document Editing', () => {
+  // Serial mode: multi-user tests connect via relay, parallel tests would cross-talk
+  test.describe.configure({ mode: 'serial' });
   test.setTimeout(180000); // 3 minutes for collaboration test
 
   test('two users can see each others edits when viewing each others documents', async ({ browser }) => {

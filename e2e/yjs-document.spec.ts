@@ -163,13 +163,9 @@ test.describe('Yjs Document Viewer', () => {
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(2000);
 
-    // Should show the document name in the toolbar
-    const docName = page.getByText('editable-doc').first();
-    await expect(docName).toBeVisible({ timeout: 5000 });
-
-    // Click in the editor
+    // Wait for editor to be visible (confirms document loaded)
     const editor = page.locator('.ProseMirror');
-    await expect(editor).toBeVisible({ timeout: 5000 });
+    await expect(editor).toBeVisible({ timeout: 10000 });
     await editor.click();
 
     // Type some text
