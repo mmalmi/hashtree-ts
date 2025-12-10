@@ -28,6 +28,17 @@ const db = new LinkKeysDB();
 let linkKeysCache: Record<string, string> = {};
 let cacheLoadPromise: Promise<void> | null = null;
 
+// Listeners for link key updates
+const linkKeyListeners: Set<() => void> = new Set();
+
+/**
+ * Subscribe to link key updates
+ */
+export function onLinkKeyUpdate(callback: () => void): () => void {
+  linkKeyListeners.add(callback);
+  return () => linkKeyListeners.delete(callback);
+}
+
 // Load cache from DB
 async function loadCache(): Promise<void> {
   if (cacheLoadPromise) return cacheLoadPromise;
@@ -66,6 +77,8 @@ export async function storeLinkKey(npub: string, treeName: string, linkKey: stri
   const key = `${npub}/${treeName}`;
   linkKeysCache[key] = linkKey;
   await db.linkKeys.put({ key, linkKey });
+  // Notify listeners that a link key was updated
+  linkKeyListeners.forEach(fn => fn());
 }
 
 /**

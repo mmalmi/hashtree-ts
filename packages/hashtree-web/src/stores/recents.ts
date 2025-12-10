@@ -12,7 +12,7 @@ export interface RecentItem {
   type: 'tree' | 'file' | 'dir' | 'hash';
   /** Display label */
   label: string;
-  /** URL path to navigate to */
+  /** URL path to navigate to (without query params) */
   path: string;
   /** Timestamp of last visit */
   timestamp: number;
@@ -22,6 +22,8 @@ export interface RecentItem {
   treeName?: string;
   /** Optional visibility for tree/file types */
   visibility?: TreeVisibility;
+  /** Optional link key for unlisted trees */
+  linkKey?: string;
 }
 
 function loadRecents(): RecentItem[] {

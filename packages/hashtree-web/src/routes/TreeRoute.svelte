@@ -55,13 +55,23 @@
     if (npub && treeName) {
       loadTree(npub, treeName);
 
-      // Track as recent
+      // Track as recent - include linkKey if present
+      // Parse linkKey from current URL directly (routeStore may not have updated yet)
+      const hash = window.location.hash;
+      const qIdx = hash.indexOf('?');
+      let linkKey: string | undefined;
+      if (qIdx !== -1) {
+        const params = new URLSearchParams(hash.slice(qIdx + 1));
+        linkKey = params.get('k') ?? undefined;
+      }
+
       addRecent({
         type: 'tree',
         label: treeName,
         path: `/${npub}/${treeName}`,
         npub,
         treeName,
+        linkKey,
       });
     }
   });

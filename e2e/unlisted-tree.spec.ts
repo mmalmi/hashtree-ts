@@ -61,7 +61,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Verify unlisted is selected (has accent styling)
     const unlistedBtn = page.locator('button:has-text("unlisted")');
-    await expect(unlistedBtn).toHaveClass(/border-accent/);
+    await expect(unlistedBtn).toHaveClass(/ring-accent/);
 
     // Create the tree
     await page.getByRole('button', { name: 'Create' }).click();
@@ -122,8 +122,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(linkIcon).toBeVisible();
   });
 
-  // SKIP: ".." navigation at tree root goes to profile - separate bug to investigate
-  test.skip('should preserve ?k= param when navigating within unlisted tree', async ({ page }) => {
+  test('should preserve ?k= param when navigating within unlisted tree', async ({ page }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
@@ -167,8 +166,7 @@ test.describe('Unlisted Tree Visibility', () => {
     expect(page.url()).toContain('unlisted-nav');
   });
 
-  // SKIP: ?k= param not preserved when clicking unlisted tree - app bug to investigate
-  test.skip('should include ?k= param when clicking unlisted tree in tree list', async ({ page }) => {
+  test('should include ?k= param when clicking unlisted tree in tree list', async ({ page }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
@@ -188,8 +186,15 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(500);
 
-    // Click on the unlisted tree
-    await page.locator('a:has-text("unlisted-click")').click();
+    // There are two links - one in file-list (already has ?k=) and one in RecentsView (shows "Just now")
+    // We want to verify the RecentsView link also has ?k= param
+    const recentsLink = page.locator('a:has-text("unlisted-click"):has-text("Just now")');
+
+    // Verify the href includes ?k= param BEFORE clicking
+    const href = await recentsLink.getAttribute('href');
+    expect(href).toContain(`?k=${kParam}`);
+
+    await recentsLink.click();
     await page.waitForTimeout(500);
 
     // URL should have ?k= param
@@ -230,8 +235,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(page.locator('pre')).toHaveText('This is secret content!');
   });
 
-  // Skip: WebRTC sync between browser contexts unreliable in CI
-  test.skip('should access unlisted tree from fresh browser with link', async ({ page, browser }) => {
+  test('should access unlisted tree from fresh browser with link', { timeout: 60000 }, async ({ page, browser }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
 

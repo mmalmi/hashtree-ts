@@ -18,6 +18,8 @@
     setStreamFilename,
     setPersistStream,
   } from './streamState';
+  import { BackButton } from '../ui';
+  import VisibilityIcon from '../VisibilityIcon.svelte';
 
   let videoRef: HTMLVideoElement | undefined = $state();
 
@@ -103,8 +105,14 @@
 
 <div class="flex-1 flex flex-col min-h-0 bg-surface-0">
   <!-- Header -->
-  <div class="shrink-0 px-3 py-2 border-b border-surface-3 flex items-center justify-between bg-surface-1">
+  <div class="shrink-0 px-3 py-2 border-b border-surface-3 flex flex-wrap items-center justify-between gap-2 bg-surface-1">
     <div class="flex items-center gap-2 min-w-0">
+      {#if !stream.isRecording}
+        <BackButton href={closeUrl} />
+      {/if}
+      {#if selectedTree}
+        <VisibilityIcon visibility={selectedTree.visibility} class="text-text-3 shrink-0" />
+      {/if}
       <span class="i-lucide-video text-text-2 shrink-0"></span>
       <span class="font-medium text-text-1 truncate">Livestream</span>
       {#if stream.isRecording}
@@ -116,12 +124,8 @@
     </div>
     <div class="flex items-center gap-1 shrink-0">
       <button onclick={handleShare} class="btn-ghost" title="Share">
-        <span class="i-lucide-share text-base mr-1"></span>
-        Share
+        <span class="i-lucide-share text-base"></span>
       </button>
-      {#if !stream.isRecording}
-        <a href={closeUrl} class="btn-ghost no-underline">Back</a>
-      {/if}
     </div>
   </div>
 

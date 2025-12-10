@@ -35,6 +35,11 @@
   function isFolder(item: RecentItem): boolean {
     return item.type === 'tree' || item.type === 'dir' || item.type === 'hash';
   }
+
+  function buildHref(item: RecentItem): string {
+    const base = `#${item.path}`;
+    return item.linkKey ? `${base}?k=${item.linkKey}` : base;
+  }
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
@@ -60,7 +65,7 @@
       <div>
         {#each recents as item (item.path)}
           <TreeRow
-            href="#{item.path}"
+            href={buildHref(item)}
             name={item.label}
             isFolder={isFolder(item)}
             ownerPubkey={item.npub ? npubToPubkey(item.npub) : null}
