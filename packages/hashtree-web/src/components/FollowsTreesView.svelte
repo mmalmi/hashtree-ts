@@ -1,18 +1,19 @@
 <script lang="ts">
   /**
-   * FollowsTreesView - shows trees from followed users
+   * FollowsTreesView - shows trees from followed users and recent nhash visits
    * Displays a flat list of trees sorted by created_at (most recent first)
    */
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../nostr';
   import { createFollowsStore } from '../stores/follows';
   import { createTreesStore, type TreeEntry } from '../stores/trees';
-  import { Avatar, Name } from './User';
-  import VisibilityIcon from './VisibilityIcon.svelte';
+  import { recentNhashesStore } from '../stores/recentNhashes';
+  import { TreeRow } from './ui';
 
   let pubkey = $derived($nostrStore.pubkey);
   let followsStore = $derived(pubkey ? createFollowsStore(pubkey) : null);
   let follows = $state<string[]>([]);
+  let recentNhashes = $derived($recentNhashesStore);
 
   // Subscribe to follows store
   $effect(() => {
@@ -128,13 +129,34 @@
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
-  <div class="h-10 shrink-0 px-4 border-b border-surface-3 flex items-center bg-surface-1">
-    <span class="text-sm font-medium text-text-1">Following</span>
-    {#if allTrees.length > 0}
-      <span class="ml-2 text-xs text-text-3">{allTrees.length}</span>
-    {/if}
-  </div>
   <div class="flex-1 overflow-auto">
+    <!-- Recent nhashes section -->
+    {#if recentNhashes.length > 0}
+      <div class="h-10 shrink-0 px-4 border-b border-surface-3 flex items-center">
+        <span class="text-sm font-medium text-text-1">Recents</span>
+        <span class="ml-2 text-xs text-text-3">{recentNhashes.length}</span>
+      </div>
+      <div>
+        {#each recentNhashes as recent (recent.hash)}
+          <TreeRow
+            href="#/{recent.nhash}"
+            name="{recent.nhash.slice(0, 16)}..."
+            showHashIcon
+            hasKey={recent.hasKey}
+            time={formatTime(recent.visitedAt)}
+            class="font-mono"
+          />
+        {/each}
+      </div>
+    {/if}
+
+    <!-- Following section -->
+    <div class="h-10 shrink-0 px-4 border-b border-surface-3 flex items-center">
+      <span class="text-sm font-medium text-text-1">Following</span>
+      {#if allTrees.length > 0}
+        <span class="ml-2 text-xs text-text-3">{allTrees.length}</span>
+      {/if}
+    </div>
     {#if follows.length === 0}
       <div class="p-4 text-muted text-sm">
         Not following anyone
@@ -146,23 +168,13 @@
     {:else}
       <div>
         {#each allTrees as tree (tree.key)}
-          <a
+          <TreeRow
             href={buildTreeHref(tree.ownerNpub, tree.name, tree.linkKey)}
-            class="w-full px-4 py-2 flex items-center gap-3 bg-surface-0 hover:bg-surface-1 transition-colors text-left b-0 no-underline"
-          >
-            <Avatar pubkey={tree.ownerPubkey} size={20} class="shrink-0" />
-            <span class="i-lucide-folder shrink-0 text-warning"></span>
-            <div class="flex-1 min-w-0">
-              <div class="text-sm text-text-1 truncate">{tree.name}</div>
-              <div class="text-xs text-text-3 truncate">
-                <Name pubkey={tree.ownerPubkey} />
-              </div>
-            </div>
-            <VisibilityIcon visibility={tree.visibility} class="text-text-3 shrink-0" />
-            {#if tree.createdAt}
-              <span class="text-xs text-text-3 shrink-0">{formatTime(tree.createdAt)}</span>
-            {/if}
-          </a>
+            name={tree.name}
+            ownerPubkey={tree.ownerPubkey}
+            visibility={tree.visibility}
+            time={tree.createdAt ? formatTime(tree.createdAt) : null}
+          />
         {/each}
       </div>
     {/if}

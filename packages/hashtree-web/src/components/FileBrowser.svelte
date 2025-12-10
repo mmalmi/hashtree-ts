@@ -13,6 +13,7 @@
   import { UserRow, Avatar } from './User';
   import FolderActions from './FolderActions.svelte';
   import VisibilityIcon from './VisibilityIcon.svelte';
+  import { TreeRow } from './ui';
   import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore, isViewingFileStore } from '../stores';
   import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
@@ -504,14 +505,14 @@
         </div>
       {:else}
         {#each sortedTrees as tree, idx}
-          <a
+          <TreeRow
             href={buildTreeHref(targetNpub!, tree.name, tree.linkKey)}
-            class="p-3 border-b border-surface-2 flex items-center gap-3 cursor-pointer no-underline text-text-1 min-w-0 {currentTreeName === tree.name ? 'bg-surface-2' : 'hover:bg-surface-1'} {treeFocusedIndex === idx ? 'ring-2 ring-inset ring-accent' : ''}"
-          >
-            <span class="shrink-0 i-lucide-folder text-warning"></span>
-            <span class="truncate flex-1" title={tree.name}>{tree.name}</span>
-            <VisibilityIcon visibility={tree.visibility} class="ml-auto text-text-3" />
-          </a>
+            name={tree.name}
+            visibility={tree.visibility}
+            visibilityPosition="right"
+            selected={currentTreeName === tree.name}
+            focused={treeFocusedIndex === idx}
+          />
         {/each}
       {/if}
     </div>
@@ -537,7 +538,7 @@
           <Avatar pubkey={npubToPubkey(viewedNpub) || ''} size={20} />
         </a>
       {/if}
-      <VisibilityIcon visibility={currentTreeVisibility} class="text-text-2" />
+      <VisibilityIcon visibility={currentTreeVisibility} class="text-text-3 shrink-0" />
       <span class="i-lucide-folder-open text-warning shrink-0"></span>
       <span class="font-medium text-text-1 truncate">{currentDirName || currentTreeName}</span>
     </div>

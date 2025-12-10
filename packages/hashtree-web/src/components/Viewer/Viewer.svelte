@@ -16,8 +16,7 @@
   import YjsDocumentEditor from './YjsDocumentEditor.svelte';
   import ZipPreview from './ZipPreview.svelte';
   import DosBox from './DosBox.svelte';
-  import { Avatar } from '../User';
-  import VisibilityIcon from '../VisibilityIcon.svelte';
+  import { TreeRow } from '../ui';
 
   let route = $derived($routeStore);
   let rootCid = $derived($treeRootStore);
@@ -548,8 +547,6 @@
     return iconMap[ext] || 'i-lucide-file';
   }
 
-  let fileIcon = $derived(urlFileName ? getFileIcon(urlFileName) : 'i-lucide-file');
-
   // Download handler - uses streaming when File System Access API is available
   async function handleDownload() {
     if (!entryFromStore) return;
@@ -627,29 +624,14 @@
         <a href={backUrl} class="btn-ghost p-1 no-underline" title="Back to folder" data-testid="viewer-back">
           <span class="i-lucide-chevron-left text-lg"></span>
         </a>
-        <!-- Avatar (for npub routes) or LinkLock/globe (for nhash routes) -->
-        {#if viewedNpub}
-          <a href="#/{viewedNpub}/profile" class="shrink-0">
-            <Avatar pubkey={npubToPubkey(viewedNpub) || ''} size={20} />
-          </a>
-        {:else if route.isPermalink}
-          {#if rootCid?.key}
-            <!-- LinkLockIcon for encrypted permalink -->
-            <span class="relative inline-block shrink-0 text-text-2" title="Encrypted permalink">
-              <span class="i-lucide-link"></span>
-              <span class="i-lucide-lock absolute -bottom-0.5 -right-1.5 text-[0.6em]"></span>
-            </span>
-          {:else}
-            <span class="i-lucide-globe text-text-2 shrink-0" title="Public permalink"></span>
-          {/if}
-        {/if}
-        <!-- Visibility icon (for trees) -->
-        {#if currentTree}
-          <VisibilityIcon visibility={currentTree.visibility} class="text-text-2" />
-        {/if}
-        <!-- File type icon -->
-        <span class="{fileIcon} text-text-2 shrink-0"></span>
-        <span class="font-medium text-text-1 truncate">{entryFromStore.name}</span>
+        <TreeRow
+          name={entryFromStore.name}
+          isFolder={false}
+          ownerPubkey={viewedNpub ? npubToPubkey(viewedNpub) : null}
+          showHashIcon={route.isPermalink && !viewedNpub}
+          visibility={currentTree?.visibility}
+          hasKey={!!rootCid?.key}
+        />
         {#if isLiveStream}
           <span class="ml-2 px-1.5 py-0.5 text-xs font-bold bg-red-600 text-white rounded animate-pulse">LIVE</span>
         {/if}
