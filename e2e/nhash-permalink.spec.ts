@@ -70,7 +70,8 @@ test.describe('nhash file permalinks', () => {
   // Increase timeout for WebRTC content transfer tests
   test.setTimeout(60000);
 
-  // Skip: WebRTC peer connection between browsers is unreliable in CI
+  // WebRTC peer connection between browsers requires TURN server in CI
+  // The test waits for peer discovery which may exceed timeout
   test.skip('should display file content when navigating directly to nhash permalink URL', async ({ browser }) => {
     // Browser 1: Create content and seed it
     const context1 = await browser.newContext();
@@ -193,7 +194,8 @@ test.describe('nhash file permalinks', () => {
     await context2.close();
   });
 
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
+  // Uses file upload which doesn't work reliably in Playwright
+  // Keeping skipped as the file permalink test above covers similar functionality
   test.skip('should display directory content when navigating directly to nhash directory URL', async ({ browser }) => {
     // Browser 1: Create content and seed it
     const context1 = await browser.newContext();

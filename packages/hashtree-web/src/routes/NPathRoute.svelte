@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { push } from '../lib/router';
+  import { push } from '../lib/router.svelte';
   import { npathDecode } from 'hashtree';
   import { nip19 } from 'nostr-tools';
 

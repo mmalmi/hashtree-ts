@@ -16,7 +16,7 @@ const KIND_CONTACTS = 3;
 const DEFAULT_CRAWL_DEPTH = 2; // Crawl follows of follows
 
 // Debug logging
-const DEBUG = false;
+const DEBUG = true;
 const log = (...args: unknown[]) => DEBUG && console.log('[socialGraph]', ...args);
 
 // Dexie database for social graph persistence
@@ -170,7 +170,10 @@ export function handleSocialGraphEvent(evs: NostrEvent | NostrEvent[]) {
   const hasFollowListUpdate = events.some((e) => e.kind === KIND_CONTACTS);
 
   if (hasFollowListUpdate) {
-    notifyGraphChange();
+    // Recalculate follow distances so getFollowersByUser works correctly
+    instance.recalculateFollowDistances().then(() => {
+      notifyGraphChange();
+    });
   }
 }
 
@@ -297,6 +300,7 @@ async function fetchFollowListsBatch(pubkeys: string[]): Promise<void> {
  * Setup subscriptions to crawl follow lists
  */
 async function setupSubscription(publicKey: string) {
+  log('setting root to', publicKey);
   instance.setRoot(publicKey);
 
   // First, fetch our own follow list
@@ -342,11 +346,15 @@ export async function setupSocialGraphSubscriptions() {
 
   // Subscribe to public key changes
   let prevPubkey = currentPublicKey;
+  log('subscribing to nostrStore changes, initial pubkey:', currentPublicKey);
   nostrStore.subscribe((state) => {
+    log('nostrStore changed, pubkey:', state.pubkey, 'prev:', prevPubkey);
     if (state.pubkey !== prevPubkey) {
       if (state.pubkey) {
+        log('pubkey changed, calling setupSubscription');
         setupSubscription(state.pubkey);
       } else {
+        log('pubkey cleared, resetting to default root');
         instance.setRoot(DEFAULT_SOCIAL_GRAPH_ROOT);
         notifyGraphChange();
       }

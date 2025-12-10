@@ -94,6 +94,9 @@ test.describe('Subdirectory Creation', () => {
     // URL should now include the subfolder path
     expect(page.url()).toContain('child-folder');
 
+    // Take screenshot before assertion
+    await page.screenshot({ path: 'e2e/screenshots/subdir-after-nav.png', fullPage: true });
+
     // Should have ".." entry to go back (we're inside the subfolder now)
     await expect(page.locator('a:has-text("..")')).toBeVisible({ timeout: 5000 });
 
@@ -101,8 +104,7 @@ test.describe('Subdirectory Creation', () => {
     await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible();
   });
 
-  test.skip('nested subdirectories in public tree should all show as folders', async ({ page }) => {
-    // TODO: File/Folder buttons not showing when inside subdirectory - separate bug
+  test('nested subdirectories in public tree should all show as folders', async ({ page }) => {
     // Go to tree list
     await page.locator('header a:has-text("hashtree")').click();
 

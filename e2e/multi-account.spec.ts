@@ -204,8 +204,8 @@ test.describe('Multi-Account Management', () => {
   test('should go back from accounts page', async ({ page }) => {
     await navigateToAccountsPage(page);
 
-    // Click back button
-    await page.getByRole('button', { name: 'Back' }).click();
+    // Click back button (chevron-left icon)
+    await page.locator('button:has(span.i-lucide-chevron-left)').click();
     await page.waitForTimeout(300);
 
     // Should be back on profile/tree list page
@@ -260,11 +260,6 @@ test.describe('Multi-Account Management', () => {
     await expect(page.getByText('Account already added')).toBeVisible();
   });
 
-  test.skip('should show account type indicator (nsec)', async ({ page }) => {
-    // SKIP: nsec type indicator is not currently displayed in the UI
-    await navigateToAccountsPage(page);
-
-    // Should show "nsec" label for the account type
-    await expect(page.getByText('nsec').first()).toBeVisible();
-  });
+  // This feature was not implemented in the Svelte port - removing test
+  // Account type indicator (nsec/extension) is not shown in the UI
 });

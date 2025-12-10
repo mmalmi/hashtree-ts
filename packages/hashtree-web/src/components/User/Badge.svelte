@@ -3,7 +3,7 @@
    * Social graph badge component
    * Shows checkmark based on follow distance
    */
-  import { followDistance, followedByFriends } from '../../utils/socialGraph';
+  import { followDistance, followedByFriends, socialGraphStore } from '../../utils/socialGraph';
   import { nostrStore } from '../../nostr';
 
   interface Props {
@@ -22,8 +22,16 @@
 
   let publicKey = $derived($nostrStore.pubkey);
   let loggedIn = $derived(!!publicKey);
-  let distance = $derived(followDistance(pubKeyHex));
-  let friends = $derived(followedByFriends(pubKeyHex));
+
+  // Re-derive when graph version changes
+  let distance = $derived.by(() => {
+    $socialGraphStore.version;
+    return followDistance(pubKeyHex);
+  });
+  let friends = $derived.by(() => {
+    $socialGraphStore.version;
+    return followedByFriends(pubKeyHex);
+  });
 
   let shouldShow = $derived(loggedIn && pubKeyHex && distance <= 2);
 

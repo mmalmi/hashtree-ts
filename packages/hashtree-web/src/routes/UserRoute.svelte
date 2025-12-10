@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import FileBrowser from '../components/FileBrowser.svelte';
   import ProfileView from '../components/ProfileView.svelte';
   import NHashRoute from './NHashRoute.svelte';
@@ -14,6 +13,7 @@
 
   let { id, wild }: Props = $props();
 
+  // Clear selected tree when viewing a user (not nhash/npath)
   $effect(() => {
     if (id && !isNHash(id) && !isNPath(id)) {
       nostrStore.setSelectedTree(null);

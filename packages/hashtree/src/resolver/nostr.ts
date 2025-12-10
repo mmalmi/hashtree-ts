@@ -389,6 +389,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             encryptedKey: entry.encryptedKey,
             keyId: entry.keyId,
             selfEncryptedKey: entry.selfEncryptedKey,
+            createdAt: entry.created_at,
           });
         }
         listSub.callback(result);
@@ -465,6 +466,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             encryptedKey: entry.encryptedKey,
             keyId: entry.keyId,
             selfEncryptedKey: entry.selfEncryptedKey,
+            createdAt: entry.created_at,
           });
         }
         callback(result);
@@ -584,6 +586,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
               encryptedKey: e.encryptedKey,
               keyId: e.keyId,
               selfEncryptedKey: e.selfEncryptedKey,
+              createdAt: e.created_at,
             });
           }
           listSub.callback(result);

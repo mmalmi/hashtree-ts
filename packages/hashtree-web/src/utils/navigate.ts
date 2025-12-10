@@ -1,7 +1,5 @@
 /**
  * Hash-based navigation helper
- * Works both inside and outside React components
+ * Re-exports from router for convenience and backwards compatibility
  */
-export function navigate(path: string) {
-  window.location.hash = path;
-}
+export { navigate } from '../lib/router.svelte';

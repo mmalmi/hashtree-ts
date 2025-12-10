@@ -146,8 +146,8 @@ test.describe('Users Page', () => {
     await page.waitForTimeout(500);
     await closeModals(page);
 
-    // Click Back button
-    await page.getByRole('button', { name: /Back/i }).click();
+    // Click Back button (chevron-left icon)
+    await page.locator('button:has(span.i-lucide-chevron-left)').click();
     await page.waitForTimeout(500);
 
     // Should be back at home

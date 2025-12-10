@@ -45,9 +45,9 @@ test.describe('Social graph features', () => {
     test('should show following count', async ({ page }) => {
       await goToOwnProfile(page);
 
-      // Should show following count (may be 0 or ...)
-      const followingButton = page.getByRole('button', { name: /Following/i });
-      await expect(followingButton).toBeVisible();
+      // Should show following count (may be 0 or ...) - it's a link, not a button
+      const followingLink = page.getByRole('link', { name: /Following/i });
+      await expect(followingLink).toBeVisible();
     });
   });
 

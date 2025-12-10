@@ -75,13 +75,13 @@ export function parseRoute(): RouteInfo {
   if (parts[0]?.startsWith('npub')) {
     const npub = parts[0];
 
-    // Special user routes (profile, follows, edit)
-    if (['profile', 'follows', 'edit'].includes(parts[1])) {
+    // Special user routes (profile, follows, followers, edit)
+    if (['profile', 'follows', 'followers', 'edit'].includes(parts[1])) {
       return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
     }
 
     // Tree route: #/npub/treeName/path...
-    if (parts[1] && !['profile', 'follows', 'edit'].includes(parts[1])) {
+    if (parts[1] && !['profile', 'follows', 'followers', 'edit'].includes(parts[1])) {
       return {
         npub,
         treeName: parts[1],

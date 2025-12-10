@@ -80,8 +80,7 @@ test.describe('Directory rename', () => {
     await expect(page.locator('button:has-text("Rename")')).not.toBeVisible();
   });
 
-  // Skip: Folder creation timing is flaky in parallel test environment
-  test.skip('should delete a subdirectory', async ({ page }) => {
+  test('should delete a subdirectory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);

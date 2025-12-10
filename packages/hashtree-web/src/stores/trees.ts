@@ -92,6 +92,8 @@ export interface TreeEntry {
   selfEncryptedKey?: string;
   /** Link key for unlisted trees (only for own trees, from local storage) */
   linkKey?: string;
+  /** Unix timestamp when the tree was created/last updated */
+  createdAt?: number;
 }
 
 /**
@@ -142,6 +144,7 @@ export function createTreesStore(npub: string | null): Readable<TreeEntry[]> {
           keyId: e.keyId,
           selfEncryptedKey: e.selfEncryptedKey,
           linkKey,
+          createdAt: e.createdAt,
         };
       }));
     });

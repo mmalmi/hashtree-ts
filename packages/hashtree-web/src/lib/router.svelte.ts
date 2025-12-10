@@ -1,25 +1,56 @@
 /**
- * Simple hash router for Svelte 5
+ * Simple hash router for Svelte 5 using stores for reliable reactivity
  */
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 
-// Current hash location
-export const location = writable(window.location.hash.slice(1) || '/');
+// Get initial path from hash
+function getHashPath(): string {
+  if (typeof window === 'undefined') return '/';
+  const hash = window.location.hash.slice(1); // Remove #
+  // Remove query string for path matching
+  const queryIndex = hash.indexOf('?');
+  return queryIndex !== -1 ? hash.slice(0, queryIndex) || '/' : hash || '/';
+}
 
-// Listen to hash changes
-if (typeof window !== 'undefined') {
+// Create a writable store for the current path
+const pathStore = writable<string>(getHashPath());
+
+// Export the store for subscription
+export const currentPath = {
+  subscribe: pathStore.subscribe
+};
+
+// Initialize hashchange listener (call once from App.svelte onMount)
+let initialized = false;
+export function initRouter() {
+  if (initialized || typeof window === 'undefined') return;
+  initialized = true;
+
   window.addEventListener('hashchange', () => {
-    location.set(window.location.hash.slice(1) || '/');
+    const newPath = getHashPath();
+    pathStore.set(newPath);
   });
 }
 
 // Navigate to a new hash route
-export function push(path: string) {
-  window.location.hash = path;
+export function navigate(path: string) {
+  // Ensure path starts with /
+  const normalizedPath = path.startsWith('/') ? path : '/' + path;
+
+  // Update hash (this will trigger hashchange which updates the store)
+  window.location.hash = normalizedPath;
+
+  // Also update store directly for immediate reactivity within same tick
+  pathStore.set(normalizedPath);
 }
 
+// Alias for navigate
+export const push = navigate;
+
 export function replace(path: string) {
-  window.location.replace('#' + path);
+  const normalizedPath = path.startsWith('/') ? path : '/' + path;
+  window.location.replace('#' + normalizedPath);
+  pathStore.set(normalizedPath);
 }
 
 // Parse route parameters
@@ -37,7 +68,7 @@ export function matchRoute(pattern: string, path: string): RouteMatch {
   const patternParts = pattern.split('/').filter(Boolean);
   const pathParts = path.split('/').filter(Boolean);
 
-  // Handle query string
+  // Handle query string (should already be stripped, but just in case)
   const queryIndex = pathParts[pathParts.length - 1]?.indexOf('?');
   if (queryIndex !== -1 && pathParts.length > 0) {
     pathParts[pathParts.length - 1] = pathParts[pathParts.length - 1].substring(0, queryIndex);

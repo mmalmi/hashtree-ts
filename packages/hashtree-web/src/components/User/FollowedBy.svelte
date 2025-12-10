@@ -5,7 +5,7 @@
   import { nip19 } from 'nostr-tools';
   import { Avatar } from './index';
   import { Name } from './index';
-  import { followDistance, followedByFriends } from '../../utils/socialGraph';
+  import { followDistance, followedByFriends, socialGraphStore } from '../../utils/socialGraph';
   import { nostrStore } from '../../nostr';
 
   const MAX_AVATARS = 3;
@@ -19,8 +19,16 @@
   let { pubkey, class: className = '' }: Props = $props();
 
   let myPubkey = $derived($nostrStore.pubkey);
-  let distance = $derived(followDistance(pubkey));
-  let friends = $derived(followedByFriends(pubkey));
+
+  // Re-derive when graph version changes
+  let distance = $derived.by(() => {
+    $socialGraphStore.version;
+    return followDistance(pubkey);
+  });
+  let friends = $derived.by(() => {
+    $socialGraphStore.version;
+    return followedByFriends(pubkey);
+  });
 
   let friendsArray = $derived(Array.from(friends).slice(0, MAX_AVATARS));
   let total = $derived(friends.size);

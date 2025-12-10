@@ -156,7 +156,9 @@ export class HashTree {
         // Try to get the tree node (will decrypt and validate)
         const node = await getTreeNodeEncrypted(this.store, id.hash, id.key);
         if (!node) return false;
-        // Check if it's a directory (has named entries)
+        // Empty directory is still a directory
+        if (node.links.length === 0) return true;
+        // Check if it's a directory (has named entries) vs chunked file (no names)
         return node.links.some(l => l.name !== undefined && !l.name.startsWith('_'));
       } catch {
         return false;

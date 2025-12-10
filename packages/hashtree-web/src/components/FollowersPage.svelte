@@ -1,11 +1,11 @@
 <script lang="ts">
   /**
-   * FollowsPage - list of followed users
+   * FollowersPage - list of known followers from social graph
    */
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../nostr';
   import { createFollowsStore, followPubkey, unfollowPubkey } from '../stores/follows';
-  import { getFollowsMe, socialGraphStore } from '../utils/socialGraph';
+  import { getFollowers, socialGraphStore } from '../utils/socialGraph';
   import { Avatar, Name, Badge, FollowedBy } from './User';
   import { BackButton } from './ui';
 
@@ -30,24 +30,10 @@
     }
   });
 
-  let isOwnProfile = $derived(myPubkey === pubkeyHex);
-
-  // Follows store for the viewed profile
-  let profileFollowsStore = $derived(pubkeyHex ? createFollowsStore(pubkeyHex) : null);
-  let profileFollows = $state<string[]>([]);
-
-  $effect(() => {
-    if (!profileFollowsStore) {
-      profileFollows = [];
-      return;
-    }
-    const unsub = profileFollowsStore.subscribe(value => {
-      profileFollows = value?.follows || [];
-    });
-    return () => {
-      unsub();
-      profileFollowsStore?.destroy();
-    };
+  // Known followers from social graph (reactive to graph changes)
+  let knownFollowers = $derived.by(() => {
+    $socialGraphStore.version;
+    return pubkeyHex ? Array.from(getFollowers(pubkeyHex)) : [];
   });
 
   // My follows store (for follow/unfollow buttons)
@@ -67,12 +53,6 @@
       myFollowsStore?.destroy();
     };
   });
-
-  // Check if a user follows me
-  function followsMe(userPubkey: string): boolean {
-    $socialGraphStore.version;
-    return getFollowsMe(userPubkey);
-  }
 
   // Track loading state per pubkey for follow/unfollow
   let loadingPubkeys = $state<Set<string>>(new Set());
@@ -111,7 +91,7 @@
             <Name pubkey={pubkeyHex} />
           </a>
         </div>
-        <span class="text-text-3 text-sm">Following ({profileFollows.length})</span>
+        <span class="text-text-3 text-sm">Known Followers ({knownFollowers.length})</span>
       {/if}
     </div>
   </div>
@@ -119,47 +99,41 @@
   <!-- Content -->
   <div class="flex-1 overflow-y-auto">
     <div class="max-w-2xl mx-auto">
-      {#if profileFollows.length === 0}
+      {#if knownFollowers.length === 0}
         <div class="p-6 text-center text-muted">
-          Not following anyone yet
+          <p>No known followers yet</p>
+          <p class="text-xs mt-1">Discovered through the social graph</p>
         </div>
       {:else}
         <div class="divide-y divide-surface-2">
-          {#each profileFollows as followedPubkey (followedPubkey)}
-            {@const isLoading = loadingPubkeys.has(followedPubkey)}
-            {@const amFollowing = isFollowingUser(followedPubkey)}
-            {@const isSelf = followedPubkey === myPubkey}
-            {@const theyFollowMe = followsMe(followedPubkey)}
+          {#each knownFollowers as followerPubkey (followerPubkey)}
+            {@const isLoading = loadingPubkeys.has(followerPubkey)}
+            {@const amFollowing = isFollowingUser(followerPubkey)}
+            {@const isSelf = followerPubkey === myPubkey}
             <div class="flex items-center gap-3 p-4 hover:bg-surface-1 transition-colors">
               <!-- Avatar -->
               <a
-                href="#/{nip19.npubEncode(followedPubkey)}"
+                href="#/{nip19.npubEncode(followerPubkey)}"
                 class="shrink-0"
               >
-                <Avatar pubkey={followedPubkey} size={44} showBadge={true} />
+                <Avatar pubkey={followerPubkey} size={44} showBadge={true} />
               </a>
 
               <!-- Name and info -->
               <div class="flex-1 min-w-0">
                 <a
-                  href="#/{nip19.npubEncode(followedPubkey)}"
+                  href="#/{nip19.npubEncode(followerPubkey)}"
                   class="font-medium text-text-1 hover:underline truncate block"
                 >
-                  <Name pubkey={followedPubkey} />
+                  <Name pubkey={followerPubkey} />
                 </a>
-                <div class="text-xs text-text-3">
-                  {#if theyFollowMe}
-                    <span class="text-accent">Follows you</span>
-                  {:else if !isOwnProfile && followedPubkey !== pubkeyHex}
-                    <FollowedBy pubkey={followedPubkey} />
-                  {/if}
-                </div>
+                <FollowedBy pubkey={followerPubkey} class="text-xs" />
               </div>
 
               <!-- Follow/Unfollow button -->
               {#if isLoggedIn && !isSelf}
                 <button
-                  onclick={() => handleFollowToggle(followedPubkey)}
+                  onclick={() => handleFollowToggle(followerPubkey)}
                   disabled={isLoading}
                   class="shrink-0 {amFollowing ? 'btn-ghost' : 'btn-success'} text-sm"
                 >
@@ -167,7 +141,7 @@
                 </button>
               {:else if isSelf}
                 <span class="text-xs text-accent flex items-center gap-1 shrink-0">
-                  <Badge pubKeyHex={followedPubkey} size="sm" /> You
+                  <Badge pubKeyHex={followerPubkey} size="sm" /> You
                 </span>
               {/if}
             </div>

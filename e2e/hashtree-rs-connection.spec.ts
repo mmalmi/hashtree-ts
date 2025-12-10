@@ -85,7 +85,8 @@ test.describe('hashtreeRs WebRTC Connection', () => {
     }
   });
 
-  // Skip: Requires Rust toolchain (cargo) which may not be available in CI
+  // Requires Rust toolchain (cargo) which is not available in standard CI environments
+  // Run manually with: npx playwright test hashtree-rs-connection --project=chromium
   test.skip('hashtree-ts and hashtreeRs establish WebRTC connection', async ({ page }) => {
     // Navigate to the app (dev server must be running)
     await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' }).catch(() => {

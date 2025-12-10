@@ -220,17 +220,18 @@
 
     <!-- Stats -->
     <div class="flex gap-4 mt-4 text-sm">
-      <button
-        onclick={() => navigate(`/${npub}/follows`)}
-        class="bg-transparent border-none cursor-pointer p-0 text-text-2 hover:text-text-1"
+      <a
+        href="#/{npub}/follows"
+        class="text-text-2 hover:text-text-1"
       >
         <span class="font-bold text-text-1">{profileFollows.length || '...'}</span> Following
-      </button>
-      {#if knownFollowers.size > 0}
-        <span class="text-text-2">
-          <span class="font-bold text-text-1">{knownFollowers.size}</span> known followers
-        </span>
-      {/if}
+      </a>
+      <a
+        href="#/{npub}/followers"
+        class="text-text-2 hover:text-text-1"
+      >
+        <span class="font-bold text-text-1">{knownFollowers.size}</span> Known Followers
+      </a>
     </div>
 
     <!-- Website -->

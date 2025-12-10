@@ -71,19 +71,34 @@ test.describe('Hashtree Explorer', () => {
     await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
   });
 
-  // Skip: File upload via setInputFiles doesn't work reliably in headless tests
-  // The functionality works in manual testing but setInputFiles doesn't trigger the upload handler
-  test.skip('should create a local tree and upload files', async ({ page }) => {
+  // Uses File button instead of setInputFiles for reliable testing
+  test('should create a local tree and create files', async ({ page }) => {
     const fileList = page.getByTestId('file-list');
 
     // Create tree via modal - this navigates into empty tree
     await createAndEnterTree(page, 'test-tree');
 
-    // Upload a file
-    await uploadTempFile(page, 'hello.txt', 'Hello, World!');
+    // Create a file using File button
+    await page.getByRole('button', { name: /File/ }).first().click();
+    await page.locator('input[placeholder="File name..."]').fill('hello.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
 
-    // File should appear in file browser (may take time due to autosave to nostr)
-    await expect(fileList.locator('span:text-is("hello.txt")')).toBeVisible({ timeout: 15000 });
+    // File opens in edit mode - add content
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await page.locator('textarea').fill('Hello, World!');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForTimeout(300);
+
+    // Exit edit mode
+    await page.getByRole('button', { name: 'Done' }).click();
+    await page.waitForTimeout(300);
+
+    // Navigate back to directory
+    await page.locator('a:has-text("test-tree")').first().click();
+    await page.waitForTimeout(500);
+
+    // File should appear in file browser
+    await expect(fileList.locator('a').filter({ hasText: 'hello.txt' }).first()).toBeVisible({ timeout: 10000 });
 
     // Click to view content
     await fileList.locator('a:has-text("hello.txt")').click();
@@ -145,14 +160,13 @@ test.describe('Hashtree Explorer', () => {
     await expect(page.locator('pre')).toHaveText('Hello, Hashtree!', { timeout: 10000 });
   });
 
-  // Skip: This test is flaky due to race conditions with tree subscription updates after navigation
-  test.skip('should persist file edits after navigation', async ({ page }) => {
+  test('should persist file edits after navigation', async ({ page }) => {
     const fileList = page.getByTestId('file-list');
 
     // Create tree via modal
     await createAndEnterTree(page, 'persist-test');
 
-    // Create a file with initial content
+    // Create a file with initial content using File button
     await page.getByRole('button', { name: /File/ }).first().click();
     await page.locator('input[placeholder="File name..."]').fill('persist.txt');
     await page.getByRole('button', { name: 'Create' }).click();
@@ -187,7 +201,7 @@ test.describe('Hashtree Explorer', () => {
     await expect(page.locator('pre')).toHaveText('Updated content');
 
     // Navigate to homepage
-    await page.getByRole('link', { name: 'Hashtree' }).click();
+    await page.getByRole('link', { name: 'hashtree' }).click();
     await page.waitForTimeout(500);
 
     // Navigate back to the tree
@@ -197,8 +211,8 @@ test.describe('Hashtree Explorer', () => {
     await page.locator(`a:has-text("persist-test")`).first().click();
     await page.waitForTimeout(1000);
 
-    // File should still be in the list
-    await expect(fileList.locator('span:text-is("persist.txt")')).toBeVisible({ timeout: 5000 });
+    // File should still be in the list (use a:has-text since entries are links)
+    await expect(fileList.locator('a').filter({ hasText: 'persist.txt' }).first()).toBeVisible({ timeout: 5000 });
 
     // Click the file
     await fileList.locator('a:has-text("persist.txt")').click();
@@ -208,19 +222,26 @@ test.describe('Hashtree Explorer', () => {
     await expect(page.locator('pre')).toHaveText('Updated content', { timeout: 10000 });
   });
 
-  test.skip('should rename a file', async ({ page }) => {
+  test('should rename a file', async ({ page }) => {
     const fileList = page.getByTestId('file-list');
 
     // Create tree via modal
     await createAndEnterTree(page, 'rename-test');
 
-    // Upload file
-    await uploadTempFile(page, 'old-name.txt', 'rename me');
-    await expect(fileList.locator('span:text-is("old-name.txt")')).toBeVisible({ timeout: 5000 });
+    // Create file using File button
+    await page.getByRole('button', { name: /File/ }).first().click();
+    await page.locator('input[placeholder="File name..."]').fill('old-name.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
 
-    // Select file
-    await fileList.locator('a:has-text("old-name.txt")').click();
-    await page.waitForTimeout(500);
+    // File opens in edit mode - add content
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await page.locator('textarea').fill('rename me');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForTimeout(300);
+
+    // Exit edit mode
+    await page.getByRole('button', { name: 'Done' }).click();
+    await page.waitForTimeout(300);
 
     // Wait for Rename button in preview toolbar to be visible
     await expect(page.getByRole('button', { name: 'Rename' })).toBeVisible({ timeout: 5000 });
@@ -237,39 +258,48 @@ test.describe('Hashtree Explorer', () => {
     // Wait for modal to close
     await expect(input).not.toBeVisible({ timeout: 5000 });
 
+    // Navigate back to directory to see file list
+    await page.locator('a:has-text("rename-test")').first().click();
+    await page.waitForTimeout(500);
+
     // Wait for new name to appear first (rename succeeded)
-    await expect(fileList.locator('span:text-is("new-name.txt")')).toBeVisible({ timeout: 10000 });
+    await expect(fileList.locator('a').filter({ hasText: 'new-name.txt' }).first()).toBeVisible({ timeout: 10000 });
     // Then verify old name is gone
-    await expect(fileList.locator('span:text-is("old-name.txt")')).not.toBeVisible({ timeout: 5000 });
+    await expect(fileList.locator('a').filter({ hasText: 'old-name.txt' })).not.toBeVisible({ timeout: 5000 });
   });
 
-  // Skip: Depends on file upload via setInputFiles which doesn't work reliably
-  test.skip('should delete a file', async ({ page }) => {
-    const fileList = page.getByTestId('file-list');
-
+  test('should delete a file', async ({ page }) => {
     // Create tree via modal
     await createAndEnterTree(page, 'delete-test');
 
-    // Upload file
-    await uploadTempFile(page, 'to-delete.txt', 'delete me');
-    await expect(fileList.locator('span:text-is("to-delete.txt")')).toBeVisible({ timeout: 15000 });
+    // Create file using File button
+    await page.getByRole('button', { name: /File/ }).first().click();
+    await page.locator('input[placeholder="File name..."]').fill('to-delete.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
 
-    // Click on the file to select it and show preview
-    await fileList.locator('a:has-text("to-delete.txt")').click();
-
-    // Wait for URL to contain the filename (confirming navigation)
-    await expect(page).toHaveURL(/to-delete\.txt/, { timeout: 5000 });
-
-    // Wait for Delete button to be visible in preview toolbar
-    const deleteBtn = page.locator('button:has-text("Delete")');
-    await expect(deleteBtn).toBeVisible({ timeout: 10000 });
-
-    // Click Delete button in preview toolbar
-    page.on('dialog', dialog => dialog.accept());
-    await deleteBtn.click();
+    // File opens in edit mode - add content
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await page.locator('textarea').fill('delete me');
+    await page.getByRole('button', { name: 'Save' }).click();
     await page.waitForTimeout(300);
 
-    await expect(fileList.locator('span:text-is("to-delete.txt")')).not.toBeVisible({ timeout: 5000 });
+    // Exit edit mode
+    await page.getByRole('button', { name: 'Done' }).click();
+    await page.waitForTimeout(500);
+
+    // Wait for viewer header to be visible - this confirms we're in file view mode
+    await expect(page.getByTestId('viewer-header')).toBeVisible({ timeout: 5000 });
+
+    // Wait for Delete button to be visible in preview toolbar using test id
+    const deleteBtn = page.getByTestId('viewer-delete');
+    await expect(deleteBtn).toBeVisible({ timeout: 5000 });
+
+    // Click Delete button - set up dialog handler first
+    page.once('dialog', dialog => dialog.accept());
+    await deleteBtn.click();
+
+    // Should navigate back to directory after delete (empty directory message)
+    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
   });
 
 
@@ -297,50 +327,89 @@ test.describe('Hashtree Explorer', () => {
     await expect(page.getByRole('link', { name: /Stream/ }).first()).toBeVisible();
   });
 
-  // Skip: Depends on file upload via setInputFiles which doesn't work reliably
-  test.skip('should show binary file as hex', async ({ page }) => {
+  test('should show empty file content for new files', async ({ page }) => {
     const fileList = page.getByTestId('file-list');
 
     // Create tree via modal
-    await createAndEnterTree(page, 'binary-test');
+    await createAndEnterTree(page, 'empty-file-test');
 
-    // Upload binary file
-    await uploadTempFile(page, 'binary.bin', Buffer.from([0x00, 0x01, 0x02, 0xff, 0xfe]));
-    await expect(fileList.locator('span:text-is("binary.bin")')).toBeVisible({ timeout: 15000 });
+    // Create a file using File button
+    await page.getByRole('button', { name: /File/ }).first().click();
+    await page.locator('input[placeholder="File name..."]').fill('empty.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
 
-    await fileList.locator('a:has-text("binary.bin")').click();
-    await page.waitForTimeout(500);
-
-    await expect(page.getByText('Binary file')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('code').last()).toContainText('00 01 02 ff fe');
-  });
-
-  // Skip: Depends on file upload via setInputFiles which doesn't work reliably
-  test.skip('should cancel editing', async ({ page }) => {
-    const fileList = page.getByTestId('file-list');
-
-    // Create tree via modal
-    await createAndEnterTree(page, 'cancel-test');
-
-    // Upload file
-    await uploadTempFile(page, 'cancel-test.txt', 'original');
-    await expect(fileList.locator('span:text-is("cancel-test.txt")')).toBeVisible({ timeout: 15000 });
-
-    // Click the file link to navigate to preview
-    await fileList.locator('a:has-text("cancel-test.txt")').click();
-    await page.waitForTimeout(500);
-
-    // Wait for Edit button to be visible and enabled (content must load first)
-    await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('button', { name: 'Edit' })).toBeEnabled({ timeout: 5000 });
-    await page.getByRole('button', { name: 'Edit' }).click();
-    await page.waitForTimeout(300);
-    await page.locator('textarea').fill('This will be cancelled');
+    // File opens in edit mode - exit without adding content (empty file)
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
     await page.getByRole('button', { name: 'Done' }).click();
     await page.waitForTimeout(300);
 
+    // Navigate back to directory
+    await page.locator('a:has-text("empty-file-test")').first().click();
+    await page.waitForTimeout(500);
+
+    // File should appear in file browser
+    await expect(fileList.locator('a').filter({ hasText: 'empty.txt' }).first()).toBeVisible({ timeout: 10000 });
+
+    // Click to view - empty files should show empty pre tag (not download pane)
+    await fileList.locator('a:has-text("empty.txt")').click();
+    await page.waitForTimeout(500);
+
+    // Should show viewer header with filename
+    await expect(page.getByTestId('viewer-header')).toBeVisible({ timeout: 5000 });
+    // Should NOT show download pane for empty text files
+    await expect(page.locator('span.i-lucide-download')).not.toBeVisible();
+    // Pre element exists in DOM (may be hidden when empty, but that's ok)
+    await expect(page.locator('pre')).toHaveCount(1);
+  });
+
+  test('should cancel editing without saving', async ({ page }) => {
+    // Create tree via modal
+    await createAndEnterTree(page, 'cancel-test');
+
+    // Create file using File button
+    await page.getByRole('button', { name: /File/ }).first().click();
+    await page.locator('input[placeholder="File name..."]').fill('cancel-test.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    // File opens in edit mode - add content
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await page.locator('textarea').fill('original');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForTimeout(500);
+
+    // Exit edit mode
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // Wait for viewer header (file preview mode)
+    await expect(page.getByTestId('viewer-header')).toBeVisible({ timeout: 5000 });
+
+    // Wait for pre element with content
+    await expect(page.locator('pre')).toHaveText('original', { timeout: 5000 });
+
+    // Re-enter edit mode using test id
+    const editBtn = page.getByTestId('viewer-edit');
+    await expect(editBtn).toBeVisible({ timeout: 5000 });
+    await editBtn.click();
+
+    // Wait for textarea with current content
+    const textarea = page.locator('textarea');
+    await expect(textarea).toBeVisible({ timeout: 5000 });
+    await expect(textarea).toHaveValue('original', { timeout: 5000 });
+
+    // Type something but don't save
+    await textarea.fill('This will be cancelled');
+
+    // Click Done without saving
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // Unsaved changes modal should appear - click "Don't Save" to discard changes
+    await expect(page.getByRole('heading', { name: 'Unsaved Changes' })).toBeVisible({ timeout: 5000 });
+    await page.getByRole('button', { name: "Don't Save" }).click();
+
+    // Should exit edit mode - verify viewer header is back
+    await expect(page.getByTestId('viewer-header')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('textarea')).not.toBeVisible();
-    await expect(page.getByRole('button', { name: 'Edit' })).toBeVisible();
+    await expect(editBtn).toBeVisible();
   });
 
   test('should close modal by clicking outside', async ({ page }) => {
@@ -369,18 +438,6 @@ test.describe('Hashtree Explorer', () => {
 
     // Should still be logged in - avatar button still visible
     await expect(profileButton).toBeVisible();
-  });
-
-  // Skip: AppMenu is no longer rendered - there's no logout from UI currently
-  test.skip('should logout and show login buttons', async ({ page }) => {
-    // This test is skipped because the hamburger menu has been removed from the UI
-    // Logout functionality is not currently accessible from the UI
-  });
-
-  // Skip: AppMenu drawer has been removed from the UI
-  test.skip('should open app menu drawer', async ({ page }) => {
-    // This test is skipped because the hamburger menu has been removed from the UI
-    // Settings and Wallet are now accessed via direct links in the header
   });
 
   test('should navigate to settings page and display sections', async ({ page }) => {
@@ -456,6 +513,31 @@ test.describe('Hashtree Explorer', () => {
     await expect(page.getByRole('button', { name: 'Edit Profile' })).toBeVisible();
   });
 
+  test('should navigate to follows page and display following list', async ({ page }) => {
+    // Get the npub from current URL
+    const url = page.url();
+    const npubMatch = url.match(/npub[a-z0-9]+/);
+    expect(npubMatch).toBeTruthy();
+    const npub = npubMatch![0];
+
+    // Navigate to follows page
+    await page.goto(`/#/${npub}/follows`);
+    await page.waitForTimeout(300);
+
+    // Should be on follows page
+    expect(page.url()).toContain('/follows');
+
+    // Should display Following count in header
+    await expect(page.getByText(/Following \(\d+\)/)).toBeVisible({ timeout: 5000 });
+
+    // Initially shows "Not following anyone yet" for new user
+    await expect(page.getByText('Not following anyone yet')).toBeVisible({ timeout: 5000 });
+
+    // Should have back button that leads to profile
+    const backButton = page.locator('button:has(span.i-lucide-chevron-left)');
+    await expect(backButton).toBeVisible();
+  });
+
   test('should show trees listing on profile page in mobile view', async ({ page }) => {
     // Get the npub from current URL
     const url = page.url();
@@ -482,35 +564,42 @@ test.describe('Hashtree Explorer', () => {
     await expect(fileLists.last()).toBeVisible({ timeout: 5000 });
   });
 
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
-  test.skip('should display file content when directly navigating to file URL', async ({ page, browser }) => {
-    const fileList = page.getByTestId('file-list');
-
-    // Browser 1: Create tree and upload an HTML file
+  test('should display file content when directly navigating to file URL', async ({ page }) => {
+    // Create tree and create a text file via File button
     await createAndEnterTree(page, 'direct-nav-test');
-    await uploadTempFile(page, 'index.html', '<html><body>Hello Direct Nav</body></html>');
-    await expect(fileList.locator('span:text-is("index.html")')).toBeVisible({ timeout: 15000 });
 
-    // Get current URL to extract npub and treeName
-    const currentUrl = page.url();
-    const match = currentUrl.match(/#\/(npub[^/]+)\/([^/]+)/);
-    expect(match).toBeTruthy();
-    const [, npub, treeName] = match!;
+    // Create text file using File button
+    await page.getByRole('button', { name: /File/ }).first().click();
+    await page.locator('input[placeholder="File name..."]').fill('readme.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
 
-    // Browser 2: Fresh context navigates directly to file URL
-    const context2 = await browser.newContext();
-    const page2 = await context2.newPage();
+    // File opens in edit mode - add content
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await page.locator('textarea').fill('Hello Direct Nav');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForTimeout(300);
 
-    const directFileUrl = `http://localhost:5173/#/${npub}/${treeName}/index.html`;
-    await page2.goto(directFileUrl);
-    await page2.waitForTimeout(3000); // Wait for nostr resolution
+    // Exit edit mode
+    await page.getByRole('button', { name: 'Done' }).click();
+    await page.waitForTimeout(500);
 
-    // The file should be displayed in preview (rendered as iframe for HTML)
-    await expect(page2.locator('.font-medium:has-text("index.html")')).toBeVisible({ timeout: 15000 });
+    // Get current URL (should be the file URL)
+    const fileUrl = page.url();
+    expect(fileUrl).toContain('readme.txt');
 
-    // For HTML files, should render in iframe
-    await expect(page2.locator('iframe')).toBeVisible({ timeout: 10000 });
+    // Navigate away to tree list
+    await goToTreeList(page);
+    await page.waitForTimeout(500);
 
-    await context2.close();
+    // Navigate directly back to the file URL
+    await page.goto(fileUrl);
+    await page.waitForTimeout(500);
+
+    // The file should be displayed in preview (shows filename in viewer header)
+    await expect(page.getByTestId('viewer-header')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('viewer-header').getByText('readme.txt')).toBeVisible({ timeout: 5000 });
+
+    // Content should be visible
+    await expect(page.locator('pre')).toHaveText('Hello Direct Nav', { timeout: 5000 });
   });
 });

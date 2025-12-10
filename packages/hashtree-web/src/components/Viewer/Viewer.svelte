@@ -194,8 +194,20 @@
     }
   }
 
+  // Track previous entry CID to avoid reloading when only dir listing changed
+  let prevEntryCidHash: string | null = null;
+
   // Load file content when entry changes
   $effect(() => {
+    const entry = entryFromStore;
+    const entryCidHash = entry?.cid?.hash ? toHex(entry.cid.hash) : null;
+
+    // Skip if CID hasn't changed (dir listing updated but file is the same)
+    if (entryCidHash && entryCidHash === prevEntryCidHash) {
+      return;
+    }
+    prevEntryCidHash = entryCidHash;
+
     // Clean up previous blob URL (use non-reactive variable)
     cleanupBlobUrl();
 
@@ -212,7 +224,6 @@
     showLoading = false;
     bytesLoaded = 0;
 
-    const entry = entryFromStore;
     if (!entry) return;
 
     // Skip loading for video/audio files - they stream separately via MediaPlayer
@@ -252,21 +263,19 @@
           offset += chunk.length;
         }
 
-        if (data.length > 0) {
-          fileData = data;
-          // Try to decode as text
-          const text = decodeAsText(data);
-          fileContent = text;
+        fileData = data;
+        // Try to decode as text
+        const text = decodeAsText(data);
+        fileContent = text;
 
-          // If not text, create blob URL for binary viewing
-          if (text === null && urlFileName) {
-            const mimeType = getMimeType(urlFileName);
-            if (mimeType) {
-              const blob = new Blob([data], { type: mimeType });
-              const newUrl = URL.createObjectURL(blob);
-              currentBlobUrl = newUrl;
-              blobUrl = newUrl;
-            }
+        // If not text, create blob URL for binary viewing
+        if (text === null && urlFileName) {
+          const mimeType = getMimeType(urlFileName);
+          if (mimeType) {
+            const blob = new Blob([data], { type: mimeType });
+            const newUrl = URL.createObjectURL(blob);
+            currentBlobUrl = newUrl;
+            blobUrl = newUrl;
           }
         }
       } catch {
@@ -486,6 +495,9 @@
     return `#/${nhash}/${encodeURIComponent(entryFromStore.name)}`;
   });
 
+  // Stable key based on CID - prevents re-render when dir updates but file hasn't changed
+  let cidKey = $derived(entryFromStore?.cid?.hash ? toHex(entryFromStore.cid.hash) : urlFileName);
+
   // Build back URL (directory without file)
   let backUrl = $derived.by(() => {
     const dirPath = route.path.slice(0, -1);
@@ -699,68 +711,81 @@
         <MediaPlayer cid={entryFromStore.cid} fileName={urlFileName} type="video" />
       {/key}
     {:else if isHtml && fileContent !== null}
-      <HtmlViewer content={fileContent} fileName={urlFileName} />
+      {#key cidKey}
+        <HtmlViewer content={fileContent} fileName={urlFileName} />
+      {/key}
     {:else if isImage && blobUrl}
-      <!-- Image viewer -->
-      <div class="flex-1 flex items-center justify-center overflow-auto bg-surface-0 p-4">
-        <img
-          src={blobUrl}
-          alt={urlFileName}
-          class="max-w-full max-h-full object-contain"
-          data-testid="image-viewer"
-        />
-      </div>
+      <!-- Image viewer - keyed by CID to prevent flash on dir updates -->
+      {#key cidKey}
+        <div class="flex-1 flex items-center justify-center overflow-auto bg-surface-0 p-4">
+          <img
+            src={blobUrl}
+            alt={urlFileName}
+            class="max-w-full max-h-full object-contain"
+            data-testid="image-viewer"
+          />
+        </div>
+      {/key}
     {:else if isAudio && entryFromStore?.cid}
-      <!-- Audio player -->
+      <!-- Audio player - keyed by filename for live streaming support -->
       {#key urlFileName}
         <MediaPlayer cid={entryFromStore.cid} fileName={urlFileName} type="audio" />
       {/key}
     {:else if isPdf && blobUrl}
-      <!-- PDF viewer -->
-      <iframe
-        src={blobUrl}
-        class="flex-1 w-full border-none"
-        title={urlFileName}
-      />
+      <!-- PDF viewer - keyed by CID -->
+      {#key cidKey}
+        <iframe
+          src={blobUrl}
+          class="flex-1 w-full border-none"
+          title={urlFileName}
+        />
+      {/key}
     {:else if isZip && fileData}
-      <!-- ZIP preview -->
-      <ZipPreview data={fileData} filename={urlFileName} onDownload={handleDownload} />
+      <!-- ZIP preview - keyed by CID -->
+      {#key cidKey}
+        <ZipPreview data={fileData} filename={urlFileName} onDownload={handleDownload} />
+      {/key}
     {:else if isDos && currentDirCid}
-      <!-- DOS executable - show DOSBox viewer -->
-      <DosBox directoryCid={currentDirCid} exeName={urlFileName} />
+      <!-- DOS executable - keyed by filename since dirCid changes on file updates -->
+      {#key urlFileName}
+        <DosBox directoryCid={currentDirCid} exeName={urlFileName} />
+      {/key}
     {:else}
-      <div class="flex-1 overflow-auto p-4">
-        {#if showLoading}
-          <div class="text-muted animate-fade-in flex flex-col items-start gap-1" data-testid="loading-indicator">
-            <span>Loading...</span>
-            {#if bytesLoaded > 0}
-              <span class="text-sm opacity-70">
-                {bytesLoaded < 1024 * 1024
-                  ? `${Math.round(bytesLoaded / 1024)}KB`
-                  : `${(bytesLoaded / (1024 * 1024)).toFixed(1)}MB`}
-              </span>
-            {/if}
-          </div>
-        {:else if fileContent !== null}
-          <pre class="text-sm text-text-1 font-mono whitespace-pre-wrap break-words">{fileContent}</pre>
-        {:else if !loading && entryFromStore}
-          <!-- Binary/unsupported format fallback - show download pane -->
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="w-full h-full p-3">
-            <div
-              class="w-full h-full flex flex-col items-center justify-center text-accent cursor-pointer hover:bg-accent/10 transition-colors border border-accent/50 rounded-lg"
-              onclick={handleDownload}
-            >
-              <span class="i-lucide-download text-4xl mb-2"></span>
-              <span class="text-sm mb-1">{urlFileName}</span>
-              {#if entryFromStore.size}
-                <span class="text-xs text-text-2">{formatBytes(entryFromStore.size)}</span>
+      <!-- Text/binary fallback - keyed by CID -->
+      {#key cidKey}
+        <div class="flex-1 overflow-auto p-4">
+          {#if showLoading}
+            <div class="text-muted animate-fade-in flex flex-col items-start gap-1" data-testid="loading-indicator">
+              <span>Loading...</span>
+              {#if bytesLoaded > 0}
+                <span class="text-sm opacity-70">
+                  {bytesLoaded < 1024 * 1024
+                    ? `${Math.round(bytesLoaded / 1024)}KB`
+                    : `${(bytesLoaded / (1024 * 1024)).toFixed(1)}MB`}
+                </span>
               {/if}
             </div>
-          </div>
-        {/if}
-      </div>
+          {:else if fileContent !== null}
+            <pre class="text-sm text-text-1 font-mono whitespace-pre-wrap break-words">{fileContent}</pre>
+          {:else if !loading && entryFromStore}
+            <!-- Binary/unsupported format fallback - show download pane -->
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="w-full h-full p-3">
+              <div
+                class="w-full h-full flex flex-col items-center justify-center text-accent cursor-pointer hover:bg-accent/10 transition-colors border border-accent/50 rounded-lg"
+                onclick={handleDownload}
+              >
+                <span class="i-lucide-download text-4xl mb-2"></span>
+                <span class="text-sm mb-1">{urlFileName}</span>
+                {#if entryFromStore.size}
+                  <span class="text-xs text-text-2">{formatBytes(entryFromStore.size)}</span>
+                {/if}
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/key}
     {/if}
   </div>
 {:else if hasTreeContext && isYjsDocument && currentDirCid}

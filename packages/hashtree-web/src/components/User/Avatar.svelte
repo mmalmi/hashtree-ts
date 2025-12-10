@@ -13,8 +13,8 @@
 
   let { pubkey, size = 40, class: className = '', showBadge = false }: Props = $props();
 
-  let profileStore = $derived(createProfileStore(pubkey));
-  let profile = $derived($profileStore);
+  let profileStore = $derived(pubkey ? createProfileStore(pubkey) : null);
+  let profile = $derived(profileStore ? $profileStore : null);
   let imgError = $state(false);
 
   // Reset error state when pubkey changes
@@ -23,7 +23,7 @@
     imgError = false;
   });
 
-  let name = $derived(getProfileName(profile, pubkey) || animalName(pubkey));
+  let name = $derived(getProfileName(profile, pubkey) || (pubkey ? animalName(pubkey) : ''));
 
   // Auto-select badge size based on avatar size
   function getBadgeSize(avatarSize: number): 'sm' | 'md' | 'lg' {

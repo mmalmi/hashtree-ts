@@ -9,10 +9,10 @@
 
   let { pubkey, class: className = '' }: Props = $props();
 
-  let profileStore = $derived(createProfileStore(pubkey));
-  let profile = $derived($profileStore);
+  let profileStore = $derived(pubkey ? createProfileStore(pubkey) : null);
+  let profile = $derived(profileStore ? $profileStore : null);
   let profileName = $derived(getProfileName(profile, pubkey));
-  let animal = $derived(animalName(pubkey));
+  let animal = $derived(pubkey ? animalName(pubkey) : '');
 </script>
 
 {#if profileName}

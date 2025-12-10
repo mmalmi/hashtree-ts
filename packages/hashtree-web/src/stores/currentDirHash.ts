@@ -4,7 +4,6 @@
  * Svelte version using stores
  */
 import { writable, derived, get, type Readable } from 'svelte/store';
-import { toHex } from 'hashtree';
 import { getTree } from '../store';
 import { routeStore } from './route';
 import { treeRootStore } from './treeRoot';
@@ -141,8 +140,12 @@ async function updateCurrentDirCid() {
 }
 
 // Subscribe to changes in root and route
-treeRootStore.subscribe(() => updateCurrentDirCid());
-routeStore.subscribe(() => updateCurrentDirCid());
+treeRootStore.subscribe(() => {
+  updateCurrentDirCid();
+});
+routeStore.subscribe(() => {
+  updateCurrentDirCid();
+});
 
 /**
  * Store for current directory hash

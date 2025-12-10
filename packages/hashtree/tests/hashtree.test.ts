@@ -427,6 +427,14 @@ describe('HashTree', () => {
       expect(resolved).toBeNull();
     });
 
+    it('should correctly identify empty encrypted directory with isDirectory', async () => {
+      // This is the bug: isDirectory returns false for empty encrypted directories
+      const { cid: emptyDirCid } = await tree.putDirectory([]);
+
+      expect(emptyDirCid.key).toBeDefined(); // Confirm it's encrypted
+      expect(await tree.isDirectory(emptyDirCid)).toBe(true);
+    });
+
     it('should resolve empty path to root directory with resolvePath', async () => {
       const { cid: fileCid } = await tree.putFile(new TextEncoder().encode('root'));
 

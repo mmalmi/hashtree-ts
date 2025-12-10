@@ -208,6 +208,8 @@ export interface RefResolverListEntry {
   keyId?: string;
   /** Self-encrypted key for private trees - decrypt with NIP-04 */
   selfEncryptedKey?: string;
+  /** Unix timestamp when the tree was created/last updated */
+  createdAt?: number;
 }
 
 /**

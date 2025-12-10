@@ -6,12 +6,26 @@
   import { onMount } from 'svelte';
   import { nostrStore, type RelayStatus } from '../nostr';
   import { useAppStore, formatBytes, updateStorageStats } from '../store';
+  import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { BackButton } from './ui';
   import { UserRow } from './User';
 
   let relayList = $derived($nostrStore.relays);
   let relayStatuses = $derived($nostrStore.relayStatuses);
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
+  let myPubkey = $derived($nostrStore.pubkey);
+
+  // Social graph stats
+  let isRecrawling = $derived($socialGraphStore.isRecrawling);
+  let graphSize = $derived(getGraphSize());
+  let myFollowsCount = $derived(myPubkey ? getFollows(myPubkey).size : 0);
+
+  // Re-derive when graph version changes
+  $effect(() => {
+    $socialGraphStore.version;
+    graphSize = getGraphSize();
+    myFollowsCount = myPubkey ? getFollows(myPubkey).size : 0;
+  });
 
   function getStatusColor(status: RelayStatus): string {
     switch (status) {
@@ -155,6 +169,27 @@
           {/each}
         </div>
       {/if}
+    </div>
+
+    <!-- Social Graph -->
+    <div>
+      <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-1 flex items-center gap-2">
+        Social Graph
+        {#if isRecrawling}
+          <span class="text-xs text-accent animate-pulse">crawling...</span>
+        {/if}
+      </h3>
+      <p class="text-xs text-text-3 mb-3">Follow network used for trust indicators</p>
+      <div class="bg-surface-2 rounded p-3 text-sm space-y-2">
+        <div class="flex justify-between">
+          <span class="text-muted">Users in graph</span>
+          <span class="text-text-1">{graphSize.toLocaleString()}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-muted">Following</span>
+          <span class="text-text-1">{myFollowsCount.toLocaleString()}</span>
+        </div>
+      </div>
     </div>
 
     <!-- Local Storage -->
