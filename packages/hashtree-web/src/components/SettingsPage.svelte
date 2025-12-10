@@ -8,7 +8,7 @@
   import { nostrStore, type RelayStatus, getNsec } from '../nostr';
   import { useAppStore, formatBytes, updateStorageStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
-  import { getStorageBreakdown, type UserStorageStats } from '../stores/chunkMetadata';
+  import { syncedStorageStore, refreshSyncedStorage, type UserStorageStats } from '../stores/chunkMetadata';
   import { BackButton } from './ui';
   import { UserRow } from './User';
 
@@ -28,13 +28,9 @@
     }
   }
 
-  // Synced storage breakdown
-  let syncedStorage = $state<UserStorageStats[]>([]);
+  // Synced storage breakdown (reactive - updates when trees sync)
+  let syncedStorage = $derived($syncedStorageStore);
   let syncedStorageTotal = $derived(syncedStorage.reduce((sum, s) => sum + s.bytes, 0));
-
-  async function loadSyncedStorage() {
-    syncedStorage = await getStorageBreakdown();
-  }
 
   let relayList = $derived($nostrStore.relays);
   let relayStatuses = $derived($nostrStore.relayStatuses);
@@ -77,7 +73,7 @@
   // Subscribe to app store updates
   onMount(() => {
     updateStorageStats();
-    loadSyncedStorage();
+    refreshSyncedStorage(); // Load initial data into reactive store
 
     // Subscribe to store changes
     const unsub = useAppStore.subscribe((state) => {

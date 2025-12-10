@@ -27,6 +27,7 @@ import {
   getOtherUsersWithTrees,
   getChunksToEvict,
   removeChunks,
+  refreshSyncedStorage,
   type TreeSyncState,
 } from '../stores/chunkMetadata';
 
@@ -293,6 +294,9 @@ export class BackgroundSyncService {
         isOwn,
       };
       await updateTreeSyncState(syncState);
+
+      // Update reactive store for UI
+      refreshSyncedStorage();
 
       console.log(`[backgroundSync] Synced ${key}: ${chunks} chunks, ${bytes} bytes`);
     } catch (error) {

@@ -7,6 +7,7 @@
  * - Shared chunk detection (don't delete if multiple owners)
  */
 import Dexie, { type Table } from 'dexie';
+import { writable } from 'svelte/store';
 
 /**
  * Metadata for a single chunk (blob)
@@ -268,3 +269,18 @@ export async function getSyncedTrees(): Promise<TreeSyncState[]> {
 
 // Export database for testing
 export { db as chunkMetadataDb };
+
+/**
+ * Reactive store for synced storage stats
+ * Updates automatically when trees are synced
+ */
+export const syncedStorageStore = writable<UserStorageStats[]>([]);
+
+/**
+ * Refresh the synced storage store
+ * Called automatically after tree sync, can also be called manually
+ */
+export async function refreshSyncedStorage(): Promise<void> {
+  const stats = await getStorageBreakdown();
+  syncedStorageStore.set(stats);
+}
