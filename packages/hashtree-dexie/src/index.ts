@@ -49,7 +49,11 @@ export class DexieStore implements Store {
     const hashHex = toHex(hash);
     try {
       const entry = await this.db.blobs.get(hashHex);
-      return entry ? new Uint8Array(entry.data) : null;
+      if (!entry) return null;
+      // Use slice to ensure we get exact data without extra buffer bytes
+      // IndexedDB can store the entire backing ArrayBuffer of a view
+      const data = entry.data;
+      return new Uint8Array(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
     } catch (e) {
       console.error('[DexieStore] get error:', e);
       return null;

@@ -280,26 +280,33 @@ export class HashTree {
 
       // Fetch the chunk (will go to WebRTC peers if not local)
       const data = await this.store.get(hash);
-      if (!data) return;
+      if (!data) {
+        return;
+      }
 
       chunks++;
       bytes += data.length;
 
-      // If it's a tree node, recursively fetch children
-      if (isTreeNode(data)) {
-        let node: TreeNode;
-        if (key) {
-          // Decrypt the node
-          const decrypted = await getTreeNodeEncrypted(this.store, hash, key);
-          if (!decrypted) return;
-          node = decrypted;
-        } else {
-          node = decodeTreeNode(data);
+      // If there's an encryption key, try to decrypt and check if it's a tree node
+      // For encrypted data, we can't use isTreeNode on the raw bytes
+      if (key) {
+        const decrypted = await getTreeNodeEncrypted(this.store, hash, key);
+        if (decrypted) {
+          // It's an encrypted tree node - recursively fetch children
+          for (const link of decrypted.links) {
+            await fetch(link.hash, link.key);
+          }
         }
-
-        for (const link of node.links) {
-          await fetch(link.hash, link.key);
+        // If decryption failed or not a tree node, it's a blob (already fetched)
+      } else {
+        // Unencrypted data - check directly
+        if (isTreeNode(data)) {
+          const node = decodeTreeNode(data);
+          for (const link of node.links) {
+            await fetch(link.hash, link.key);
+          }
         }
+        // If not a tree node, it's a blob (already fetched)
       }
     };
 
