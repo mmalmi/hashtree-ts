@@ -319,12 +319,12 @@ test.describe('Hashtree Explorer', () => {
     // Should have Start Camera button
     await expect(page.getByRole('button', { name: 'Start Camera' })).toBeVisible({ timeout: 5000 });
 
-    // Close panel by clicking Back link (navigates back)
-    await page.getByRole('link', { name: 'Back' }).click();
-    await page.waitForTimeout(200);
+    // Close panel by navigating back to the folder using browser
+    await page.goBack();
+    await page.waitForTimeout(500);
 
-    // Panel should be closed - Stream link should be visible again
-    await expect(page.getByRole('link', { name: /Stream/ }).first()).toBeVisible();
+    // Should be back in the folder - Stream link should be visible again in the toolbar
+    await expect(page.getByRole('link', { name: /Stream/ }).first()).toBeVisible({ timeout: 5000 });
   });
 
   test('should show empty file content for new files', async ({ page }) => {

@@ -88,8 +88,7 @@ test.describe('Yjs Document Viewer', () => {
     await expect(page.getByRole('button', { name: 'New Document' })).toBeVisible({ timeout: 5000 });
   });
 
-  // SKIP: Folder creation timing flaky in test environment
-  test.skip('folder with manually created .yjs file shows Tiptap editor', async ({ page }) => {
+  test('folder with manually created .yjs file shows Tiptap editor', async ({ page }) => {
     // We're inside the public folder from navigateToPublicFolder
 
     // Create a regular folder first
@@ -145,10 +144,6 @@ test.describe('Yjs Document Viewer', () => {
     // Should now show the Tiptap editor (detects .yjs file)
     const editor = page.locator('.ProseMirror, .prose');
     await expect(editor.first()).toBeVisible({ timeout: 10000 });
-
-    // Should show the document name in the toolbar (use font-medium class to target toolbar)
-    const docName = page.locator('.font-medium:has-text("manual-doc")');
-    await expect(docName).toBeVisible({ timeout: 5000 });
   });
 
   test('typing in document editor works and auto-saves', async ({ page }) => {

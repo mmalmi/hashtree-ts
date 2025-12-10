@@ -4,6 +4,8 @@ import { test, expect } from '@playwright/test';
  * Test for FollowsTreesView - shows trees from followed users
  */
 test.describe('FollowsTreesView', () => {
+  test.setTimeout(30000);
+
   test('should show "Not following anyone" for new user', async ({ page }) => {
     // Capture console logs
     const consoleLogs: string[] = [];
@@ -47,15 +49,29 @@ test.describe('FollowsTreesView', () => {
     await page.getByRole('button', { name: /New/i }).click();
     await page.waitForTimeout(2000);
 
+    // Close the "New Folder" modal if it appears (new user flow)
+    const cancelButton = page.getByRole('button', { name: 'Cancel' });
+    if (await cancelButton.isVisible().catch(() => false)) {
+      await cancelButton.click();
+      await page.waitForTimeout(500);
+    }
+
     // Navigate to a known user with trees (default social graph root)
     // First follow them
     const testNpub = 'npub1g53nez3lp2xa443uvlyfq2ge7xfcmn8ynx5acphcf8qhv3k8a2gskkl6zh';
     await page.goto(`/#/${testNpub}`);
     await page.waitForTimeout(2000);
 
-    // Try to click follow button if visible
+    // Debug: take screenshot before following
+    await page.screenshot({ path: 'e2e/screenshots/before-follow.png' });
+    console.log('Current URL:', page.url());
+
+    // Try to click follow button if visible (may need to scroll or wait)
     const followButton = page.getByRole('button', { name: 'Follow', exact: true });
-    if (await followButton.isVisible().catch(() => false)) {
+    await page.waitForTimeout(1000);
+    const isVisible = await followButton.isVisible().catch(() => false);
+    console.log('Follow button visible:', isVisible);
+    if (isVisible) {
       await followButton.click();
       await page.waitForTimeout(2000);
     }

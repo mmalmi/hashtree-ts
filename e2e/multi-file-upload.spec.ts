@@ -70,8 +70,7 @@ test.describe('Multi-file upload', () => {
     await expect(page.locator('[data-testid="file-list"] a:has-text("test-file-3.txt")')).toBeVisible({ timeout: 15000 });
   });
 
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
-  test.skip('should not navigate to any file after multi-file upload', async ({ page }) => {
+  test('should not navigate to any file after multi-file upload', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);

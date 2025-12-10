@@ -157,6 +157,19 @@ async function navigateToOwnDocument(page: Page, npub: string, treeName: string,
   await page.waitForTimeout(2000);
 }
 
+// Helper to follow a user by their npub (navigates to their profile and clicks Follow)
+async function followUser(page: Page, targetNpub: string) {
+  // Navigate to the user's profile page
+  await page.goto(`http://localhost:5173/#/${targetNpub}`);
+  await page.waitForTimeout(1000);
+
+  // Click the Follow button
+  const followButton = page.getByRole('button', { name: 'Follow', exact: true });
+  await expect(followButton).toBeVisible({ timeout: 5000 });
+  await followButton.click();
+  await page.waitForTimeout(1000);
+}
+
 test.describe('Yjs Collaborative Document Editing', () => {
   // Serial mode: multi-user tests connect via relay, parallel tests would cross-talk
   test.describe.configure({ mode: 'serial' });
@@ -781,6 +794,31 @@ test.describe('Yjs Collaborative Document Editing', () => {
       const npubB = await getNpub(pageB);
       console.log(`User B npub: ${npubB.slice(0, 20)}...`);
 
+      // Have users follow each other to establish WebRTC connection via follows pool
+      console.log('User A: Following User B...');
+      await followUser(pageA, npubB);
+      console.log('User B: Following User A...');
+      await followUser(pageB, npubA);
+
+      // Navigate back to public folders after following
+      await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
+      await pageA.waitForTimeout(1000);
+      await pageB.goto(`http://localhost:5173/#/${npubB}/public`);
+      await pageB.waitForTimeout(1000);
+
+      // Wait for WebRTC peer connection to establish between A and B
+      // Check that the peer indicator shows at least 1 peer
+      console.log('Waiting for WebRTC peer connection...');
+      const peerIndicator = pageA.locator('[data-testid="peer-indicator-dot"]');
+      try {
+        // Wait for peer indicator to turn green (has peers)
+        await expect(peerIndicator).toHaveCSS('color', 'rgb(63, 185, 80)', { timeout: 15000 });
+        console.log('Peer connection established');
+      } catch {
+        // If no peers after 15s, continue anyway - test will check content
+        console.log('Peer indicator not green, continuing...');
+      }
+
       // User A creates a document
       console.log('User A: Creating document...');
       await createDocument(pageA, 'editor-test');
@@ -798,12 +836,14 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await pageB.goto(`http://localhost:5173/#/${npubA}/public/editor-test`);
       await pageB.waitForTimeout(2000);
 
-      // Verify B sees the document
+      // Verify B sees the document - wait for content to sync via WebRTC
       const editorB = pageB.locator('.ProseMirror');
       await expect(editorB).toBeVisible({ timeout: 10000 });
+
+      // Wait for content to appear (may take time for WebRTC sync)
+      await expect(editorB).toContainText('Content from owner', { timeout: 15000 });
       const contentB = await editorB.textContent();
       console.log(`User B sees: "${contentB}"`);
-      expect(contentB).toContain('Content from owner');
 
       // Verify B sees "Read-only" badge (not an editor)
       const readOnlyBadge = pageB.locator('text=Read-only');

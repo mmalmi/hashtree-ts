@@ -58,8 +58,7 @@ test.describe('Livestream Video Stability', () => {
     return videoPath;
   }
 
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
-  test.skip('video element should not remount when merkle root updates', async ({ page }) => {
+  test('video element should not remount when merkle root updates', async ({ page }) => {
     // Single page test: create folder, upload video, view it, add more files, verify video doesn't remount
     setupPageErrorHandler(page);
     await page.goto('http://localhost:5173/');
@@ -142,69 +141,75 @@ test.describe('Livestream Video Stability', () => {
     fs.unlinkSync(textPath);
   });
 
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
-  test.skip('video should not remount during multiple file updates', async ({ page }) => {
+  test('video should not remount during multiple file updates', async ({ page }) => {
     setupPageErrorHandler(page);
-    await page.goto('http://localhost:5173/');
-    await clearStorage(page);
-    await page.reload();
-    await waitForAutoLogin(page);
-    await navigateToPublicFolder(page);
 
-    // Create folder via tree list
-    await createTree(page, 'live-test');
-
-    // Create test video
+    // Create test video upfront
     const videoPath = createTestVideo();
-    const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.setInputFiles(videoPath);
-    await page.waitForTimeout(1000);
 
-    const fileList = page.getByTestId('file-list');
-    await expect(fileList.locator('span:text-is("test-stream.webm")')).toBeVisible({ timeout: 5000 });
+    try {
+      await page.goto('http://localhost:5173/');
+      await clearStorage(page);
+      await page.reload();
+      await waitForAutoLogin(page);
+      await navigateToPublicFolder(page);
 
-    // Click to view video
-    await fileList.locator('span:text-is("test-stream.webm")').click();
-    await page.waitForTimeout(500);
+      // Create folder via tree list
+      await createTree(page, 'live-test');
 
-    // Track video element creation via instrumentation
-    const videoMountCounts: number[] = [];
+      const fileInput = page.locator('input[type="file"]').first();
+      await fileInput.setInputFiles(videoPath);
+      await page.waitForTimeout(1000);
 
-    page.on('console', msg => {
-      if (msg.text().includes('video-mount')) {
-        videoMountCounts.push(videoMountCounts.length + 1);
-      }
-    });
+      const fileList = page.getByTestId('file-list');
+      await expect(fileList.locator('span:text-is("test-stream.webm")')).toBeVisible({ timeout: 5000 });
 
-    // Add instrumentation to track video mounting
-    await page.evaluate(() => {
-      const originalCreateElement = document.createElement.bind(document);
-      let count = 0;
-      document.createElement = function(tagName: string, options?: ElementCreationOptions) {
-        const el = originalCreateElement(tagName, options);
-        if (tagName.toLowerCase() === 'video') {
-          count++;
-          console.log(`video-mount: ${count}`);
+      // Click to view video
+      await fileList.locator('span:text-is("test-stream.webm")').click();
+      await page.waitForTimeout(500);
+
+      // Track video element creation via instrumentation
+      const videoMountCounts: number[] = [];
+
+      page.on('console', msg => {
+        if (msg.text().includes('video-mount')) {
+          videoMountCounts.push(videoMountCounts.length + 1);
         }
-        return el;
-      };
-    });
+      });
 
-    // Make multiple updates
-    for (let i = 0; i < 3; i++) {
-      const updatePath = path.join(os.tmpdir(), `update-${i}.txt`);
-      fs.writeFileSync(updatePath, `Update ${i} - ${Date.now()}`);
-      await fileInput.setInputFiles(updatePath);
-      await page.waitForTimeout(1500);
-      fs.unlinkSync(updatePath);
+      // Add instrumentation to track video mounting
+      await page.evaluate(() => {
+        const originalCreateElement = document.createElement.bind(document);
+        let count = 0;
+        document.createElement = function(tagName: string, options?: ElementCreationOptions) {
+          const el = originalCreateElement(tagName, options);
+          if (tagName.toLowerCase() === 'video') {
+            count++;
+            console.log(`video-mount: ${count}`);
+          }
+          return el;
+        };
+      });
+
+      // Make multiple updates
+      for (let i = 0; i < 3; i++) {
+        const updatePath = path.join(os.tmpdir(), `update-${i}.txt`);
+        fs.writeFileSync(updatePath, `Update ${i} - ${Date.now()}`);
+        await fileInput.setInputFiles(updatePath);
+        await page.waitForTimeout(1500);
+        fs.unlinkSync(updatePath);
+      }
+
+      console.log('Video mount counts:', videoMountCounts);
+
+      // The video should only be created once (initial render)
+      // Additional merkle root updates should NOT create new video elements
+      expect(videoMountCounts.length).toBeLessThanOrEqual(1);
+    } finally {
+      // Cleanup
+      if (fs.existsSync(videoPath)) {
+        fs.unlinkSync(videoPath);
+      }
     }
-
-    console.log('Video mount counts:', videoMountCounts);
-
-    // The video should only be created once (initial render)
-    // Additional merkle root updates should NOT create new video elements
-    expect(videoMountCounts.length).toBeLessThanOrEqual(1);
-
-    fs.unlinkSync(videoPath);
   });
 });

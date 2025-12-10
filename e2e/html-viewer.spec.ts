@@ -9,30 +9,24 @@
  */
 import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 test.describe('HTML Viewer with directory context', () => {
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
-  test.skip('should render HTML with inline CSS from same directory', async ({ page }) => {
+  test('should render HTML with inline CSS from same directory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);
 
-    // Create a folder for our HTML site
-    await page.locator('header a:has-text("hashtree")').click();
-    await page.waitForTimeout(300);
-    await page.getByRole('button', { name: 'New Folder' }).click();
+    // Create temp files for upload
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'html-test-'));
+    const cssPath = path.join(tmpDir, 'style.css');
+    const htmlPath = path.join(tmpDir, 'index.html');
 
-    const input = page.locator('input[placeholder="Folder name..."]');
-    await input.waitFor({ timeout: 5000 });
-    await input.fill('html-test');
-    await page.click('button:has-text("Create")');
-
-    // Wait for folder view
-    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
-
-    // Create CSS file content
-    const cssContent = `
+    try {
+      // Create CSS file content
+      const cssContent = `
 body {
   background-color: rgb(0, 128, 0);
   color: white;
@@ -47,8 +41,8 @@ h1 {
 }
 `;
 
-    // Create HTML file content that references the CSS
-    const htmlContent = `<!DOCTYPE html>
+      // Create HTML file content that references the CSS
+      const htmlContent = `<!DOCTYPE html>
 <html>
 <head>
   <title>Test Page</title>
@@ -61,68 +55,73 @@ h1 {
 </body>
 </html>`;
 
-    // Upload CSS file first
-    const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.setInputFiles({
-      name: 'style.css',
-      mimeType: 'text/css',
-      buffer: Buffer.from(cssContent),
-    });
+      fs.writeFileSync(cssPath, cssContent);
+      fs.writeFileSync(htmlPath, htmlContent);
 
-    // Wait for upload
-    await expect(page.locator('text=style.css')).toBeVisible({ timeout: 10000 });
+      // Create a folder for our HTML site
+      await page.locator('header a:has-text("hashtree")').click();
+      await page.waitForTimeout(300);
+      await page.getByRole('button', { name: 'New Folder' }).click();
 
-    // Upload HTML file
-    await fileInput.setInputFiles({
-      name: 'index.html',
-      mimeType: 'text/html',
-      buffer: Buffer.from(htmlContent),
-    });
+      const input = page.locator('input[placeholder="Folder name..."]');
+      await input.waitFor({ timeout: 5000 });
+      await input.fill('html-test');
+      await page.click('button:has-text("Create")');
 
-    // Wait for upload
-    await expect(page.locator('text=index.html')).toBeVisible({ timeout: 10000 });
+      // Wait for folder view
+      await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
 
-    // Click on the HTML file to view it
-    await page.click('text=index.html');
+      // Upload CSS file first
+      const fileInput = page.locator('input[type="file"]').first();
+      await fileInput.setInputFiles(cssPath);
 
-    // Wait for iframe to appear
-    const iframe = page.frameLocator('iframe');
+      // Wait for upload
+      await expect(page.locator('[data-testid="file-list"] a:has-text("style.css")')).toBeVisible({ timeout: 10000 });
 
-    // Check that HTML content is rendered
-    await expect(iframe.locator('h1')).toContainText('Hello from HashTree', { timeout: 10000 });
+      // Upload HTML file
+      await fileInput.setInputFiles(htmlPath);
 
-    // Check that CSS was applied - the heading should be yellow (rgb 255, 255, 0)
-    const h1 = iframe.locator('h1');
-    await expect(h1).toBeVisible();
+      // Wait for upload
+      await expect(page.locator('[data-testid="file-list"] a:has-text("index.html")')).toBeVisible({ timeout: 10000 });
 
-    // Verify the test element exists
-    const testElement = iframe.locator('#test-element');
-    await expect(testElement).toBeVisible();
-    await expect(testElement).toContainText('This should have blue background');
+      // Click on the HTML file to view it
+      await page.locator('[data-testid="file-list"] a:has-text("index.html")').click();
+
+      // Wait for iframe to appear
+      const iframe = page.frameLocator('iframe');
+
+      // Check that HTML content is rendered
+      await expect(iframe.locator('h1')).toContainText('Hello from HashTree', { timeout: 10000 });
+
+      // Check that CSS was applied - the heading should be yellow (rgb 255, 255, 0)
+      const h1 = iframe.locator('h1');
+      await expect(h1).toBeVisible();
+
+      // Verify the test element exists
+      const testElement = iframe.locator('#test-element');
+      await expect(testElement).toBeVisible();
+      await expect(testElement).toContainText('This should have blue background');
+    } finally {
+      // Cleanup temp files
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
-  // Skip: setInputFiles doesn't trigger upload handler reliably in Playwright
+  // Skip: JS execution in sandboxed iframe requires allow-same-origin which is a security risk
   test.skip('should render HTML with JavaScript from same directory', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);
 
-    // Create a folder
-    await page.locator('header a:has-text("hashtree")').click();
-    await page.waitForTimeout(300);
-    await page.getByRole('button', { name: 'New Folder' }).click();
+    // Create temp files for upload
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'js-test-'));
+    const jsPath = path.join(tmpDir, 'app.js');
+    const htmlPath = path.join(tmpDir, 'index.html');
 
-    const input = page.locator('input[placeholder="Folder name..."]');
-    await input.waitFor({ timeout: 5000 });
-    await input.fill('js-test');
-    await page.click('button:has-text("Create")');
-
-    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
-
-    // Create JS file that modifies the DOM
-    // Use window.onload to ensure DOM is ready
-    const jsContent = `
+    try {
+      // Create JS file that modifies the DOM
+      const jsContent = `
 window.onload = function() {
   var el = document.getElementById('js-target');
   if (el) {
@@ -132,8 +131,8 @@ window.onload = function() {
 };
 `;
 
-    // Create HTML file that references the JS at end of body
-    const htmlContent = `<!DOCTYPE html>
+      // Create HTML file that references the JS at end of body
+      const htmlContent = `<!DOCTYPE html>
 <html>
 <head>
   <title>JS Test</title>
@@ -145,90 +144,67 @@ window.onload = function() {
 </body>
 </html>`;
 
-    // Upload JS file first
-    const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.setInputFiles({
-      name: 'app.js',
-      mimeType: 'text/javascript',
-      buffer: Buffer.from(jsContent),
-    });
+      fs.writeFileSync(jsPath, jsContent);
+      fs.writeFileSync(htmlPath, htmlContent);
 
-    await expect(page.locator('text=app.js')).toBeVisible({ timeout: 10000 });
+      // Create a folder
+      await page.locator('header a:has-text("hashtree")').click();
+      await page.waitForTimeout(300);
+      await page.getByRole('button', { name: 'New Folder' }).click();
 
-    // Upload HTML file
-    await fileInput.setInputFiles({
-      name: 'index.html',
-      mimeType: 'text/html',
-      buffer: Buffer.from(htmlContent),
-    });
+      const input = page.locator('input[placeholder="Folder name..."]');
+      await input.waitFor({ timeout: 5000 });
+      await input.fill('js-test');
+      await page.click('button:has-text("Create")');
 
-    await expect(page.locator('text=index.html')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
 
-    // Click on the HTML file
-    await page.click('text=index.html');
+      // Upload JS file first
+      const fileInput = page.locator('input[type="file"]').first();
+      await fileInput.setInputFiles(jsPath);
 
-    // Wait for iframe to appear and load
-    await page.waitForSelector('iframe', { timeout: 10000 });
+      await expect(page.locator('[data-testid="file-list"] a:has-text("app.js")')).toBeVisible({ timeout: 10000 });
 
-    // Check that JavaScript executed
-    const iframe = page.frameLocator('iframe');
-    const target = iframe.locator('#js-target');
+      // Upload HTML file
+      await fileInput.setInputFiles(htmlPath);
 
-    // JS should have changed the text - give more time
-    await expect(target).toContainText('JavaScript loaded successfully!', { timeout: 15000 });
+      await expect(page.locator('[data-testid="file-list"] a:has-text("index.html")')).toBeVisible({ timeout: 10000 });
+
+      // Click on the HTML file
+      await page.locator('[data-testid="file-list"] a:has-text("index.html")').click();
+
+      // Wait for iframe to appear and load
+      await page.waitForSelector('iframe', { timeout: 10000 });
+
+      // Check that JavaScript executed
+      const iframe = page.frameLocator('iframe');
+      const target = iframe.locator('#js-target');
+
+      // JS should have changed the text - give more time
+      await expect(target).toContainText('JavaScript loaded successfully!', { timeout: 15000 });
+    } finally {
+      // Cleanup temp files
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
-  // SKIP: Subdirectory CSS file not visible - navigation timing issue
-  test.skip('should load resources from subdirectories', async ({ page }) => {
+  test('should load resources from subdirectories', async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);
 
-    // Create main folder
-    await page.locator('header a:has-text("hashtree")').click();
-    await page.waitForTimeout(300);
-    await page.getByRole('button', { name: 'New Folder' }).click();
+    // Create temp files for upload
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'subdir-test-'));
+    const cssPath = path.join(tmpDir, 'style.css');
+    const htmlPath = path.join(tmpDir, 'index.html');
 
-    const input = page.locator('input[placeholder="Folder name..."]');
-    await input.waitFor({ timeout: 5000 });
-    await input.fill('subdir-test');
-    await page.click('button:has-text("Create")');
-
-    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
-    await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
-
-    // Create subdirectory 'css'
-    await page.getByRole('button', { name: /Folder/ }).click();
-    const subInput = page.locator('input[placeholder="Folder name..."]');
-    await subInput.waitFor({ timeout: 5000 });
-    await subInput.fill('css');
-    await page.click('button:has-text("Create")');
-    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
-
-    // Navigate into css folder
-    await page.click('text=css');
-    await page.waitForTimeout(500);
-
-    // Upload CSS file in subdirectory
-    const cssContent = `
+    try {
+      const cssContent = `
 body { background-color: rgb(128, 0, 128); }
 h1 { color: rgb(0, 255, 255); }
 `;
-    const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.setInputFiles({
-      name: 'style.css',
-      mimeType: 'text/css',
-      buffer: Buffer.from(cssContent),
-    });
-
-    await expect(page.locator('text=style.css')).toBeVisible({ timeout: 10000 });
-
-    // Go back to parent directory (click on ".." link)
-    await page.click('text=".."');
-    await page.waitForTimeout(500);
-
-    // Upload HTML that references css/style.css
-    const htmlContent = `<!DOCTYPE html>
+      const htmlContent = `<!DOCTYPE html>
 <html>
 <head>
   <title>Subdir Test</title>
@@ -240,23 +216,62 @@ h1 { color: rgb(0, 255, 255); }
 </body>
 </html>`;
 
-    await fileInput.setInputFiles({
-      name: 'index.html',
-      mimeType: 'text/html',
-      buffer: Buffer.from(htmlContent),
-    });
+      fs.writeFileSync(cssPath, cssContent);
+      fs.writeFileSync(htmlPath, htmlContent);
 
-    // Wait for file list to show index.html - use file-list to be more specific
-    const fileList = page.locator('[data-testid="file-list"]');
-    await expect(fileList.locator('text=index.html')).toBeVisible({ timeout: 10000 });
+      // Create main folder
+      await page.locator('header a:has-text("hashtree")').click();
+      await page.waitForTimeout(300);
+      await page.getByRole('button', { name: 'New Folder' }).click();
 
-    // Click on HTML file in file list
-    await fileList.locator('text=index.html').click();
+      const input = page.locator('input[placeholder="Folder name..."]');
+      await input.waitFor({ timeout: 5000 });
+      await input.fill('subdir-test');
+      await page.click('button:has-text("Create")');
 
-    // Check content loaded
-    const iframe = page.frameLocator('iframe');
-    await expect(iframe.locator('h1')).toContainText('Subdirectory CSS Test', { timeout: 10000 });
-    await expect(iframe.locator('#info')).toBeVisible();
+      await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+      await expect(page.getByText(/Drop or click to add|Empty directory/).first()).toBeVisible({ timeout: 10000 });
+
+      // Create subdirectory 'css'
+      await page.getByRole('button', { name: /Folder/ }).click();
+      const subInput = page.locator('input[placeholder="Folder name..."]');
+      await subInput.waitFor({ timeout: 5000 });
+      await subInput.fill('css');
+      await page.click('button:has-text("Create")');
+      await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+      // Navigate into css folder
+      await page.locator('[data-testid="file-list"] a:has-text("css")').click();
+      await page.waitForTimeout(500);
+
+      // Upload CSS file in subdirectory
+      const fileInput = page.locator('input[type="file"]').first();
+      await fileInput.setInputFiles(cssPath);
+
+      await expect(page.locator('[data-testid="file-list"] a:has-text("style.css")')).toBeVisible({ timeout: 10000 });
+
+      // Go back to parent directory (click on ".." link)
+      await page.locator('[data-testid="file-list"] a:has-text("..")').click();
+      await page.waitForTimeout(500);
+
+      // Upload HTML that references css/style.css
+      await fileInput.setInputFiles(htmlPath);
+
+      // Wait for file list to show index.html
+      const fileList = page.locator('[data-testid="file-list"]');
+      await expect(fileList.locator('a:has-text("index.html")')).toBeVisible({ timeout: 10000 });
+
+      // Click on HTML file in file list
+      await fileList.locator('a:has-text("index.html")').click();
+
+      // Check content loaded
+      const iframe = page.frameLocator('iframe');
+      await expect(iframe.locator('h1')).toContainText('Subdirectory CSS Test', { timeout: 10000 });
+      await expect(iframe.locator('#info')).toBeVisible();
+    } finally {
+      // Cleanup temp files
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   // Note: fetch() API doesn't work in sandboxed iframe without allow-same-origin
