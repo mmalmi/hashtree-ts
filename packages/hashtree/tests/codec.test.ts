@@ -125,15 +125,66 @@ describe('codec', () => {
       expect(isTreeNode(blob)).toBe(false);
     });
 
-    it('should return false for invalid CBOR', () => {
+    it('should return false for invalid MessagePack', () => {
       const invalid = new Uint8Array([255, 255, 255]);
       expect(isTreeNode(invalid)).toBe(false);
     });
 
-    it('should return false for non-tree CBOR objects', () => {
-      // This would be valid CBOR but not a tree node
+    it('should return false for non-tree MessagePack objects', () => {
+      // This would be valid data but not a tree node
       const notTree = new TextEncoder().encode('hello');
       expect(isTreeNode(notTree)).toBe(false);
+    });
+  });
+
+  describe('determinism', () => {
+    it('should produce identical bytes for identical nodes', () => {
+      const hash = new Uint8Array(32).fill(42);
+
+      const node: TreeNode = {
+        type: NodeType.Tree,
+        links: [{ hash, name: 'file.txt', size: 100 }],
+      };
+
+      const encoded1 = encodeTreeNode(node);
+      const encoded2 = encodeTreeNode(node);
+      const encoded3 = encodeTreeNode(node);
+
+      expect(toHex(encoded1)).toBe(toHex(encoded2));
+      expect(toHex(encoded2)).toBe(toHex(encoded3));
+    });
+
+    it('should produce identical bytes regardless of metadata key insertion order', async () => {
+      const hash = new Uint8Array(32).fill(1);
+
+      // Create metadata with keys in different orders
+      // Note: JavaScript object key order is preserved since ES2015,
+      // but we still sort them explicitly for cross-platform determinism
+      const metadata1 = { zebra: 'last', alpha: 'first', middle: 'mid' };
+      const metadata2 = { alpha: 'first', middle: 'mid', zebra: 'last' };
+
+      const node1: TreeNode = {
+        type: NodeType.Tree,
+        links: [{ hash }],
+        metadata: metadata1,
+      };
+
+      const node2: TreeNode = {
+        type: NodeType.Tree,
+        links: [{ hash }],
+        metadata: metadata2,
+      };
+
+      const encoded1 = encodeTreeNode(node1);
+      const encoded2 = encodeTreeNode(node2);
+
+      // Both should produce identical bytes (keys sorted alphabetically)
+      expect(toHex(encoded1)).toBe(toHex(encoded2));
+
+      // And identical hashes
+      const hash1 = await sha256(encoded1);
+      const hash2 = await sha256(encoded2);
+      expect(toHex(hash1)).toBe(toHex(hash2));
     });
   });
 });

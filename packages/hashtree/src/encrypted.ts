@@ -3,7 +3,7 @@
  *
  * Everything uses CHK encryption:
  * - Chunks: key = SHA256(plaintext)
- * - Tree nodes: key = SHA256(cbor_encoded_node)
+ * - Tree nodes: key = SHA256(msgpack_encoded_node)
  *
  * Same content → same ciphertext → deduplication works at all levels.
  * The root key is deterministic: same file = same CID (hash + key).

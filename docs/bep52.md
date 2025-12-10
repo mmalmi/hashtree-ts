@@ -9,9 +9,9 @@ BEP52 defines the merkle tree format used in BitTorrent v2 torrents. Key differe
 | Aspect | Default HashTree | BEP52 |
 |--------|------------------|-------|
 | Block size | 256 KB | 16 KB |
-| Tree structure | Variable fanout (CBOR) | Binary tree |
+| Tree structure | Variable fanout (MessagePack) | Binary tree |
 | Padding | None | Zero-padded to power of 2 |
-| Hash format | SHA256(CBOR(node)) | SHA256(left \|\| right) |
+| Hash format | SHA256(msgpack(node)) | SHA256(left \|\| right) |
 | Piece layers | No | Yes (optional) |
 
 ## Usage

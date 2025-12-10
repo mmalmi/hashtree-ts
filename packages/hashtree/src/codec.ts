@@ -1,19 +1,24 @@
 /**
- * CBOR encoding/decoding for tree nodes
+ * MessagePack encoding/decoding for tree nodes
  *
- * Blobs are stored raw (not CBOR-wrapped) for efficiency.
- * Tree nodes are CBOR-encoded.
+ * Blobs are stored raw (not wrapped) for efficiency.
+ * Tree nodes are MessagePack-encoded.
+ *
+ * **Determinism:** Unlike CBOR, MessagePack doesn't have a built-in canonical encoding.
+ * We ensure deterministic output by:
+ * 1. Using fixed field order in the encoded map
+ * 2. Sorting metadata keys alphabetically before encoding
  */
 
-import { encode, decode } from 'cbor2';
+import { encode, decode } from '@msgpack/msgpack';
 import { TreeNode, NodeType, Link, Hash } from './types.js';
 import { sha256 } from './hash.js';
 
 /**
- * Internal CBOR representation of a link
+ * Internal MessagePack representation of a link
  * Using short keys for compact encoding
  */
-interface LinkCBOR {
+interface LinkMsgpack {
   /** hash */
   h: Uint8Array;
   /** name (optional) */
@@ -27,27 +32,38 @@ interface LinkCBOR {
 }
 
 /**
- * Internal CBOR representation of a tree node
+ * Internal MessagePack representation of a tree node
  */
-interface TreeNodeCBOR {
+interface TreeNodeMsgpack {
   /** type = 1 for tree */
   t: 1;
   /** links */
-  l: LinkCBOR[];
+  l: LinkMsgpack[];
   /** totalSize (optional) */
   s?: number;
-  /** metadata (optional) */
+  /** metadata (optional) - keys must be sorted for determinism */
   m?: Record<string, unknown>;
 }
 
 /**
- * Encode a tree node to CBOR
+ * Sort object keys alphabetically for deterministic encoding
+ */
+function sortObjectKeys<T extends Record<string, unknown>>(obj: T): T {
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(obj).sort()) {
+    sorted[key] = obj[key];
+  }
+  return sorted as T;
+}
+
+/**
+ * Encode a tree node to MessagePack
  */
 export function encodeTreeNode(node: TreeNode): Uint8Array {
-  const cbor: TreeNodeCBOR = {
+  const msgpack: TreeNodeMsgpack = {
     t: 1,
     l: node.links.map(link => {
-      const l: LinkCBOR = { h: link.hash };
+      const l: LinkMsgpack = { h: link.hash };
       if (link.name !== undefined) l.n = link.name;
       if (link.size !== undefined) l.s = link.size;
       if (link.key !== undefined) l.k = link.key;
@@ -55,25 +71,26 @@ export function encodeTreeNode(node: TreeNode): Uint8Array {
       return l;
     }),
   };
-  if (node.totalSize !== undefined) cbor.s = node.totalSize;
-  if (node.metadata !== undefined) cbor.m = node.metadata;
+  if (node.totalSize !== undefined) msgpack.s = node.totalSize;
+  // Sort metadata keys for deterministic encoding
+  if (node.metadata !== undefined) msgpack.m = sortObjectKeys(node.metadata);
 
-  return encode(cbor);
+  return encode(msgpack);
 }
 
 /**
- * Decode CBOR to a tree node
+ * Decode MessagePack to a tree node
  */
 export function decodeTreeNode(data: Uint8Array): TreeNode {
-  const cbor = decode(data) as TreeNodeCBOR;
+  const msgpack = decode(data) as TreeNodeMsgpack;
 
-  if (cbor.t !== 1) {
-    throw new Error(`Invalid node type: ${cbor.t}`);
+  if (msgpack.t !== 1) {
+    throw new Error(`Invalid node type: ${msgpack.t}`);
   }
 
   const node: TreeNode = {
     type: NodeType.Tree,
-    links: cbor.l.map(l => {
+    links: msgpack.l.map(l => {
       const link: Link = { hash: l.h };
       if (l.n !== undefined) link.name = l.n;
       if (l.s !== undefined) link.size = l.s;
@@ -83,8 +100,8 @@ export function decodeTreeNode(data: Uint8Array): TreeNode {
     }),
   };
 
-  if (cbor.s !== undefined) node.totalSize = cbor.s;
-  if (cbor.m !== undefined) node.metadata = cbor.m;
+  if (msgpack.s !== undefined) node.totalSize = msgpack.s;
+  if (msgpack.m !== undefined) node.metadata = msgpack.m;
 
   return node;
 }
@@ -99,8 +116,8 @@ export async function encodeAndHash(node: TreeNode): Promise<{ data: Uint8Array;
 }
 
 /**
- * Check if data is a CBOR-encoded tree node (vs raw blob)
- * Tree nodes start with CBOR map with t=1
+ * Check if data is a MessagePack-encoded tree node (vs raw blob)
+ * Tree nodes decode to an object with t=1
  */
 export function isTreeNode(data: Uint8Array): boolean {
   try {
@@ -121,7 +138,7 @@ export function isTreeNode(data: Uint8Array): boolean {
  */
 export function isDirectoryNode(data: Uint8Array): boolean {
   try {
-    const decoded = decode(data) as TreeNodeCBOR;
+    const decoded = decode(data) as TreeNodeMsgpack;
     if (decoded.t !== 1) return false;
     // Empty directory is still a directory
     if (decoded.l.length === 0) return true;

@@ -1,7 +1,7 @@
 /**
  * HashTree - Simple content-addressed merkle tree
  *
- * Core principle: Every node is stored by SHA256(CBOR(node)) -> CBOR(node)
+ * Core principle: Every node is stored by SHA256(msgpack(node)) -> msgpack(node)
  * This enables pure KV content-addressed storage.
  */
 import type { TreeVisibility } from './visibility.js';
@@ -46,7 +46,7 @@ export enum NodeType {
  * A link to a child node with optional metadata
  */
 export interface Link {
-  /** SHA256 hash of the child node's CBOR encoding */
+  /** SHA256 hash of the child node's MessagePack encoding */
   hash: Hash;
   /** Optional name (for directory entries) */
   name?: string;
@@ -60,7 +60,7 @@ export interface Link {
 
 /**
  * Tree node - contains links to children
- * Stored as: SHA256(CBOR(TreeNode)) -> CBOR(TreeNode)
+ * Stored as: SHA256(msgpack(TreeNode)) -> msgpack(TreeNode)
  *
  * For directories: links have names
  * For chunked files: links are ordered chunks
@@ -80,7 +80,7 @@ export interface TreeNode {
  * Blob node - raw data (leaf)
  * Stored as: SHA256(data) -> data
  *
- * Note: Blobs are stored directly, not CBOR-wrapped
+ * Note: Blobs are stored directly, not MessagePack-wrapped
  */
 export interface BlobNode {
   type: NodeType.Blob;

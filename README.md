@@ -4,7 +4,7 @@ Content-addressed merkle tree storage library for the browser.
 
 ## Design Philosophy
 
-**Simple over clever.** SHA256 for hashing, CBOR for encoding. No multicodec, multibase, or CID versioning. One way to do things.
+**Simple over clever.** SHA256 for hashing, MessagePack for encoding. No multicodec, multibase, or CID versioning. One way to do things.
 
 **Core does one thing.** Merkle trees over any key-value store. That's it. The library doesn't know about networks, peers, or protocols.
 
@@ -15,7 +15,7 @@ Content-addressed merkle tree storage library for the browser.
 ## Features
 
 - SHA256 hashing via Web Crypto API
-- CBOR encoding for tree nodes
+- MessagePack encoding for tree nodes (deterministic, fast)
 - File chunking with configurable size
 - Directory support with nested trees
 - Streaming append for large files
@@ -106,7 +106,7 @@ const builder = new TreeBuilder({
 const { hash, size, leafHashes } = await builder.putFile(data);
 ```
 
-Note: Binary mode computes root hashes only (no intermediate nodes stored). Use CBOR mode (default) for full tree traversal with TreeReader.
+Note: Binary mode computes root hashes only (no intermediate nodes stored). Use default mode for full tree traversal with TreeReader.
 
 ## Development
 

@@ -36,7 +36,8 @@ interface TestVector {
   };
   expected: {
     hash: string;
-    cbor?: string; // hex encoded CBOR for tree nodes
+    msgpack?: string; // hex encoded MessagePack for tree nodes
+    ciphertext?: string; // hex encoded ciphertext for CHK tests
     size?: number;
   };
 }
@@ -97,7 +98,7 @@ describe('Interoperability Test Vectors', () => {
       },
       expected: {
         hash: toHex(hash),
-        cbor: toHex(encoded)
+        msgpack: toHex(encoded)
       }
     });
 
@@ -130,7 +131,7 @@ describe('Interoperability Test Vectors', () => {
       },
       expected: {
         hash: toHex(hash),
-        cbor: toHex(encoded)
+        msgpack: toHex(encoded)
       }
     });
   });
@@ -168,7 +169,7 @@ describe('Interoperability Test Vectors', () => {
       },
       expected: {
         hash: toHex(hash),
-        cbor: toHex(encoded)
+        msgpack: toHex(encoded)
       }
     });
   });
@@ -195,7 +196,7 @@ describe('Interoperability Test Vectors', () => {
       },
       expected: {
         hash: toHex(hash),
-        cbor: toHex(encoded)
+        msgpack: toHex(encoded)
       }
     });
   });
@@ -230,7 +231,7 @@ describe('Interoperability Test Vectors', () => {
       },
       expected: {
         hash: toHex(hash),
-        cbor: toHex(encoded)
+        msgpack: toHex(encoded)
       }
     });
   });
@@ -292,7 +293,7 @@ describe('Interoperability Test Vectors', () => {
         },
         expected: {
           hash: toHex(key), // Key derived from SHA256 of plaintext
-          cbor: toHex(ciphertext) // AES-GCM encrypted ciphertext
+          ciphertext: toHex(ciphertext) // AES-GCM encrypted ciphertext
         }
       });
 

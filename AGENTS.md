@@ -15,7 +15,7 @@ npm run test:e2e # E2E tests
 - `e2e/` - Playwright tests
 
 ## Design
-- **Simple**: SHA256 + CBOR, no multicodec/CID versioning
+- **Simple**: SHA256 + MessagePack, no multicodec/CID versioning
 - **Focused**: Merkle trees over key-value stores, nothing else
 - **Composable**: WebRTC/Nostr/Blossom are separate layers
 

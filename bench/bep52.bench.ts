@@ -3,7 +3,7 @@
  *
  * Tests all combinations of:
  * - Chunk size: 256KB vs 16KB
- * - Merkle algorithm: CBOR vs Binary
+ * - Merkle algorithm: Default (MessagePack tree nodes) vs Binary
  * - Hashing: Sequential vs Parallel
  * - Store: MemoryStore vs MockIDB (batched vs unbatched)
  *
@@ -159,7 +159,7 @@ async function benchmarkWriteRead(
     blockCount = result.leafHashes?.length ?? 0;
 
     // Read
-    if (config.merkleAlgorithm === 'cbor') {
+    if (config.merkleAlgorithm === 'default') {
       const reader = new TreeReader({ store });
       const readStart = performance.now();
       const readData = await reader.readFile(result.hash);
@@ -219,19 +219,19 @@ async function main() {
   console.log();
   console.log('Configurations:');
   console.log('  Chunk sizes: 256KB (default), 16KB (BEP52)');
-  console.log('  Algorithms:  CBOR (tree nodes), Binary (hash pairs)');
+  console.log('  Algorithms:  Default (MessagePack tree nodes), Binary (hash pairs)');
   console.log('  Hashing:     Sequential (seq), Parallel (par)');
   console.log();
 
   const configs: { name: string; config: BenchConfig }[] = [
     // 256KB configurations
-    { name: '256KB CBOR seq', config: { chunkSize: DEFAULT_CHUNK_SIZE, merkleAlgorithm: 'cbor', parallel: false } },
-    { name: '256KB CBOR par', config: { chunkSize: DEFAULT_CHUNK_SIZE, merkleAlgorithm: 'cbor', parallel: true } },
+    { name: '256KB Default seq', config: { chunkSize: DEFAULT_CHUNK_SIZE, merkleAlgorithm: 'default', parallel: false } },
+    { name: '256KB Default par', config: { chunkSize: DEFAULT_CHUNK_SIZE, merkleAlgorithm: 'default', parallel: true } },
     { name: '256KB Binary seq', config: { chunkSize: DEFAULT_CHUNK_SIZE, merkleAlgorithm: 'binary', parallel: false } },
     { name: '256KB Binary par', config: { chunkSize: DEFAULT_CHUNK_SIZE, merkleAlgorithm: 'binary', parallel: true } },
     // 16KB configurations
-    { name: '16KB CBOR seq', config: { chunkSize: BEP52_CHUNK_SIZE, merkleAlgorithm: 'cbor', parallel: false } },
-    { name: '16KB CBOR par', config: { chunkSize: BEP52_CHUNK_SIZE, merkleAlgorithm: 'cbor', parallel: true } },
+    { name: '16KB Default seq', config: { chunkSize: BEP52_CHUNK_SIZE, merkleAlgorithm: 'default', parallel: false } },
+    { name: '16KB Default par', config: { chunkSize: BEP52_CHUNK_SIZE, merkleAlgorithm: 'default', parallel: true } },
     { name: '16KB Binary seq', config: { chunkSize: BEP52_CHUNK_SIZE, merkleAlgorithm: 'binary', parallel: false } },
     { name: '16KB Binary par', config: { chunkSize: BEP52_CHUNK_SIZE, merkleAlgorithm: 'binary', parallel: true } },
   ];
@@ -292,7 +292,7 @@ async function main() {
     const unbatchedBuilder = new TreeBuilder({
       store: unbatchedStore,
       chunkSize,
-      merkleAlgorithm: 'cbor',
+      merkleAlgorithm: 'default',
       parallel: true,
     });
     const unbatchedStart = performance.now();
@@ -305,7 +305,7 @@ async function main() {
     const batchedBuilder = new TreeBuilder({
       store: batchedStore,
       chunkSize,
-      merkleAlgorithm: 'cbor',
+      merkleAlgorithm: 'default',
       parallel: true,
     });
     const batchedStart = performance.now();
@@ -324,7 +324,7 @@ async function main() {
   console.log('='.repeat(100));
   console.log();
   console.log('Notes:');
-  console.log('- CBOR: Variable fanout tree nodes, supports TreeReader for traversal');
+  console.log('- Default: Variable fanout MessagePack tree nodes, supports TreeReader for traversal');
   console.log('- Binary: BEP52-style power-of-2 padded merkle tree, no intermediate nodes stored');
   console.log('- Parallel hashing fires all sha256 calls at once via Promise.all');
   console.log('- 16KB chunks = 16x more blocks than 256KB');

@@ -28,15 +28,15 @@ export const DEFAULT_MAX_LINKS = 174;
 /**
  * Merkle tree algorithm for file chunking
  */
-export type MerkleAlgorithm = 'cbor' | 'binary';
+export type MerkleAlgorithm = 'default' | 'binary';
 
 export interface BuilderConfig {
   store: Store;
   /** Chunk size for splitting blobs */
   chunkSize?: number;
-  /** Max links per tree node (only used for cbor algorithm) */
+  /** Max links per tree node (only used for default algorithm) */
   maxLinks?: number;
-  /** Merkle algorithm: 'cbor' (default) or 'binary' (BEP52 style) */
+  /** Merkle algorithm: 'default' (variable fanout) or 'binary' (BEP52 style) */
   merkleAlgorithm?: MerkleAlgorithm;
   /** Hash chunks in parallel (default: false) */
   parallel?: boolean;
@@ -67,7 +67,7 @@ export class TreeBuilder {
     this.store = config.store;
     this.chunkSize = config.chunkSize ?? DEFAULT_CHUNK_SIZE;
     this.maxLinks = config.maxLinks ?? DEFAULT_MAX_LINKS;
-    this.merkleAlgorithm = config.merkleAlgorithm ?? 'cbor';
+    this.merkleAlgorithm = config.merkleAlgorithm ?? 'default';
     this.parallel = config.parallel ?? true;
   }
 
@@ -120,7 +120,7 @@ export class TreeBuilder {
       return { hash: rootHash, size, leafHashes: chunkHashes };
     }
 
-    // CBOR algorithm (default)
+    // Default algorithm (variable fanout tree)
     const chunks: Link[] = chunkHashes.map((hash, i) => ({
       hash,
       size: i < chunkHashes.length - 1 ? this.chunkSize : data.length - i * this.chunkSize,

@@ -49,7 +49,7 @@ export {
   type EncryptionKey,
 } from './crypto.js';
 
-// CBOR codec
+// MessagePack codec
 export {
   encodeTreeNode,
   decodeTreeNode,
