@@ -656,8 +656,8 @@
   });
 </script>
 
-<div class="flex-1 flex flex-col min-h-0" class:bg-black={!isAudio} class:bg-surface-0={isAudio}>
-  <div class="relative flex-1 flex flex-col" class:items-center={isAudio} class:justify-center={isAudio} class:p-4={isAudio}>
+<div class="flex-1 flex flex-col min-h-0 overflow-hidden" class:bg-black={!isAudio} class:bg-surface-0={isAudio}>
+  <div class="relative flex-1 flex flex-col items-center justify-center min-h-0" class:p-4={isAudio}>
     <!-- Loading overlay -->
     {#if loading}
       <div class="absolute inset-0 flex items-center justify-center text-white z-20" class:bg-black={!isAudio} class:bg-surface-0={isAudio} class:text-text-1={isAudio}>
@@ -722,7 +722,7 @@
         bind:this={mediaRef}
         controls
         autoplay
-        class="w-full h-full object-contain"
+        class="max-w-full max-h-full object-contain"
         class:invisible={loading || error}
         preload="metadata"
         ontimeupdate={handleTimeUpdate}
