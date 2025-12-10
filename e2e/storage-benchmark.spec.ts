@@ -21,7 +21,8 @@ test.describe('Storage Benchmark', () => {
     });
   });
 
-  test('IndexedDB vs OPFS write/read performance', async ({ page }) => {
+  // Skip: IndexedDBStore was replaced with DexieStore in hashtree-web
+  test.skip('IndexedDB vs OPFS write/read performance', async ({ page }) => {
     const result = await page.evaluate(async () => {
       // @ts-ignore
       const { IndexedDBStore, OpfsStore, sha256 } = window.__hashtree;

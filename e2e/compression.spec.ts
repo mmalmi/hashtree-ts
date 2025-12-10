@@ -213,8 +213,13 @@ test.describe('Compression features', () => {
     // Wait for modal to close
     await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
 
-    // Click on the subfolder to navigate into it (it appears in file list)
-    await page.getByTestId('file-list').locator('a:has-text("existing-tree")').last().click();
+    // Wait for the subfolder to appear in sidebar navigation
+    // It shows as a sibling link in the breadcrumb after its parent
+    const subfolderLink = page.locator('a[href*="existing-tree/existing-tree"]');
+    await expect(subfolderLink).toBeVisible({ timeout: 5000 });
+
+    // Click on the subfolder to navigate into it
+    await subfolderLink.click();
     // URL should now have existing-tree/existing-tree
     await expect(page).toHaveURL(/existing-tree\/existing-tree/, { timeout: 10000 });
 

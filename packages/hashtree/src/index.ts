@@ -87,6 +87,7 @@ export { BEP52_CHUNK_SIZE } from './builder.js';
 // WebRTC P2P store
 export {
   WebRTCStore,
+  DEFAULT_RELAYS,
   Peer,
   WebSocketPeer,
   PeerId,

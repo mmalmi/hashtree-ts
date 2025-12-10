@@ -19,9 +19,11 @@ import NDK, {
 import NDKCacheAdapterDexie from '@nostr-dev-kit/ndk-cache-dexie';
 import { initWebRTC, stopWebRTC } from './store';
 import { startBackgroundSync, stopBackgroundSync } from './services/backgroundSync';
-import type { EventSigner, CID } from 'hashtree';
-import { toHex } from 'hashtree';
 import {
+  toHex,
+  DEFAULT_RELAYS,
+  type EventSigner,
+  type CID,
   type TreeVisibility,
   visibilityHex,
 } from 'hashtree';
@@ -34,15 +36,6 @@ import {
   saveActiveAccountToStorage,
 } from './accounts';
 import { parseRoute } from './utils/route';
-
-// Default relays
-const DEFAULT_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://nos.lol',
-  'wss://relay.nostr.band',
-  'wss://temp.iris.to',
-  'wss://relay.snort.social',
-];
 
 // Storage keys
 const STORAGE_KEY_NSEC = 'hashtree:nsec';

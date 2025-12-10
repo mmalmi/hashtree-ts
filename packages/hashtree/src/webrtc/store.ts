@@ -35,10 +35,13 @@ import {
 import { Peer } from './peer.js';
 import { WebSocketPeer } from './wsPeer.js';
 
-const DEFAULT_RELAYS = [
+export const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
   'wss://relay.primal.net',
   'wss://nos.lol',
+  'wss://relay.nostr.band',
+  'wss://temp.iris.to',
+  'wss://relay.snort.social',
 ];
 
 // Default WebSocket fallback server for data relay when WebRTC fails
