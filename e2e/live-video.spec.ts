@@ -313,12 +313,12 @@ test.describe('Video Viewer', () => {
       return video && video.readyState >= 1;
     }, undefined, { timeout: 15000 });
 
-    // Wait for the ?live=1 param to be removed (2s delay + buffer)
+    // Wait for the ?live=1 param to be removed
     // The file is not in recentlyChangedFiles (uploaded via setInputFiles, not our saveFile)
-    // so it should detect as "no longer live" and remove the param
+    // Stream timeout is 10 seconds + check interval of 2 seconds, so we need ~15s timeout
     await page.waitForFunction(() => {
       return !window.location.hash.includes('live=1');
-    }, undefined, { timeout: 10000 });
+    }, undefined, { timeout: 20000 });
 
     // Verify ?live=1 was removed from URL
     expect(page.url()).not.toContain('live=1');

@@ -49,6 +49,14 @@
   // Abort controller for cancelling streaming on unmount
   let abortController: AbortController | null = null;
 
+  // Polling interval for live streams
+  let livePollingInterval: ReturnType<typeof setInterval> | null = null;
+  const LIVE_POLL_INTERVAL = 2000; // Poll every 2 seconds for new data
+
+  // Track last time we received new data (for detecting stream end)
+  let lastDataReceivedTime = $state(0);
+  const STREAM_TIMEOUT = 10000; // Consider stream ended if no new data for 10 seconds
+
   // Check if live=1 is in URL hash params
   let hash = $derived($currentHash);
   let isLiveFromUrl = $derived.by(() => {
@@ -80,15 +88,55 @@
     isLive = false;
   }
 
-  // Watch for stream becoming non-live
-  let liveParamRemovalScheduled = false;
+  // Watch for stream becoming non-live (no new data for STREAM_TIMEOUT)
+  let streamEndCheckInterval: ReturnType<typeof setInterval> | null = null;
+
   $effect(() => {
-    if (isLiveFromUrl && !isRecentlyChanged && !loading && !liveParamRemovalScheduled) {
-      liveParamRemovalScheduled = true;
-      setTimeout(() => {
-        removeLiveParam();
-      }, 500);
+    // Only start checking for stream end when we're in live mode and done loading
+    if (shouldTreatAsLive && !loading && lastDataReceivedTime > 0) {
+      // Clear any existing interval
+      if (streamEndCheckInterval) {
+        clearInterval(streamEndCheckInterval);
+      }
+
+      // Periodically check if stream has timed out
+      streamEndCheckInterval = setInterval(() => {
+        const timeSinceLastData = Date.now() - lastDataReceivedTime;
+        if (timeSinceLastData > STREAM_TIMEOUT) {
+          // Stream has ended - no new data for STREAM_TIMEOUT
+          if (streamEndCheckInterval) {
+            clearInterval(streamEndCheckInterval);
+            streamEndCheckInterval = null;
+          }
+
+          // Remove live param if it was in URL
+          if (isLiveFromUrl) {
+            removeLiveParam();
+          }
+
+          // Stop polling
+          stopLivePolling();
+
+          // Mark as fully loaded and close the MediaSource
+          isFullyLoaded = true;
+          if (mediaSource && mediaSource.readyState === 'open') {
+            try {
+              mediaSource.endOfStream();
+            } catch {
+              // Ignore errors
+            }
+          }
+        }
+      }, 2000); // Check every 2 seconds
     }
+
+    // Cleanup on unmount or when leaving live mode
+    return () => {
+      if (streamEndCheckInterval) {
+        clearInterval(streamEndCheckInterval);
+        streamEndCheckInterval = null;
+      }
+    };
   });
 
   // Determine MIME type from extension
@@ -325,8 +373,10 @@
       }
 
       loading = false;
-      isFullyLoaded = true;
+      // For live streams, don't mark as fully loaded - we'll poll for more data
+      isFullyLoaded = !shouldTreatAsLive;
       lastCidHash = toHex(cid.hash);
+      lastDataReceivedTime = Date.now();
 
       if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
         duration = mediaRef.duration;
@@ -339,6 +389,11 @@
 
       if (!shouldTreatAsLive && mediaSource.readyState === 'open') {
         mediaSource.endOfStream();
+      }
+
+      // Start polling for live streams
+      if (shouldTreatAsLive) {
+        startLivePolling();
       }
     } catch (e) {
       console.error('MSE error:', e);
@@ -366,6 +421,7 @@
 
       lastCidHash = toHex(cid.hash);
       isFullyLoaded = true;
+      lastDataReceivedTime = Date.now();
 
       const mimeType = getMimeType(fileName).split(';')[0];
       const blob = new Blob(chunks, { type: mimeType });
@@ -423,6 +479,77 @@
     }
   }
 
+  // Track if we're currently polling (to avoid overlapping polls)
+  let isPolling = false;
+
+  // Poll for new data at the current CID (for live streams)
+  // This handles cases where:
+  // 1. The CID prop updated but we need to fetch data from peers
+  // 2. The stream is growing but CID updates haven't arrived yet
+  async function pollForNewData() {
+    // Avoid overlapping polls
+    if (isPolling) return;
+
+    if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
+      return;
+    }
+
+    // Skip if we're not in live mode or still loading
+    if (!shouldTreatAsLive || loading) {
+      return;
+    }
+
+    isPolling = true;
+
+    try {
+      const tree = getTree();
+      const currentCidHash = toHex(cid.hash);
+
+      // Try to fetch more data from the current (or updated) CID
+      const newData = await tree.readFileRange(cid, bytesLoaded);
+
+      if (newData && newData.length > 0) {
+        await appendToSourceBuffer(newData);
+        bytesLoaded += newData.length;
+        lastDataReceivedTime = Date.now();
+
+        // Update duration
+        if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
+          duration = mediaRef.duration;
+        }
+
+        // Update last CID hash to track that we've processed this version
+        lastCidHash = currentCidHash;
+      }
+    } catch (e) {
+      // Silently ignore errors during polling - data might not be available yet
+      // This is expected when the viewer hasn't synced the latest chunks
+    } finally {
+      isPolling = false;
+    }
+  }
+
+  // Start polling for new data in live mode
+  function startLivePolling() {
+    // Clear any existing interval
+    if (livePollingInterval) {
+      clearInterval(livePollingInterval);
+    }
+
+    // Start polling
+    livePollingInterval = setInterval(() => {
+      pollForNewData();
+    }, LIVE_POLL_INTERVAL);
+  }
+
+  // Stop polling
+  function stopLivePolling() {
+    if (livePollingInterval) {
+      clearInterval(livePollingInterval);
+      livePollingInterval = null;
+    }
+  }
+
   // Watch for CID changes in live mode
   // Access cid.hash directly to ensure reactivity
   let currentCidHashReactive = $derived(cid?.hash ? toHex(cid.hash) : null);
@@ -457,6 +584,15 @@
     paused = true;
   }
 
+  // Handle video waiting (stalled due to buffering)
+  // For live streams, try to fetch more data immediately
+  function handleWaiting() {
+    if (shouldTreatAsLive && !isPolling) {
+      // Immediately poll for new data when video stalls
+      pollForNewData();
+    }
+  }
+
   // Toggle play/pause
   function togglePlay() {
     if (!mediaRef) return;
@@ -485,6 +621,9 @@
   // Cleanup on destroy
   $effect(() => {
     return () => {
+      // Stop live polling
+      stopLivePolling();
+
       // Abort any ongoing streaming
       if (abortController) {
         abortController.abort();
@@ -571,6 +710,7 @@
           ondurationchange={handleDurationChange}
           onplay={handlePlay}
           onpause={handlePause}
+          onwaiting={handleWaiting}
         >
           Your browser does not support the audio tag.
         </audio>
@@ -589,6 +729,7 @@
         ondurationchange={handleDurationChange}
         onplay={handlePlay}
         onpause={handlePause}
+        onwaiting={handleWaiting}
       >
         Your browser does not support the video tag.
       </video>

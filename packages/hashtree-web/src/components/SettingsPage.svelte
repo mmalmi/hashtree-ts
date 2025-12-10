@@ -4,6 +4,7 @@
    * Port of React SettingsPanel
    */
   import { onMount } from 'svelte';
+  import { nip19 } from 'nostr-tools';
   import { nostrStore, type RelayStatus } from '../nostr';
   import { useAppStore, formatBytes, updateStorageStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
@@ -150,7 +151,10 @@
       {:else}
         <div class="bg-surface-2 rounded divide-y divide-surface-3">
           {#each peerList as peer}
-            <div class="flex items-center gap-2 p-3 text-sm">
+            <a
+              href="#/{nip19.npubEncode(peer.pubkey)}"
+              class="flex items-center gap-2 p-3 text-sm hover:bg-surface-3 transition-colors"
+            >
               <span
                 class="w-2 h-2 rounded-full shrink-0"
                 style="background: {stateColor(peer.state)}"
@@ -165,7 +169,7 @@
               <span class="text-xs text-muted font-mono shrink-0">
                 {getPeerUuid(peer.peerId).slice(0, 8)}
               </span>
-            </div>
+            </a>
           {/each}
         </div>
       {/if}

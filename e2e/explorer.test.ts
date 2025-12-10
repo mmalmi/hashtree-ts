@@ -602,4 +602,96 @@ test.describe('Hashtree Explorer', () => {
     // Content should be visible
     await expect(page.locator('pre')).toHaveText('Hello Direct Nav', { timeout: 5000 });
   });
+
+  test('should display file content on mobile when directly navigating to file URL', async ({ page }) => {
+    // Create tree and create a text file via File button
+    await createAndEnterTree(page, 'mobile-file-test');
+
+    // Create text file using File button
+    await page.getByRole('button', { name: /File/ }).first().click();
+    await page.locator('input[placeholder="File name..."]').fill('mobile-readme.txt');
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    // File opens in edit mode - add content
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await page.locator('textarea').fill('Hello Mobile View');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForTimeout(300);
+
+    // Exit edit mode
+    await page.getByRole('button', { name: 'Done' }).click();
+    await page.waitForTimeout(500);
+
+    // Get current URL (should be the file URL)
+    const fileUrl = page.url();
+    expect(fileUrl).toContain('mobile-readme.txt');
+
+    // Navigate away to tree list
+    await goToTreeList(page);
+    await page.waitForTimeout(500);
+
+    // Set mobile viewport BEFORE navigating
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.waitForTimeout(100);
+
+    // Navigate directly back to the file URL
+    await page.goto(fileUrl);
+    await page.waitForTimeout(500);
+
+    // On mobile, the file viewer should show (not the file browser)
+    // The file should be displayed in preview (shows filename in viewer header)
+    await expect(page.getByTestId('viewer-header')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId('viewer-header').getByText('mobile-readme.txt')).toBeVisible({ timeout: 5000 });
+
+    // Content should be visible
+    await expect(page.locator('pre')).toHaveText('Hello Mobile View', { timeout: 5000 });
+  });
+
+  test('should display Yjs document editor on mobile when navigating to document folder', async ({ page }) => {
+    // Navigate to public folder first (has New Document button)
+    const { navigateToPublicFolder } = await import('./test-utils.js');
+    await navigateToPublicFolder(page);
+
+    // Create a Yjs document using New Document button
+    await page.getByRole('button', { name: 'New Document' }).click();
+    await page.waitForTimeout(500);
+    await page.locator('input[placeholder="Document name..."]').fill('mobile-doc');
+    await page.getByRole('button', { name: 'Create' }).click();
+    await page.waitForTimeout(1500);
+
+    // Wait for the document folder to appear
+    const docFolder = page.locator('a:has-text("mobile-doc")').first();
+    await expect(docFolder).toBeVisible({ timeout: 5000 });
+
+    // Get current URL to navigate back
+    const currentUrl = page.url();
+
+    // Click to navigate into the document folder
+    await docFolder.click();
+    await page.waitForTimeout(2000);
+
+    // Verify we're viewing the document (Tiptap editor should be visible)
+    const editor = page.locator('.ProseMirror');
+    await expect(editor).toBeVisible({ timeout: 10000 });
+
+    // Get the document URL
+    const docUrl = page.url();
+    expect(docUrl).toContain('mobile-doc');
+
+    // Navigate away
+    await goToTreeList(page);
+    await page.waitForTimeout(500);
+
+    // Set mobile viewport BEFORE navigating back
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.waitForTimeout(100);
+
+    // Navigate directly back to the document URL
+    await page.goto(docUrl);
+    await page.waitForTimeout(1000);
+
+    // On mobile, the document editor should show (not the file browser)
+    // The Tiptap ProseMirror editor should be visible
+    await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 10000 });
+  });
 });

@@ -34,3 +34,9 @@ npm run test:e2e # E2E tests
 - Playwright test in headless mode
 - App autoconnects to other instances p2p over nostr relays and webrtc which may interfere with some tests. One option is to make it connect only to followed users in webrtc transport settings, or test in offline mode.
 - TDD is a good idea: write failing test first, then write code that makes it pass
+
+### Test Performance
+- **NEVER use `waitForTimeout()` for arbitrary delays** - always wait for specific conditions
+- Use `expect(locator).toBeVisible()`, `toContainText()`, or `page.waitForURL()` instead
+- WebRTC/Nostr sync between users requires them to **follow each other** for reliable connections
+- For collaborative tests: users follow each other, then only one user needs to set editors

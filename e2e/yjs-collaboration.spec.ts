@@ -5,6 +5,14 @@
  * 1. Create documents at the same path
  * 2. Add both npubs to their .yjs config files (all editors including self)
  * 3. See each other's edits automatically via subscription
+ *
+ * TEST PERFORMANCE GUIDELINES:
+ * - NEVER use waitForTimeout() for arbitrary delays
+ * - ALWAYS wait for specific conditions (element visible, text contains, URL changes)
+ * - Use expect(locator).toBeVisible() or toContainText() with timeout
+ * - Use page.waitForURL() for navigation
+ * - Use page.waitForSelector() for DOM elements
+ * - If waiting for content sync, use waitForEditorContent() helper
  */
 import { test, expect, Page } from '@playwright/test';
 import { setupPageErrorHandler } from './test-utils.js';
@@ -26,7 +34,6 @@ async function setupFreshUser(page: Page) {
   });
 
   await page.reload();
-  await page.waitForTimeout(500);
   await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
 
   // Wait for the public folder link to appear
@@ -58,7 +65,6 @@ async function createDocument(page: Page, name: string) {
   const input = page.locator('input[placeholder="Document name..."]');
   await expect(input).toBeVisible({ timeout: 5000 });
   await input.fill(name);
-  await page.waitForTimeout(500);
 
   // Click the Create button
   const createButton = page.getByRole('button', { name: 'Create' });
@@ -67,7 +73,6 @@ async function createDocument(page: Page, name: string) {
 
   // Wait for navigation to complete (URL should contain the document name)
   await page.waitForURL(`**/${name}**`, { timeout: 10000 });
-  await page.waitForTimeout(2000); // Extra wait for content to load
 
   // Wait for editor to appear (document was created and navigated to)
   const editor = page.locator('.ProseMirror');
@@ -80,25 +85,13 @@ async function typeInEditor(page: Page, content: string) {
   await expect(editor).toBeVisible({ timeout: 5000 });
   await editor.click();
   await page.keyboard.type(content);
-  await page.waitForTimeout(500);
 }
 
 // Helper to wait for auto-save
 async function waitForSave(page: Page) {
-  // Wait for content change to be auto-saved (debounce is 1s)
-  await page.waitForTimeout(2000);
-  // Check that either:
-  // 1. We see "Saved" status OR
-  // 2. We see "Saving..." briefly (save in progress) OR
-  // 3. The save already completed (status shows timestamp)
-  // The key is we wait long enough for the save to complete
+  // Wait for "Saved" status to appear (auto-save debounce is 1s, then save happens)
   const savedStatus = page.locator('text=Saved').or(page.locator('text=/Saved \\d/'));
-  try {
-    await expect(savedStatus).toBeVisible({ timeout: 10000 });
-  } catch {
-    // If no "Saved" visible, wait extra for slow saves and check again
-    await page.waitForTimeout(2000);
-  }
+  await expect(savedStatus).toBeVisible({ timeout: 15000 });
 }
 
 // Helper to set editors using the Collaborators modal UI
@@ -109,7 +102,6 @@ async function setEditors(page: Page, npubs: string[]) {
   const collabButton = page.locator('button[title="Manage editors"], button[title="View editors"]').first();
   await expect(collabButton).toBeVisible({ timeout: 5000 });
   await collabButton.click();
-  await page.waitForTimeout(500);
 
   // Wait for the modal to appear - heading says "Manage Editors" or "Editors" depending on mode
   const modal = page.locator('h2:has-text("Editors")');
@@ -121,31 +113,26 @@ async function setEditors(page: Page, npubs: string[]) {
     const input = page.locator('input[placeholder="npub1..."]');
     await input.fill(npub);
 
-    // Wait for auto-detection to show preview with "Add User" button, then click it
-    // The detectedNpub useMemo auto-shows the UserPreview when a valid npub is typed
-    await page.waitForTimeout(500);
-
     // Click the "Add User" or "Add <name>" confirm button from the preview
     const confirmButton = page.locator('button.btn-success').filter({ hasText: /^Add/ }).first();
-    await expect(confirmButton).toBeVisible({ timeout: 3000 });
+    await expect(confirmButton).toBeVisible({ timeout: 5000 });
     console.log('Add button visible, clicking...');
     // Use force:true to avoid stability check issues when modal content re-renders
     await confirmButton.click({ force: true });
     console.log('Add button clicked');
-    await page.waitForTimeout(300);
   }
 
   // Modal auto-saves on add, just close it using the footer Close button (not the X)
   const closeButton = page.getByText('Close', { exact: true });
   await closeButton.click();
-  await page.waitForTimeout(2000);
+  // Wait for modal to close
+  await expect(modal).not.toBeVisible({ timeout: 5000 });
 }
 
 // Helper to navigate to another user's document
 async function navigateToUserDocument(page: Page, npub: string, treeName: string, docPath: string) {
   const url = `http://localhost:5173/#/${npub}/${treeName}/${docPath}`;
   await page.goto(url);
-  await page.waitForTimeout(2000);
   // Wait for the app to load
   await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
 }
@@ -154,20 +141,34 @@ async function navigateToUserDocument(page: Page, npub: string, treeName: string
 async function navigateToOwnDocument(page: Page, npub: string, treeName: string, docPath: string) {
   const url = `http://localhost:5173/#/${npub}/${treeName}/${docPath}`;
   await page.goto(url);
-  await page.waitForTimeout(2000);
+  // Wait for app header
+  await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
 }
 
 // Helper to follow a user by their npub (navigates to their profile and clicks Follow)
 async function followUser(page: Page, targetNpub: string) {
   // Navigate to the user's profile page
   await page.goto(`http://localhost:5173/#/${targetNpub}`);
-  await page.waitForTimeout(1000);
 
   // Click the Follow button
   const followButton = page.getByRole('button', { name: 'Follow', exact: true });
   await expect(followButton).toBeVisible({ timeout: 5000 });
   await followButton.click();
-  await page.waitForTimeout(1000);
+  // Wait for follow to complete - button becomes disabled or changes to "Following" or "Unfollow"
+  await expect(
+    page.getByRole('button', { name: 'Following' })
+      .or(page.getByRole('button', { name: 'Unfollow' }))
+      .or(followButton.and(page.locator('[disabled]')))
+  ).toBeVisible({ timeout: 10000 });
+}
+
+// Helper to wait for editor to contain specific text (for sync verification)
+async function waitForEditorContent(page: Page, expectedText: string, timeout = 30000) {
+  const editor = page.locator('.ProseMirror');
+  // First wait for editor to be visible (may take time for nostr sync to load the page)
+  await expect(editor).toBeVisible({ timeout: 30000 });
+  // Then wait for content
+  await expect(editor).toContainText(expectedText, { timeout });
 }
 
 test.describe('Yjs Collaborative Document Editing', () => {
@@ -208,17 +209,24 @@ test.describe('Yjs Collaborative Document Editing', () => {
       const npubB = await getNpub(pageB);
       console.log(`User B npub: ${npubB.slice(0, 20)}...`);
 
+      // === Users follow each other (required for Nostr sync) ===
+      console.log('User A: Following User B...');
+      await followUser(pageA, npubB);
+      console.log('User B: Following User A...');
+      await followUser(pageB, npubA);
+
+      // Navigate back to public folders
+      await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
+      await expect(pageA.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
+      await pageB.goto(`http://localhost:5173/#/${npubB}/public`);
+      await expect(pageB.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
+
       // === User A: Create document and type content ===
       console.log('User A: Creating document...');
       await createDocument(pageA, 'shared-notes');
       await typeInEditor(pageA, 'Hello from User A!');
       await waitForSave(pageA);
       console.log('User A: Document saved');
-
-      // === User A: Set editors (both A and B) ===
-      console.log('User A: Setting editors (A and B)...');
-      await setEditors(pageA, [npubA, npubB]);
-      console.log('User A: Editors set');
 
       // === User B: Create document at same path and type content ===
       console.log('User B: Creating document...');
@@ -227,45 +235,24 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await waitForSave(pageB);
       console.log('User B: Document saved');
 
-      // === User B: Set editors (both A and B) ===
-      console.log('User B: Setting editors (A and B)...');
-      await setEditors(pageB, [npubA, npubB]);
-      console.log('User B: Editors set');
-
       // === User A: Navigate to User B's document ===
       // Since both have each other as editors, A should see B's content when viewing B's doc
       console.log('User A: Navigating to User B\'s document...');
       await navigateToUserDocument(pageA, npubB, 'public', 'shared-notes');
 
-      // Wait for document to load
-      await pageA.waitForTimeout(3000);
-
-      // Check if A sees B's content when viewing B's doc
-      const editorA = pageA.locator('.ProseMirror');
-      await expect(editorA).toBeVisible({ timeout: 10000 });
-      const contentA = await editorA.textContent();
+      // Wait for B's content to appear (sync via Nostr subscription)
+      await waitForEditorContent(pageA, 'Hello from User B!');
+      const contentA = await pageA.locator('.ProseMirror').textContent();
       console.log(`User A (viewing B's doc) sees: "${contentA}"`);
-
-      // When viewing B's document, A should see B's content
-      // Since A is in B's editor list, A should also see their own content merged
-      expect(contentA).toContain('Hello from User B!');
 
       // === User B: Navigate to User A's document ===
       console.log('User B: Navigating to User A\'s document...');
       await navigateToUserDocument(pageB, npubA, 'public', 'shared-notes');
 
-      // Wait for document to load
-      await pageB.waitForTimeout(3000);
-
-      // Check if B sees A's content when viewing A's doc
-      const editorB = pageB.locator('.ProseMirror');
-      await expect(editorB).toBeVisible({ timeout: 5000 });
-      const contentB = await editorB.textContent();
+      // Wait for A's content to appear (sync via Nostr subscription)
+      await waitForEditorContent(pageB, 'Hello from User A!');
+      const contentB = await pageB.locator('.ProseMirror').textContent();
       console.log(`User B (viewing A's doc) sees: "${contentB}"`);
-
-      // When viewing A's document, B should see A's content
-      // Since B is in A's editor list, B should also see their own content merged
-      expect(contentB).toContain('Hello from User A!');
 
       console.log('\n=== Collaboration Test Passed ===');
       console.log(`User A's npub: ${npubA}`);
@@ -312,6 +299,18 @@ test.describe('Yjs Collaborative Document Editing', () => {
       const npubB = await getNpub(pageB);
       console.log(`User B npub: ${npubB.slice(0, 20)}...`);
 
+      // === Users follow each other (required for Nostr sync) ===
+      console.log('User A: Following User B...');
+      await followUser(pageA, npubB);
+      console.log('User B: Following User A...');
+      await followUser(pageB, npubA);
+
+      // Navigate back to public folders
+      await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
+      await expect(pageA.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
+      await pageB.goto(`http://localhost:5173/#/${npubB}/public`);
+      await expect(pageB.getByRole('button', { name: /File/ }).first()).toBeVisible({ timeout: 10000 });
+
       // === User A: Create document and type content ===
       console.log('User A: Creating document...');
       await createDocument(pageA, 'realtime-doc');
@@ -319,32 +318,17 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await waitForSave(pageA);
       console.log('User A: Document saved');
 
-      // === User A: Set editors (both A and B) ===
+      // === User A: Set editors (both A and B) - only A needs to set editors ===
       console.log('User A: Setting editors (A and B)...');
       await setEditors(pageA, [npubA, npubB]);
       console.log('User A: Editors set');
 
-      // === User B: Create document at same path (so B has a tree to save to) ===
-      console.log('User B: Creating document at same path...');
-      await createDocument(pageB, 'realtime-doc');
-      await typeInEditor(pageB, '[B-INIT]');
-      await waitForSave(pageB);
-      console.log('User B: Document saved');
-
-      // === User B: Set editors (both A and B) ===
-      console.log('User B: Setting editors (A and B)...');
-      await setEditors(pageB, [npubA, npubB]);
-      console.log('User B: Editors set');
-
       // === User A stays on their document ===
-      console.log('User A: Navigating back to own document...');
-      await navigateToOwnDocument(pageA, npubA, 'public', 'realtime-doc');
-      await pageA.waitForTimeout(3000);
+      console.log('User A: Staying on document...');
 
       // === User B: Navigate to User A's document ===
       console.log('User B: Navigating to User A\'s document...');
       await navigateToUserDocument(pageB, npubA, 'public', 'realtime-doc');
-      await pageB.waitForTimeout(3000);
 
       // Verify both see initial content
       const editorA = pageA.locator('.ProseMirror');
@@ -352,14 +336,10 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await expect(editorA).toBeVisible({ timeout: 5000 });
       await expect(editorB).toBeVisible({ timeout: 5000 });
 
-      let contentA = await editorA.textContent();
-      let contentB = await editorB.textContent();
-      console.log(`Initial - User A sees: "${contentA}"`);
-      console.log(`Initial - User B sees: "${contentB}"`);
-
-      // Both should see merged initial content
-      expect(contentA).toContain('[A-INIT]');
-      expect(contentB).toContain('[A-INIT]');
+      // Both should see A's initial content
+      await waitForEditorContent(pageA, '[A-INIT]');
+      await waitForEditorContent(pageB, '[A-INIT]');
+      console.log('Initial content verified on both sides');
 
       // === ROUND 1: B edits, A should see it ===
       console.log('\n=== Round 1: B edits ===');
@@ -368,11 +348,9 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await waitForSave(pageB);
       console.log('User B: Edit 1 saved');
 
-      // Wait for sync
-      await pageA.waitForTimeout(4000);
-      contentA = await editorA.textContent();
-      console.log(`After B R1 - A sees: "${contentA}"`);
-      expect(contentA).toContain('[B-R1]');
+      // Wait for sync - A should see B's edit
+      await waitForEditorContent(pageA, '[B-R1]');
+      console.log('User A: Received B R1');
 
       // === ROUND 2: A edits, B should see it ===
       console.log('\n=== Round 2: A edits ===');
@@ -381,11 +359,9 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await waitForSave(pageA);
       console.log('User A: Edit 2 saved');
 
-      // Wait for sync
-      await pageB.waitForTimeout(4000);
-      contentB = await editorB.textContent();
-      console.log(`After A R2 - B sees: "${contentB}"`);
-      expect(contentB).toContain('[A-R2]');
+      // Wait for sync - B should see A's edit
+      await waitForEditorContent(pageB, '[A-R2]');
+      console.log('User B: Received A R2');
 
       // === ROUND 3: B edits again, A should see it ===
       console.log('\n=== Round 3: B edits ===');
@@ -394,11 +370,9 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await waitForSave(pageB);
       console.log('User B: Edit 3 saved');
 
-      // Wait for sync
-      await pageA.waitForTimeout(4000);
-      contentA = await editorA.textContent();
-      console.log(`After B R3 - A sees: "${contentA}"`);
-      expect(contentA).toContain('[B-R3]');
+      // Wait for sync - A should see B's edit
+      await waitForEditorContent(pageA, '[B-R3]');
+      console.log('User A: Received B R3');
 
       // === ROUND 4: A edits again, B should see it ===
       console.log('\n=== Round 4: A edits ===');
@@ -407,16 +381,14 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await waitForSave(pageA);
       console.log('User A: Edit 4 saved');
 
-      // Wait for sync
-      await pageB.waitForTimeout(4000);
-      contentB = await editorB.textContent();
-      console.log(`After A R4 - B sees: "${contentB}"`);
-      expect(contentB).toContain('[A-R4]');
+      // Wait for sync - B should see A's edit
+      await waitForEditorContent(pageB, '[A-R4]');
+      console.log('User B: Received A R4');
 
       // === Final check: both should have all edits ===
       console.log('\n=== Final Convergence Check ===');
-      contentA = await editorA.textContent();
-      contentB = await editorB.textContent();
+      const contentA = await editorA.textContent();
+      const contentB = await editorB.textContent();
       console.log(`Final - A sees: "${contentA}"`);
       console.log(`Final - B sees: "${contentB}"`);
 

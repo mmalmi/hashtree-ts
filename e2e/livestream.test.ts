@@ -36,10 +36,12 @@ test.describe('Livestream Video Stability', () => {
     await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 10000 });
   }
 
-  // Helper to create a small test video file
-  function createTestVideo(): string {
+  // Helper to create a small test video file with unique name
+  function createTestVideo(suffix: string = ''): string {
     const tmpDir = os.tmpdir();
-    const videoPath = path.join(tmpDir, 'test-stream.webm');
+    const uniqueId = Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+    const fileName = `test-stream-${uniqueId}${suffix}.webm`;
+    const videoPath = path.join(tmpDir, fileName);
 
     // Minimal valid WebM file (just headers, enough to test player mounting)
     const webmHeader = Buffer.from([
@@ -72,16 +74,17 @@ test.describe('Livestream Video Stability', () => {
 
     // Upload a video file
     const videoPath = createTestVideo();
+    const videoFileName = path.basename(videoPath);
     const fileInput = page.locator('input[type="file"]').first();
     await fileInput.setInputFiles(videoPath);
     await page.waitForTimeout(1000);
 
     // Check video file is in the list
     const fileList = page.getByTestId('file-list');
-    await expect(fileList.locator('span:text-is("test-stream.webm")')).toBeVisible({ timeout: 5000 });
+    await expect(fileList.locator(`span:text-is("${videoFileName}")`)).toBeVisible({ timeout: 5000 });
 
     // Click on video to view it
-    await fileList.locator('span:text-is("test-stream.webm")').click();
+    await fileList.locator(`span:text-is("${videoFileName}")`).click();
     await page.waitForTimeout(500);
 
     // Set a marker on the video element to detect remounting
@@ -125,7 +128,7 @@ test.describe('Livestream Video Stability', () => {
     // If video is null, we might have navigated away or selection was lost
     if (!stateAfter) {
       // Click video file again to re-select
-      await fileList.locator('span:text-is("test-stream.webm")').click();
+      await fileList.locator(`span:text-is("${videoFileName}")`).click();
       await page.waitForTimeout(500);
       const stateReselect = await getVideoState();
       console.log('Video state after reselect:', stateReselect);
@@ -144,8 +147,9 @@ test.describe('Livestream Video Stability', () => {
   test('video should not remount during multiple file updates', async ({ page }) => {
     setupPageErrorHandler(page);
 
-    // Create test video upfront
+    // Create test video upfront with unique name
     const videoPath = createTestVideo();
+    const videoFileName = path.basename(videoPath);
 
     try {
       await page.goto('http://localhost:5173/');
@@ -162,10 +166,10 @@ test.describe('Livestream Video Stability', () => {
       await page.waitForTimeout(1000);
 
       const fileList = page.getByTestId('file-list');
-      await expect(fileList.locator('span:text-is("test-stream.webm")')).toBeVisible({ timeout: 5000 });
+      await expect(fileList.locator(`span:text-is("${videoFileName}")`)).toBeVisible({ timeout: 5000 });
 
       // Click to view video
-      await fileList.locator('span:text-is("test-stream.webm")').click();
+      await fileList.locator(`span:text-is("${videoFileName}")`).click();
       await page.waitForTimeout(500);
 
       // Track video element creation via instrumentation
