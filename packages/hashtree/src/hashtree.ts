@@ -263,6 +263,50 @@ export class HashTree {
     yield* read.walk(this.store, hash, path);
   }
 
+  /**
+   * Pull (fetch) all chunks for a tree recursively
+   * Triggers WebRTC fetches for any missing chunks
+   * @returns Stats about what was pulled
+   */
+  async pull(id: CID): Promise<{ chunks: number; bytes: number }> {
+    const visited = new Set<string>();
+    let chunks = 0;
+    let bytes = 0;
+
+    const fetch = async (hash: Hash, key?: Uint8Array): Promise<void> => {
+      const hex = toHex(hash);
+      if (visited.has(hex)) return;
+      visited.add(hex);
+
+      // Fetch the chunk (will go to WebRTC peers if not local)
+      const data = await this.store.get(hash);
+      if (!data) return;
+
+      chunks++;
+      bytes += data.length;
+
+      // If it's a tree node, recursively fetch children
+      if (isTreeNode(data)) {
+        let node: TreeNode;
+        if (key) {
+          // Decrypt the node
+          const decrypted = await getTreeNodeEncrypted(this.store, hash, key);
+          if (!decrypted) return;
+          node = decrypted;
+        } else {
+          node = decodeTreeNode(data);
+        }
+
+        for (const link of node.links) {
+          await fetch(link.hash, link.key);
+        }
+      }
+    };
+
+    await fetch(id.hash, id.key);
+    return { chunks, bytes };
+  }
+
   // Edit operations
 
   /**

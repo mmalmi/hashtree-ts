@@ -254,7 +254,10 @@
               try { return nip19.decode(userStats.npub).data as string; }
               catch { return ''; }
             })()}
-            <div class="flex items-center gap-2 p-3 text-sm">
+            <a
+              href="#/{userStats.npub}"
+              class="flex items-center gap-2 p-3 text-sm hover:bg-surface-3 transition-colors"
+            >
               {#if pubkey}
                 <UserRow
                   pubkey={pubkey}
@@ -272,7 +275,7 @@
               {#if userStats.isOwn}
                 <span class="text-xs text-accent">(you)</span>
               {/if}
-            </div>
+            </a>
           {/each}
         </div>
       </div>

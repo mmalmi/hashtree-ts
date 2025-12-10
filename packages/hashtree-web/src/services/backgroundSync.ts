@@ -12,8 +12,8 @@
  * - Enforced only when total storage exceeds cap
  */
 import { get } from 'svelte/store';
-import type { CID, RefResolverListEntry, Hash } from 'hashtree';
-import { toHex, fromHex } from 'hashtree';
+import type { CID, RefResolverListEntry } from 'hashtree';
+import { toHex } from 'hashtree';
 import { getRefResolver } from '../refResolver';
 import { createFollowsStore, type Follows } from '../stores/follows';
 import { settingsStore, type SyncSettings, DEFAULT_SYNC_SETTINGS } from '../stores/settings';
@@ -21,7 +21,6 @@ import { accountsStore } from '../accounts';
 import { nostrStore, pubkeyToNpub } from '../nostr';
 import { idbStore, getTree } from '../store';
 import {
-  registerChunks,
   updateTreeSyncState,
   getTreeSyncState,
   getStorageByUser,
@@ -276,22 +275,10 @@ export class BackgroundSyncService {
 
     console.log(`[backgroundSync] Syncing tree: ${key}`);
 
-    // Walk tree and fetch all chunks
-    const chunks: Array<{ hashHex: string; size: number }> = [];
-    let totalBytes = 0;
-
     try {
-      await this.walkAndFetch(cid, chunks);
-
-      // Calculate total size
-      for (const chunk of chunks) {
-        totalBytes += chunk.size;
-      }
-
-      // Register chunks with metadata
-      if (chunks.length > 0) {
-        await registerChunks(key, chunks);
-      }
+      // Use tree.pull() to recursively fetch all chunks
+      const tree = getTree();
+      const { chunks, bytes } = await tree.pull(cid);
 
       // Extract npub from key
       const ownerNpub = key.split('/')[0];
@@ -301,56 +288,16 @@ export class BackgroundSyncService {
         key,
         ownerNpub,
         rootHash: rootHashHex,
-        totalBytes,
+        totalBytes: bytes,
         lastSynced: Date.now(),
         isOwn,
       };
       await updateTreeSyncState(syncState);
 
-      console.log(`[backgroundSync] Synced ${key}: ${chunks.length} chunks, ${totalBytes} bytes`);
+      console.log(`[backgroundSync] Synced ${key}: ${chunks} chunks, ${bytes} bytes`);
     } catch (error) {
       console.error(`[backgroundSync] Failed to sync ${key}:`, error);
     }
-  }
-
-  private async walkAndFetch(
-    rootCid: CID,
-    chunks: Array<{ hashHex: string; size: number }>
-  ): Promise<void> {
-    const tree = getTree();
-    const visited = new Set<string>();
-
-    const walk = async (hash: Hash, key?: Uint8Array): Promise<void> => {
-      const hashHex = toHex(hash);
-      if (visited.has(hashHex)) return;
-      visited.add(hashHex);
-
-      // Try to get from store (this will fetch via WebRTC if not local)
-      const data = await tree.store.get(hash);
-      if (!data) {
-        console.warn(`[backgroundSync] Could not fetch chunk: ${hashHex}`);
-        return;
-      }
-
-      chunks.push({ hashHex, size: data.length });
-
-      // Check if this is a tree node (directory or large file)
-      // Tree nodes are CBOR-encoded and have links
-      try {
-        // Try to parse as tree node
-        const node = await tree.getNode({ hash, key });
-        if (node && node.links && node.links.length > 0) {
-          // Recursively walk children
-          for (const link of node.links) {
-            await walk(link.hash, link.key);
-          }
-        }
-      } catch {
-        // Not a tree node, just a blob - that's fine
-      }
-    };
-
-    await walk(rootCid.hash, rootCid.key);
   }
 
   /**
