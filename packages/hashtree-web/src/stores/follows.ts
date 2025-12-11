@@ -8,6 +8,7 @@ import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { LRUCache } from '../utils/lruCache';
 import { ndk, nostrStore } from '../nostr';
 import { handleSocialGraphEvent } from '../utils/socialGraph';
+import type { NostrEvent } from 'nostr-social-graph';
 
 export interface Follows {
   pubkey: string;
@@ -201,7 +202,7 @@ async function publishFollowList(pk: string, follows: string[]): Promise<boolean
     notifyListeners(pk, newFollows);
 
     // Update social graph
-    handleSocialGraphEvent(event.rawEvent() as any);
+    handleSocialGraphEvent(event.rawEvent() as NostrEvent);
 
     return true;
   } catch (e) {
