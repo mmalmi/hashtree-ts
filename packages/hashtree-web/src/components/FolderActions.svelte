@@ -3,16 +3,18 @@
    * Shared folder action buttons - used in FileBrowser and Viewer
    * Port of React FolderActions component
    */
-  import { nhashEncode, toHex } from 'hashtree';
+  import { nhashEncode, toHex, LinkType } from 'hashtree';
   import type { CID } from 'hashtree';
   import { openCreateModal, openRenameModal, openForkModal, openShareModal } from '../stores/modals';
   import { uploadFiles, uploadDirectory } from '../stores/upload';
   import { deleteCurrentFolder, buildRouteUrl } from '../actions';
-  import { nostrStore } from '../nostr';
+  import { nostrStore, autosaveIfOwn } from '../nostr';
   import { getTree } from '../store';
   import { createZipFromDirectory, downloadBlob } from '../utils/compression';
   import { readFilesFromWebkitDirectory, supportsDirectoryUpload } from '../utils/directory';
   import { routeStore, createTreesStore } from '../stores';
+  import { isGitRepo, initGitRepo } from '../utils/git';
+  import { getCurrentRootCid } from '../actions/route';
 
   interface Props {
     dirCid?: CID | null;
@@ -22,11 +24,14 @@
   let { dirCid = null, canEdit }: Props = $props();
 
   let isDownloading = $state(false);
+  let isInitializingGit = $state(false);
+  let isGitRepoCheck = $state<boolean | null>(null);
   let dirInputRef: HTMLInputElement | undefined = $state();
 
   let hasDirectorySupport = supportsDirectoryUpload();
   let route = $derived($routeStore);
   let userNpub = $derived($nostrStore.npub);
+  let userProfile = $derived($nostrStore.profile);
 
   // Get user's own trees for fork name suggestions
   let ownTreesStore = $derived(createTreesStore(userNpub));
@@ -41,6 +46,19 @@
   });
 
   let ownTreeNames = $derived(ownTrees.map(t => t.name));
+
+  // Check if directory is already a git repo
+  $effect(() => {
+    if (!dirCid) {
+      isGitRepoCheck = null;
+      return;
+    }
+    let cancelled = false;
+    isGitRepo(dirCid).then(result => {
+      if (!cancelled) isGitRepoCheck = result;
+    });
+    return () => { cancelled = true; };
+  });
 
   // Check if we're in a subdirectory (not root)
   let isSubdir = $derived(route.path.length > 0);
@@ -67,6 +85,91 @@
     if (!dirCid) return;
     const suggestedName = suggestForkName(forkBaseName, ownTreeNames);
     openForkModal(dirCid, suggestedName);
+  }
+
+  // Handle git init
+  async function handleGitInit() {
+    if (!dirCid || isInitializingGit || isGitRepoCheck) return;
+
+    isInitializingGit = true;
+    try {
+      const tree = getTree();
+      const authorName = userProfile?.name || 'Anonymous';
+      const authorEmail = userProfile?.nip05 || 'anon@hashtree.local';
+
+      // Initialize git repo and get .git files
+      const gitFiles = await initGitRepo(dirCid, authorName, authorEmail);
+
+      // Build the .git directory in hashtree
+      // First, organize files by directory
+      const dirMap = new Map<string, Array<{ name: string; cid: CID; size: number; type: LinkType }>>();
+      dirMap.set('.git', []);
+
+      // Create directory entries
+      for (const file of gitFiles) {
+        if (file.isDir) {
+          dirMap.set(file.name, []);
+        }
+      }
+
+      // Add files to their parent directories
+      for (const file of gitFiles) {
+        if (!file.isDir) {
+          const { cid, size } = await tree.putFile(file.data);
+          const parentDir = file.name.substring(0, file.name.lastIndexOf('/'));
+          const fileName = file.name.substring(file.name.lastIndexOf('/') + 1);
+
+          const entries = dirMap.get(parentDir);
+          if (entries) {
+            entries.push({ name: fileName, cid, size, type: LinkType.Blob });
+          }
+        }
+      }
+
+      // Build directories from deepest to root
+      const sortedDirs = Array.from(dirMap.keys())
+        .filter(d => d !== '.git')
+        .sort((a, b) => b.split('/').length - a.split('/').length);
+
+      for (const dirPath of sortedDirs) {
+        const entries = dirMap.get(dirPath) || [];
+        const { cid } = await tree.putDirectory(entries);
+
+        const parentDir = dirPath.substring(0, dirPath.lastIndexOf('/'));
+        const dirName = dirPath.substring(dirPath.lastIndexOf('/') + 1);
+
+        const parentEntries = dirMap.get(parentDir);
+        if (parentEntries) {
+          parentEntries.push({ name: dirName, cid, size: 0, type: LinkType.Dir });
+        }
+      }
+
+      // Build .git directory
+      const gitEntries = dirMap.get('.git') || [];
+      const { cid: gitDirCid } = await tree.putDirectory(gitEntries);
+
+      // Add .git to current directory
+      const treeRootCid = getCurrentRootCid();
+      if (!treeRootCid) throw new Error('No tree root');
+
+      const newRootCid = await tree.setEntry(
+        treeRootCid,
+        route.path,
+        '.git',
+        gitDirCid,
+        0,
+        LinkType.Dir
+      );
+
+      // Save and publish
+      autosaveIfOwn(newRootCid);
+      isGitRepoCheck = true;
+    } catch (err) {
+      console.error('Git init failed:', err);
+      alert(`Git init failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      isInitializingGit = false;
+    }
   }
 
   // Handle download as ZIP
@@ -201,6 +304,19 @@
           <span class="i-lucide-video"></span>
           Stream
         </a>
+      {/if}
+
+      {#if dirCid && isGitRepoCheck === false}
+        <button
+          onclick={handleGitInit}
+          disabled={isInitializingGit}
+          class="btn-ghost {btnClass}"
+          title="Initialize git repository"
+          data-testid="git-init-btn"
+        >
+          <span class={isInitializingGit ? "i-lucide-loader-2 animate-spin" : "i-lucide-git-branch"}></span>
+          {isInitializingGit ? 'Initializing...' : 'Git Init'}
+        </button>
       {/if}
 
       {#if isSubdir && currentDirName}

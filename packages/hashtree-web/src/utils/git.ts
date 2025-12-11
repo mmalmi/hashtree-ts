@@ -136,6 +136,20 @@ export async function getBlame(_rootCid: CID, _filepath: string) {
 }
 
 /**
+ * Initialize a git repository in a directory
+ * Returns files for the .git directory to be added to the tree
+ */
+export async function initGitRepo(
+  rootCid: CID,
+  authorName: string,
+  authorEmail: string,
+  commitMessage: string = 'Initial commit'
+): Promise<Array<{ name: string; data: Uint8Array; isDir: boolean }>> {
+  const { initGitRepoWithWasmGit } = await import('./wasmGit');
+  return await initGitRepoWithWasmGit(rootCid, authorName, authorEmail, commitMessage);
+}
+
+/**
  * Get last commit info for files in a directory
  * Returns a map of filename -> commit info
  */

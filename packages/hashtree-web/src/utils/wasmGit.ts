@@ -414,6 +414,87 @@ export async function getFileLastCommitsWithWasmGit(
 }
 
 /**
+ * Initialize a git repository in a directory
+ * Copies files to wasm-git, runs git init + add + commit, returns .git directory files
+ */
+export async function initGitRepoWithWasmGit(
+  rootCid: CID,
+  authorName: string,
+  authorEmail: string,
+  commitMessage: string = 'Initial commit'
+): Promise<Array<{ name: string; data: Uint8Array; isDir: boolean }>> {
+  const tree = getTree();
+  const module = await loadWasmGit();
+  const repoPath = `/repo_${Date.now()}`;
+  const originalCwd = module.FS.cwd();
+
+  try {
+    module.FS.mkdir(repoPath);
+
+    // Set up git config with user info
+    try {
+      module.FS.writeFile('/home/web_user/.gitconfig', `[user]\nname = ${authorName}\nemail = ${authorEmail}\n`);
+    } catch {
+      // May already exist
+    }
+
+    module.FS.chdir(repoPath);
+
+    // Copy all files from hashtree to wasm filesystem
+    await copyToWasmFS(module, rootCid, '.');
+
+    // Initialize git repo
+    module.callMain(['init', '.']);
+
+    // Add all files
+    module.callMain(['add', '.']);
+
+    // Create initial commit
+    module.callMain(['commit', '-m', commitMessage]);
+
+    // Read .git directory and return files
+    const gitFiles: Array<{ name: string; data: Uint8Array; isDir: boolean }> = [];
+
+    function readGitDir(path: string, prefix: string): void {
+      const entries = module.FS.readdir(path);
+      for (const entry of entries) {
+        if (entry === '.' || entry === '..') continue;
+
+        const fullPath = `${path}/${entry}`;
+        const relativePath = prefix ? `${prefix}/${entry}` : entry;
+
+        try {
+          const stat = module.FS.stat(fullPath);
+          const isDir = (stat.mode & 0o170000) === 0o040000;
+          if (isDir) {
+            gitFiles.push({ name: relativePath, data: new Uint8Array(0), isDir: true });
+            readGitDir(fullPath, relativePath);
+          } else {
+            const data = module.FS.readFile(fullPath) as Uint8Array;
+            gitFiles.push({ name: relativePath, data, isDir: false });
+          }
+        } catch {
+          // Skip files we can't read
+        }
+      }
+    }
+
+    readGitDir('.git', '.git');
+
+    return gitFiles;
+  } catch (err) {
+    console.error('[wasm-git] init failed:', err);
+    throw err;
+  } finally {
+    try {
+      module.FS.chdir(originalCwd);
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
  * Checkout a specific commit using wasm-git
  * Returns files from that commit as a directory listing
  */
