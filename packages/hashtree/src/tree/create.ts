@@ -89,12 +89,9 @@ export async function putDirectory(
     meta: e.meta,
   }));
 
-  const totalSize = links.reduce((sum, l) => sum + l.size, 0);
-
   const node: TreeNode = {
     type: LinkType.Dir,
     links,
-    totalSize,
   };
   const { data, hash } = await encodeAndHash(node);
 
@@ -124,7 +121,6 @@ export async function buildTree(
     const node: TreeNode = {
       type: LinkType.File,
       links,
-      totalSize,
     };
     const { data, hash } = await encodeAndHash(node);
     await store.put(hash, data);
@@ -139,7 +135,6 @@ export async function buildTree(
     const node: TreeNode = {
       type: LinkType.File,
       links: batch,
-      totalSize: batchSize,
     };
     const { data, hash } = await encodeAndHash(node);
     await store.put(hash, data);

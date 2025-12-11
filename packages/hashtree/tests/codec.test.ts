@@ -40,19 +40,6 @@ describe('codec', () => {
       expect(decoded.links[1].name).toBe('dir');
     });
 
-    it('should preserve totalSize', () => {
-      const node: TreeNode = {
-        type: LinkType.File,
-        links: [],
-        totalSize: 12345,
-      };
-
-      const encoded = encodeTreeNode(node);
-      const decoded = decodeTreeNode(encoded);
-
-      expect(decoded.totalSize).toBe(12345);
-    });
-
     it('should preserve link meta', () => {
       const hash = new Uint8Array(32).fill(1);
       const node: TreeNode = {

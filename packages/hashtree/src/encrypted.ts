@@ -110,7 +110,6 @@ async function buildEncryptedTree(
     const node: TreeNode = {
       type: LinkType.File,
       links,
-      totalSize,
     };
     const { data } = await encodeAndHash(node);
     // CHK encrypt the tree node
@@ -129,7 +128,6 @@ async function buildEncryptedTree(
     const node: TreeNode = {
       type: LinkType.File,
       links: batch,
-      totalSize: batchSize,
     };
     const { data } = await encodeAndHash(node);
     // CHK encrypt the subtree node
@@ -496,7 +494,6 @@ export async function putDirectoryEncrypted(
   const node: TreeNode = {
     type: LinkType.Dir,
     links,
-    totalSize,
   };
   const { data } = await encodeAndHash(node);
 

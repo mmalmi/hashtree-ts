@@ -40,8 +40,6 @@ interface TreeNodeMsgpack {
   t: number;
   /** links */
   l: LinkMsgpack[];
-  /** totalSize (optional) */
-  s?: number;
 }
 
 /**
@@ -60,7 +58,7 @@ function sortObjectKeys<T extends Record<string, unknown>>(obj: T): T {
  * Fields are ordered alphabetically for canonical encoding
  */
 export function encodeTreeNode(node: TreeNode): Uint8Array {
-  // TreeNode fields in alphabetical order: l, s?, t
+  // TreeNode fields in alphabetical order: l, t
   const msgpack: TreeNodeMsgpack = {
     l: node.links.map(link => {
       // Link fields in alphabetical order: h, k?, m?, n?, s, t
@@ -79,10 +77,8 @@ export function encodeTreeNode(node: TreeNode): Uint8Array {
       if (l.n === undefined) delete l.n;
       return l;
     }),
-    s: node.totalSize,
     t: node.type,
   };
-  if (msgpack.s === undefined) delete msgpack.s;
 
   return encode(msgpack);
 }
@@ -109,8 +105,6 @@ export function tryDecodeTreeNode(data: Uint8Array): TreeNode | null {
         return link;
       }),
     };
-
-    if (msgpack.s !== undefined) node.totalSize = msgpack.s;
 
     return node;
   } catch {

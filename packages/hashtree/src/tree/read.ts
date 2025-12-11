@@ -359,10 +359,6 @@ export async function getSize(store: Store, hash: Hash): Promise<number> {
     return data.length;
   }
 
-  if (node.totalSize !== undefined) {
-    return node.totalSize;
-  }
-
   let total = 0;
   for (const link of node.links) {
     total += link.size;
@@ -386,7 +382,8 @@ export async function* walk(
   // Check if it's a directory
   const dirNode = await getDirectoryNode(store, hash);
   if (dirNode) {
-    yield { path, hash, type: LinkType.Dir, size: dirNode.totalSize };
+    const dirSize = dirNode.links.reduce((sum, l) => sum + l.size, 0);
+    yield { path, hash, type: LinkType.Dir, size: dirSize };
 
     for (const link of dirNode.links) {
       if (!link.name) continue;
@@ -405,6 +402,7 @@ export async function* walk(
     return;
   }
 
-  // Chunked file - get total size from tree node
-  yield { path, hash, type: LinkType.File, size: node.totalSize };
+  // Chunked file - sum link sizes
+  const fileSize = node.links.reduce((sum, l) => sum + l.size, 0);
+  yield { path, hash, type: LinkType.File, size: fileSize };
 }

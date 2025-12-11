@@ -132,7 +132,6 @@ export class TreeBuilder {
       const node: TreeNode = {
         type: LinkType.File,
         links,
-        totalSize,
       };
       const { data, hash } = await encodeAndHash(node);
       await this.store.put(hash, data);
@@ -149,7 +148,6 @@ export class TreeBuilder {
       const node: TreeNode = {
         type: LinkType.File,
         links: batch,
-        totalSize: batchSize,
       };
       const { data, hash } = await encodeAndHash(node);
       await this.store.put(hash, data);
@@ -182,12 +180,9 @@ export class TreeBuilder {
       meta: e.meta,
     }));
 
-    const totalSize = links.reduce((sum, l) => sum + l.size, 0);
-
     const node: TreeNode = {
       type: LinkType.Dir,
       links,
-      totalSize,
     };
     const { data, hash } = await encodeAndHash(node);
 
@@ -210,12 +205,9 @@ export class TreeBuilder {
     nodeType: LinkType.File | LinkType.Dir,
     links: Link[]
   ): Promise<Hash> {
-    const totalSize = links.reduce((sum, l) => sum + l.size, 0);
-
     const node: TreeNode = {
       type: nodeType,
       links,
-      totalSize,
     };
 
     const { data, hash } = await encodeAndHash(node);
@@ -335,7 +327,6 @@ export class StreamBuilder {
       const node: TreeNode = {
         type: LinkType.File,
         links: chunks,
-        totalSize,
       };
       const { data, hash } = await encodeAndHash(node);
       await this.store.put(hash, data);
@@ -351,7 +342,6 @@ export class StreamBuilder {
       const node: TreeNode = {
         type: LinkType.File,
         links: batch,
-        totalSize: batchSize,
       };
       const { data, hash } = await encodeAndHash(node);
       await this.store.put(hash, data);

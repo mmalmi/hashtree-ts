@@ -156,7 +156,6 @@ export class StreamWriter {
       const node: TreeNode = {
         type: LinkType.File,
         links: chunks,
-        totalSize,
       };
       const { data, hash: nodeHash } = await encodeAndHash(node);
 
@@ -182,7 +181,6 @@ export class StreamWriter {
       const node: TreeNode = {
         type: LinkType.File,
         links: batch,
-        totalSize: batchSize,
       };
       const { data, hash: nodeHash } = await encodeAndHash(node);
 

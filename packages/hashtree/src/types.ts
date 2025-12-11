@@ -74,8 +74,6 @@ export interface TreeNode {
   type: LinkType.File | LinkType.Dir;
   /** Links to child nodes */
   links: Link[];
-  /** Total size of all data in this subtree */
-  totalSize?: number;
 }
 
 /**
