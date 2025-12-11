@@ -337,6 +337,16 @@ test.describe('Git integration features', () => {
 
   test('git history should return commits from uploaded git repo', { timeout: 30000 }, async ({ page }) => {
     setupPageErrorHandler(page);
+
+    // Capture wasm-git debug logs
+    const wasmGitLogs: string[] = [];
+    page.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('[wasm-git]')) {
+        wasmGitLogs.push(text);
+      }
+    });
+
     await page.goto('/');
     await navigateToPublicFolder(page);
 
@@ -488,6 +498,7 @@ test.describe('Git integration features', () => {
 
       // Verify we got commits
       console.log('Git history result:', JSON.stringify(result, null, 2));
+      console.log('Wasm-git logs:', wasmGitLogs);
       expect(result.success).toBe(true);
       expect(result.error).toBeNull();
       expect(result.commitCount).toBeGreaterThanOrEqual(2);
@@ -718,7 +729,6 @@ test.describe('Git integration features', () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
-
   // Skip: Times out - needs investigation
   test.skip('checkout commit should return a valid directory CID that can be listed', async ({ page }) => {
     setupPageErrorHandler(page);
