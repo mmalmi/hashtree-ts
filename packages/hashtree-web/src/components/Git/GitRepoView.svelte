@@ -108,18 +108,37 @@
   // Handle checkout from history modal
   async function handleCheckout(commitSha: string): Promise<void> {
     const { checkoutCommit } = await import('../../utils/git');
-    const { updateTreeRoot } = await import('../../treeRootCache');
+    const { autosaveIfOwn } = await import('../../nostr');
+    const { getCurrentRootCid } = await import('../../actions/route');
 
-    // Checkout the commit
-    const newRootCid = await checkoutCommit(dirCid, commitSha);
+    // Get current tree root
+    const treeRootCid = getCurrentRootCid();
+    if (!treeRootCid) return;
 
-    // Update tree root (saves and publishes)
-    if (route.npub && route.treeName) {
-      await updateTreeRoot(route.npub, route.treeName, newRootCid);
+    // Checkout the commit - returns new directory CID with checked out files
+    const newDirCid = await checkoutCommit(dirCid, commitSha);
+
+    let newRootCid;
+    if (currentPath.length === 0) {
+      // Git repo is at tree root - just use the new CID directly
+      newRootCid = newDirCid;
+    } else {
+      // Git repo is in a subdirectory - replace it at that path
+      const tree = getTree();
+      const parentPath = currentPath.slice(0, -1);
+      const dirName = currentPath[currentPath.length - 1];
+      newRootCid = await tree.setEntry(
+        treeRootCid,
+        parentPath,
+        dirName,
+        newDirCid,
+        0,
+        LinkType.Dir
+      );
     }
 
-    // Reload the page to show new content
-    window.location.reload();
+    // Save and publish - UI will react automatically via store subscriptions
+    autosaveIfOwn(newRootCid);
   }
 </script>
 
