@@ -1,19 +1,22 @@
 <script lang="ts">
   /**
-   * Displays author name from profile or truncated npub
+   * Displays author with avatar, name, and social graph badge
    */
-  import { createProfileStore, getProfileName } from '../../stores/profile';
+  import Avatar from '../User/Avatar.svelte';
+  import Name from '../User/Name.svelte';
 
   interface Props {
     pubkey: string;
-    npub: string;
+    npub?: string;
+    size?: 'sm' | 'md';
   }
 
-  let { pubkey, npub }: Props = $props();
+  let { pubkey, size = 'sm' }: Props = $props();
 
-  let profileStore = $derived(createProfileStore(pubkey));
-  let profile = $derived($profileStore);
-  let displayName = $derived(getProfileName(profile) || npub.slice(0, 12) + '...');
+  let avatarSize = $derived(size === 'sm' ? 20 : 28);
 </script>
 
-<span class="text-text-2">{displayName}</span>
+<span class="inline-flex items-center gap-1.5">
+  <Avatar {pubkey} size={avatarSize} showBadge={true} />
+  <Name {pubkey} class="text-text-2 hover:text-accent hover:underline" />
+</span>
