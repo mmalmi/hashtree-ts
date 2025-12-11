@@ -4,6 +4,9 @@
    */
   import { modalsStore, closeGitHistoryModal } from '../../stores/modals';
   import { createGitLogStore, type CommitInfo } from '../../stores/git';
+  import { nhashEncode } from 'hashtree';
+  import { bytesToHex } from '@noble/hashes/utils.js';
+  import { checkoutCommit } from '../../utils/git';
 
   let show = $derived($modalsStore.showGitHistoryModal);
   let target = $derived($modalsStore.gitHistoryTarget);
@@ -15,6 +18,9 @@
     loading: true,
     error: null,
   });
+
+  let checkoutInProgress = $state<string | null>(null);
+  let checkoutError = $state<string | null>(null);
 
   $effect(() => {
     if (!logStore) {
@@ -73,6 +79,45 @@
   function shortHash(oid: string): string {
     return oid.slice(0, 7);
   }
+
+  // Handle checkout button click (for own repos)
+  async function handleCheckout(commitSha: string) {
+    if (!target || checkoutInProgress) return;
+
+    checkoutInProgress = commitSha;
+    checkoutError = null;
+
+    try {
+      if (target.onCheckout) {
+        await target.onCheckout(commitSha);
+        closeGitHistoryModal();
+      }
+    } catch (err) {
+      checkoutError = err instanceof Error ? err.message : String(err);
+    } finally {
+      checkoutInProgress = null;
+    }
+  }
+
+  // Handle browse button click (for others' repos)
+  async function handleBrowse(commitSha: string) {
+    if (!target) return;
+
+    try {
+      // Checkout to get the CID at that commit
+      const newCid = await checkoutCommit(target.dirCid, commitSha);
+
+      // Convert CID to nhash
+      const hashHex = bytesToHex(newCid.hash);
+      const keyHex = newCid.key ? bytesToHex(newCid.key) : undefined;
+      const nhash = nhashEncode({ hash: hashHex, decryptKey: keyHex });
+
+      // Open in new tab
+      window.open(`#/${nhash}`, '_blank');
+    } catch (err) {
+      checkoutError = err instanceof Error ? err.message : String(err);
+    }
+  }
 </script>
 
 {#if show && target}
@@ -108,6 +153,12 @@
             No commits found
           </div>
         {:else}
+          {#if checkoutError}
+            <div class="mb-4 p-3 bg-error/10 text-error rounded-lg text-sm flex items-center gap-2">
+              <span class="i-lucide-alert-circle"></span>
+              {checkoutError}
+            </div>
+          {/if}
           <div class="flex flex-col">
             {#each logState.commits as commit, i}
               <div class="flex gap-3 pb-4 {i < logState.commits.length - 1 ? 'b-b-1 b-b-solid b-b-surface-3 mb-4' : ''}">
@@ -137,6 +188,34 @@
                       {formatDate(commit.timestamp)}
                     </span>
                   </div>
+                </div>
+
+                <!-- Action button -->
+                <div class="shrink-0">
+                  {#if target.canEdit && target.onCheckout}
+                    <button
+                      onclick={() => handleCheckout(commit.oid)}
+                      disabled={checkoutInProgress !== null}
+                      class="btn-ghost px-2 py-1 text-xs flex items-center gap-1"
+                      title="Checkout this commit (replaces working directory)"
+                    >
+                      {#if checkoutInProgress === commit.oid}
+                        <span class="i-lucide-loader-2 animate-spin"></span>
+                      {:else}
+                        <span class="i-lucide-git-branch-plus"></span>
+                      {/if}
+                      Checkout
+                    </button>
+                  {:else}
+                    <button
+                      onclick={() => handleBrowse(commit.oid)}
+                      class="btn-ghost px-2 py-1 text-xs flex items-center gap-1"
+                      title="Browse files at this commit"
+                    >
+                      <span class="i-lucide-external-link"></span>
+                      Browse
+                    </button>
+                  {/if}
                 </div>
               </div>
             {/each}

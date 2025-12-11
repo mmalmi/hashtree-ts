@@ -104,6 +104,23 @@
     console.log('Switch to branch:', branch);
     isDropdownOpen = false;
   }
+
+  // Handle checkout from history modal
+  async function handleCheckout(commitSha: string): Promise<void> {
+    const { checkoutCommit } = await import('../../utils/git');
+    const { updateTreeRoot } = await import('../../treeRootCache');
+
+    // Checkout the commit
+    const newRootCid = await checkoutCommit(dirCid, commitSha);
+
+    // Update tree root (saves and publishes)
+    if (route.npub && route.treeName) {
+      await updateTreeRoot(route.npub, route.treeName, newRootCid);
+    }
+
+    // Reload the page to show new content
+    window.location.reload();
+  }
 </script>
 
 <div class="flex flex-col gap-4">
@@ -149,7 +166,7 @@
       {/if}
 
       <button
-        onclick={() => openGitHistoryModal(dirCid)}
+        onclick={() => openGitHistoryModal(dirCid, canEdit, canEdit ? handleCheckout : undefined)}
         class="ml-auto btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
       >
         <span class="i-lucide-history"></span>

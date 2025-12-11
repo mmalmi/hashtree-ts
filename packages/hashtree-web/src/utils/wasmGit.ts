@@ -12,7 +12,7 @@ interface WasmGitModule {
     mkdir(path: string): void;
     writeFile(path: string, data: Uint8Array | string): void;
     readdir(path: string): string[];
-    stat(path: string): { isDirectory(): boolean };
+    stat(path: string): { mode: number };
     readFile(path: string, opts?: { encoding?: string }): Uint8Array | string;
     chdir(path: string): void;
     cwd(): string;
@@ -354,6 +354,7 @@ export async function checkoutWithWasmGit(
     try {
       module.callMain(['checkout', '--force', commitSha]);
     } catch (err) {
+      console.error('[wasm-git] checkout error:', err);
       throw new Error(`Failed to checkout ${commitSha}: ${err}`);
     }
 
@@ -365,12 +366,14 @@ export async function checkoutWithWasmGit(
       for (const entry of entries) {
         if (entry === '.' || entry === '..' || entry === '.git') continue;
 
-        const fullPath = `${path}/${entry}`;
+        const fullPath = path === '.' ? entry : `${path}/${entry}`;
         const relativePath = prefix ? `${prefix}/${entry}` : entry;
 
         try {
           const stat = module.FS.stat(fullPath);
-          if (stat.isDirectory()) {
+          // Emscripten's stat returns mode as number, check S_IFDIR (0o40000)
+          const isDir = (stat.mode & 0o170000) === 0o040000;
+          if (isDir) {
             files.push({ name: relativePath, data: new Uint8Array(0), isDir: true });
             readDir(fullPath, relativePath);
           } else {
@@ -384,7 +387,7 @@ export async function checkoutWithWasmGit(
       }
     }
 
-    readDir(repoPath, '');
+    readDir('.', '');
 
     return files;
   } catch (err) {

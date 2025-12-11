@@ -729,9 +729,18 @@ test.describe('Git integration features', () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
-  // Skip: Times out - needs investigation
-  test.skip('checkout commit should return a valid directory CID that can be listed', async ({ page }) => {
+  test('checkout commit should return a valid directory CID that can be listed', { timeout: 60000 }, async ({ page }) => {
     setupPageErrorHandler(page);
+
+    // Capture wasm-git logs
+    const wasmGitLogs: string[] = [];
+    page.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('[wasm-git]')) {
+        wasmGitLogs.push(text);
+      }
+    });
+
     await page.goto('/');
     await navigateToPublicFolder(page);
 
@@ -876,6 +885,7 @@ test.describe('Git integration features', () => {
       }, { files: allFiles, dirs: allDirs, commitSha: firstCommit });
 
       console.log('Checkout CID test result:', JSON.stringify(result, null, 2));
+      console.log('Wasm-git logs:', wasmGitLogs);
       expect(result.success).toBe(true);
       expect(result.error).toBeNull();
 

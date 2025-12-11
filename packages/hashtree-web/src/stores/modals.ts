@@ -41,6 +41,8 @@ interface GitignoreTarget {
 
 interface GitHistoryTarget {
   dirCid: CID;
+  canEdit: boolean;
+  onCheckout?: (commitSha: string) => Promise<void>;
 }
 
 interface CollaboratorsTarget {
@@ -160,8 +162,8 @@ export function closeGitignoreModal() {
   modalsStore.update(s => ({ ...s, showGitignoreModal: false, gitignoreTarget: null }));
 }
 
-export function openGitHistoryModal(dirCid: CID) {
-  modalsStore.update(s => ({ ...s, showGitHistoryModal: true, gitHistoryTarget: { dirCid } }));
+export function openGitHistoryModal(dirCid: CID, canEdit: boolean = false, onCheckout?: (commitSha: string) => Promise<void>) {
+  modalsStore.update(s => ({ ...s, showGitHistoryModal: true, gitHistoryTarget: { dirCid, canEdit, onCheckout } }));
 }
 
 export function closeGitHistoryModal() {
