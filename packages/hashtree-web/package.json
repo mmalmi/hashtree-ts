@@ -37,6 +37,7 @@
     "nostr-social-graph": "^1.0.33",
     "nostr-tools": "^2.18.2",
     "qrcode": "^1.5.4",
+    "wasm-git": "^0.0.13",
     "yjs": "^13.6.27"
   },
   "devDependencies": {

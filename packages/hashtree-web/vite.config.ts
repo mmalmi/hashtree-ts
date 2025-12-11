@@ -77,6 +77,7 @@ export default defineConfig({
       'hashtree': resolve(__dirname, '../hashtree/src/index.ts'),
       'hashtree/webrtc': resolve(__dirname, '../hashtree/src/webrtc/index.ts'),
       '$lib': resolve(__dirname, 'src/lib'),
+      'wasm-git': resolve(__dirname, 'node_modules/wasm-git/lg2_async.js'),
     },
   },
   build: {
@@ -156,4 +157,8 @@ export default defineConfig({
       overlay: true,
     },
   },
+  optimizeDeps: {
+    exclude: ['wasm-git'], // Don't pre-bundle wasm-git, let it load its own wasm
+  },
+  assetsInclude: ['**/*.wasm'], // Treat wasm files as assets
 });

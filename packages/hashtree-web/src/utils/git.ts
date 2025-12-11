@@ -762,51 +762,26 @@ type CommitLog = Array<{
 
 /**
  * Get commit log for a repository
- * Reads git objects directly from hashtree storage
+ * Uses wasm-git (libgit2)
  */
 export async function getLog(rootCid: CID, options?: { depth?: number }): Promise<CommitLog>;
 export async function getLog(rootCid: CID, options: { depth?: number; debug: true }): Promise<{ commits: CommitLog; debug: string[] }>;
 export async function getLog(rootCid: CID, options?: { depth?: number; debug?: boolean }): Promise<CommitLog | { commits: CommitLog; debug: string[] }> {
-  const tree = getTree();
   const debugInfo: string[] = [];
+  const depth = options?.depth ?? 20;
 
   try {
-    const depth = options?.depth ?? 20;
-
-    // Find .git directory
-    const gitDirResult = await tree.resolvePath(rootCid, '.git');
-    if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
-      debugInfo.push('No .git directory found');
-      if (options?.debug) {
-        return { commits: [], debug: debugInfo };
-      }
-      return [];
-    }
-
-    debugInfo.push('.git directory found');
-
-    const reader = new GitObjectReader(tree, gitDirResult.cid);
-
-    // Debug: check HEAD
-    const head = await reader.readHead();
-    debugInfo.push(`HEAD: ${head}`);
-
-    const headSha = await reader.resolveHead();
-    debugInfo.push(`HEAD SHA: ${headSha}`);
-
-    // Get commits
-    const commits = await reader.getLog(depth);
+    const { getLogWithWasmGit } = await import('./wasmGit');
+    debugInfo.push('Using wasm-git');
+    const commits = await getLogWithWasmGit(rootCid, { depth });
     debugInfo.push(`Found ${commits.length} commits`);
-
     if (options?.debug) {
       return { commits, debug: debugInfo };
     }
-
     return commits;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    debugInfo.push(`Error: ${message}`);
-
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    debugInfo.push(`wasm-git failed: ${message}`);
     if (options?.debug) {
       return { commits: [], debug: debugInfo };
     }
@@ -834,12 +809,12 @@ export async function getBranches(rootCid: CID) {
 }
 
 /**
- * Get diff between two commits or working tree
+ * Get diff between two commits
  * Note: Full diff implementation requires tree walking - not yet implemented
  */
-export async function getDiff(_rootCid: CID, _commitHash1: string, _commitHash2?: string) {
+export async function getDiff(_rootCid: CID, _commitHash1: string, _commitHash2?: string): Promise<string> {
   // TODO: Implement tree walking to compute diff
-  return [];
+  return '';
 }
 
 /**
