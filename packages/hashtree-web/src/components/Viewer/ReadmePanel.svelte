@@ -3,7 +3,7 @@
    * ReadmePanel - Bordered panel for displaying README.md content
    */
   import { marked } from 'marked';
-  import type { TreeEntry } from 'hashtree';
+  import { LinkType, type TreeEntry } from 'hashtree';
   import { routeStore } from '../../stores';
 
   interface Props {
@@ -20,7 +20,7 @@
 
   function handleEdit() {
     const readmeEntry = entries.find(
-      e => e.name.toLowerCase() === 'readme.md' && !e.isTree
+      e => e.name.toLowerCase() === 'readme.md' && e.type !== LinkType.Dir
     );
     if (readmeEntry) {
       // Navigate to edit the README

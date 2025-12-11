@@ -314,7 +314,7 @@ export class HashTreeFS {
       throw new Error(`ENOENT: no such file or directory, stat '${filepath}'`);
     }
 
-    return createStats(resolved.isTree, resolved.size);
+    return createStats(resolved.type === LinkType.Dir, resolved.size);
   }
 
   /**

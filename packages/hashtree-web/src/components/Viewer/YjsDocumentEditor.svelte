@@ -12,7 +12,7 @@
   import Placeholder from '@tiptap/extension-placeholder';
   import * as Y from 'yjs';
   import Collaboration from '@tiptap/extension-collaboration';
-  import { toHex } from 'hashtree';
+  import { toHex, LinkType } from 'hashtree';
   import type { CID, TreeEntry } from 'hashtree';
   import { getTree, decodeAsText } from '../../store';
   import { routeStore, createTreesStore, getTreeRootSync } from '../../stores';
@@ -109,20 +109,20 @@
     const deltas: Uint8Array[] = [];
 
     // Load state.yjs if exists
-    const stateEntry = docEntries.find(e => e.name === STATE_FILE && !e.isTree);
+    const stateEntry = docEntries.find(e => e.name === STATE_FILE && e.type !== LinkType.Dir);
     if (stateEntry) {
       const data = await tree.readFile(stateEntry.cid);
       if (data) deltas.push(data);
     }
 
     // Load deltas from deltas/ directory
-    const deltasEntry = docEntries.find(e => e.name === DELTAS_DIR && e.isTree);
+    const deltasEntry = docEntries.find(e => e.name === DELTAS_DIR && e.type === LinkType.Dir);
     if (deltasEntry) {
       try {
         const deltaEntries = await tree.listDirectory(deltasEntry.cid);
         // Sort by name (timestamp-based or numeric)
         const sorted = deltaEntries
-          .filter(e => !e.isTree)
+          .filter(e => e.type !== LinkType.Dir)
           .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
         for (const entry of sorted) {
@@ -253,7 +253,7 @@
 
           // If this update is from the document owner, re-read .yjs to check for collaborator changes
           if (npub === docOwnerNpub) {
-            const yjsConfigEntry = collabEntries.find(e => e.name === '.yjs' && !e.isTree);
+            const yjsConfigEntry = collabEntries.find(e => e.name === '.yjs' && e.type !== LinkType.Dir);
             if (yjsConfigEntry) {
               const data = await tree.readFile(yjsConfigEntry.cid);
               if (data) {
@@ -337,7 +337,7 @@
       const docResult = await tree.resolvePath(rootCid, currentPath.join('/'));
       if (docResult) {
         const docEntries = await tree.listDirectory(docResult.cid);
-        const hasYjsFile = docEntries.some(e => e.name === '.yjs' && !e.isTree);
+        const hasYjsFile = docEntries.some(e => e.name === '.yjs' && e.type !== LinkType.Dir);
 
         if (!hasYjsFile) {
           // Create .yjs file with collaborators

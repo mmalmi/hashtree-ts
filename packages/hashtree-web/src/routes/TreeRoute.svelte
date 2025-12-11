@@ -5,6 +5,7 @@
   import StreamView from '../components/stream/StreamView.svelte';
   import { nostrStore } from '../nostr';
   import { routeStore, addRecent, isViewingFileStore, currentHash, currentDirCidStore, createGitInfoStore, directoryEntriesStore } from '../stores';
+  import { LinkType } from 'hashtree';
   import { updateRecentVisibility } from '../stores/recents';
 
   interface Props {
@@ -45,7 +46,7 @@
 
   // Check if current directory is a Yjs document (contains .yjs file)
   let dirEntries = $derived($directoryEntriesStore);
-  let isYjsDocument = $derived(dirEntries.entries.some(e => e.name === '.yjs' && !e.isTree));
+  let isYjsDocument = $derived(dirEntries.entries.some(e => e.name === '.yjs' && e.type !== LinkType.Dir));
 
   // On mobile, show viewer for git repos, Yjs docs, or when file/stream selected
   let hasFileSelected = $derived(isViewingFile || isStreaming || isGitRepo || isYjsDocument);

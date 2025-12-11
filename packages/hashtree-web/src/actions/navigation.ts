@@ -3,7 +3,7 @@
  */
 import { navigate } from '../utils/navigate';
 import { parseRoute } from '../utils/route';
-import type { Hash } from 'hashtree';
+import { LinkType, type Hash } from 'hashtree';
 import { updateRoute, buildRouteUrl, getCurrentPathFromUrl } from './route';
 
 // Clear file selection (navigate to current directory without file)
@@ -34,7 +34,7 @@ export function goBack() {
 }
 
 // Select file for viewing
-export function selectFile(entry: { name: string; isTree: boolean } | null) {
-  if (!entry || entry.isTree) return;
+export function selectFile(entry: { name: string; type: LinkType } | null) {
+  if (!entry || entry.type === LinkType.Dir) return;
   updateRoute(entry.name);
 }

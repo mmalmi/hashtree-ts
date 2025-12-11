@@ -3,7 +3,7 @@
  */
 import { navigate } from '../utils/navigate';
 import { parseRoute } from '../utils/route';
-import { verifyTree, toHex } from 'hashtree';
+import { verifyTree, toHex, LinkType } from 'hashtree';
 import type { CID } from 'hashtree';
 import { saveHashtree, useNostrStore } from '../nostr';
 import { nip19 } from 'nostr-tools';
@@ -13,7 +13,7 @@ import { getCurrentRootCid, getCurrentPathFromUrl } from './route';
 import { updateLocalRootCache } from '../treeRootCache';
 
 // Helper to initialize a virtual tree (when rootCid is null but we're in a tree route)
-export async function initVirtualTree(entries: { name: string; cid: CID; size: number; isTree?: boolean }[]): Promise<CID | null> {
+export async function initVirtualTree(entries: { name: string; cid: CID; size: number; type?: LinkType }[]): Promise<CID | null> {
   const route = parseRoute();
   if (!route.npub || !route.treeName) return null;
 
@@ -37,7 +37,7 @@ export async function initVirtualTree(entries: { name: string; cid: CID; size: n
     name: e.name,
     cid: e.cid,
     size: e.size,
-    isTree: e.isTree,
+    type: e.type,
   }));
   const { cid: newRootCid } = await tree.putDirectory(dirEntries);
 
@@ -90,13 +90,13 @@ export async function createFolder(name: string) {
       name,
       emptyDirCid,
       0,
-      true
+      LinkType.Dir
     );
     // Publish to nostr - resolver will pick up the update
     autosaveIfOwn(newRootCid);
   } else {
     // Initialize virtual tree with this folder
-    await initVirtualTree([{ name, cid: emptyDirCid, size: 0, isTree: true }]);
+    await initVirtualTree([{ name, cid: emptyDirCid, size: 0, type: LinkType.Dir }]);
   }
 }
 
@@ -116,7 +116,7 @@ export async function createDocument(name: string) {
 
   // Create directory with .yjs file inside
   const { cid: docDirCid } = await tree.putDirectory([
-    { name: '.yjs', cid: yjsFileCid, size: yjsFileSize, isTree: false }
+    { name: '.yjs', cid: yjsFileCid, size: yjsFileSize, type: LinkType.Blob }
   ]);
 
   if (rootCid) {
@@ -127,7 +127,7 @@ export async function createDocument(name: string) {
       name,
       docDirCid,
       0,
-      true
+      LinkType.Dir
     );
     // Publish to nostr
     autosaveIfOwn(newRootCid);
@@ -140,7 +140,7 @@ export async function createDocument(name: string) {
     }
   } else {
     // Initialize virtual tree with this document folder
-    await initVirtualTree([{ name, cid: docDirCid, size: 0, isTree: true }]);
+    await initVirtualTree([{ name, cid: docDirCid, size: 0, type: LinkType.Dir }]);
   }
 }
 

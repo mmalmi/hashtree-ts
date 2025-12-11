@@ -3,7 +3,7 @@
    * Viewer - main file viewer component
    * Port of React Viewer component
    */
-  import { toHex, nhashEncode } from 'hashtree';
+  import { toHex, nhashEncode, LinkType } from 'hashtree';
   import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent, isViewingFileStore, resolvingPathStore, recentlyChangedFiles } from '../../stores';
   import { getTree, decodeAsText, formatBytes } from '../../store';
   import { nostrStore, npubToPubkey } from '../../nostr';
@@ -60,7 +60,7 @@
     if (!urlFileName) return null;
 
     // First try to find the file in entries (works for files within directories)
-    const fromEntries = entries.find(e => e.name === urlFileName && !e.isTree);
+    const fromEntries = entries.find(e => e.name === urlFileName && e.type !== LinkType.Dir);
     if (fromEntries) return fromEntries;
 
     // For direct file permalinks (no directory listing), the rootCid IS the file's CID
@@ -70,7 +70,7 @@
         name: urlFileName,
         cid: rootCid,
         size: 0,
-        isTree: false,
+        type: LinkType.Blob,
       };
     }
 
@@ -78,7 +78,7 @@
   });
 
   // Get files only (no directories) for prev/next navigation
-  let filesOnly = $derived(entries.filter(e => !e.isTree));
+  let filesOnly = $derived(entries.filter(e => e.type !== LinkType.Dir));
   let currentFileIndex = $derived(urlFileName ? filesOnly.findIndex(e => e.name === urlFileName) : -1);
   // Wrap around at start/end
   let prevFile = $derived(
@@ -107,7 +107,7 @@
   let hasTreeContext = $derived(!!rootCid || !!route.treeName);
 
   // Check if current directory is a Yjs document (contains .yjs file)
-  let isYjsDocument = $derived(entries.some(e => e.name === '.yjs' && !e.isTree));
+  let isYjsDocument = $derived(entries.some(e => e.name === '.yjs' && e.type !== LinkType.Dir));
 
   // Get current directory name from path
   let currentDirName = $derived.by(() => {

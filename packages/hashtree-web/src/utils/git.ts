@@ -4,6 +4,7 @@
  * Supports both loose objects and pack files
  */
 import type { CID, HashTree } from 'hashtree';
+import { LinkType } from 'hashtree';
 import { getTree } from '../store';
 import { unzlibSync, inflateSync } from 'fflate';
 
@@ -68,13 +69,13 @@ class GitObjectReader {
 
     try {
       const objectsDirResult = await this.tree.resolvePath(this.gitDirCid, 'objects');
-      if (!objectsDirResult || !objectsDirResult.isTree) return null;
+      if (!objectsDirResult || objectsDirResult.type !== LinkType.Dir) return null;
 
       const subDirResult = await this.tree.resolvePath(objectsDirResult.cid, dir);
-      if (!subDirResult || !subDirResult.isTree) return null;
+      if (!subDirResult || subDirResult.type !== LinkType.Dir) return null;
 
       const fileResult = await this.tree.resolvePath(subDirResult.cid, file);
-      if (!fileResult || fileResult.isTree) return null;
+      if (!fileResult || fileResult.type === LinkType.Dir) return null;
 
       const compressed = await this.tree.readFile(fileResult.cid);
       if (!compressed) return null;
@@ -106,10 +107,10 @@ class GitObjectReader {
 
     try {
       const objectsDirResult = await this.tree.resolvePath(this.gitDirCid, 'objects');
-      if (!objectsDirResult || !objectsDirResult.isTree) return this.packIndexes;
+      if (!objectsDirResult || objectsDirResult.type !== LinkType.Dir) return this.packIndexes;
 
       const packDirResult = await this.tree.resolvePath(objectsDirResult.cid, 'pack');
-      if (!packDirResult || !packDirResult.isTree) return this.packIndexes;
+      if (!packDirResult || packDirResult.type !== LinkType.Dir) return this.packIndexes;
 
       const entries = await this.tree.listDirectory(packDirResult.cid);
 
@@ -123,14 +124,14 @@ class GitObjectReader {
 
         // Read the index file
         const idxResult = await this.tree.resolvePath(packDirResult.cid, entry.name);
-        if (!idxResult || idxResult.isTree) continue;
+        if (!idxResult || idxResult.type === LinkType.Dir) continue;
 
         const indexData = await this.tree.readFile(idxResult.cid);
         if (!indexData) continue;
 
         // Get pack file CID (don't load data yet - lazy load)
         const packResult = await this.tree.resolvePath(packDirResult.cid, packEntry.name);
-        if (!packResult || packResult.isTree) continue;
+        if (!packResult || packResult.type === LinkType.Dir) continue;
 
         // Parse index header
         const view = new DataView(indexData.buffer, indexData.byteOffset, indexData.byteLength);
@@ -357,7 +358,7 @@ class GitObjectReader {
   async readHead(): Promise<string | null> {
     try {
       const headResult = await this.tree.resolvePath(this.gitDirCid, 'HEAD');
-      if (!headResult || headResult.isTree) return null;
+      if (!headResult || headResult.type === LinkType.Dir) return null;
 
       const data = await this.tree.readFile(headResult.cid);
       if (!data) return null;
@@ -379,7 +380,7 @@ class GitObjectReader {
   async readRef(refPath: string): Promise<string | null> {
     try {
       const refResult = await this.tree.resolvePath(this.gitDirCid, refPath);
-      if (!refResult || refResult.isTree) return null;
+      if (!refResult || refResult.type === LinkType.Dir) return null;
 
       const data = await this.tree.readFile(refResult.cid);
       if (!data) return null;
@@ -519,14 +520,14 @@ class GitObjectReader {
     try {
       // Read refs/heads directory
       const refsResult = await this.tree.resolvePath(this.gitDirCid, 'refs');
-      if (!refsResult || !refsResult.isTree) return { branches, currentBranch };
+      if (!refsResult || refsResult.type !== LinkType.Dir) return { branches, currentBranch };
 
       const headsResult = await this.tree.resolvePath(refsResult.cid, 'heads');
-      if (!headsResult || !headsResult.isTree) return { branches, currentBranch };
+      if (!headsResult || headsResult.type !== LinkType.Dir) return { branches, currentBranch };
 
       const entries = await this.tree.listDirectory(headsResult.cid);
       for (const entry of entries) {
-        if (!entry.isTree) {
+        if (entry.type !== LinkType.Dir) {
           branches.push(entry.name);
         }
       }
@@ -541,8 +542,8 @@ class GitObjectReader {
    * Parse a git tree object into entries
    * Tree format: repeated [mode SP name NUL sha1]
    */
-  parseTree(data: Uint8Array): Array<{ mode: string; name: string; sha: string; isTree: boolean }> {
-    const entries: Array<{ mode: string; name: string; sha: string; isTree: boolean }> = [];
+  parseTree(data: Uint8Array): Array<{ mode: string; name: string; sha: string; isDir: boolean }> {
+    const entries: Array<{ mode: string; name: string; sha: string; isDir: boolean }> = [];
     let pos = 0;
 
     while (pos < data.length) {
@@ -564,9 +565,9 @@ class GitObjectReader {
       pos += 20;
 
       // Mode 40000 = tree, others are blobs
-      const isTree = mode === '40000';
+      const isDir = mode === '40000';
 
-      entries.push({ mode, name, sha, isTree });
+      entries.push({ mode, name, sha, isDir });
     }
 
     return entries;
@@ -586,13 +587,13 @@ class GitObjectReader {
     }
 
     const entries = this.parseTree(obj.data);
-    const dirEntries: Array<{ name: string; cid: CID; size: number; isTree: boolean }> = [];
+    const dirEntries: Array<{ name: string; cid: CID; size: number; type: LinkType }> = [];
 
     for (const entry of entries) {
-      if (entry.isTree) {
+      if (entry.isDir) {
         // Recursively build subdirectory
         const subCid = await this.buildTreeFromGitTree(entry.sha, hashtree, onProgress);
-        dirEntries.push({ name: entry.name, cid: subCid, size: 0, isTree: true });
+        dirEntries.push({ name: entry.name, cid: subCid, size: 0, type: LinkType.Dir });
       } else {
         // Read blob and store in hashtree
         const blobObj = await this.readObject(entry.sha);
@@ -604,7 +605,7 @@ class GitObjectReader {
         if (onProgress) onProgress(entry.name);
 
         const { cid, size } = await hashtree.putFile(blobObj.data);
-        dirEntries.push({ name: entry.name, cid, size, isTree: false });
+        dirEntries.push({ name: entry.name, cid, size, type: LinkType.Blob });
       }
     }
 
@@ -614,7 +615,7 @@ class GitObjectReader {
         name: e.name,
         cid: e.cid,
         size: e.size,
-        isTree: e.isTree,
+        type: e.type,
       }))
     );
 
@@ -774,7 +775,7 @@ export async function getLog(rootCid: CID, options?: { depth?: number; debug?: b
 
     // Find .git directory
     const gitDirResult = await tree.resolvePath(rootCid, '.git');
-    if (!gitDirResult || !gitDirResult.isTree) {
+    if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
       debugInfo.push('No .git directory found');
       if (options?.debug) {
         return { commits: [], debug: debugInfo };
@@ -821,7 +822,7 @@ export async function getBranches(rootCid: CID) {
 
   try {
     const gitDirResult = await tree.resolvePath(rootCid, '.git');
-    if (!gitDirResult || !gitDirResult.isTree) {
+    if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
       return { branches: [], currentBranch: null };
     }
 
@@ -851,13 +852,13 @@ export async function isGitRepo(rootCid: CID): Promise<boolean> {
   try {
     // Check for .git directory
     const gitDirResult = await tree.resolvePath(rootCid, '.git');
-    if (!gitDirResult || !gitDirResult.isTree) {
+    if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
       return false;
     }
 
     // Check for HEAD file inside .git
     const headResult = await tree.resolvePath(gitDirResult.cid, 'HEAD');
-    return headResult !== null && !headResult.isTree;
+    return headResult !== null && headResult.type !== LinkType.Dir;
   } catch {
     return false;
   }
@@ -898,7 +899,7 @@ export async function checkoutCommit(
 
   // Find .git directory
   const gitDirResult = await tree.resolvePath(rootCid, '.git');
-  if (!gitDirResult || !gitDirResult.isTree) {
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
     throw new Error('Not a git repository');
   }
 
@@ -931,13 +932,13 @@ export async function checkoutCommit(
       name: e.name,
       cid: e.cid,
       size: e.size,
-      isTree: e.isTree,
+      type: e.type,
     })),
     {
       name: '.git',
       cid: gitEntry.cid,
       size: gitEntry.size,
-      isTree: true,
+      type: LinkType.Dir,
     },
   ];
 

@@ -11,7 +11,7 @@
   import ReadmePanel from './ReadmePanel.svelte';
   import ViewerHeader from './ViewerHeader.svelte';
   import { uploadFiles } from '../../stores/upload';
-  import type { TreeEntry as HashTreeEntry } from 'hashtree';
+  import { LinkType, type TreeEntry as HashTreeEntry } from 'hashtree';
 
   let route = $derived($routeStore);
   let rootCid = $derived($treeRootStore);
@@ -70,7 +70,7 @@
   $effect(() => {
     readmeContent = null;
     const readmeEntry = entries.find(
-      (e: HashTreeEntry) => e.name.toLowerCase() === 'readme.md' && !e.isTree
+      (e: HashTreeEntry) => e.name.toLowerCase() === 'readme.md' && e.type !== LinkType.Dir
     );
     if (!readmeEntry) return;
 

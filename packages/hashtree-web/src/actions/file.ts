@@ -1,7 +1,7 @@
 /**
  * File operations - create, save, upload files
  */
-import type { CID } from 'hashtree';
+import { LinkType, type CID } from 'hashtree';
 import { autosaveIfOwn } from '../nostr';
 import { getTree } from '../store';
 import { markFilesChanged } from '../stores/recentlyChanged';
@@ -161,12 +161,12 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
         subdirName,
         emptyDirCid,
         0,
-        true
+        LinkType.Dir
       );
       rootCid = newRootCid;
     } else {
       // Initialize virtual tree with the subdirectory
-      const result = await initVirtualTree([{ name: subdirName, cid: emptyDirCid, size: 0, isTree: true }]);
+      const result = await initVirtualTree([{ name: subdirName, cid: emptyDirCid, size: 0, type: LinkType.Dir }]);
       if (result) {
         rootCid = result;
       }
@@ -178,7 +178,7 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
 
   // Build directory structure from file paths
   // Files may have paths like "folder/subfolder/file.txt"
-  const dirEntries = new Map<string, { name: string; cid: CID; size: number; isTree?: boolean }[]>();
+  const dirEntries = new Map<string, { name: string; cid: CID; size: number; type?: LinkType }[]>();
 
   for (const file of files) {
     // putFile returns CID (encrypted by default)
@@ -209,7 +209,7 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
           entry.name,
           entry.cid,
           entry.size,
-          entry.isTree ?? false
+          entry.type ?? LinkType.Blob
         );
         rootCid = newRootCid;
       } else {

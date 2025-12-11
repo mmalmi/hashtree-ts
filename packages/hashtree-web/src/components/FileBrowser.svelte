@@ -3,7 +3,7 @@
    * FileBrowser - displays directory contents and tree list
    * Svelte port of the React component
    */
-  import { toHex, nhashEncode, type TreeEntry as HashTreeEntry } from 'hashtree';
+  import { toHex, nhashEncode, LinkType, type TreeEntry as HashTreeEntry } from 'hashtree';
   import { formatBytes, getTree } from '../store';
   import { deleteEntry, moveEntry, moveToParent } from '../actions';
   import { openCreateModal, openShareModal } from '../stores/modals';
@@ -22,7 +22,7 @@
 
   // Build href for an entry
   function buildEntryHref(
-    entry: { name: string; isTree: boolean },
+    entry: { name: string; type: LinkType },
     currentNpub: string | null,
     currentTreeName: string | null,
     currentPath: string[],
@@ -165,7 +165,9 @@
     // Sort entries: directories first, then alphabetically
     function sortEntries(list: HashTreeEntry[]): HashTreeEntry[] {
       return [...list].sort((a, b) => {
-        if (a.isTree !== b.isTree) return a.isTree ? -1 : 1;
+        const aIsDir = a.type === LinkType.Dir;
+        const bIsDir = b.type === LinkType.Dir;
+        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
         return a.name.localeCompare(b.name);
       });
     }
@@ -398,7 +400,7 @@
       const entryIndex = newIndex - specialItemCount;
       const newEntry = entries[entryIndex];
       if (newEntry) {
-        if (newEntry.isTree || isFileBrowserOnly) {
+        if (newEntry.type === LinkType.Dir || isFileBrowserOnly) {
           // Directory or single-pane layout: just focus it, don't navigate
           // When viewer isn't visible, files also just focus - use Enter to navigate
           focusedIndex = newIndex;
@@ -661,10 +663,10 @@
               href={buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootCid, linkKey)}
               class="p-3 pl-9 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {selectedEntry?.name === entry.name && focusedIndex < 0 ? 'bg-surface-2' : ''} {focusedIndex === idx + specialItemCount ? 'ring-2 ring-inset ring-accent' : ''} {recentlyChanged.has(entry.name) && selectedEntry?.name !== entry.name ? 'animate-pulse-live' : ''}"
             >
-              <span class="shrink-0 {entry.isTree ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}"></span>
+              <span class="shrink-0 {entry.type === LinkType.Dir ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}"></span>
               <span class="truncate flex-1 min-w-0" title={entry.name}>{entry.name}</span>
               <span class="shrink-0 text-muted text-sm min-w-12 text-right">
-                {!entry.isTree && entry.size !== undefined ? formatBytes(entry.size) : ''}
+                {entry.type !== LinkType.Dir && entry.size !== undefined ? formatBytes(entry.size) : ''}
               </span>
             </a>
           {/each}

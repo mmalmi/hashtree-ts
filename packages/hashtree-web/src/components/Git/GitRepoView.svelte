@@ -3,7 +3,7 @@
    * GitRepoView - GitHub-style directory listing with README below
    * Shows branch info, file list table, then README.md in its own panel
    */
-  import type { CID, TreeEntry } from 'hashtree';
+  import { LinkType, type CID, type TreeEntry } from 'hashtree';
   import { getTree, decodeAsText, formatBytes } from '../../store';
   import { routeStore, createGitLogStore, openGitHistoryModal } from '../../stores';
   import FolderActions from '../FolderActions.svelte';
@@ -37,8 +37,10 @@
 
   // Sort entries: directories first, then files, alphabetically
   let sortedEntries = $derived([...entries].sort((a, b) => {
-    if (a.isTree && !b.isTree) return -1;
-    if (!a.isTree && b.isTree) return 1;
+    const aIsDir = a.type === LinkType.Dir;
+    const bIsDir = b.type === LinkType.Dir;
+    if (aIsDir && !bIsDir) return -1;
+    if (!aIsDir && bIsDir) return 1;
     return a.name.localeCompare(b.name);
   }));
 
@@ -48,7 +50,7 @@
   $effect(() => {
     readmeContent = null;
     const readmeEntry = entries.find(
-      e => e.name.toLowerCase() === 'readme.md' && !e.isTree
+      e => e.name.toLowerCase() === 'readme.md' && e.type !== LinkType.Dir
     );
     if (!readmeEntry) return;
 
@@ -166,13 +168,13 @@
             class="b-b-1 b-b-solid b-b-surface-3 hover:bg-surface-1 cursor-pointer {isGitDir ? 'opacity-50' : ''}"
           >
             <td class="py-2 px-3 w-8">
-              <span class="{entry.isTree ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}"></span>
+              <span class="{entry.type === LinkType.Dir ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}"></span>
             </td>
             <td class="py-2 px-3 {isGitDir ? 'text-text-3' : 'text-accent'}">
               {entry.name}
             </td>
             <td class="py-2 px-3 text-right text-muted w-24">
-              {!entry.isTree && entry.size !== undefined ? formatBytes(entry.size) : ''}
+              {entry.type !== LinkType.Dir && entry.size !== undefined ? formatBytes(entry.size) : ''}
             </td>
           </tr>
         {:else}

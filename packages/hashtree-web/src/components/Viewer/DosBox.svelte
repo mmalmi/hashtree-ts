@@ -5,8 +5,7 @@
    * Lazy loads emulators package only when an executable is opened.
    * Mounts the parent directory from hashtree as the DOS C: drive.
    */
-  import type { CID } from 'hashtree';
-  import { toHex } from 'hashtree';
+  import { LinkType, toHex, type CID } from 'hashtree';
   import { getTree } from '../../store';
   import { saveBinaryFile } from '../../actions/file';
 
@@ -93,7 +92,7 @@
     for (const entry of entries) {
       const fullPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
-      if (entry.isTree) {
+      if (entry.type === LinkType.Dir) {
         // Recursively collect subdirectory
         const subResult = await collectDirectoryFiles(entry.cid, fullPath, onProgress);
         Object.assign(files, subResult.files);

@@ -3,6 +3,7 @@
  */
 import { zipSync, unzipSync, type Zippable, type Unzipped } from 'fflate';
 import type { HashTree, CID } from 'hashtree';
+import { LinkType } from 'hashtree';
 
 export interface ZipProgress {
   current: number;
@@ -56,7 +57,7 @@ async function collectFiles(
   for (const entry of entries) {
     const fullPath = basePath ? `${basePath}/${entry.name}` : entry.name;
 
-    if (entry.isTree) {
+    if (entry.type === LinkType.Dir) {
       // Recursively collect from subdirectory
       const subdirHasContent = await collectFiles(tree, entry.cid, fullPath, items, onProgress, counter);
       if (!subdirHasContent) {

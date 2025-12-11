@@ -100,15 +100,16 @@ test.describe('Git integration features', () => {
       // List the entries
       const entries = await tree.listDirectory(rootCid);
 
+      const { LinkType } = await import('hashtree');
       return {
-        entries: entries.map(e => ({ name: e.name, isTree: e.isTree })),
+        entries: entries.map(e => ({ name: e.name, isDir: e.type === LinkType.Dir })),
       };
     });
 
     // Verify .git and .claude are directories, readme.txt is a file
-    expect(result.entries).toContainEqual({ name: '.git', isTree: true });
-    expect(result.entries).toContainEqual({ name: '.claude', isTree: true });
-    expect(result.entries).toContainEqual({ name: 'readme.txt', isTree: false });
+    expect(result.entries).toContainEqual({ name: '.git', isDir: true });
+    expect(result.entries).toContainEqual({ name: '.claude', isDir: true });
+    expect(result.entries).toContainEqual({ name: 'readme.txt', isDir: false });
   });
 
   test('should detect git repo and show git features when .git directory exists', async ({ page }) => {
@@ -293,7 +294,7 @@ test.describe('Git integration features', () => {
 
         // Verify .git structure was preserved
         const entries = await tree.listDirectory(rootCid);
-        const hasGit = entries.some(e => e.name === '.git' && e.isTree);
+        const hasGit = entries.some(e => e.name === '.git' && e.type === LinkType.Dir);
 
         if (!hasGit) {
           return { error: 'No .git directory found', hasGit: false };
@@ -311,7 +312,7 @@ test.describe('Git integration features', () => {
         const objectsRes = await tree.resolvePath(rootCid, '.git/objects');
         const objectDirs = objectsRes
           ? (await tree.listDirectory(objectsRes.cid))
-              .filter(e => e.isTree && e.name.length === 2)
+              .filter(e => e.type === LinkType.Dir && e.name.length === 2)
               .map(e => e.name)
           : [];
 
@@ -661,7 +662,7 @@ test.describe('Git integration features', () => {
 
         // List files before checkout (should have both file.txt and file2.txt)
         const entriesBefore = await tree.listDirectory(rootCid);
-        const filesBefore = entriesBefore.filter(e => !e.isTree && e.name !== '.git').map(e => e.name);
+        const filesBefore = entriesBefore.filter(e => e.type !== LinkType.Dir && e.name !== '.git').map(e => e.name);
 
         // Read file.txt content before checkout
         const file1Before = await tree.resolvePath(rootCid, 'file.txt');
@@ -675,7 +676,7 @@ test.describe('Git integration features', () => {
 
           // List files after checkout (should only have file.txt, no file2.txt)
           const entriesAfter = await tree.listDirectory(newRootCid);
-          const filesAfter = entriesAfter.filter(e => !e.isTree && e.name !== '.git').map(e => e.name);
+          const filesAfter = entriesAfter.filter(e => e.type !== LinkType.Dir && e.name !== '.git').map(e => e.name);
 
           // Read file.txt content after checkout
           const file1After = await tree.resolvePath(newRootCid, 'file.txt');
@@ -837,7 +838,7 @@ test.describe('Git integration features', () => {
           try {
             const dirEntries = await tree.listDirectory(newRootCid);
             canListDirectory = true;
-            entries = dirEntries.map(e => `${e.name}${e.isTree ? '/' : ''}`);
+            entries = dirEntries.map(e => `${e.name}${e.type === LinkType.Dir ? '/' : ''}`);
           } catch (err) {
             canListDirectory = false;
             listError = err instanceof Error ? err.message : String(err);

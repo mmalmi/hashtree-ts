@@ -5,14 +5,16 @@
  * Svelte version using stores
  */
 import { writable, get, type Readable } from 'svelte/store';
-import { type CID, type TreeEntry, toHex } from 'hashtree';
+import { type CID, type TreeEntry, toHex, LinkType } from 'hashtree';
 import { getTree } from '../store';
 import { markFilesChanged } from './recentlyChanged';
 
 // Sort entries: directories first, then alphabetically
 function sortEntries(entries: TreeEntry[]): TreeEntry[] {
   return [...entries].sort((a, b) => {
-    if (a.isTree !== b.isTree) return a.isTree ? -1 : 1;
+    const aIsDir = a.type === LinkType.Dir;
+    const bIsDir = b.type === LinkType.Dir;
+    if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
 }

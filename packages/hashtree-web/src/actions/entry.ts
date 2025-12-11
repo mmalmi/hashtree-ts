@@ -5,6 +5,7 @@ import { navigate } from '../utils/navigate';
 import { parseRoute } from '../utils/route';
 import { autosaveIfOwn } from '../nostr';
 import { getTree } from '../store';
+import { LinkType } from 'hashtree';
 import { getCurrentRootCid, getCurrentPathFromUrl, buildRouteUrl, updateRoute } from './route';
 
 // Rename entry
@@ -123,7 +124,7 @@ export async function moveEntry(sourceName: string, targetDirName: string) {
   if (!targetResult) return;
 
   // Check target is a directory
-  if (!targetResult.isTree) return;
+  if (targetResult.type !== LinkType.Dir) return;
 
   // Check for name collision
   const targetContents = await tree.listDirectory(targetResult.cid);

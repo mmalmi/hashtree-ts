@@ -5,7 +5,7 @@
    */
   import { routeStore, currentDirCidStore, directoryEntriesStore } from '../../stores';
   import { getTree } from '../../store';
-  import type { TreeEntry } from 'hashtree';
+  import { LinkType, type TreeEntry } from 'hashtree';
 
   interface Props {
     content: string;
@@ -45,7 +45,7 @@
     if (rest.length === 0) return entry;
 
     // If it's a directory, recurse into it
-    if (entry.isTree && entry.cid) {
+    if (entry.type === LinkType.Dir && entry.cid) {
       const tree = getTree();
       const subEntries = await tree.listDirectory(entry.cid);
       if (subEntries) {
@@ -97,7 +97,7 @@
             // Resolve to an entry
             const entry = await resolveRelativePath(pathParts, currentEntries);
 
-            if (entry && entry.cid && !entry.isTree) {
+            if (entry && entry.cid && entry.type !== LinkType.Dir) {
               // Read the file content
               const data = await tree.readFile(entry.cid);
               if (data && !cancelled) {
