@@ -20,6 +20,8 @@
   import ShareModal from './components/Modals/ShareModal.svelte';
   import CollaboratorsModal from './components/Modals/CollaboratorsModal.svelte';
   import UnsavedChangesModal from './components/Modals/UnsavedChangesModal.svelte';
+  import NewPullRequestModal from './components/Git/NewPullRequestModal.svelte';
+  import NewIssueModal from './components/Git/NewIssueModal.svelte';
 
   // Handle fullscreen mode from URL
   function isFullscreen(): boolean {
@@ -81,5 +83,7 @@
   <ShareModal />
   <CollaboratorsModal />
   <UnsavedChangesModal />
+  <NewPullRequestModal />
+  <NewIssueModal />
   <Toast />
 </div>

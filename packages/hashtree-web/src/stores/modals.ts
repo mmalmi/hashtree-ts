@@ -61,6 +61,20 @@ interface UnsavedChangesTarget {
   fileName?: string;
 }
 
+interface NewPullRequestTarget {
+  npub: string;
+  repoName: string;
+  /** Callback when PR is created */
+  onCreate?: (pr: { id: string; title: string }) => void;
+}
+
+interface NewIssueTarget {
+  npub: string;
+  repoName: string;
+  /** Callback when issue is created */
+  onCreate?: (issue: { id: string; title: string }) => void;
+}
+
 
 interface ModalState {
   showCreateModal: boolean;
@@ -83,6 +97,10 @@ interface ModalState {
   collaboratorsTarget: CollaboratorsTarget | null;
   showUnsavedChangesModal: boolean;
   unsavedChangesTarget: UnsavedChangesTarget | null;
+  showNewPullRequestModal: boolean;
+  newPullRequestTarget: NewPullRequestTarget | null;
+  showNewIssueModal: boolean;
+  newIssueTarget: NewIssueTarget | null;
   modalInput: string;
 }
 
@@ -107,6 +125,10 @@ const initialState: ModalState = {
   collaboratorsTarget: null,
   showUnsavedChangesModal: false,
   unsavedChangesTarget: null,
+  showNewPullRequestModal: false,
+  newPullRequestTarget: null,
+  showNewIssueModal: false,
+  newIssueTarget: null,
   modalInput: '',
 };
 
@@ -198,4 +220,20 @@ export function setModalInput(input: string) {
   modalsStore.update(s => ({ ...s, modalInput: input }));
 }
 
-export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, CollaboratorsTarget, UnsavedChangesTarget };
+export function openNewPullRequestModal(npub: string, repoName: string, onCreate?: (pr: { id: string; title: string }) => void) {
+  modalsStore.update(s => ({ ...s, showNewPullRequestModal: true, newPullRequestTarget: { npub, repoName, onCreate }, modalInput: '' }));
+}
+
+export function closeNewPullRequestModal() {
+  modalsStore.update(s => ({ ...s, showNewPullRequestModal: false, newPullRequestTarget: null, modalInput: '' }));
+}
+
+export function openNewIssueModal(npub: string, repoName: string, onCreate?: (issue: { id: string; title: string }) => void) {
+  modalsStore.update(s => ({ ...s, showNewIssueModal: true, newIssueTarget: { npub, repoName, onCreate }, modalInput: '' }));
+}
+
+export function closeNewIssueModal() {
+  modalsStore.update(s => ({ ...s, showNewIssueModal: false, newIssueTarget: null, modalInput: '' }));
+}
+
+export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget };

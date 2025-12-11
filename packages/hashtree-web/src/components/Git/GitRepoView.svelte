@@ -9,6 +9,7 @@
   import FolderActions from '../FolderActions.svelte';
   import ReadmePanel from '../Viewer/ReadmePanel.svelte';
   import Dropdown from '../ui/Dropdown.svelte';
+  import RepoTabNav from './RepoTabNav.svelte';
 
   interface Props {
     dirCid: CID;
@@ -143,6 +144,11 @@
 </script>
 
 <div class="flex flex-col gap-4">
+  <!-- Tab navigation for Code/PRs/Issues - only show when npub repo (not nhash) -->
+  {#if route.npub && route.treeName && currentPath.length === 0}
+    <RepoTabNav npub={route.npub} repoName={route.treeName} activeTab="code" />
+  {/if}
+
   <!-- Folder actions -->
   <FolderActions {dirCid} {canEdit} />
 

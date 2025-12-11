@@ -57,6 +57,19 @@ export const KIND_PICTURE_FIRST = 20
 // Additional kinds found in codebase
 export const KIND_WALLET_CONNECT = 6927
 
+// NIP-34: Git Repositories
+export const KIND_REPO_ANNOUNCEMENT = 30617 // Repository announcement
+export const KIND_REPO_STATE = 30618 // Repository state (branch/tag tracking)
+export const KIND_PATCH = 1617 // Patch (code changes under 60kb)
+export const KIND_PULL_REQUEST = 1618 // Pull request
+export const KIND_PR_UPDATE = 1619 // PR update (revision)
+export const KIND_ISSUE = 1621 // Issue (bug report, feature request)
+// Status events (1630-1633)
+export const KIND_STATUS_OPEN = 1630 // Open/default
+export const KIND_STATUS_APPLIED = 1631 // Applied/Merged/Resolved
+export const KIND_STATUS_CLOSED = 1632 // Closed
+export const KIND_STATUS_DRAFT = 1633 // Draft
+
 // Debug namespaces for debug pkg
 export const DEBUG_NAMESPACES = {
   // NDK

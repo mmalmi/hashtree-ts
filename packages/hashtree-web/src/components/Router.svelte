@@ -19,7 +19,12 @@
   import TreeRoute from '../routes/TreeRoute.svelte';
   import UserRoute from '../routes/UserRoute.svelte';
 
+  // Git repository views (NIP-34)
+  import PullRequestsView from './Git/PullRequestsView.svelte';
+  import IssuesView from './Git/IssuesView.svelte';
+
   // Route definitions with patterns
+  // Note: More specific routes must come before less specific ones
   const routePatterns = [
     { pattern: '/', component: HomeRoute },
     { pattern: '/settings', component: SettingsPage },
@@ -29,6 +34,12 @@
     { pattern: '/:npub/followers', component: FollowersPage },
     { pattern: '/:npub/edit', component: EditProfilePage },
     { pattern: '/:npub/profile', component: UserRoute },
+    // NIP-34 Git repository routes (must be before generic tree routes)
+    { pattern: '/:npub/:treeName/pulls/*', component: PullRequestsView },
+    { pattern: '/:npub/:treeName/pulls', component: PullRequestsView },
+    { pattern: '/:npub/:treeName/issues/*', component: IssuesView },
+    { pattern: '/:npub/:treeName/issues', component: IssuesView },
+    // Generic tree routes
     { pattern: '/:npub/:treeName/*', component: TreeRoute },
     { pattern: '/:npub/:treeName', component: TreeRoute },
     { pattern: '/:id/*', component: UserRoute },
@@ -73,6 +84,10 @@
     <EditProfilePage npub={route.params.npub} />
   {:else if route.component === ProfileView}
     <ProfileView npub={route.params.npub || ''} />
+  {:else if route.component === PullRequestsView}
+    <PullRequestsView npub={route.params.npub} repoName={route.params.treeName} />
+  {:else if route.component === IssuesView}
+    <IssuesView npub={route.params.npub} repoName={route.params.treeName} />
   {:else if route.component === TreeRoute}
     <TreeRoute npub={route.params.npub} treeName={route.params.treeName} wild={route.params.wild} />
   {:else if route.component === UserRoute}
