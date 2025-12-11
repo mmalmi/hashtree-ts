@@ -1,14 +1,16 @@
 <script lang="ts">
   /**
    * IssuesView - Lists issues for a repository using NIP-34
+   * Layout matches TreeRoute: FileBrowser on left, content on right
    */
-  import { routeStore, createIssuesStore, filterByStatus, countByStatus, openNewIssueModal } from '../../stores';
+  import { createIssuesStore, filterByStatus, countByStatus, openNewIssueModal } from '../../stores';
   import { nostrStore } from '../../nostr';
-  import type { Issue, ItemStatus } from '../../nip34';
+  import { encodeEventId, type Issue, type ItemStatus } from '../../nip34';
   import ItemStatusBadge from './ItemStatusBadge.svelte';
   import ItemListHeader from './ItemListHeader.svelte';
   import RepoTabNav from './RepoTabNav.svelte';
   import AuthorName from './AuthorName.svelte';
+  import FileBrowser from '../FileBrowser.svelte';
 
   interface Props {
     npub: string;
@@ -40,11 +42,9 @@
     });
   }
 
-  function navigateToIssue(issue: Issue) {
-    const route = $routeStore;
-    if (route.npub && route.treeName) {
-      window.location.hash = `/${route.npub}/${route.treeName}/issues/${issue.id}`;
-    }
+  function getIssueHref(issue: Issue): string {
+    const encodedId = encodeEventId(issue.id);
+    return `#/${npub}/${repoName}?tab=issues&id=${encodedId}`;
   }
 
   function formatDate(timestamp: number): string {
@@ -67,7 +67,13 @@
   }
 </script>
 
-<div class="flex flex-col h-full bg-surface-0">
+<!-- File browser on left (same as TreeRoute) -->
+<div class="flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col min-h-0">
+  <FileBrowser />
+</div>
+
+<!-- Right panel with Issues -->
+<div class="hidden lg:flex flex-1 flex-col min-w-0 min-h-0 bg-surface-0">
   <!-- Tab navigation -->
   <RepoTabNav {npub} {repoName} activeTab="issues" />
 
@@ -109,10 +115,7 @@
     {:else}
       <div class="divide-y divide-surface-3">
         {#each filteredIssues as issue (issue.id)}
-          <button
-            onclick={() => navigateToIssue(issue)}
-            class="w-full text-left px-4 py-3 hover:bg-surface-1 flex items-start gap-3 b-0 bg-transparent"
-          >
+          <div class="px-4 py-3 flex items-start gap-3">
             <!-- Status icon -->
             <div class="mt-1">
               <ItemStatusBadge status={issue.status} type="issue" />
@@ -120,8 +123,11 @@
 
             <!-- Content -->
             <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="font-medium text-text-1 truncate">{issue.title}</span>
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <a
+                  href={getIssueHref(issue)}
+                  class="font-medium text-text-1 hover:text-accent hover:underline truncate"
+                >{issue.title}</a>
                 {#each issue.labels as label}
                   <span class="px-2 py-0.5 text-xs rounded-full bg-accent/10 text-accent">{label}</span>
                 {/each}
@@ -131,7 +137,7 @@
                 <AuthorName pubkey={issue.authorPubkey} npub={issue.author} />
               </div>
             </div>
-          </button>
+          </div>
         {/each}
       </div>
     {/if}

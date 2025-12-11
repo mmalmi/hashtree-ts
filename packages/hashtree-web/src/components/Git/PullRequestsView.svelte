@@ -1,14 +1,16 @@
 <script lang="ts">
   /**
    * PullRequestsView - Lists pull requests for a repository using NIP-34
+   * Layout matches TreeRoute: FileBrowser on left, content on right
    */
-  import { routeStore, createPullRequestsStore, filterByStatus, countByStatus, openNewPullRequestModal } from '../../stores';
+  import { createPullRequestsStore, filterByStatus, countByStatus, openNewPullRequestModal } from '../../stores';
   import { nostrStore } from '../../nostr';
-  import type { PullRequest, ItemStatus } from '../../nip34';
+  import { encodeEventId, type PullRequest, type ItemStatus } from '../../nip34';
   import ItemStatusBadge from './ItemStatusBadge.svelte';
   import ItemListHeader from './ItemListHeader.svelte';
   import RepoTabNav from './RepoTabNav.svelte';
   import AuthorName from './AuthorName.svelte';
+  import FileBrowser from '../FileBrowser.svelte';
 
   interface Props {
     npub: string;
@@ -40,11 +42,9 @@
     });
   }
 
-  function navigateToPR(pr: PullRequest) {
-    const route = $routeStore;
-    if (route.npub && route.treeName) {
-      window.location.hash = `/${route.npub}/${route.treeName}/pulls/${pr.id}`;
-    }
+  function getPRHref(pr: PullRequest): string {
+    const encodedId = encodeEventId(pr.id);
+    return `#/${npub}/${repoName}?tab=pulls&id=${encodedId}`;
   }
 
   function formatDate(timestamp: number): string {
@@ -67,7 +67,13 @@
   }
 </script>
 
-<div class="flex flex-col h-full bg-surface-0">
+<!-- File browser on left (same as TreeRoute) -->
+<div class="flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col min-h-0">
+  <FileBrowser />
+</div>
+
+<!-- Right panel with PRs -->
+<div class="hidden lg:flex flex-1 flex-col min-w-0 min-h-0 bg-surface-0">
   <!-- Tab navigation -->
   <RepoTabNav {npub} {repoName} activeTab="pulls" />
 
@@ -109,10 +115,7 @@
     {:else}
       <div class="divide-y divide-surface-3">
         {#each filteredPRs as pr (pr.id)}
-          <button
-            onclick={() => navigateToPR(pr)}
-            class="w-full text-left px-4 py-3 hover:bg-surface-1 flex items-start gap-3 b-0 bg-transparent"
-          >
+          <div class="px-4 py-3 flex items-start gap-3">
             <!-- Status icon -->
             <div class="mt-1">
               <ItemStatusBadge status={pr.status} type="pr" />
@@ -120,8 +123,11 @@
 
             <!-- Content -->
             <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="font-medium text-text-1 truncate">{pr.title}</span>
+              <div class="flex items-center gap-2 mb-1 flex-wrap">
+                <a
+                  href={getPRHref(pr)}
+                  class="font-medium text-text-1 hover:text-accent hover:underline truncate"
+                >{pr.title}</a>
                 {#each pr.labels as label}
                   <span class="px-2 py-0.5 text-xs rounded-full bg-accent/10 text-accent">{label}</span>
                 {/each}
@@ -137,7 +143,7 @@
                 {/if}
               </div>
             </div>
-          </button>
+          </div>
         {/each}
       </div>
     {/if}

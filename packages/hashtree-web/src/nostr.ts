@@ -143,15 +143,18 @@ function createNostrStore() {
   };
 }
 
-export const nostrStore = createNostrStore();
+// Use existing store from window if available (ensures singleton even with HMR/dynamic imports)
+const existingStore = typeof window !== 'undefined' ? (window as any).__nostrStore : null;
+
+export const nostrStore = existingStore || createNostrStore();
+
+// Expose singleton on window immediately
+if (typeof window !== 'undefined') {
+  (window as any).__nostrStore = nostrStore;
+}
 
 // Legacy compatibility alias
 export const useNostrStore = nostrStore;
-
-// Expose for debugging in tests
-if (typeof window !== 'undefined') {
-  (window as Window & { __nostrStore?: typeof nostrStore }).__nostrStore = nostrStore;
-}
 
 // Private key (only set for nsec login)
 let secretKey: Uint8Array | null = null;

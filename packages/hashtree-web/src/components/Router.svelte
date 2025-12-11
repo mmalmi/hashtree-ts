@@ -3,7 +3,7 @@
    * Router component that handles route matching and rendering
    * Receives currentPath as a prop to ensure proper reactivity
    */
-  import { matchRoute } from '../lib/router.svelte';
+  import { matchRoute, currentFullHash } from '../lib/router.svelte';
 
   // Page components
   import SettingsPage from './SettingsPage.svelte';
@@ -34,11 +34,6 @@
     { pattern: '/:npub/followers', component: FollowersPage },
     { pattern: '/:npub/edit', component: EditProfilePage },
     { pattern: '/:npub/profile', component: UserRoute },
-    // NIP-34 Git repository routes (must be before generic tree routes)
-    { pattern: '/:npub/:treeName/pulls/*', component: PullRequestsView },
-    { pattern: '/:npub/:treeName/pulls', component: PullRequestsView },
-    { pattern: '/:npub/:treeName/issues/*', component: IssuesView },
-    { pattern: '/:npub/:treeName/issues', component: IssuesView },
     // Generic tree routes
     { pattern: '/:npub/:treeName/*', component: TreeRoute },
     { pattern: '/:npub/:treeName', component: TreeRoute },
@@ -46,11 +41,30 @@
     { pattern: '/:id', component: UserRoute },
   ];
 
+  // Check for ?tab=pulls or ?tab=issues query param (NIP-34 git repo views)
+  // This allows PR/Issues views without interfering with actual directory names
+  function checkNip34Tab(fullHash: string): { type: 'pulls' | 'issues' } | null {
+    const qIdx = fullHash.indexOf('?');
+    if (qIdx === -1) return null;
+    const params = new URLSearchParams(fullHash.slice(qIdx + 1));
+    const tab = params.get('tab');
+    if (tab === 'pulls' || tab === 'issues') {
+      return { type: tab };
+    }
+    return null;
+  }
+
   interface Props {
     currentPath: string;
   }
 
   let { currentPath }: Props = $props();
+
+  // Subscribe to full hash for query param detection
+  let fullHash = $derived($currentFullHash);
+
+  // Check for NIP-34 tab query param (?tab=pulls or ?tab=issues)
+  let nip34Tab = $derived(checkNip34Tab(fullHash));
 
   // Find matching route
   function findRoute(path: string) {
@@ -65,10 +79,23 @@
 
   // Derive route from path prop
   let route = $derived.by(() => findRoute(currentPath));
+
+  // For NIP-34 views, we need npub and treeName from the current route
+  // The repo path is treeName + any wild path
+  let nip34RepoPath = $derived.by(() => {
+    if (!nip34Tab) return '';
+    const { treeName, wild } = route.params;
+    if (!treeName) return '';
+    return wild ? `${treeName}/${wild}` : treeName;
+  });
 </script>
 
 <div class="flex-1 flex flex-col lg:flex-row min-h-0">
-  {#if route.component === HomeRoute}
+  {#if nip34Tab?.type === 'pulls' && route.params.npub && route.params.treeName}
+    <PullRequestsView npub={route.params.npub} repoName={nip34RepoPath} />
+  {:else if nip34Tab?.type === 'issues' && route.params.npub && route.params.treeName}
+    <IssuesView npub={route.params.npub} repoName={nip34RepoPath} />
+  {:else if route.component === HomeRoute}
     <HomeRoute />
   {:else if route.component === SettingsPage}
     <SettingsPage />
@@ -84,10 +111,6 @@
     <EditProfilePage npub={route.params.npub} />
   {:else if route.component === ProfileView}
     <ProfileView npub={route.params.npub || ''} />
-  {:else if route.component === PullRequestsView}
-    <PullRequestsView npub={route.params.npub} repoName={route.params.treeName} />
-  {:else if route.component === IssuesView}
-    <IssuesView npub={route.params.npub} repoName={route.params.treeName} />
   {:else if route.component === TreeRoute}
     <TreeRoute npub={route.params.npub} treeName={route.params.treeName} wild={route.params.wild} />
   {:else if route.component === UserRoute}

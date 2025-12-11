@@ -144,9 +144,10 @@
 </script>
 
 <div class="flex flex-col gap-4">
-  <!-- Tab navigation for Code/PRs/Issues - only show when npub repo (not nhash) -->
-  {#if route.npub && route.treeName && currentPath.length === 0}
-    <RepoTabNav npub={route.npub} repoName={route.treeName} activeTab="code" />
+  <!-- Tab navigation for Code/PRs/Issues - show for any git repo (not just tree root) -->
+  {#if route.npub && route.treeName}
+    {@const repoPath = currentPath.length > 0 ? `${route.treeName}/${currentPath.join('/')}` : route.treeName}
+    <RepoTabNav npub={route.npub} repoName={repoPath} activeTab="code" />
   {/if}
 
   <!-- Folder actions -->

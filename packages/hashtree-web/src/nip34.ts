@@ -5,6 +5,7 @@
  */
 import { ndk, nostrStore, pubkeyToNpub, npubToPubkey } from './nostr';
 import { NDKEvent, type NDKFilter } from '@nostr-dev-kit/ndk';
+import { nip19 } from 'nostr-tools';
 import {
   KIND_REPO_ANNOUNCEMENT,
   KIND_PATCH,
@@ -522,5 +523,54 @@ export async function publishRepoAnnouncement(
   } catch (e) {
     console.error('Failed to publish repo announcement:', e);
     return false;
+  }
+}
+
+/**
+ * Encode an event ID to nevent bech32 format for URLs
+ * This is more user-friendly and includes relay hints
+ */
+export function encodeEventId(eventId: string, relays?: string[]): string {
+  try {
+    return nip19.neventEncode({
+      id: eventId,
+      relays: relays || [],
+    });
+  } catch {
+    // Fallback to note encoding if nevent fails
+    try {
+      return nip19.noteEncode(eventId);
+    } catch {
+      return eventId; // Return hex as last resort
+    }
+  }
+}
+
+/**
+ * Decode a nevent/note bech32 string to hex event ID
+ */
+export function decodeEventId(encoded: string): string | null {
+  try {
+    // Try nevent first
+    if (encoded.startsWith('nevent')) {
+      const decoded = nip19.decode(encoded);
+      if (decoded.type === 'nevent') {
+        return decoded.data.id;
+      }
+    }
+    // Try note
+    if (encoded.startsWith('note')) {
+      const decoded = nip19.decode(encoded);
+      if (decoded.type === 'note') {
+        return decoded.data;
+      }
+    }
+    // Assume hex if no prefix
+    if (/^[0-9a-f]{64}$/i.test(encoded)) {
+      return encoded;
+    }
+    return null;
+  } catch {
+    return null;
   }
 }

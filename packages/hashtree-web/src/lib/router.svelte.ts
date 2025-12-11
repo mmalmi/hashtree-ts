@@ -3,7 +3,7 @@
  */
 import { writable } from 'svelte/store';
 
-// Get initial path from hash
+// Get initial path from hash (without query string)
 function getHashPath(): string {
   if (typeof window === 'undefined') return '/';
   const hash = window.location.hash.slice(1); // Remove #
@@ -12,12 +12,24 @@ function getHashPath(): string {
   return queryIndex !== -1 ? hash.slice(0, queryIndex) || '/' : hash || '/';
 }
 
-// Create a writable store for the current path
-const pathStore = writable<string>(getHashPath());
+// Get full hash including query string
+function getFullHash(): string {
+  if (typeof window === 'undefined') return '/';
+  return window.location.hash.slice(1) || '/';
+}
 
-// Export the store for subscription
+// Create writable stores
+const pathStore = writable<string>(getHashPath());
+const fullHashStore = writable<string>(getFullHash());
+
+// Export the stores for subscription
 export const currentPath = {
   subscribe: pathStore.subscribe
+};
+
+// Full hash including query params (for detecting ?tab=pulls etc)
+export const currentFullHash = {
+  subscribe: fullHashStore.subscribe
 };
 
 // Initialize hashchange listener (call once from App.svelte onMount)
@@ -30,8 +42,8 @@ export function initRouter() {
   (globalObj as Record<string, unknown>)[HMR_KEY] = true;
 
   window.addEventListener('hashchange', () => {
-    const newPath = getHashPath();
-    pathStore.set(newPath);
+    pathStore.set(getHashPath());
+    fullHashStore.set(getFullHash());
   });
 }
 

@@ -4,7 +4,7 @@
  * Svelte version using stores
  */
 import { writable, derived, get, type Readable } from 'svelte/store';
-import { toHex } from 'hashtree';
+import { toHex, LinkType } from 'hashtree';
 import { getTree } from '../store';
 import { routeStore } from './route';
 import { treeRootStore } from './treeRoot';
@@ -92,7 +92,7 @@ async function updateCurrentDirCid() {
   const tree = getTree();
 
   try {
-    // Resolve full path first
+    // Resolve full path first - returns { cid, type } with LinkType
     const result = await tree.resolvePath(rootCid, urlPath);
     if (!result) {
       // Keep resolvingPath=true - root might be stale and updating
@@ -101,8 +101,8 @@ async function updateCurrentDirCid() {
       return;
     }
 
-    // Check if resolved path is a directory
-    const isDir = await tree.isDirectory(result.cid);
+    // Use type from resolvePath result (no extra store fetch needed)
+    const isDir = result.type === LinkType.Dir;
 
     if (isDir) {
       // Path points to a directory

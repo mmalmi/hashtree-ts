@@ -184,6 +184,9 @@ importers:
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
+      wasm-git:
+        specifier: ^0.0.13
+        version: 0.0.13
       yjs:
         specifier: ^13.6.27
         version: 13.6.27
@@ -3896,6 +3899,9 @@ packages:
   w3c-xmlserializer@5.0.0:
     resolution: {integrity: sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==}
     engines: {node: '>=18'}
+
+  wasm-git@0.0.13:
+    resolution: {integrity: sha512-+tXBed4anOsBIX94omuuabzDTrhQDh5sNsgD7Ezq9nuvM9aK8XfDADK0MWOmkMdSrXCaU1YKzWtTErRFvfwdWg==}
 
   webidl-conversions@4.0.2:
     resolution: {integrity: sha512-YQ+BmxuTgd6UXZW3+ICGfyqRyHXVlD5GtQr5+qjiNW7bF0cqrzX500HVXPBOvgXb5YnzDd+h0zqyv61KUD7+Sg==}
@@ -8079,6 +8085,8 @@ snapshots:
   w3c-xmlserializer@5.0.0:
     dependencies:
       xml-name-validator: 5.0.0
+
+  wasm-git@0.0.13: {}
 
   webidl-conversions@4.0.2: {}
 

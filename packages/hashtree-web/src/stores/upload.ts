@@ -427,7 +427,7 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
         dirName,
         emptyDirCid,
         0,
-        true
+        LinkType.Dir
       );
       currentRootCid = newRootCid;
 
@@ -458,7 +458,7 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
         dirName,
         emptyDirCid,
         0,
-        true
+        LinkType.Dir
       );
       currentRootCid = newRootCid;
     }

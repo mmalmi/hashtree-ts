@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import FileBrowser from '../components/FileBrowser.svelte';
   import Viewer from '../components/Viewer/Viewer.svelte';
   import StreamView from '../components/stream/StreamView.svelte';
@@ -7,6 +6,7 @@
   import { routeStore, addRecent, isViewingFileStore, currentHash, currentDirCidStore, createGitInfoStore, directoryEntriesStore } from '../stores';
   import { LinkType } from 'hashtree';
   import { updateRecentVisibility } from '../stores/recents';
+  import { nip19 } from 'nostr-tools';
 
   interface Props {
     npub?: string;
@@ -55,9 +55,16 @@
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
   let showStreamView = $derived(isStreaming && isLoggedIn);
 
-  onMount(() => {
+  // Use $effect to run when npub or treeName props change (not just on mount)
+  // This is needed because the Router uses conditionals, not {#key}, so the component
+  // doesn't remount when navigating between trees
+  $effect(() => {
     // Load tree when route params change
     if (npub && treeName) {
+      // Set selectedTree immediately (synchronously) if viewing own tree
+      // This ensures autosaveIfOwn works before async loadTree completes
+      setSelectedTreeIfOwn(npub, treeName);
+
       loadTree(npub, treeName);
 
       // Track as recent - include linkKey if present
@@ -81,10 +88,38 @@
     }
   });
 
+  function setSelectedTreeIfOwn(npubStr: string, treeNameVal: string) {
+    // Decode npub synchronously
+    let pubkey: string | null = null;
+    try {
+      const decoded = nip19.decode(npubStr);
+      if (decoded.type === 'npub') {
+        pubkey = decoded.data as string;
+      }
+    } catch {
+      return;
+    }
+
+    const state = nostrStore.getState();
+    if (pubkey && state.isLoggedIn && state.pubkey === pubkey) {
+      const currentSelected = state.selectedTree;
+      if (!currentSelected || currentSelected.name !== treeNameVal) {
+        nostrStore.setSelectedTree({
+          id: '',
+          name: treeNameVal,
+          pubkey,
+          rootHash: currentSelected?.rootHash || '',
+          rootKey: currentSelected?.rootKey,
+          visibility: currentSelected?.visibility ?? 'public',
+          created_at: Math.floor(Date.now() / 1000),
+        });
+      }
+    }
+  }
+
   async function loadTree(npubStr: string, treeNameVal: string) {
     try {
       const { getRefResolver, getResolverKey } = await import('../refResolver');
-      const { nip19 } = await import('nostr-tools');
       const { toHex } = await import('hashtree');
       const resolver = getRefResolver();
       const key = getResolverKey(npubStr, treeNameVal);
