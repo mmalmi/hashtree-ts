@@ -22,6 +22,8 @@
   // Git repository views (NIP-34)
   import PullRequestsView from './Git/PullRequestsView.svelte';
   import IssuesView from './Git/IssuesView.svelte';
+  import PullRequestDetailView from './Git/PullRequestDetailView.svelte';
+  import IssueDetailView from './Git/IssueDetailView.svelte';
 
   // Route definitions with patterns
   // Note: More specific routes must come before less specific ones
@@ -42,14 +44,16 @@
   ];
 
   // Check for ?tab=pulls or ?tab=issues query param (NIP-34 git repo views)
+  // Also check for ?id= to show individual PR/Issue detail views
   // This allows PR/Issues views without interfering with actual directory names
-  function checkNip34Tab(fullHash: string): { type: 'pulls' | 'issues' } | null {
+  function parseNip34Query(fullHash: string): { tab: 'pulls' | 'issues'; id?: string } | null {
     const qIdx = fullHash.indexOf('?');
     if (qIdx === -1) return null;
     const params = new URLSearchParams(fullHash.slice(qIdx + 1));
     const tab = params.get('tab');
     if (tab === 'pulls' || tab === 'issues') {
-      return { type: tab };
+      const id = params.get('id') || undefined;
+      return { tab, id };
     }
     return null;
   }
@@ -63,8 +67,8 @@
   // Subscribe to full hash for query param detection
   let fullHash = $derived($currentFullHash);
 
-  // Check for NIP-34 tab query param (?tab=pulls or ?tab=issues)
-  let nip34Tab = $derived(checkNip34Tab(fullHash));
+  // Check for NIP-34 tab query param (?tab=pulls or ?tab=issues) and optional id
+  let nip34Query = $derived(parseNip34Query(fullHash));
 
   // Find matching route
   function findRoute(path: string) {
@@ -83,7 +87,7 @@
   // For NIP-34 views, we need npub and treeName from the current route
   // The repo path is treeName + any wild path
   let nip34RepoPath = $derived.by(() => {
-    if (!nip34Tab) return '';
+    if (!nip34Query) return '';
     const { treeName, wild } = route.params;
     if (!treeName) return '';
     return wild ? `${treeName}/${wild}` : treeName;
@@ -91,9 +95,13 @@
 </script>
 
 <div class="flex-1 flex flex-col lg:flex-row min-h-0">
-  {#if nip34Tab?.type === 'pulls' && route.params.npub && route.params.treeName}
+  {#if nip34Query?.tab === 'pulls' && nip34Query.id && route.params.npub && route.params.treeName}
+    <PullRequestDetailView npub={route.params.npub} repoName={nip34RepoPath} prId={nip34Query.id} />
+  {:else if nip34Query?.tab === 'issues' && nip34Query.id && route.params.npub && route.params.treeName}
+    <IssueDetailView npub={route.params.npub} repoName={nip34RepoPath} issueId={nip34Query.id} />
+  {:else if nip34Query?.tab === 'pulls' && route.params.npub && route.params.treeName}
     <PullRequestsView npub={route.params.npub} repoName={nip34RepoPath} />
-  {:else if nip34Tab?.type === 'issues' && route.params.npub && route.params.treeName}
+  {:else if nip34Query?.tab === 'issues' && route.params.npub && route.params.treeName}
     <IssuesView npub={route.params.npub} repoName={nip34RepoPath} />
   {:else if route.component === HomeRoute}
     <HomeRoute />
