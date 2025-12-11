@@ -332,7 +332,8 @@ export class Peer {
    * Initiate connection (create offer)
    */
   async connect(myPeerId: string): Promise<void> {
-    this.dataChannel = this.pc.createDataChannel('hashtree');
+    // Unordered for better performance - protocol is stateless (each message self-describes)
+    this.dataChannel = this.pc.createDataChannel('hashtree', { ordered: false });
     this.setupDataChannel(this.dataChannel);
 
     const offer = await this.pc.createOffer();
