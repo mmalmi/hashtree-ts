@@ -2,7 +2,7 @@
  * Tree editing operations
  */
 
-import { Store, Hash, CID, cid } from '../types.js';
+import { Store, Hash, CID, cid, LinkType } from '../types.js';
 import { putDirectory, type DirEntry, type CreateConfig } from './create.js';
 import { listDirectory, resolvePath } from './read.js';
 
@@ -19,7 +19,7 @@ export async function setEntry(
   name: string,
   entryCid: CID,
   size: number,
-  isTree = false
+  type: LinkType = LinkType.Blob
 ): Promise<Hash> {
   const { store } = config;
   const dirHash = await resolvePathArray(store, rootHash, path);
@@ -30,9 +30,9 @@ export async function setEntry(
   const entries = await listDirectory(store, dirHash);
   const newEntries: DirEntry[] = entries
     .filter(e => e.name !== name)
-    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, isTreeNode: e.isTreeNode }));
+    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, type: e.type }));
 
-  newEntries.push({ name, cid: entryCid, size, isTreeNode: isTree });
+  newEntries.push({ name, cid: entryCid, size, type });
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -57,7 +57,7 @@ export async function removeEntry(
   const entries = await listDirectory(store, dirHash);
   const newEntries: DirEntry[] = entries
     .filter(e => e.name !== name)
-    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, isTreeNode: e.isTreeNode }));
+    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, type: e.type }));
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -90,9 +90,9 @@ export async function renameEntry(
 
   const newEntries: DirEntry[] = entries
     .filter(e => e.name !== oldName)
-    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, isTreeNode: e.isTreeNode }));
+    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, type: e.type }));
 
-  newEntries.push({ name: newName, cid: entry.cid, size: entry.size ?? 0, isTreeNode: entry.isTreeNode });
+  newEntries.push({ name: newName, cid: entry.cid, size: entry.size ?? 0, type: entry.type });
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -132,7 +132,7 @@ export async function moveEntry(
     name,
     entry.cid,
     entry.size ?? 0,
-    entry.isTreeNode
+    entry.type
   );
 
   return newRoot;
@@ -171,8 +171,8 @@ async function rebuildPath(
     const parentEntries = await listDirectory(store, parentHash);
     const newParentEntries: DirEntry[] = parentEntries.map(e =>
       e.name === childName
-        ? { name: e.name, cid: cid(childHash), size: e.size ?? 0, isTreeNode: e.isTreeNode }
-        : { name: e.name, cid: e.cid, size: e.size ?? 0, isTreeNode: e.isTreeNode }
+        ? { name: e.name, cid: cid(childHash), size: e.size ?? 0, type: e.type }
+        : { name: e.name, cid: e.cid, size: e.size ?? 0, type: e.type }
     );
 
     childHash = await putDirectory(config, newParentEntries);

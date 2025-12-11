@@ -6,7 +6,7 @@
  * - Supports streaming appends
  */
 
-import { Store, Hash, TreeNode, Link, NodeType } from './types.js';
+import { Store, Hash, TreeNode, Link, LinkType } from './types.js';
 import { sha256 } from './hash.js';
 import { encodeAndHash } from './codec.js';
 
@@ -44,7 +44,7 @@ export interface DirEntry {
   name: string;
   hash: Hash;
   size?: number;
-  isTreeNode: boolean;
+  type: LinkType;
 }
 
 /**
@@ -106,18 +106,18 @@ export class TreeBuilder {
       }
     }
 
-    // Build tree from chunks (leaf chunks are raw blobs, not tree nodes)
+    // Build tree from chunks (leaf chunks are raw blobs)
     const chunks: Link[] = chunkHashes.map((hash, i) => ({
       hash,
       size: i < chunkHashes.length - 1 ? this.chunkSize : data.length - i * this.chunkSize,
-      isTreeNode: false,
+      type: LinkType.Blob,
     }));
     const rootHash = await this.buildTree(chunks, size);
     return { hash: rootHash, size };
   }
 
   /**
-   * Build a balanced tree from links
+   * Build a balanced tree from links (for chunked files)
    * Handles fanout by creating intermediate nodes
    */
   private async buildTree(links: Link[], totalSize?: number): Promise<Hash> {
@@ -129,7 +129,7 @@ export class TreeBuilder {
     // Fits in one node
     if (links.length <= this.maxLinks) {
       const node: TreeNode = {
-        type: NodeType.Tree,
+        type: LinkType.File,
         links,
         totalSize,
       };
@@ -146,14 +146,14 @@ export class TreeBuilder {
       const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
 
       const node: TreeNode = {
-        type: NodeType.Tree,
+        type: LinkType.File,
         links: batch,
         totalSize: batchSize,
       };
       const { data, hash } = await encodeAndHash(node);
       await this.store.put(hash, data);
 
-      subTrees.push({ hash, size: batchSize, isTreeNode: true });
+      subTrees.push({ hash, size: batchSize, type: LinkType.File });
     }
 
     // Recursively build parent level
@@ -178,13 +178,13 @@ export class TreeBuilder {
       hash: e.hash,
       name: e.name,
       size: e.size,
-      isTreeNode: e.isTreeNode,
+      type: e.type,
     }));
 
     const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
 
     const node: TreeNode = {
-      type: NodeType.Tree,
+      type: LinkType.Dir,
       links,
       totalSize,
       metadata,
@@ -204,12 +204,17 @@ export class TreeBuilder {
 
   /**
    * Create a tree node with custom metadata
+   * @param nodeType - LinkType.File or LinkType.Dir
    */
-  async putTreeNode(links: Link[], metadata?: Record<string, unknown>): Promise<Hash> {
+  async putTreeNode(
+    nodeType: LinkType.File | LinkType.Dir,
+    links: Link[],
+    metadata?: Record<string, unknown>
+  ): Promise<Hash> {
     const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
 
     const node: TreeNode = {
-      type: NodeType.Tree,
+      type: nodeType,
       links,
       totalSize,
       metadata,
@@ -277,7 +282,7 @@ export class StreamBuilder {
     const hash = await sha256(chunk);
     await this.store.put(hash, new Uint8Array(chunk));
 
-    this.chunks.push({ hash, size: chunk.length, isTreeNode: false });
+    this.chunks.push({ hash, size: chunk.length, type: LinkType.Blob });
     this.bufferOffset = 0;
   }
 
@@ -296,7 +301,7 @@ export class StreamBuilder {
       const chunk = this.buffer.slice(0, this.bufferOffset);
       const hash = await sha256(chunk);
       await this.store.put(hash, new Uint8Array(chunk));
-      tempChunks.push({ hash, size: chunk.length, isTreeNode: false });
+      tempChunks.push({ hash, size: chunk.length, type: LinkType.Blob });
     }
 
     return this.buildTreeFromChunks(tempChunks, this.totalSize);
@@ -321,7 +326,7 @@ export class StreamBuilder {
   }
 
   /**
-   * Build balanced tree from chunks
+   * Build balanced tree from chunks (for streaming files)
    */
   private async buildTreeFromChunks(chunks: Link[], totalSize: number): Promise<Hash> {
     if (chunks.length === 1) {
@@ -330,7 +335,7 @@ export class StreamBuilder {
 
     if (chunks.length <= this.maxLinks) {
       const node: TreeNode = {
-        type: NodeType.Tree,
+        type: LinkType.File,
         links: chunks,
         totalSize,
       };
@@ -346,14 +351,14 @@ export class StreamBuilder {
       const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
 
       const node: TreeNode = {
-        type: NodeType.Tree,
+        type: LinkType.File,
         links: batch,
         totalSize: batchSize,
       };
       const { data, hash } = await encodeAndHash(node);
       await this.store.put(hash, data);
 
-      subTrees.push({ hash, size: batchSize, isTreeNode: true });
+      subTrees.push({ hash, size: batchSize, type: LinkType.File });
     }
 
     return this.buildTreeFromChunks(subTrees, totalSize);

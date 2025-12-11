@@ -3,6 +3,7 @@
  * Implements the fs interface expected by isomorphic-git
  */
 import type { CID, HashTree } from 'hashtree';
+import { LinkType } from 'hashtree';
 import { getTree } from '../store';
 
 interface Stats {
@@ -101,7 +102,7 @@ export class HashTreeFS {
       const parts = this.parsePath(path);
       const name = parts.pop()!;
       const { cid: emptyDir } = await this.tree.putDirectory([]);
-      currentRoot = await this.tree.setEntry(currentRoot, parts, name, emptyDir, 0, true);
+      currentRoot = await this.tree.setEntry(currentRoot, parts, name, emptyDir, 0, LinkType.Dir);
     }
 
     // Write files
@@ -109,7 +110,7 @@ export class HashTreeFS {
       const parts = this.parsePath(path);
       const name = parts.pop()!;
       const { cid: fileCid, size } = await this.tree.putFile(data);
-      currentRoot = await this.tree.setEntry(currentRoot, parts, name, fileCid, size, false);
+      currentRoot = await this.tree.setEntry(currentRoot, parts, name, fileCid, size, LinkType.Blob);
     }
 
     this.rootCid = currentRoot;

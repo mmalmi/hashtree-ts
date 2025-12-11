@@ -2,7 +2,7 @@
  * Tree creation operations
  */
 
-import { Store, Hash, TreeNode, Link, NodeType, CID } from '../types.js';
+import { Store, Hash, TreeNode, Link, LinkType, CID } from '../types.js';
 import { sha256 } from '../hash.js';
 import { encodeAndHash } from '../codec.js';
 
@@ -16,7 +16,7 @@ export interface DirEntry {
   name: string;
   cid: CID;
   size?: number;
-  isTreeNode: boolean;
+  type: LinkType;
 }
 
 /**
@@ -55,11 +55,11 @@ export async function putFile(
   // Hash and store chunks in parallel
   const chunkHashes = await Promise.all(chunks.map(chunk => putBlob(store, chunk)));
 
-  // Build tree from chunks (leaf chunks are raw blobs, not tree nodes)
+  // Build tree from chunks (leaf chunks are raw blobs)
   const links: Link[] = chunkHashes.map((hash, i) => ({
     hash,
     size: i < chunkHashes.length - 1 ? chunkSize : data.length - i * chunkSize,
-    isTreeNode: false,
+    type: LinkType.Blob,
   }));
 
   const rootHash = await buildTree(config, links, size);
@@ -85,13 +85,13 @@ export async function putDirectory(
     key: e.cid.key,
     name: e.name,
     size: e.size,
-    isTreeNode: e.isTreeNode,
+    type: e.type,
   }));
 
   const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
 
   const node: TreeNode = {
-    type: NodeType.Tree,
+    type: LinkType.Dir,
     links,
     totalSize,
     metadata,
@@ -122,7 +122,7 @@ export async function buildTree(
 
   if (links.length <= maxLinks) {
     const node: TreeNode = {
-      type: NodeType.Tree,
+      type: LinkType.File,
       links,
       totalSize,
     };
@@ -137,14 +137,14 @@ export async function buildTree(
     const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
 
     const node: TreeNode = {
-      type: NodeType.Tree,
+      type: LinkType.File,
       links: batch,
       totalSize: batchSize,
     };
     const { data, hash } = await encodeAndHash(node);
     await store.put(hash, data);
 
-    subTrees.push({ hash, size: batchSize, isTreeNode: true });
+    subTrees.push({ hash, size: batchSize, type: LinkType.File });
   }
 
   return buildTree(config, subTrees, totalSize);

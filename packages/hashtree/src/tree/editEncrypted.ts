@@ -5,7 +5,8 @@
  * Keys are propagated through the tree structure.
  */
 
-import { Store, Hash } from '../types.js';
+import { Store, Hash, LinkType } from '../types.js';
+export { LinkType };
 import { type EncryptionKey } from '../crypto.js';
 import {
   putDirectoryEncrypted,
@@ -84,7 +85,7 @@ export async function setEntryEncrypted(
   hash: Hash,
   size: number,
   key?: EncryptionKey,
-  _isTree = false
+  type: LinkType = LinkType.Blob
 ): Promise<EncryptedEditResult> {
   const { store } = config;
 
@@ -108,10 +109,10 @@ export async function setEntryEncrypted(
       hash: e.hash,
       size: e.size,
       key: e.key,
-      isTreeNode: e.isTreeNode,
+      type: e.type,
     }));
 
-  newEntries.push({ name, hash, size, key, isTreeNode: _isTree });
+  newEntries.push({ name, hash, size, key, type });
 
   // Create new encrypted directory
   const newDir = await putDirectoryEncrypted(config, newEntries);
@@ -156,7 +157,7 @@ export async function removeEntryEncrypted(
       hash: e.hash,
       size: e.size,
       key: e.key,
-      isTreeNode: e.isTreeNode,
+      type: e.type,
     }));
 
   const newDir = await putDirectoryEncrypted(config, newEntries);
@@ -210,7 +211,7 @@ export async function renameEntryEncrypted(
       hash: e.hash,
       size: e.size,
       key: e.key,
-      isTreeNode: e.isTreeNode,
+      type: e.type,
     }));
 
   newEntries.push({
@@ -218,7 +219,7 @@ export async function renameEntryEncrypted(
     hash: entry.hash,
     size: entry.size,
     key: entry.key,
-    isTreeNode: entry.isTreeNode,
+    type: entry.type,
   });
 
   const newDir = await putDirectoryEncrypted(config, newEntries);
@@ -284,8 +285,8 @@ async function rebuildPathEncrypted(
     const parentEntries = await listDirectoryEncrypted(store, parentHash, parentKey);
     const newParentEntries: EncryptedDirEntry[] = parentEntries.map(e =>
       e.name === childName
-        ? { name: e.name, hash: childHash, size: e.size, key: childKey, isTreeNode: e.isTreeNode }
-        : { name: e.name, hash: e.hash, size: e.size, key: e.key, isTreeNode: e.isTreeNode }
+        ? { name: e.name, hash: childHash, size: e.size, key: childKey, type: e.type }
+        : { name: e.name, hash: e.hash, size: e.size, key: e.key, type: e.type }
     );
 
     const newParent = await putDirectoryEncrypted(config, newParentEntries);

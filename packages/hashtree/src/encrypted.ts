@@ -9,7 +9,7 @@
  * The root key is deterministic: same file = same CID (hash + key).
  */
 
-import { Store, Hash, TreeNode, Link, NodeType, toHex } from './types.js';
+import { Store, Hash, TreeNode, Link, LinkType, toHex } from './types.js';
 import { sha256 } from './hash.js';
 import { encodeAndHash, decodeTreeNode, isTreeNode } from './codec.js';
 import { encryptChk, decryptChk, type EncryptionKey } from './crypto.js';
@@ -76,7 +76,7 @@ export async function putFileEncrypted(
       hash,
       size: encSize,
       key: chunkKey,
-      isTreeNode: false,
+      type: LinkType.Blob,
     });
 
     offset = end;
@@ -108,7 +108,7 @@ async function buildEncryptedTree(
 
   if (links.length <= maxLinks) {
     const node: TreeNode = {
-      type: NodeType.Tree,
+      type: LinkType.File,
       links,
       totalSize,
     };
@@ -127,7 +127,7 @@ async function buildEncryptedTree(
     const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
 
     const node: TreeNode = {
-      type: NodeType.Tree,
+      type: LinkType.File,
       links: batch,
       totalSize: batchSize,
     };
@@ -141,7 +141,7 @@ async function buildEncryptedTree(
       hash,
       size: batchSize,
       key: nodeKey,
-      isTreeNode: true,
+      type: LinkType.File,
     });
   }
 
@@ -244,7 +244,7 @@ async function assembleEncryptedChunks(
 
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
-    if (link.isTreeNode) {
+    if (link.type !== LinkType.Blob) {
       // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(decrypted);
       parts.push(await assembleEncryptedChunks(store, childNode));
@@ -325,7 +325,7 @@ async function* streamEncryptedChunksWithOffset(
 
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
-    if (link.isTreeNode) {
+    if (link.type !== LinkType.Blob) {
       // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(decrypted);
       const childOffset = Math.max(0, offset - position);
@@ -411,7 +411,7 @@ async function readEncryptedRangeFromNode(
 
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
-    if (link.isTreeNode) {
+    if (link.type !== LinkType.Blob) {
       // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(decrypted);
       const childStart = Math.max(0, start - position);
@@ -467,8 +467,8 @@ export interface EncryptedDirEntry {
   size?: number;
   /** CHK key for encrypted children */
   key?: Uint8Array;
-  /** Whether this entry points to a TreeNode (true) or raw blob (false) */
-  isTreeNode: boolean;
+  /** Type of this entry: Blob, File, or Dir */
+  type: LinkType;
 }
 
 /**
@@ -495,13 +495,13 @@ export async function putDirectoryEncrypted(
     name: e.name,
     size: e.size,
     key: e.key,
-    isTreeNode: e.isTreeNode,
+    type: e.type,
   }));
 
   const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
 
   const node: TreeNode = {
-    type: NodeType.Tree,
+    type: LinkType.Dir,
     links,
     totalSize,
     metadata,
@@ -548,7 +548,7 @@ export async function listDirectoryEncrypted(
         hash: link.hash,
         size: link.size,
         key: link.key,
-        isTreeNode: link.isTreeNode,
+        type: link.type,
       });
     }
   }

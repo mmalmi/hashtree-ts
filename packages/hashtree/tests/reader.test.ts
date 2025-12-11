@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { HashTree, verifyTree } from '../src/index.js';
 import { MemoryStore } from '../src/store/memory.js';
-import { toHex, NodeType } from '../src/types.js';
+import { toHex, LinkType } from '../src/types.js';
 
 describe('HashTree read operations', () => {
   let store: MemoryStore;
@@ -37,7 +37,7 @@ describe('HashTree read operations', () => {
 
       const node = await tree.getTreeNode(dirCid);
       expect(node).not.toBeNull();
-      expect(node!.type).toBe(NodeType.Tree);
+      expect(node!.type).toBe(LinkType.Dir);
       expect(node!.links.length).toBe(1);
     });
 
@@ -259,8 +259,8 @@ describe('HashTree read operations', () => {
       ], { public: true });
 
       const { cid: rootCid } = await tree.putDirectory([
-        { name: 'file.txt', cid: fileCid },
-        { name: 'subdir', cid: subDirCid, isTreeNode: true },
+        { name: 'file.txt', cid: fileCid, type: LinkType.Blob },
+        { name: 'subdir', cid: subDirCid, type: LinkType.Dir },
       ], { public: true });
 
       const entries = await tree.listDirectory(rootCid);
@@ -268,8 +268,8 @@ describe('HashTree read operations', () => {
       const fileEntry = entries.find(e => e.name === 'file.txt');
       const dirEntry = entries.find(e => e.name === 'subdir');
 
-      expect(fileEntry!.isTreeNode).toBe(false);
-      expect(dirEntry!.isTreeNode).toBe(true);
+      expect(fileEntry!.type).toBe(LinkType.Blob);
+      expect(dirEntry!.type).toBe(LinkType.Dir);
     });
 
     it('should flatten internal chunk nodes', async () => {
@@ -311,11 +311,11 @@ describe('HashTree read operations', () => {
       ], { public: true });
 
       const { cid: subCid } = await tree.putDirectory([
-        { name: 'level2', cid: subSubCid, isTreeNode: true },
+        { name: 'level2', cid: subSubCid, type: LinkType.Dir },
       ], { public: true });
 
       const { cid: rootCid } = await tree.putDirectory([
-        { name: 'level1', cid: subCid, isTreeNode: true },
+        { name: 'level1', cid: subCid, type: LinkType.Dir },
       ], { public: true });
 
       const resolved = await tree.resolvePath(rootCid, 'level1/level2/deep.txt');
@@ -367,8 +367,8 @@ describe('HashTree read operations', () => {
       ], { public: true });
 
       const { cid: rootCid } = await tree.putDirectory([
-        { name: 'root.txt', cid: f1, size: 1 },
-        { name: 'sub', cid: subCid, isTreeNode: true },
+        { name: 'root.txt', cid: f1, size: 1, type: LinkType.Blob },
+        { name: 'sub', cid: subCid, type: LinkType.Dir },
       ], { public: true });
 
       const walked: string[] = [];

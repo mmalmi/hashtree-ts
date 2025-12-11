@@ -132,6 +132,7 @@ test.describe('Directory upload features', () => {
     const result = await page.evaluate(async () => {
       // Access the app's internal functions
       const { getTree } = await import('/src/store.ts');
+      const { LinkType } = await import('hashtree');
       const tree = getTree();
 
       // Create a mock directory structure:
@@ -157,7 +158,7 @@ test.describe('Directory upload features', () => {
         const parts = dir.split('/');
         const name = parts.pop()!;
         const { cid: emptyDir } = await tree.putDirectory([]);
-        rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, true);
+        rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, LinkType.Dir);
       }
 
       // Add files
@@ -166,7 +167,7 @@ test.describe('Directory upload features', () => {
         const name = parts.pop()!;
         const data = new TextEncoder().encode(file.content);
         const { cid: fileCid, size } = await tree.putFile(data);
-        rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, false);
+        rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, LinkType.Blob);
       }
 
       // Verify structure

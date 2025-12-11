@@ -79,6 +79,7 @@ test.describe('Git integration features', () => {
     // Create .git and .claude directories via the tree API
     const result = await page.evaluate(async () => {
       const { getTree } = await import('/src/store.ts');
+      const { LinkType } = await import('hashtree');
       const tree = getTree();
 
       // Create root with .git and .claude directories and a regular file
@@ -88,13 +89,13 @@ test.describe('Git integration features', () => {
       let { cid: rootCid } = await tree.putDirectory([]);
 
       // Add .git directory
-      rootCid = await tree.setEntry(rootCid, [], '.git', emptyDir, 0, true);
+      rootCid = await tree.setEntry(rootCid, [], '.git', emptyDir, 0, LinkType.Dir);
 
       // Add .claude directory
-      rootCid = await tree.setEntry(rootCid, [], '.claude', emptyDir, 0, true);
+      rootCid = await tree.setEntry(rootCid, [], '.claude', emptyDir, 0, LinkType.Dir);
 
       // Add a regular file with extension
-      rootCid = await tree.setEntry(rootCid, [], 'readme.txt', fileCid, size, false);
+      rootCid = await tree.setEntry(rootCid, [], 'readme.txt', fileCid, size, LinkType.Blob);
 
       // List the entries
       const entries = await tree.listDirectory(rootCid);
@@ -131,6 +132,7 @@ test.describe('Git integration features', () => {
     // Create a minimal git repo structure via the tree API
     const result = await page.evaluate(async () => {
       const { getTree } = await import('/src/store.ts');
+      const { LinkType } = await import('hashtree');
       const tree = getTree();
 
       // Create minimal .git structure
@@ -150,22 +152,22 @@ test.describe('Git integration features', () => {
 
       // Build .git/refs/heads directory with main branch
       let { cid: headsDir } = await tree.putDirectory([]);
-      headsDir = await tree.setEntry(headsDir, [], 'main', mainRefCid, mainRefContent.length, false);
+      headsDir = await tree.setEntry(headsDir, [], 'main', mainRefCid, mainRefContent.length, LinkType.Blob);
 
       // Build .git/refs directory
       let { cid: refsDir } = await tree.putDirectory([]);
-      refsDir = await tree.setEntry(refsDir, [], 'heads', headsDir, 0, true);
+      refsDir = await tree.setEntry(refsDir, [], 'heads', headsDir, 0, LinkType.Dir);
 
       // Build .git directory
       let { cid: gitDir } = await tree.putDirectory([]);
-      gitDir = await tree.setEntry(gitDir, [], 'HEAD', headCid, headContent.length, false);
-      gitDir = await tree.setEntry(gitDir, [], 'config', configCid, configContent.length, false);
-      gitDir = await tree.setEntry(gitDir, [], 'refs', refsDir, 0, true);
-      gitDir = await tree.setEntry(gitDir, [], 'objects', emptyDir, 0, true);
+      gitDir = await tree.setEntry(gitDir, [], 'HEAD', headCid, headContent.length, LinkType.Blob);
+      gitDir = await tree.setEntry(gitDir, [], 'config', configCid, configContent.length, LinkType.Blob);
+      gitDir = await tree.setEntry(gitDir, [], 'refs', refsDir, 0, LinkType.Dir);
+      gitDir = await tree.setEntry(gitDir, [], 'objects', emptyDir, 0, LinkType.Dir);
 
       // Build root with .git directory
       let { cid: rootCid } = await tree.putDirectory([]);
-      rootCid = await tree.setEntry(rootCid, [], '.git', gitDir, 0, true);
+      rootCid = await tree.setEntry(rootCid, [], '.git', gitDir, 0, LinkType.Dir);
 
       // Check if it's detected as a git repo
       const { isGitRepo } = await import('/src/utils/git.ts');
@@ -254,6 +256,7 @@ test.describe('Git integration features', () => {
       // Inject files directly via tree API
       const result = await page.evaluate(async (files) => {
         const { getTree } = await import('/src/store.ts');
+        const { LinkType } = await import('hashtree');
         const tree = getTree();
 
         // Create root directory
@@ -276,7 +279,7 @@ test.describe('Git integration features', () => {
           const parts = dir.split('/');
           const name = parts.pop()!;
           const { cid: emptyDir } = await tree.putDirectory([]);
-          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, true);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, LinkType.Dir);
         }
 
         // Add files
@@ -285,7 +288,7 @@ test.describe('Git integration features', () => {
           const name = parts.pop()!;
           const data = new Uint8Array(file.content);
           const { cid: fileCid, size } = await tree.putFile(data);
-          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, false);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, LinkType.Blob);
         }
 
         // Verify .git structure was preserved
@@ -395,6 +398,7 @@ test.describe('Git integration features', () => {
       // Upload and test getLog
       const result = await page.evaluate(async ({ files, dirs }) => {
         const { getTree } = await import('/src/store.ts');
+        const { LinkType } = await import('hashtree');
         const tree = getTree();
 
         // Create root directory
@@ -417,7 +421,7 @@ test.describe('Git integration features', () => {
           const parts = dir.split('/');
           const name = parts.pop()!;
           const { cid: emptyDir } = await tree.putDirectory([]);
-          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, true);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, LinkType.Dir);
         }
 
         // Add files
@@ -428,7 +432,7 @@ test.describe('Git integration features', () => {
           const name = parts.pop()!;
           const data = new Uint8Array(file.content);
           const { cid: fileCid, size } = await tree.putFile(data);
-          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, false);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, LinkType.Blob);
           // Track first git object file for verification
           if (file.path.includes('.git/objects/') && !file.path.endsWith('/info') && !file.path.endsWith('/pack')) {
             if (!objectFilePath) {
@@ -507,6 +511,7 @@ test.describe('Git integration features', () => {
     // Test getLog with a minimal .git structure that has no actual commits
     const result = await page.evaluate(async () => {
       const { getTree } = await import('/src/store.ts');
+      const { LinkType } = await import('hashtree');
       const tree = getTree();
 
       // Create minimal .git structure with HEAD pointing to non-existent ref
@@ -519,17 +524,17 @@ test.describe('Git integration features', () => {
 
       // Build .git/refs directory
       let { cid: refsDir } = await tree.putDirectory([]);
-      refsDir = await tree.setEntry(refsDir, [], 'heads', headsDir, 0, true);
+      refsDir = await tree.setEntry(refsDir, [], 'heads', headsDir, 0, LinkType.Dir);
 
       // Build .git directory
       let { cid: gitDir } = await tree.putDirectory([]);
-      gitDir = await tree.setEntry(gitDir, [], 'HEAD', headCid, headContent.length, false);
-      gitDir = await tree.setEntry(gitDir, [], 'refs', refsDir, 0, true);
-      gitDir = await tree.setEntry(gitDir, [], 'objects', emptyDir, 0, true);
+      gitDir = await tree.setEntry(gitDir, [], 'HEAD', headCid, headContent.length, LinkType.Blob);
+      gitDir = await tree.setEntry(gitDir, [], 'refs', refsDir, 0, LinkType.Dir);
+      gitDir = await tree.setEntry(gitDir, [], 'objects', emptyDir, 0, LinkType.Dir);
 
       // Build root with .git directory
       let { cid: rootCid } = await tree.putDirectory([]);
-      rootCid = await tree.setEntry(rootCid, [], '.git', gitDir, 0, true);
+      rootCid = await tree.setEntry(rootCid, [], '.git', gitDir, 0, LinkType.Dir);
 
       // Try to get log - should not throw, should return empty array
       const { getLog } = await import('/src/utils/git.ts');
@@ -620,6 +625,7 @@ test.describe('Git integration features', () => {
       // Upload repo and test checkoutCommit
       const result = await page.evaluate(async ({ files, dirs, commitSha }) => {
         const { getTree } = await import('/src/store.ts');
+        const { LinkType } = await import('hashtree');
         const tree = getTree();
 
         // Create root directory and upload all files
@@ -641,7 +647,7 @@ test.describe('Git integration features', () => {
           const parts = dir.split('/');
           const name = parts.pop()!;
           const { cid: emptyDir } = await tree.putDirectory([]);
-          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, true);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, LinkType.Dir);
         }
 
         // Add files
@@ -650,7 +656,7 @@ test.describe('Git integration features', () => {
           const name = parts.pop()!;
           const data = new Uint8Array(file.content);
           const { cid: fileCid, size } = await tree.putFile(data);
-          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, false);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, LinkType.Blob);
         }
 
         // List files before checkout (should have both file.txt and file2.txt)
@@ -783,6 +789,7 @@ test.describe('Git integration features', () => {
       // Upload and test checkoutCommit returns a listable directory
       const result = await page.evaluate(async ({ files, dirs, commitSha }) => {
         const { getTree } = await import('/src/store.ts');
+        const { LinkType } = await import('hashtree');
         const tree = getTree();
 
         // Create root directory and upload all files
@@ -804,7 +811,7 @@ test.describe('Git integration features', () => {
           const parts = dir.split('/');
           const name = parts.pop()!;
           const { cid: emptyDir } = await tree.putDirectory([]);
-          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, true);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, LinkType.Dir);
         }
 
         // Add files
@@ -813,7 +820,7 @@ test.describe('Git integration features', () => {
           const name = parts.pop()!;
           const data = new Uint8Array(file.content);
           const { cid: fileCid, size } = await tree.putFile(data);
-          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, false);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, LinkType.Blob);
         }
 
         // Test checkoutCommit

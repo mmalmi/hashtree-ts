@@ -10,7 +10,7 @@ export type {
   Hash,
   CID,
   TreeNode,
-  BlobNode,
+  Blob,
   Link,
   Store,
   StoreWithMeta,
@@ -22,7 +22,7 @@ export type {
 } from './types.js';
 
 export {
-  NodeType,
+  LinkType,
   toHex,
   fromHex,
   cid,
@@ -56,6 +56,7 @@ export {
   encodeAndHash,
   isTreeNode,
   isDirectoryNode,
+  isFileNode,
 } from './codec.js';
 
 // Storage adapters

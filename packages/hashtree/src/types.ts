@@ -33,13 +33,15 @@ export function cid(hash: Hash, key?: Uint8Array): CID {
 }
 
 /**
- * Node types in the tree
+ * Link/node types - what kind of content a link points to or a node contains
  */
-export enum NodeType {
-  /** Raw data blob (leaf) */
+export enum LinkType {
+  /** Raw data blob (leaf chunk) */
   Blob = 0,
-  /** Tree node with links to children */
-  Tree = 1,
+  /** Chunked file tree (TreeNode with unnamed links) */
+  File = 1,
+  /** Directory tree (TreeNode with named links) */
+  Dir = 2,
 }
 
 /**
@@ -54,20 +56,20 @@ export interface Link {
   size?: number;
   /** CHK decryption key (content hash) for encrypted nodes */
   key?: Uint8Array;
-  /** Whether this link points to a TreeNode (true) or raw blob (false) */
-  isTreeNode: boolean;
+  /** Type of content this link points to: Blob, File, or Dir */
+  type: LinkType;
 }
 
 /**
  * Tree node - contains links to children
  * Stored as: SHA256(msgpack(TreeNode)) -> msgpack(TreeNode)
  *
- * For directories: links have names
- * For chunked files: links are ordered chunks
- * For large directories: links can be other tree nodes (fanout)
+ * For directories: type=Dir, links have names
+ * For chunked files: type=File, links are ordered chunks
  */
 export interface TreeNode {
-  type: NodeType.Tree;
+  /** Type of this node: File or Dir */
+  type: LinkType.File | LinkType.Dir;
   /** Links to child nodes */
   links: Link[];
   /** Total size of all data in this subtree */
@@ -77,21 +79,12 @@ export interface TreeNode {
 }
 
 /**
- * Blob node - raw data (leaf)
+ * Blob - raw data (leaf)
  * Stored as: SHA256(data) -> data
  *
- * Note: Blobs are stored directly, not MessagePack-wrapped
+ * Note: Blobs are stored directly as raw bytes, not as a structured type
  */
-export interface BlobNode {
-  type: NodeType.Blob;
-  /** The raw data */
-  data: Uint8Array;
-}
-
-/**
- * Union of all node types
- */
-export type Node = TreeNode | BlobNode;
+export type Blob = Uint8Array;
 
 /**
  * Result of adding content to the tree
@@ -120,8 +113,8 @@ export interface DirEntry {
   name: string;
   hash: Hash;
   size: number;
-  /** Whether this entry points to a TreeNode (true) or raw blob (false) */
-  isTreeNode: boolean;
+  /** Type of content this entry points to: Blob, File, or Dir */
+  type: LinkType;
 }
 
 /**

@@ -9,7 +9,7 @@ import { MemoryStore } from '../src/store/memory.js';
 import { toHex, fromHex } from '../src/types.js';
 import { sha256 } from '../src/hash.js';
 import { encodeTreeNode, decodeTreeNode } from '../src/codec.js';
-import { NodeType, TreeNode } from '../src/types.js';
+import { LinkType, TreeNode } from '../src/types.js';
 import { encryptChk, decryptChk } from '../src/crypto.js';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -83,7 +83,7 @@ describe('Interoperability Test Vectors', () => {
 
   it('should generate empty tree node vector', async () => {
     const node: TreeNode = {
-      type: NodeType.Tree,
+      type: LinkType.Dir,
       links: [],
     };
 
@@ -110,8 +110,8 @@ describe('Interoperability Test Vectors', () => {
   it('should generate tree node with single link', async () => {
     const linkHash = new Uint8Array(32).fill(0xab);
     const node: TreeNode = {
-      type: NodeType.Tree,
-      links: [{ hash: linkHash, name: 'test.txt', size: 100 }],
+      type: LinkType.Dir,
+      links: [{ hash: linkHash, name: 'test.txt', size: 100, type: LinkType.Blob }],
     };
 
     const encoded = encodeTreeNode(node);
@@ -142,11 +142,11 @@ describe('Interoperability Test Vectors', () => {
     const hash3 = new Uint8Array(32).fill(0x03);
 
     const node: TreeNode = {
-      type: NodeType.Tree,
+      type: LinkType.Dir,
       links: [
-        { hash: hash1, name: 'a.txt', size: 10 },
-        { hash: hash2, name: 'b.txt', size: 20 },
-        { hash: hash3, name: 'c.txt', size: 30 },
+        { hash: hash1, name: 'a.txt', size: 10, type: LinkType.Blob },
+        { hash: hash2, name: 'b.txt', size: 20, type: LinkType.Blob },
+        { hash: hash3, name: 'c.txt', size: 30, type: LinkType.Blob },
       ],
       totalSize: 60,
     };
@@ -177,8 +177,8 @@ describe('Interoperability Test Vectors', () => {
   it('should generate tree node with metadata', async () => {
     const linkHash = new Uint8Array(32).fill(0xcd);
     const node: TreeNode = {
-      type: NodeType.Tree,
-      links: [{ hash: linkHash }],
+      type: LinkType.Dir,
+      links: [{ hash: linkHash, type: LinkType.Blob }],
       metadata: { version: 1, author: 'test' },
     };
 
@@ -206,10 +206,10 @@ describe('Interoperability Test Vectors', () => {
     const hash2 = new Uint8Array(32).fill(0xbb);
 
     const node: TreeNode = {
-      type: NodeType.Tree,
+      type: LinkType.File,
       links: [
-        { hash: hash1, size: 100 },
-        { hash: hash2, size: 50 },
+        { hash: hash1, size: 100, type: LinkType.Blob },
+        { hash: hash2, size: 50, type: LinkType.Blob },
       ],
       totalSize: 150,
     };

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { HashTree, MemoryStore, toHex, type CID } from '../src/index.js';
+import { HashTree, MemoryStore, toHex, LinkType, type CID } from '../src/index.js';
 
 describe('HashTree', () => {
   let store: MemoryStore;
@@ -79,7 +79,7 @@ describe('HashTree', () => {
     it('should resolve path', async () => {
       const { cid: fileCid } = await tree.putFile(new TextEncoder().encode('nested'), { public: true });
       const { cid: subDirCid } = await tree.putDirectory([{ name: 'file.txt', cid: fileCid, size: 6 }], { public: true });
-      const { cid: rootCid } = await tree.putDirectory([{ name: 'subdir', cid: subDirCid, size: 6, isTreeNode: true }], { public: true });
+      const { cid: rootCid } = await tree.putDirectory([{ name: 'subdir', cid: subDirCid, size: 6, type: LinkType.Dir }], { public: true });
 
       const resolved = await tree.resolvePath(rootCid, 'subdir/file.txt');
       expect(resolved).not.toBeNull();
@@ -171,8 +171,8 @@ describe('HashTree', () => {
       const { cid: dir1Cid } = await tree.putDirectory([{ name: 'file.txt', cid: fileCid, size: 7 }], { public: true });
       const { cid: dir2Cid } = await tree.putDirectory([], { public: true });
       const { cid: rootCid } = await tree.putDirectory([
-        { name: 'dir1', cid: dir1Cid, size: 7, isTreeNode: true },
-        { name: 'dir2', cid: dir2Cid, size: 0, isTreeNode: true },
+        { name: 'dir1', cid: dir1Cid, size: 7, type: LinkType.Dir },
+        { name: 'dir2', cid: dir2Cid, size: 0, type: LinkType.Dir },
       ], { public: true });
 
       const newRoot = await tree.moveEntry(rootCid, ['dir1'], 'file.txt', ['dir2']);
@@ -212,9 +212,9 @@ describe('HashTree', () => {
 
     it('should handle nested path edits', async () => {
       const { cid: cCid } = await tree.putDirectory([], { public: true });
-      const { cid: bCid } = await tree.putDirectory([{ name: 'c', cid: cCid, size: 0, isTreeNode: true }], { public: true });
-      const { cid: aCid } = await tree.putDirectory([{ name: 'b', cid: bCid, size: 0, isTreeNode: true }], { public: true });
-      const { cid: rootCid } = await tree.putDirectory([{ name: 'a', cid: aCid, size: 0, isTreeNode: true }], { public: true });
+      const { cid: bCid } = await tree.putDirectory([{ name: 'c', cid: cCid, size: 0, type: LinkType.Dir }], { public: true });
+      const { cid: aCid } = await tree.putDirectory([{ name: 'b', cid: bCid, size: 0, type: LinkType.Dir }], { public: true });
+      const { cid: rootCid } = await tree.putDirectory([{ name: 'a', cid: aCid, size: 0, type: LinkType.Dir }], { public: true });
 
       const { cid: fileCid, size } = await tree.putFile(new TextEncoder().encode('deep'), { public: true });
       const newRoot = await tree.setEntry(rootCid, ['a', 'b', 'c'], 'file.txt', fileCid, size);
@@ -273,27 +273,27 @@ describe('HashTree', () => {
 
       // Create root directory with subdirectory entry
       const { cid: rootCid } = await tree.putDirectory([
-        { name: 'subdir', cid: subDirCid, size: 0, isTreeNode: true },
+        { name: 'subdir', cid: subDirCid, size: 0, type: LinkType.Dir },
       ]);
 
       // List root and check isTree
       const entries = await tree.listDirectory(rootCid);
       expect(entries).toHaveLength(1);
       expect(entries[0].name).toBe('subdir');
-      expect(entries[0].isTreeNode).toBe(true);
+      expect(entries[0].type).toBe(LinkType.Dir);
       expect(entries[0].cid.key).toBeDefined();
     });
 
     it('should preserve isTree=false for files in encrypted directory', async () => {
       const { cid: fileCid } = await tree.putFile(new TextEncoder().encode('data'));
       const { cid: dirCid } = await tree.putDirectory([
-        { name: 'file.txt', cid: fileCid, size: 4, isTreeNode: false },
+        { name: 'file.txt', cid: fileCid, size: 4, type: LinkType.Blob },
       ]);
 
       const entries = await tree.listDirectory(dirCid);
       expect(entries).toHaveLength(1);
       expect(entries[0].name).toBe('file.txt');
-      expect(entries[0].isTreeNode).toBe(false);
+      expect(entries[0].type).toBe(LinkType.Blob);
     });
 
     it('should add entry to encrypted directory with setEntry', async () => {
@@ -306,13 +306,13 @@ describe('HashTree', () => {
         'test.txt',
         fileCid,
         size,
-        false
+        LinkType.Blob
       );
 
       const entries = await tree.listDirectory(newRoot);
       expect(entries).toHaveLength(1);
       expect(entries[0].name).toBe('test.txt');
-      expect(entries[0].isTreeNode).toBe(false);
+      expect(entries[0].type).toBe(LinkType.Blob);
     });
 
     it('should add subdirectory to encrypted directory with setEntry', async () => {
@@ -325,13 +325,13 @@ describe('HashTree', () => {
         'subdir',
         subDirCid,
         size,
-        true  // isTree = true
+        LinkType.Dir
       );
 
       const entries = await tree.listDirectory(newRoot);
       expect(entries).toHaveLength(1);
       expect(entries[0].name).toBe('subdir');
-      expect(entries[0].isTreeNode).toBe(true);
+      expect(entries[0].type).toBe(LinkType.Dir);
     });
 
     it('should handle nested encrypted directories', async () => {
@@ -339,31 +339,31 @@ describe('HashTree', () => {
       const { cid: fileCid } = await tree.putFile(new TextEncoder().encode('nested'));
 
       const { cid: bCid } = await tree.putDirectory([
-        { name: 'file.txt', cid: fileCid, size: 6, isTreeNode: false },
+        { name: 'file.txt', cid: fileCid, size: 6, type: LinkType.Blob },
       ]);
 
       const { cid: aCid } = await tree.putDirectory([
-        { name: 'b', cid: bCid, size: 6, isTreeNode: true },
+        { name: 'b', cid: bCid, size: 6, type: LinkType.Dir },
       ]);
 
       const { cid: rootCid } = await tree.putDirectory([
-        { name: 'a', cid: aCid, size: 6, isTreeNode: true },
+        { name: 'a', cid: aCid, size: 6, type: LinkType.Dir },
       ]);
 
       // Navigate to root/a
       const rootEntries = await tree.listDirectory(rootCid);
       expect(rootEntries[0].name).toBe('a');
-      expect(rootEntries[0].isTreeNode).toBe(true);
+      expect(rootEntries[0].type).toBe(LinkType.Dir);
 
       // Navigate to root/a/b
       const aEntries = await tree.listDirectory(rootEntries[0].cid);
       expect(aEntries[0].name).toBe('b');
-      expect(aEntries[0].isTreeNode).toBe(true);
+      expect(aEntries[0].type).toBe(LinkType.Dir);
 
       // Navigate to root/a/b/file.txt
       const bEntries = await tree.listDirectory(aEntries[0].cid);
       expect(bEntries[0].name).toBe('file.txt');
-      expect(bEntries[0].isTreeNode).toBe(false);
+      expect(bEntries[0].type).toBe(LinkType.Blob);
 
       // Read the file
       const content = await tree.readFile(bEntries[0].cid);
@@ -375,21 +375,21 @@ describe('HashTree', () => {
       const { cid: fileCid } = await tree.putFile(new TextEncoder().encode('resolved'));
 
       const { cid: bCid } = await tree.putDirectory([
-        { name: 'file.txt', cid: fileCid, size: 8, isTreeNode: false },
+        { name: 'file.txt', cid: fileCid, size: 8, type: LinkType.Blob },
       ]);
 
       const { cid: aCid } = await tree.putDirectory([
-        { name: 'b', cid: bCid, size: 8, isTreeNode: true },
+        { name: 'b', cid: bCid, size: 8, type: LinkType.Dir },
       ]);
 
       const { cid: rootCid } = await tree.putDirectory([
-        { name: 'a', cid: aCid, size: 8, isTreeNode: true },
+        { name: 'a', cid: aCid, size: 8, type: LinkType.Dir },
       ]);
 
       // Resolve the file path
       const resolved = await tree.resolvePath(rootCid, ['a', 'b', 'file.txt']);
       expect(resolved).not.toBeNull();
-      expect(resolved!.isTreeNode).toBe(false);
+      expect(resolved!.type).toBe(LinkType.Blob);
       expect(resolved!.cid.key).toBeDefined();
 
       // Read the file using the resolved CID
@@ -401,17 +401,17 @@ describe('HashTree', () => {
       const { cid: fileCid } = await tree.putFile(new TextEncoder().encode('data'));
 
       const { cid: subCid } = await tree.putDirectory([
-        { name: 'file.txt', cid: fileCid, size: 4, isTreeNode: false },
+        { name: 'file.txt', cid: fileCid, size: 4, type: LinkType.Blob },
       ]);
 
       const { cid: rootCid } = await tree.putDirectory([
-        { name: 'sub', cid: subCid, size: 4, isTreeNode: true },
+        { name: 'sub', cid: subCid, size: 4, type: LinkType.Dir },
       ]);
 
       // Resolve to the subdirectory
       const resolved = await tree.resolvePath(rootCid, ['sub']);
       expect(resolved).not.toBeNull();
-      expect(resolved!.isTreeNode).toBe(true);
+      expect(resolved!.type).toBe(LinkType.Dir);
       expect(resolved!.cid.key).toBeDefined();
 
       // List the resolved directory
@@ -439,7 +439,7 @@ describe('HashTree', () => {
       const { cid: fileCid } = await tree.putFile(new TextEncoder().encode('root'));
 
       const { cid: rootCid } = await tree.putDirectory([
-        { name: 'file.txt', cid: fileCid, size: 4, isTreeNode: false },
+        { name: 'file.txt', cid: fileCid, size: 4, type: LinkType.Blob },
       ]);
 
       // Empty path should return the root
@@ -447,7 +447,7 @@ describe('HashTree', () => {
       expect(resolved).not.toBeNull();
       expect(resolved!.cid.hash).toEqual(rootCid.hash);
       expect(resolved!.cid.key).toEqual(rootCid.key);
-      expect(resolved!.isTreeNode).toBe(true);
+      expect(resolved!.type).toBe(LinkType.Dir);
     });
   });
 });

@@ -1,20 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { encodeTreeNode, decodeTreeNode, encodeAndHash, isTreeNode } from '../src/codec.js';
-import { NodeType, TreeNode, toHex } from '../src/types.js';
+import { LinkType, TreeNode, toHex } from '../src/types.js';
 import { sha256 } from '../src/hash.js';
 
 describe('codec', () => {
   describe('encodeTreeNode / decodeTreeNode', () => {
     it('should encode and decode empty tree', () => {
       const node: TreeNode = {
-        type: NodeType.Tree,
+        type: LinkType.File,
         links: [],
       };
 
       const encoded = encodeTreeNode(node);
       const decoded = decodeTreeNode(encoded);
 
-      expect(decoded.type).toBe(NodeType.Tree);
+      expect(decoded.type).toBe(LinkType.File);
       expect(decoded.links).toEqual([]);
     });
 
@@ -23,10 +23,10 @@ describe('codec', () => {
       const hash2 = new Uint8Array(32).fill(2);
 
       const node: TreeNode = {
-        type: NodeType.Tree,
+        type: LinkType.Dir,
         links: [
-          { hash: hash1, name: 'file1.txt', size: 100 },
-          { hash: hash2, name: 'dir', size: 500 },
+          { hash: hash1, name: 'file1.txt', size: 100, type: LinkType.Blob },
+          { hash: hash2, name: 'dir', size: 500, type: LinkType.Dir },
         ],
       };
 
@@ -42,7 +42,7 @@ describe('codec', () => {
 
     it('should preserve totalSize', () => {
       const node: TreeNode = {
-        type: NodeType.Tree,
+        type: LinkType.File,
         links: [],
         totalSize: 12345,
       };
@@ -55,7 +55,7 @@ describe('codec', () => {
 
     it('should preserve metadata', () => {
       const node: TreeNode = {
-        type: NodeType.Tree,
+        type: LinkType.Dir,
         links: [],
         metadata: { version: 1, author: 'test' },
       };
@@ -70,8 +70,8 @@ describe('codec', () => {
       const hash = new Uint8Array(32).fill(42);
 
       const node: TreeNode = {
-        type: NodeType.Tree,
-        links: [{ hash }],
+        type: LinkType.File,
+        links: [{ hash, type: LinkType.Blob }],
       };
 
       const encoded = encodeTreeNode(node);
@@ -86,7 +86,7 @@ describe('codec', () => {
   describe('encodeAndHash', () => {
     it('should compute hash of encoded data', async () => {
       const node: TreeNode = {
-        type: NodeType.Tree,
+        type: LinkType.File,
         links: [],
       };
 
@@ -98,8 +98,8 @@ describe('codec', () => {
 
     it('should produce consistent hashes', async () => {
       const node: TreeNode = {
-        type: NodeType.Tree,
-        links: [{ hash: new Uint8Array(32).fill(1), name: 'test' }],
+        type: LinkType.Dir,
+        links: [{ hash: new Uint8Array(32).fill(1), name: 'test', type: LinkType.Blob }],
       };
 
       const result1 = await encodeAndHash(node);
@@ -112,7 +112,7 @@ describe('codec', () => {
   describe('isTreeNode', () => {
     it('should detect tree nodes', () => {
       const node: TreeNode = {
-        type: NodeType.Tree,
+        type: LinkType.File,
         links: [],
       };
 
@@ -142,8 +142,8 @@ describe('codec', () => {
       const hash = new Uint8Array(32).fill(42);
 
       const node: TreeNode = {
-        type: NodeType.Tree,
-        links: [{ hash, name: 'file.txt', size: 100 }],
+        type: LinkType.Dir,
+        links: [{ hash, name: 'file.txt', size: 100, type: LinkType.Blob }],
       };
 
       const encoded1 = encodeTreeNode(node);
@@ -164,14 +164,14 @@ describe('codec', () => {
       const metadata2 = { alpha: 'first', middle: 'mid', zebra: 'last' };
 
       const node1: TreeNode = {
-        type: NodeType.Tree,
-        links: [{ hash }],
+        type: LinkType.File,
+        links: [{ hash, type: LinkType.Blob }],
         metadata: metadata1,
       };
 
       const node2: TreeNode = {
-        type: NodeType.Tree,
-        links: [{ hash }],
+        type: LinkType.File,
+        links: [{ hash, type: LinkType.Blob }],
         metadata: metadata2,
       };
 

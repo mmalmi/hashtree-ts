@@ -10,7 +10,7 @@
  */
 
 import { encode, decode } from '@msgpack/msgpack';
-import { TreeNode, NodeType, Link, Hash } from './types.js';
+import { TreeNode, Link, LinkType, Hash } from './types.js';
 import { sha256 } from './hash.js';
 
 /**
@@ -26,16 +26,16 @@ interface LinkMsgpack {
   s?: number;
   /** CHK decryption key (optional) */
   k?: Uint8Array;
-  /** isTreeNode - whether link points to TreeNode (true) or raw blob (false) */
-  i: boolean;
+  /** type - 0=Blob, 1=File, 2=Dir */
+  t: number;
 }
 
 /**
  * Internal MessagePack representation of a tree node
  */
 interface TreeNodeMsgpack {
-  /** type = 1 for tree */
-  t: 1;
+  /** type - 1=File, 2=Dir */
+  t: number;
   /** links */
   l: LinkMsgpack[];
   /** totalSize (optional) */
@@ -60,9 +60,9 @@ function sortObjectKeys<T extends Record<string, unknown>>(obj: T): T {
  */
 export function encodeTreeNode(node: TreeNode): Uint8Array {
   const msgpack: TreeNodeMsgpack = {
-    t: 1,
+    t: node.type,
     l: node.links.map(link => {
-      const l: LinkMsgpack = { h: link.hash, i: link.isTreeNode };
+      const l: LinkMsgpack = { h: link.hash, t: link.type };
       if (link.name !== undefined) l.n = link.name;
       if (link.size !== undefined) l.s = link.size;
       if (link.key !== undefined) l.k = link.key;
@@ -82,14 +82,14 @@ export function encodeTreeNode(node: TreeNode): Uint8Array {
 export function decodeTreeNode(data: Uint8Array): TreeNode {
   const msgpack = decode(data) as TreeNodeMsgpack;
 
-  if (msgpack.t !== 1) {
+  if (msgpack.t !== LinkType.File && msgpack.t !== LinkType.Dir) {
     throw new Error(`Invalid node type: ${msgpack.t}`);
   }
 
   const node: TreeNode = {
-    type: NodeType.Tree,
+    type: msgpack.t as LinkType.File | LinkType.Dir,
     links: msgpack.l.map(l => {
-      const link: Link = { hash: l.h, isTreeNode: l.i ?? false };
+      const link: Link = { hash: l.h, type: l.t ?? LinkType.Blob };
       if (l.n !== undefined) link.name = l.n;
       if (l.s !== undefined) link.size = l.s;
       if (l.k !== undefined) link.key = l.k;
@@ -114,33 +114,38 @@ export async function encodeAndHash(node: TreeNode): Promise<{ data: Uint8Array;
 
 /**
  * Check if data is a MessagePack-encoded tree node (vs raw blob)
- * Tree nodes decode to an object with t=1
+ * Tree nodes decode to an object with t=1 (File) or t=2 (Dir)
  */
 export function isTreeNode(data: Uint8Array): boolean {
   try {
     const decoded = decode(data) as unknown;
-    return (
-      typeof decoded === 'object' &&
-      decoded !== null &&
-      (decoded as Record<string, unknown>).t === 1
-    );
+    if (typeof decoded !== 'object' || decoded === null) return false;
+    const t = (decoded as Record<string, unknown>).t;
+    return t === LinkType.File || t === LinkType.Dir;
   } catch {
     return false;
   }
 }
 
 /**
- * Check if data is a directory tree node (has named links)
- * vs a chunked file tree node (links have no names)
+ * Check if data is a directory tree node (type=Dir)
  */
 export function isDirectoryNode(data: Uint8Array): boolean {
   try {
     const decoded = decode(data) as TreeNodeMsgpack;
-    if (decoded.t !== 1) return false;
-    // Empty directory is still a directory
-    if (decoded.l.length === 0) return true;
-    // Directory has named links, chunked file doesn't
-    return decoded.l[0].n !== undefined;
+    return decoded.t === LinkType.Dir;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if data is a file tree node (type=File)
+ */
+export function isFileNode(data: Uint8Array): boolean {
+  try {
+    const decoded = decode(data) as TreeNodeMsgpack;
+    return decoded.t === LinkType.File;
   } catch {
     return false;
   }
