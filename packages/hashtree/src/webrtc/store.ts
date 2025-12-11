@@ -15,7 +15,7 @@
  */
 import { SimplePool, type Event } from 'nostr-tools';
 import type { Store, Hash } from '../types.js';
-import { toHex, fromHex } from '../types.js';
+import { toHex } from '../types.js';
 import {
   PeerId,
   generateUuid,
@@ -429,7 +429,7 @@ export class WebRTCStore implements Store {
         this.emit({ type: 'update' });
         this.fetchWantedHashes(peer);
       },
-      onForwardRequest: (hash, exclude) => this.forwardRequest(hash, exclude),
+      onForwardRequest: (hash, exclude, htl) => this.forwardRequest(hash, exclude, htl),
       requestTimeout: this.config.requestTimeout,
       debug: this.config.debug,
     });
@@ -458,7 +458,7 @@ export class WebRTCStore implements Store {
         this.emit({ type: 'update' });
         this.fetchWantedHashes(peer);
       },
-      onForwardRequest: (hash, exclude) => this.forwardRequest(hash, exclude),
+      onForwardRequest: (hash, exclude, htl) => this.forwardRequest(hash, exclude, htl),
       requestTimeout: this.config.requestTimeout,
       debug: this.config.debug,
     });
@@ -477,8 +477,9 @@ export class WebRTCStore implements Store {
    * Forward a request to other peers (excluding the requester)
    * Called by Peer when it receives a request it can't fulfill locally
    * Uses sequential queries with delays between attempts
+   * @param htl - Hops To Live (already decremented by calling peer)
    */
-  private async forwardRequest(hashHex: string, excludePeerId: string): Promise<Uint8Array | null> {
+  private async forwardRequest(hash: Uint8Array, excludePeerId: string, htl: number): Promise<Uint8Array | null> {
     // Try all connected peers except the one who requested
     const otherPeers = Array.from(this.peers.values())
       .filter(({ peer }) => peer.isConnected && peer.peerId !== excludePeerId);
@@ -490,14 +491,12 @@ export class WebRTCStore implements Store {
       return 0;
     });
 
-    const hash = fromHex(hashHex);
-
     // Query peers sequentially with delay between attempts
     for (let i = 0; i < otherPeers.length; i++) {
       const { peer } = otherPeers[i];
 
-      // Start request to this peer
-      const requestPromise = peer.request(hash);
+      // Start request to this peer with the decremented HTL
+      const requestPromise = peer.request(hash, htl);
 
       // Race between request completing and delay timeout
       const result = await Promise.race([
@@ -526,15 +525,15 @@ export class WebRTCStore implements Store {
    * Send data to all peers who have requested this hash
    * Called when we receive data that peers may be waiting for
    */
-  sendToInterestedPeers(hashHex: string, data: Uint8Array): number {
+  sendToInterestedPeers(hash: Uint8Array, data: Uint8Array): number {
     let sendCount = 0;
     for (const { peer } of this.peers.values()) {
-      if (peer.isConnected && peer.sendData(hashHex, data)) {
+      if (peer.isConnected && peer.sendData(hash, data)) {
         sendCount++;
       }
     }
     if (sendCount > 0) {
-      this.log('Sent data to', sendCount, 'interested peers for hash:', hashHex.slice(0, 16));
+      this.log('Sent data to', sendCount, 'interested peers for hash:', toHex(hash).slice(0, 16));
     }
     return sendCount;
   }
@@ -713,8 +712,7 @@ export class WebRTCStore implements Store {
       : false;
 
     // Send to any peers who have requested this hash
-    const hashHex = toHex(hash);
-    this.sendToInterestedPeers(hashHex, data);
+    this.sendToInterestedPeers(hash, data);
 
     return success;
   }

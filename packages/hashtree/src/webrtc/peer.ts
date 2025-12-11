@@ -2,24 +2,28 @@
  * WebRTC peer connection for hashtree data exchange
  */
 import type { Store, Hash } from '../types.js';
-import { toHex, fromHex } from '../types.js';
 import type {
   SignalingMessage,
   DataMessage,
   DataRequest,
-  DataResponse,
-  DataPush,
   PeerId,
 } from './types.js';
+import { MAX_HTL, MSG_TYPE_REQUEST, MSG_TYPE_RESPONSE } from './types.js';
 import { LRUCache } from './lruCache.js';
 import {
   PendingRequest,
-  createBinaryMessage,
-  handleBinaryResponse,
-  handleResponseMessage,
+  PeerHTLConfig,
+  encodeRequest,
+  encodeResponse,
+  parseMessage,
   createRequest,
   createResponse,
+  handleResponse,
   clearPendingRequests,
+  generatePeerHTLConfig,
+  decrementHTL,
+  shouldForward,
+  hashToKey,
 } from './protocol.js';
 
 const ICE_SERVERS = [
@@ -37,8 +41,8 @@ const THEIR_REQUESTS_SIZE = 200;
 // Request this peer sent us that we couldn't fulfill locally
 // We track it so we can push data back when/if we get it
 interface TheirRequest {
-  id: number;           // their request id
-  requestedAt: number;  // when they requested it
+  hash: Uint8Array;
+  requestedAt: number;
 }
 
 export class Peer {
@@ -54,20 +58,23 @@ export class Peer {
   private onConnected?: () => void;
   private debug: boolean;
 
-  // Requests we sent TO this peer (keyed by our request id)
-  private ourRequests = new Map<number, PendingRequest>();
+  // Requests we sent TO this peer (keyed by hash hex)
+  private ourRequests = new Map<string, PendingRequest>();
   // Requests this peer sent TO US that we couldn't fulfill (keyed by hash hex)
   // We track these so we can push data back if we get it later
   private theirRequests = new LRUCache<string, TheirRequest>(THEIR_REQUESTS_SIZE);
 
-  private nextRequestId = 1;
   private requestTimeout: number;
   private pendingCandidates: RTCIceCandidateInit[] = [];
   private candidateBatchTimeout: ReturnType<typeof setTimeout> | null = null;
   private queuedRemoteCandidates: RTCIceCandidateInit[] = [];
 
   // Callback to forward request to other peers when we don't have data locally
-  private onForwardRequest?: (hash: string, excludePeerId: string) => Promise<Uint8Array | null>;
+  // htl parameter is the decremented HTL to use when forwarding
+  private onForwardRequest?: (hash: Uint8Array, excludePeerId: string, htl: number) => Promise<Uint8Array | null>;
+
+  // Per-peer HTL decrement config (Freenet-style probabilistic)
+  private htlConfig: PeerHTLConfig;
 
   readonly createdAt: number;
   connectedAt?: number;
@@ -79,7 +86,7 @@ export class Peer {
     sendSignaling: (msg: SignalingMessage) => Promise<void>;
     onClose: () => void;
     onConnected?: () => void;
-    onForwardRequest?: (hash: string, excludePeerId: string) => Promise<Uint8Array | null>;
+    onForwardRequest?: (hash: Uint8Array, excludePeerId: string, htl: number) => Promise<Uint8Array | null>;
     requestTimeout?: number;
     debug?: boolean;
   }) {
@@ -94,6 +101,8 @@ export class Peer {
     this.requestTimeout = options.requestTimeout ?? 5000;
     this.debug = options.debug ?? false;
     this.createdAt = Date.now();
+    // Generate random HTL config for this peer (Freenet-style)
+    this.htlConfig = generatePeerHTLConfig();
 
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     this.setupPeerConnection();
@@ -119,13 +128,17 @@ export class Peer {
     this.candidateBatchTimeout = setTimeout(() => {
       this.candidateBatchTimeout = null;
       if (this.pendingCandidates.length > 0) {
-        const candidates = this.pendingCandidates.splice(0);
-        this.log(`Sending ${candidates.length} batched ICE candidates`);
+        const candidates = this.pendingCandidates;
+        this.pendingCandidates = [];
+
+        // Send as batch
         this.sendSignaling({
           type: 'candidates',
           candidates,
           recipient: this.peerId,
-          peerId: '', // filled by manager
+          peerId: '', // Will be set by caller
+        }).catch((err) => {
+          this.log('Failed to send candidates batch:', err);
         });
       }
     }, ICE_BATCH_DELAY);
@@ -134,36 +147,37 @@ export class Peer {
   private setupPeerConnection(): void {
     this.pc.onicecandidate = (event) => {
       if (event.candidate) {
-        // Batch ICE candidates to reduce signaling messages
         this.pendingCandidates.push(event.candidate.toJSON());
         this.scheduleCandidateBatch();
       }
     };
 
-    this.pc.ondatachannel = (event) => {
-      this.log('Received data channel');
-      this.setupDataChannel(event.channel);
-    };
-
     this.pc.onconnectionstatechange = () => {
       this.log('Connection state:', this.pc.connectionState);
+
       if (this.pc.connectionState === 'connected') {
         this.connectedAt = Date.now();
-      }
-      if (this.pc.connectionState === 'failed' || this.pc.connectionState === 'closed') {
+        this.onConnected?.();
+      } else if (
+        this.pc.connectionState === 'failed' ||
+        this.pc.connectionState === 'closed' ||
+        this.pc.connectionState === 'disconnected'
+      ) {
         this.close();
       }
+    };
+
+    this.pc.ondatachannel = (event) => {
+      this.dataChannel = event.channel;
+      this.setupDataChannel(this.dataChannel);
     };
   }
 
   private setupDataChannel(channel: RTCDataChannel): void {
-    this.dataChannel = channel;
     channel.binaryType = 'arraybuffer';
 
     channel.onopen = () => {
       this.log('Data channel open');
-      // Only fire onConnected when data channel is actually ready for use
-      this.onConnected?.();
     };
 
     channel.onclose = () => {
@@ -172,129 +186,111 @@ export class Peer {
     };
 
     channel.onmessage = async (event) => {
-      if (typeof event.data === 'string') {
-        await this.handleJsonMessage(event.data);
-      } else if (event.data instanceof ArrayBuffer) {
-        await this.handleBinaryMessage(event.data);
+      // All messages are binary with type prefix
+      if (event.data instanceof ArrayBuffer) {
+        await this.handleMessage(event.data);
       }
     };
   }
 
-  private async handleJsonMessage(data: string): Promise<void> {
-    try {
-      const msg = JSON.parse(data) as DataMessage;
+  private async handleMessage(data: ArrayBuffer): Promise<void> {
+    const msg = parseMessage(data);
+    if (!msg) {
+      this.log('Failed to parse message');
+      return;
+    }
 
-      if (msg.type === 'req') {
-        await this.handleRequest(msg);
-      } else if (msg.type === 'res') {
-        await this.handleResponse(msg);
-      } else if (msg.type === 'push') {
-        await this.handlePush(msg);
-      }
-    } catch (err) {
-      this.log('Error handling message:', err);
+    if (msg.type === MSG_TYPE_REQUEST) {
+      await this.handleRequest(msg.body);
+    } else if (msg.type === MSG_TYPE_RESPONSE) {
+      await handleResponse(msg.body, this.ourRequests);
     }
   }
 
-  private async handleBinaryMessage(data: ArrayBuffer): Promise<void> {
-    await handleBinaryResponse(
-      data,
-      this.ourRequests,
-      (requestId) => this.log('Hash mismatch for request', requestId),
-    );
-  }
+  private async handleRequest(req: DataRequest): Promise<void> {
+    const htl = req.htl ?? MAX_HTL;
+    const hash = req.h;
+    const hashKey = hashToKey(hash);
 
-  private async handleRequest(msg: DataRequest): Promise<void> {
     // Try local store first
     if (this.localStore) {
-      const hash = fromHex(msg.hash);
       const data = await this.localStore.get(hash);
 
       if (data) {
-        this.sendResponse(msg.id, msg.hash, true);
-        this.sendBinaryData(msg.id, data);
+        this.sendResponse(hash, data);
         return;
       }
     }
 
-    // Not found locally - try forwarding to other peers
-    if (this.onForwardRequest) {
+    // Not found locally - check if we should forward based on HTL
+    if (this.onForwardRequest && shouldForward(htl)) {
       // Track this request so we can push data back later if we get it
-      this.theirRequests.set(msg.hash, {
-        id: msg.id,
+      this.theirRequests.set(hashKey, {
+        hash,
         requestedAt: Date.now(),
       });
 
+      // Decrement HTL before forwarding (Freenet-style per-peer decrement)
+      const forwardHTL = decrementHTL(htl, this.htlConfig);
+
       // Forward to other peers (excluding this one)
-      const data = await this.onForwardRequest(msg.hash, this.peerId);
+      const data = await this.onForwardRequest(hash, this.peerId, forwardHTL);
 
       if (data) {
         // Got it from another peer, send response
-        this.theirRequests.delete(msg.hash);
-        this.sendResponse(msg.id, msg.hash, true);
-        this.sendBinaryData(msg.id, data);
+        this.theirRequests.delete(hashKey);
+        this.sendResponse(hash, data);
         return;
       }
       // If not found, keep in theirRequests for later push
     }
 
     // Not found anywhere - stay silent, let requester timeout.
-    // We don't send "not found" responses because:
-    // 1. We may forward the request to our peers and get it later (then push it)
-    // 2. Saves bandwidth - requester will timeout and try next peer
-    // The request is tracked in theirRequests so we can push data if we get it later
   }
 
-  private async handleResponse(msg: DataResponse): Promise<void> {
-    handleResponseMessage(msg, this.ourRequests);
-    // If found, handleResponseMessage does nothing and we wait for binary data
-  }
-
-  private async handlePush(msg: DataPush): Promise<void> {
-    // Peer is pushing data we previously requested but they didn't have
-    // This happens when they got it later from another peer
-    this.log('Received push for hash:', msg.hash.slice(0, 16));
-    // The binary data will follow - we need to handle it
-    // For now, just store it locally if we have a store
-    // The actual binary handling happens in handleBinaryMessage with id=0
-  }
-
-  private sendResponse(id: number, hash: string, found: boolean): void {
-    const msg = createResponse(id, hash, found);
-    this.sendJson(msg);
-  }
-
-  private sendBinaryData(requestId: number, data: Uint8Array): void {
+  private sendResponse(hash: Uint8Array, data: Uint8Array): void {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
-    this.dataChannel.send(createBinaryMessage(requestId, data));
-  }
-
-  private sendJson(msg: DataMessage): void {
-    if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
-    this.dataChannel.send(JSON.stringify(msg));
+    const res = createResponse(hash, data);
+    this.dataChannel.send(encodeResponse(res));
   }
 
   /**
    * Request data by hash from this peer
+   * @param htl Hops To Live - decremented before sending
    */
-  async request(hash: Hash): Promise<Uint8Array | null> {
+  async request(hash: Hash, htl: number = MAX_HTL): Promise<Uint8Array | null> {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
       return null;
     }
 
-    const hashHex = toHex(hash);
-    const requestId = this.nextRequestId++;
+    const hashKey = hashToKey(hash);
+
+    // Check if we already have a pending request for this hash
+    const existing = this.ourRequests.get(hashKey);
+    if (existing) {
+      // Return a new promise that resolves when the existing one does
+      return new Promise((resolve) => {
+        const originalResolve = existing.resolve;
+        existing.resolve = (data) => {
+          originalResolve(data);
+          resolve(data);
+        };
+      });
+    }
+
+    // Decrement HTL before sending (Freenet-style per-peer decrement)
+    const sendHTL = decrementHTL(htl, this.htlConfig);
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.ourRequests.delete(requestId);
+        this.ourRequests.delete(hashKey);
         resolve(null);
       }, this.requestTimeout);
 
-      this.ourRequests.set(requestId, { hash: hashHex, resolve, timeout });
+      this.ourRequests.set(hashKey, { hash, resolve, timeout });
 
-      const msg = createRequest(requestId, hashHex);
-      this.sendJson(msg);
+      const req = createRequest(hash, sendHTL);
+      this.dataChannel!.send(encodeRequest(req));
     });
   }
 
@@ -302,28 +298,27 @@ export class Peer {
    * Send data to this peer for a hash they previously requested
    * Returns true if this peer had requested this hash
    */
-  sendData(hashHex: string, data: Uint8Array): boolean {
-    const theirReq = this.theirRequests.get(hashHex);
+  sendData(hash: Uint8Array, data: Uint8Array): boolean {
+    const hashKey = hashToKey(hash);
+    const theirReq = this.theirRequests.get(hashKey);
     if (!theirReq) {
       return false;
     }
 
-    this.theirRequests.delete(hashHex);
+    this.theirRequests.delete(hashKey);
 
-    // Send push message followed by binary data
-    const msg: DataPush = { type: 'push', hash: hashHex };
-    this.sendJson(msg);
-    this.sendBinaryData(theirReq.id, data);
+    // Send response with data
+    this.sendResponse(hash, data);
 
-    this.log('Sent data for hash:', hashHex.slice(0, 16));
+    this.log('Sent data for hash:', hashKey.slice(0, 16));
     return true;
   }
 
   /**
    * Check if this peer has requested a hash
    */
-  hasRequested(hashHex: string): boolean {
-    return this.theirRequests.has(hashHex);
+  hasRequested(hash: Uint8Array): boolean {
+    return this.theirRequests.has(hashToKey(hash));
   }
 
   /**
@@ -377,47 +372,47 @@ export class Peer {
       for (const candidate of msg.candidates) {
         await this.addRemoteCandidate(candidate);
       }
-      this.log(`Received ${msg.candidates.length} batched ICE candidates`);
     }
   }
 
-  /**
-   * Add a remote ICE candidate, queuing if remote description not yet set
-   */
   private async addRemoteCandidate(candidate: RTCIceCandidateInit): Promise<void> {
-    if (this.pc.remoteDescription) {
-      await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
-    } else {
-      // Queue candidates until remote description is set
+    // Queue candidates if remote description not set yet
+    if (!this.pc.remoteDescription) {
       this.queuedRemoteCandidates.push(candidate);
-      this.log('Queued ICE candidate (remote description not set yet)');
+      return;
+    }
+
+    try {
+      await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      this.log('Failed to add ICE candidate:', err);
     }
   }
 
-  /**
-   * Process any queued ICE candidates after remote description is set
-   */
   private async processQueuedCandidates(): Promise<void> {
-    if (this.queuedRemoteCandidates.length > 0) {
-      this.log(`Processing ${this.queuedRemoteCandidates.length} queued ICE candidates`);
-      for (const candidate of this.queuedRemoteCandidates) {
+    const candidates = this.queuedRemoteCandidates;
+    this.queuedRemoteCandidates = [];
+
+    for (const candidate of candidates) {
+      try {
         await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (err) {
+        this.log('Failed to add queued ICE candidate:', err);
       }
-      this.queuedRemoteCandidates = [];
     }
   }
 
   /**
-   * Close connection
+   * Close the peer connection
    */
   close(): void {
-    // Clear our pending requests
+    if (this.candidateBatchTimeout) {
+      clearTimeout(this.candidateBatchTimeout);
+      this.candidateBatchTimeout = null;
+    }
+
     clearPendingRequests(this.ourRequests);
 
-    // Clear their requests (they won't get responses)
-    this.theirRequests.clear();
-
-    // Close data channel
     if (this.dataChannel) {
       this.dataChannel.onopen = null;
       this.dataChannel.onclose = null;
@@ -426,10 +421,9 @@ export class Peer {
       this.dataChannel = null;
     }
 
-    // Close peer connection
     this.pc.onicecandidate = null;
-    this.pc.ondatachannel = null;
     this.pc.onconnectionstatechange = null;
+    this.pc.ondatachannel = null;
     this.pc.close();
 
     this.onClose();

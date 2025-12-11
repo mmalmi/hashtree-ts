@@ -41,44 +41,33 @@ export type SignalingMessage = HelloMessage | OfferMessage | AnswerMessage | Can
 // Directed messages (have recipient) - excludes HelloMessage
 export type DirectedMessage = OfferMessage | AnswerMessage | CandidateMessage | CandidatesMessage;
 
+// HTL (Hops To Live) constants - Freenet-style probabilistic decrement
+export const MAX_HTL = 10;
+export const DECREMENT_AT_MAX_PROB = 0.5;  // 50% chance to decrement at max
+export const DECREMENT_AT_MIN_PROB = 0.25; // 25% chance to decrement at 1
+
+// Message type bytes (prefix before MessagePack body)
+export const MSG_TYPE_REQUEST = 0x00;
+export const MSG_TYPE_RESPONSE = 0x01;
+
 // Data channel protocol messages
+// Wire format: [type byte][msgpack body]
+// Request:  [0x00][msgpack: {h: bytes32, htl?: u8}]
+// Response: [0x01][msgpack: {h: bytes32, d: bytes}]
+
 export interface DataRequest {
-  type: 'req';
-  id: number;
-  hash: string;
+  h: Uint8Array;   // 32-byte hash
+  htl?: number;    // Hops To Live (default MAX_HTL if not set)
 }
 
 export interface DataResponse {
-  type: 'res';
-  id: number;
-  hash: string;
-  found: boolean;
-  // data sent as binary after JSON header
+  h: Uint8Array;   // 32-byte hash
+  d: Uint8Array;   // Data
 }
 
-// Forwarded data - when we receive data that a peer requested
-export interface DataPush {
-  type: 'push';
-  hash: string;
-  // data sent as binary after JSON header
-}
-
-export interface DataHave {
-  type: 'have';
-  hashes: string[];
-}
-
-export interface DataWant {
-  type: 'want';
-  hashes: string[];
-}
-
-export interface RootUpdate {
-  type: 'root';
-  hash: string;
-}
-
-export type DataMessage = DataRequest | DataResponse | DataPush | DataHave | DataWant | RootUpdate;
+export type DataMessage =
+  | { type: typeof MSG_TYPE_REQUEST; body: DataRequest }
+  | { type: typeof MSG_TYPE_RESPONSE; body: DataResponse };
 
 // Signer function type (compatible with window.nostr.signEvent)
 export type EventSigner = (event: {

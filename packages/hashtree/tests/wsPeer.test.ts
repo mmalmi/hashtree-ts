@@ -1,6 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { encode, decode } from '@msgpack/msgpack';
 import { sha256 } from '../src/hash.js';
-import { toHex } from '../src/types.js';
+import { MSG_TYPE_REQUEST, MSG_TYPE_RESPONSE } from '../src/webrtc/types.js';
+import {
+  encodeRequest,
+  encodeResponse,
+  createRequest,
+  createResponse,
+  parseMessage,
+  hashToKey,
+} from '../src/webrtc/protocol.js';
+
+// Helper to create wire format message (type byte + msgpack body)
+function createWireMessage(type: number, body: unknown): ArrayBuffer {
+  const bodyBytes = encode(body);
+  const result = new Uint8Array(1 + bodyBytes.length);
+  result[0] = type;
+  result.set(bodyBytes, 1);
+  return result.buffer;
+}
 
 // Mock WebSocket
 class MockWebSocket {
@@ -70,50 +88,36 @@ afterEach(() => {
 });
 
 describe('WebSocketPeer', () => {
-  it('should construct with options', async () => {
-    const { WebSocketPeer } = await import('../src/webrtc/wsPeer.js');
-
-    const peer = new WebSocketPeer({
-      url: 'ws://localhost:8080/ws/data',
-      requestTimeout: 3000,
-      debug: true,
-    });
-
-    expect(peer.isConnected).toBe(false);
-  });
-
-  it('should connect and report connected state', async () => {
+  it('should connect to server', async () => {
     const { WebSocketPeer } = await import('../src/webrtc/wsPeer.js');
 
     const peer = new WebSocketPeer({
       url: 'ws://localhost:8080/ws/data',
     });
 
+    // Start connect but don't await yet
     const connectPromise = peer.connect();
 
-    // Simulate successful connection
-    setTimeout(() => {
-      mockWs?.simulateOpen();
-    }, 10);
+    // Simulate server accepting connection
+    setTimeout(() => mockWs?.simulateOpen(), 10);
 
     const result = await connectPromise;
     expect(result).toBe(true);
     expect(peer.isConnected).toBe(true);
   });
 
-  it('should handle connection error', async () => {
+  it('should handle connection failure', async () => {
     const { WebSocketPeer } = await import('../src/webrtc/wsPeer.js');
 
     const peer = new WebSocketPeer({
       url: 'ws://localhost:8080/ws/data',
     });
 
+    // Start connect
     const connectPromise = peer.connect();
 
     // Simulate error
-    setTimeout(() => {
-      mockWs?.simulateError(new Error('Connection refused'));
-    }, 10);
+    setTimeout(() => mockWs?.simulateError(new Error('Connection refused')), 10);
 
     const result = await connectPromise;
     expect(result).toBe(false);
@@ -125,36 +129,33 @@ describe('WebSocketPeer', () => {
 
     const peer = new WebSocketPeer({
       url: 'ws://localhost:8080/ws/data',
-      requestTimeout: 1000,
     });
 
-    // Connect first
+    // Connect
     const connectPromise = peer.connect();
     setTimeout(() => mockWs?.simulateOpen(), 10);
     await connectPromise;
 
     // Send a request
-    const testData = new TextEncoder().encode('hello');
-    const hash = await sha256(testData);
+    const testHash = new Uint8Array(32);
+    testHash.fill(0xab);
+    peer.request(testHash);
 
-    // Start request (don't await - it will timeout)
-    const requestPromise = peer.request(hash);
-
-    // Give it time to send the request
+    // Wait for request to be sent
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     // Check sent message
-    const sentMessages = mockWs?.getSentMessages() ?? [];
-    expect(sentMessages.length).toBe(1);
+    const sent = mockWs?.getSentMessages()[0] as ArrayBuffer;
+    expect(sent).toBeInstanceOf(ArrayBuffer);
 
-    const msg = JSON.parse(sentMessages[0] as string);
-    expect(msg.type).toBe('req');
-    expect(msg.id).toBe(1);
-    expect(msg.hash).toBe(toHex(hash));
+    // Parse it back
+    const bytes = new Uint8Array(sent);
+    expect(bytes[0]).toBe(MSG_TYPE_REQUEST); // Type byte
 
-    // Let request timeout
-    const result = await requestPromise;
-    expect(result).toBeNull();
+    // Parse msgpack body
+    const body = decode(bytes.slice(1)) as { h: Uint8Array; htl?: number };
+    expect(body.h).toBeDefined();
+    expect(body.h.length).toBe(32);
   });
 
   it('should handle successful response', async () => {
@@ -173,7 +174,6 @@ describe('WebSocketPeer', () => {
     // Prepare test data
     const testData = new TextEncoder().encode('hello world');
     const hash = await sha256(testData);
-    const hashHex = toHex(hash);
 
     // Start request
     const requestPromise = peer.request(hash);
@@ -181,16 +181,9 @@ describe('WebSocketPeer', () => {
     // Wait for request to be sent
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    // Simulate response
-    const response = { type: 'res', id: 1, hash: hashHex, found: true };
-    mockWs?.simulateMessage(JSON.stringify(response));
-
-    // Simulate binary data
-    const binaryPacket = new ArrayBuffer(4 + testData.length);
-    const view = new DataView(binaryPacket);
-    view.setUint32(0, 1, true); // request id = 1, little endian
-    new Uint8Array(binaryPacket, 4).set(testData);
-    mockWs?.simulateMessage(binaryPacket);
+    // Simulate response with data
+    const response = createWireMessage(MSG_TYPE_RESPONSE, { h: hash, d: testData });
+    mockWs?.simulateMessage(response);
 
     // Await result
     const result = await requestPromise;
@@ -199,12 +192,12 @@ describe('WebSocketPeer', () => {
     expect(new TextDecoder().decode(result!)).toBe('hello world');
   });
 
-  it('should handle not found response', async () => {
+  it('should handle timeout (no response)', async () => {
     const { WebSocketPeer } = await import('../src/webrtc/wsPeer.js');
 
     const peer = new WebSocketPeer({
       url: 'ws://localhost:8080/ws/data',
-      requestTimeout: 5000,
+      requestTimeout: 100, // Short timeout
     });
 
     // Connect
@@ -215,19 +208,11 @@ describe('WebSocketPeer', () => {
     // Prepare test data
     const testData = new TextEncoder().encode('missing');
     const hash = await sha256(testData);
-    const hashHex = toHex(hash);
 
-    // Start request
+    // Start request - don't send any response
     const requestPromise = peer.request(hash);
 
-    // Wait for request to be sent
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    // Simulate not found response
-    const response = { type: 'res', id: 1, hash: hashHex, found: false };
-    mockWs?.simulateMessage(JSON.stringify(response));
-
-    // Await result
+    // Await result - should timeout and return null
     const result = await requestPromise;
     expect(result).toBeNull();
   });
@@ -274,7 +259,6 @@ describe('WebSocketPeer', () => {
     // Request for specific hash
     const expectedData = new TextEncoder().encode('expected');
     const expectedHash = await sha256(expectedData);
-    const hashHex = toHex(expectedHash);
 
     // Start request
     const requestPromise = peer.request(expectedHash);
@@ -282,58 +266,122 @@ describe('WebSocketPeer', () => {
     // Wait for request to be sent
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    // Simulate response
-    const response = { type: 'res', id: 1, hash: hashHex, found: true };
-    mockWs?.simulateMessage(JSON.stringify(response));
-
-    // Send wrong data
+    // Send wrong data (different hash)
     const wrongData = new TextEncoder().encode('wrong data');
-    const binaryPacket = new ArrayBuffer(4 + wrongData.length);
-    const view = new DataView(binaryPacket);
-    view.setUint32(0, 1, true);
-    new Uint8Array(binaryPacket, 4).set(wrongData);
-    mockWs?.simulateMessage(binaryPacket);
+    const response = createWireMessage(MSG_TYPE_RESPONSE, { h: expectedHash, d: wrongData });
+    mockWs?.simulateMessage(response);
 
-    // Should be rejected due to hash mismatch
+    // Result should be null due to hash mismatch
     const result = await requestPromise;
     expect(result).toBeNull();
   });
 });
 
-describe('Data Protocol Compatibility', () => {
-  it('should format binary packet with little-endian request ID', () => {
-    const requestId = 0x12345678;
-    const data = new Uint8Array([1, 2, 3, 4, 5]);
+describe('Binary Protocol Format', () => {
+  it('should format request message correctly', () => {
+    const hash = new Uint8Array(32);
+    hash.fill(0xab);
 
-    const packet = new ArrayBuffer(4 + data.length);
-    const view = new DataView(packet);
-    view.setUint32(0, requestId, true); // little endian
-    new Uint8Array(packet, 4).set(data);
+    const req = createRequest(hash, 10);
+    const wire = encodeRequest(req);
 
-    // Verify
-    const bytes = new Uint8Array(packet);
-    expect(bytes[0]).toBe(0x78); // LSB first
-    expect(bytes[1]).toBe(0x56);
-    expect(bytes[2]).toBe(0x34);
-    expect(bytes[3]).toBe(0x12); // MSB last
-    expect(bytes.slice(4)).toEqual(data);
+    const bytes = new Uint8Array(wire);
+    expect(bytes[0]).toBe(MSG_TYPE_REQUEST);
+
+    const body = decode(bytes.slice(1)) as { h: Uint8Array; htl?: number };
+    expect(body.h.length).toBe(32);
+    expect(body.htl).toBe(10);
   });
 
-  it('should parse binary packet correctly', () => {
-    const requestId = 42;
-    const data = new TextEncoder().encode('test data');
+  it('should format response message with binary data', () => {
+    const hash = new Uint8Array(32);
+    hash.fill(0xcd);
+    const data = new Uint8Array([1, 2, 3, 4, 5]);
 
-    // Create packet like server would send
-    const packet = new ArrayBuffer(4 + data.length);
-    const view = new DataView(packet);
-    view.setUint32(0, requestId, true);
-    new Uint8Array(packet, 4).set(data);
+    const res = createResponse(hash, data);
+    const wire = encodeResponse(res);
 
-    // Parse like client
-    const parsedId = new DataView(packet).getUint32(0, true);
-    const parsedData = new Uint8Array(packet, 4);
+    const bytes = new Uint8Array(wire);
+    expect(bytes[0]).toBe(MSG_TYPE_RESPONSE);
 
-    expect(parsedId).toBe(42);
-    expect(new TextDecoder().decode(parsedData)).toBe('test data');
+    const body = decode(bytes.slice(1)) as { h: Uint8Array; d: Uint8Array };
+    expect(body.h.length).toBe(32);
+    expect(new Uint8Array(body.d)).toEqual(data);
+  });
+
+  it('should handle 16KB data (BT v2 chunk size)', () => {
+    const hash = new Uint8Array(32);
+    const data = new Uint8Array(16 * 1024);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = i % 256;
+    }
+
+    const res = createResponse(hash, data);
+    const wire = encodeResponse(res);
+
+    const bytes = new Uint8Array(wire);
+    expect(bytes[0]).toBe(MSG_TYPE_RESPONSE);
+
+    const body = decode(bytes.slice(1)) as { h: Uint8Array; d: Uint8Array };
+    expect(new Uint8Array(body.d).length).toBe(16 * 1024);
+    expect(new Uint8Array(body.d)[0]).toBe(0);
+    expect(new Uint8Array(body.d)[16383]).toBe(16383 % 256);
+  });
+});
+
+describe('Protocol Parsing', () => {
+  it('should parse request message', () => {
+    const hash = new Uint8Array(32);
+    hash.fill(0x12);
+
+    const wire = createWireMessage(MSG_TYPE_REQUEST, { h: hash, htl: 5 });
+    const msg = parseMessage(wire);
+
+    expect(msg).not.toBeNull();
+    expect(msg!.type).toBe(MSG_TYPE_REQUEST);
+    expect((msg!.body as { h: Uint8Array }).h.length).toBe(32);
+    expect((msg!.body as { htl: number }).htl).toBe(5);
+  });
+
+  it('should parse response message', () => {
+    const hash = new Uint8Array(32);
+    hash.fill(0x34);
+    const data = new Uint8Array([10, 20, 30]);
+
+    const wire = createWireMessage(MSG_TYPE_RESPONSE, { h: hash, d: data });
+    const msg = parseMessage(wire);
+
+    expect(msg).not.toBeNull();
+    expect(msg!.type).toBe(MSG_TYPE_RESPONSE);
+    expect((msg!.body as { h: Uint8Array }).h.length).toBe(32);
+    expect(new Uint8Array((msg!.body as { d: Uint8Array }).d)).toEqual(data);
+  });
+
+  it('should return null for invalid message', () => {
+    const msg = parseMessage(new ArrayBuffer(0));
+    expect(msg).toBeNull();
+  });
+
+  it('should return null for unknown message type', () => {
+    const wire = createWireMessage(0xFF, { foo: 'bar' });
+    const msg = parseMessage(wire);
+    expect(msg).toBeNull();
+  });
+});
+
+describe('Hash Key Conversion', () => {
+  it('should convert hash to hex key', () => {
+    const hash = new Uint8Array([0x00, 0x01, 0x0a, 0xff]);
+    const key = hashToKey(hash);
+    expect(key).toBe('00010aff');
+  });
+
+  it('should produce consistent keys', () => {
+    const hash1 = new Uint8Array(32);
+    hash1.fill(0xab);
+    const hash2 = new Uint8Array(32);
+    hash2.fill(0xab);
+
+    expect(hashToKey(hash1)).toBe(hashToKey(hash2));
   });
 });

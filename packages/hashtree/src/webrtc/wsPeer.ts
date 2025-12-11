@@ -2,31 +2,36 @@
  * WebSocket peer for hashtree data exchange
  *
  * Speaks the same protocol as WebRTC data channels:
- * - JSON messages: req, res, push, have, want, root
- * - Binary messages: [4-byte LE request_id][data]
+ * Wire format: [type byte][msgpack body]
+ * Request:  [0x00][msgpack: {h: bytes32, htl?: u8}]
+ * Response: [0x01][msgpack: {h: bytes32, d: bytes}]
  *
  * Used as a fallback when WebRTC connections fail.
  * Can both request data AND respond to incoming requests from the server.
  */
 import type { Store, Hash } from '../types.js';
-import { toHex, fromHex } from '../types.js';
 import type { DataRequest, DataResponse } from './types.js';
+import { MAX_HTL, MSG_TYPE_REQUEST, MSG_TYPE_RESPONSE } from './types.js';
 import {
   PendingRequest,
-  handleBinaryResponse,
-  handleResponseMessage,
+  PeerHTLConfig,
+  encodeRequest,
+  encodeResponse,
+  parseMessage,
   createRequest,
   createResponse,
-  createBinaryMessage,
+  handleResponse,
   clearPendingRequests,
+  generatePeerHTLConfig,
+  decrementHTL,
+  hashToKey,
 } from './protocol.js';
 
 export class WebSocketPeer {
   private ws: WebSocket | null = null;
   private url: string;
   private localStore: Store | null;
-  private pendingRequests = new Map<number, PendingRequest>();
-  private nextRequestId = 1;
+  private pendingRequests = new Map<string, PendingRequest>();
   private requestTimeout: number;
   private debug: boolean;
   private connected = false;
@@ -37,6 +42,9 @@ export class WebSocketPeer {
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private shouldReconnect = true;
   private onStatusChange: (() => void) | null = null;
+
+  // Per-peer HTL decrement config (Freenet-style probabilistic)
+  private htlConfig: PeerHTLConfig;
 
   constructor(options: {
     url: string;
@@ -50,6 +58,8 @@ export class WebSocketPeer {
     this.requestTimeout = options.requestTimeout ?? 5000;
     this.debug = options.debug ?? false;
     this.onStatusChange = options.onStatusChange ?? null;
+    // Generate random HTL config for this peer (Freenet-style)
+    this.htlConfig = generatePeerHTLConfig();
   }
 
   private log(...args: unknown[]): void {
@@ -136,11 +146,10 @@ export class WebSocketPeer {
           resolve(false);
         };
 
-        this.ws.onmessage = (event) => {
-          if (typeof event.data === 'string') {
-            this.handleJsonMessage(event.data);
-          } else if (event.data instanceof ArrayBuffer) {
-            this.handleBinaryMessage(event.data);
+        this.ws.onmessage = async (event) => {
+          // All messages are binary with type prefix
+          if (event.data instanceof ArrayBuffer) {
+            await this.handleMessage(event.data);
           }
         };
       } catch (err) {
@@ -202,89 +211,84 @@ export class WebSocketPeer {
 
   /**
    * Request data by hash
+   * @param htl Hops To Live - decremented before sending
    */
-  async request(hash: Hash): Promise<Uint8Array | null> {
+  async request(hash: Hash, htl: number = MAX_HTL): Promise<Uint8Array | null> {
     if (!this.isConnected) {
       const connected = await this.connect();
       if (!connected) return null;
     }
 
-    const hashHex = toHex(hash);
-    const requestId = this.nextRequestId++;
+    const hashKey = hashToKey(hash);
+
+    // Check if we already have a pending request for this hash
+    const existing = this.pendingRequests.get(hashKey);
+    if (existing) {
+      // Return a new promise that resolves when the existing one does
+      return new Promise((resolve) => {
+        const originalResolve = existing.resolve;
+        existing.resolve = (data) => {
+          originalResolve(data);
+          resolve(data);
+        };
+      });
+    }
+
+    // Decrement HTL before sending (Freenet-style per-peer decrement)
+    const sendHTL = decrementHTL(htl, this.htlConfig);
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.pendingRequests.delete(requestId);
-        this.log('Request timeout for', hashHex.slice(0, 16));
+        this.pendingRequests.delete(hashKey);
+        this.log('Request timeout for', hashKey.slice(0, 16));
         resolve(null);
       }, this.requestTimeout);
 
-      this.pendingRequests.set(requestId, { hash: hashHex, resolve, timeout });
+      this.pendingRequests.set(hashKey, { hash, resolve, timeout });
 
-      const msg = createRequest(requestId, hashHex);
-      this.sendJson(msg);
+      const req = createRequest(hash, sendHTL);
+      this.ws!.send(encodeRequest(req));
     });
   }
 
-  private handleJsonMessage(data: string): void {
-    try {
-      const msg = JSON.parse(data);
+  private async handleMessage(data: ArrayBuffer): Promise<void> {
+    const msg = parseMessage(data);
+    if (!msg) {
+      this.log('Failed to parse message');
+      return;
+    }
 
-      if (msg.type === 'res') {
-        handleResponseMessage(msg as DataResponse, this.pendingRequests);
-      } else if (msg.type === 'req') {
-        // Server is forwarding a request from another peer
-        this.handleRequest(msg as DataRequest);
-      }
-      // Other message types (have, want, root) can be added as needed
-    } catch (err) {
-      this.log('Error handling message:', err);
+    if (msg.type === MSG_TYPE_RESPONSE) {
+      await handleResponse(msg.body as DataResponse, this.pendingRequests);
+    } else if (msg.type === MSG_TYPE_REQUEST) {
+      // Server is forwarding a request from another peer
+      await this.handleRequest(msg.body as DataRequest);
     }
   }
 
   /**
    * Handle incoming request from server (forwarded from another peer)
    */
-  private async handleRequest(msg: DataRequest): Promise<void> {
+  private async handleRequest(req: DataRequest): Promise<void> {
     if (!this.localStore) {
       // No local store - stay silent, let server try next peer
-      this.log('Request for', msg.hash.slice(0, 16), '- no local store');
+      this.log('Request for', hashToKey(req.h).slice(0, 16), '- no local store');
       return;
     }
 
-    const hash = fromHex(msg.hash);
-    const data = await this.localStore.get(hash);
+    const data = await this.localStore.get(req.h);
 
     if (data) {
-      // We have it - send response and data
-      this.log('Serving', msg.hash.slice(0, 16));
-      this.sendResponse(msg.id, msg.hash, true);
-      this.sendBinaryData(msg.id, data);
+      // We have it - send response with data
+      this.log('Serving', hashToKey(req.h).slice(0, 16));
+      this.sendResponse(req.h, data);
     }
     // If we don't have it, stay silent - server will timeout and try next peer
-    // (We don't send "not found" responses to save bandwidth)
   }
 
-  private sendResponse(id: number, hash: string, found: boolean): void {
-    const msg = createResponse(id, hash, found);
-    this.sendJson(msg);
-  }
-
-  private sendBinaryData(requestId: number, data: Uint8Array): void {
+  private sendResponse(hash: Uint8Array, data: Uint8Array): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(createBinaryMessage(requestId, data));
-  }
-
-  private async handleBinaryMessage(data: ArrayBuffer): Promise<void> {
-    await handleBinaryResponse(
-      data,
-      this.pendingRequests,
-      (requestId) => this.log('Hash mismatch for request', requestId),
-    );
-  }
-
-  private sendJson(msg: unknown): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify(msg));
+    const res = createResponse(hash, data);
+    this.ws.send(encodeResponse(res));
   }
 }
