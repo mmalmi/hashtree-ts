@@ -311,6 +311,109 @@ export async function getBranchesWithWasmGit(
 }
 
 /**
+ * Get last commit info for files in a directory
+ * Returns a map of filename -> commit info
+ */
+export async function getFileLastCommitsWithWasmGit(
+  rootCid: CID,
+  filenames: string[]
+): Promise<Map<string, { oid: string; message: string; timestamp: number }>> {
+  const tree = getTree();
+  const result = new Map<string, { oid: string; message: string; timestamp: number }>();
+
+  if (filenames.length === 0) return result;
+
+  // Check for .git directory
+  const gitDirResult = await tree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+    return result;
+  }
+
+  const module = await loadWasmGit();
+  const repoPath = `/repo_${Date.now()}`;
+  const originalCwd = module.FS.cwd();
+
+  try {
+    module.FS.mkdir(repoPath);
+
+    try {
+      module.FS.writeFile('/home/web_user/.gitconfig', '[user]\nname = Reader\nemail = reader@example.com\n');
+    } catch {
+      // May already exist
+    }
+
+    module.FS.chdir(repoPath);
+
+    try {
+      module.callMain(['init', '.']);
+    } catch {
+      // Ignore init errors
+    }
+
+    await copyToWasmFS(module, gitDirResult.cid, '.git');
+
+    // For each file, get the last commit that touched it
+    for (const filename of filenames) {
+      // Skip .git directory
+      if (filename === '.git') continue;
+
+      try {
+        // Run git log -1 -- <filename> to get last commit for this file
+        const output = module.callWithOutput(['log', '-1', '--', filename]);
+
+        if (!output || output.trim() === '') continue;
+
+        // Parse same format as getLogWithWasmGit
+        const lines = output.split('\n');
+        let oid = '';
+        let timestamp = 0;
+        const messageLines: string[] = [];
+        let inMessage = false;
+
+        for (const line of lines) {
+          if (line.startsWith('commit ')) {
+            oid = line.substring(7).trim();
+          } else if (line.startsWith('Date: ')) {
+            const dateStr = line.substring(6).trim();
+            const date = new Date(dateStr);
+            if (!isNaN(date.getTime())) {
+              timestamp = Math.floor(date.getTime() / 1000);
+            }
+          } else if (line === '') {
+            if (oid && !inMessage) {
+              inMessage = true;
+            }
+          } else if (inMessage) {
+            messageLines.push(line.replace(/^    /, ''));
+          }
+        }
+
+        if (oid) {
+          result.set(filename, {
+            oid,
+            message: messageLines.join('\n').trim(),
+            timestamp,
+          });
+        }
+      } catch {
+        // Skip files with errors
+      }
+    }
+
+    return result;
+  } catch (err) {
+    console.error('[wasm-git] getFileLastCommits failed:', err);
+    return result;
+  } finally {
+    try {
+      module.FS.chdir(originalCwd);
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
  * Checkout a specific commit using wasm-git
  * Returns files from that commit as a directory listing
  */

@@ -6,6 +6,7 @@
   import { LinkType, type CID, type TreeEntry } from 'hashtree';
   import { getTree, decodeAsText, formatBytes } from '../../store';
   import { routeStore, createGitLogStore, openGitHistoryModal } from '../../stores';
+  import { getFileLastCommits } from '../../utils/git';
   import FolderActions from '../FolderActions.svelte';
   import ReadmePanel from '../Viewer/ReadmePanel.svelte';
   import Dropdown from '../ui/Dropdown.svelte';
@@ -28,12 +29,27 @@
   let gitLogStore = $derived(createGitLogStore(dirCid, 1000));
   let commits = $state<Array<{ oid: string; message: string }>>([]);
 
+  // File last commit info (GitHub-style)
+  let fileCommits = $state<Map<string, { oid: string; message: string; timestamp: number }>>(new Map());
+
   $effect(() => {
     const store = gitLogStore;
     const unsub = store.subscribe(value => {
       commits = value.commits;
     });
     return unsub;
+  });
+
+  // Load file last commit info when entries change
+  $effect(() => {
+    const filenames = entries.map(e => e.name);
+    let cancelled = false;
+    getFileLastCommits(dirCid, filenames).then(result => {
+      if (!cancelled) {
+        fileCommits = result;
+      }
+    });
+    return () => { cancelled = true; };
   });
 
   // Sort entries: directories first, then files, alphabetically
@@ -104,6 +120,26 @@
     // TODO: Implement branch checkout
     console.log('Switch to branch:', branch);
     isDropdownOpen = false;
+  }
+
+  // Format relative time like GitHub
+  function formatRelativeTime(timestamp: number): string {
+    const now = Math.floor(Date.now() / 1000);
+    const diff = now - timestamp;
+
+    if (diff < 60) return 'just now';
+    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+    if (diff < 604800) return `${Math.floor(diff / 86400)} days ago`;
+    if (diff < 2592000) return `${Math.floor(diff / 604800)} weeks ago`;
+    if (diff < 31536000) return `${Math.floor(diff / 2592000)} months ago`;
+    return `${Math.floor(diff / 31536000)} years ago`;
+  }
+
+  // Get first line of commit message (truncated)
+  function getCommitTitle(message: string): string {
+    const firstLine = message.split('\n')[0];
+    return firstLine.length > 50 ? firstLine.slice(0, 47) + '...' : firstLine;
   }
 
   // Handle checkout from history modal
@@ -206,6 +242,7 @@
         {#each sortedEntries as entry}
           {@const isGitDir = entry.name === '.git'}
           {@const href = buildEntryHref(entry)}
+          {@const commitInfo = fileCommits.get(entry.name)}
           <tr
             onclick={() => window.location.hash = href.slice(1)}
             class="b-b-1 b-b-solid b-b-surface-3 hover:bg-surface-1 cursor-pointer {isGitDir ? 'opacity-50' : ''}"
@@ -213,16 +250,19 @@
             <td class="py-2 px-3 w-8">
               <span class="{entry.type === LinkType.Dir ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}"></span>
             </td>
-            <td class="py-2 px-3 {isGitDir ? 'text-text-3' : 'text-accent'}">
+            <td class="py-2 px-3 {isGitDir ? 'text-text-3' : 'text-accent'} whitespace-nowrap">
               {entry.name}
             </td>
-            <td class="py-2 px-3 text-right text-muted w-24">
-              {entry.type !== LinkType.Dir && entry.size !== undefined ? formatBytes(entry.size) : ''}
+            <td class="py-2 px-3 text-muted truncate max-w-xs hidden md:table-cell" title={commitInfo?.message}>
+              {commitInfo ? getCommitTitle(commitInfo.message) : ''}
+            </td>
+            <td class="py-2 px-3 text-right text-muted whitespace-nowrap w-24">
+              {commitInfo ? formatRelativeTime(commitInfo.timestamp) : ''}
             </td>
           </tr>
         {:else}
           <tr>
-            <td colspan="3" class="py-4 px-3 text-center text-muted">
+            <td colspan="4" class="py-4 px-3 text-center text-muted">
               Empty directory
             </td>
           </tr>

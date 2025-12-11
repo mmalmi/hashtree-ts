@@ -136,6 +136,22 @@ export async function getBlame(_rootCid: CID, _filepath: string) {
 }
 
 /**
+ * Get last commit info for files in a directory
+ * Returns a map of filename -> commit info
+ */
+export async function getFileLastCommits(
+  rootCid: CID,
+  filenames: string[]
+): Promise<Map<string, { oid: string; message: string; timestamp: number }>> {
+  try {
+    const { getFileLastCommitsWithWasmGit } = await import('./wasmGit');
+    return await getFileLastCommitsWithWasmGit(rootCid, filenames);
+  } catch {
+    return new Map();
+  }
+}
+
+/**
  * Checkout a specific commit - builds a new hashtree directory from the commit's tree
  * Returns the new root CID containing the files at that commit
  * Uses wasm-git (libgit2)
