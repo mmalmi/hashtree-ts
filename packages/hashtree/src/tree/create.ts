@@ -55,10 +55,11 @@ export async function putFile(
   // Hash and store chunks in parallel
   const chunkHashes = await Promise.all(chunks.map(chunk => putBlob(store, chunk)));
 
-  // Build tree from chunks
+  // Build tree from chunks (leaf chunks are raw blobs, not tree nodes)
   const links: Link[] = chunkHashes.map((hash, i) => ({
     hash,
     size: i < chunkHashes.length - 1 ? chunkSize : data.length - i * chunkSize,
+    isTree: false,
   }));
 
   const rootHash = await buildTree(config, links, size);
@@ -143,7 +144,7 @@ export async function buildTree(
     const { data, hash } = await encodeAndHash(node);
     await store.put(hash, data);
 
-    subTrees.push({ hash, size: batchSize });
+    subTrees.push({ hash, size: batchSize, isTree: true });
   }
 
   return buildTree(config, subTrees, totalSize);

@@ -505,7 +505,7 @@ export class StreamWriter {
       // Public mode: store plaintext
       const hash = await sha256(chunk);
       await this.store.put(hash, chunk);
-      this.chunks.push({ hash, size: chunk.length });
+      this.chunks.push({ hash, size: chunk.length, isTree: false });
     } else {
       // Encrypted mode: CHK encrypt the chunk
       // Store PLAINTEXT size in link.size for correct range seeking
@@ -513,7 +513,7 @@ export class StreamWriter {
       const { ciphertext, key } = await encryptChk(chunk);
       const hash = await sha256(ciphertext);
       await this.store.put(hash, ciphertext);
-      this.chunks.push({ hash, size: plaintextSize, key });
+      this.chunks.push({ hash, size: plaintextSize, key, isTree: false });
     }
 
     this.bufferOffset = 0;
@@ -537,14 +537,14 @@ export class StreamWriter {
       if (this.isPublic) {
         const hash = await sha256(chunk);
         await this.store.put(hash, chunk);
-        tempChunks.push({ hash, size: chunk.length });
+        tempChunks.push({ hash, size: chunk.length, isTree: false });
       } else {
         // Store PLAINTEXT size in link.size for correct range seeking
         const plaintextSize = chunk.length;
         const { ciphertext, key } = await encryptChk(chunk);
         const hash = await sha256(ciphertext);
         await this.store.put(hash, ciphertext);
-        tempChunks.push({ hash, size: plaintextSize, key });
+        tempChunks.push({ hash, size: plaintextSize, key, isTree: false });
       }
     }
 
@@ -624,12 +624,12 @@ export class StreamWriter {
 
       if (this.isPublic) {
         await this.store.put(nodeHash, data);
-        subTrees.push({ hash: nodeHash, size: batchSize });
+        subTrees.push({ hash: nodeHash, size: batchSize, isTree: true });
       } else {
         const { ciphertext, key } = await encryptChk(data);
         const hash = await sha256(ciphertext);
         await this.store.put(hash, ciphertext);
-        subTrees.push({ hash, size: batchSize, key });
+        subTrees.push({ hash, size: batchSize, key, isTree: true });
       }
     }
 

@@ -76,6 +76,7 @@ export async function putFileEncrypted(
       hash,
       size: encSize,
       key: chunkKey,
+      isTree: false,
     });
 
     offset = end;
@@ -140,6 +141,7 @@ async function buildEncryptedTree(
       hash,
       size: batchSize,
       key: nodeKey,
+      isTree: true,
     });
   }
 
@@ -242,12 +244,12 @@ async function assembleEncryptedChunks(
 
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
-    if (isTreeNode(decrypted)) {
-      // Intermediate tree node - recurse
+    if (link.isTree) {
+      // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(decrypted);
       parts.push(await assembleEncryptedChunks(store, childNode));
     } else {
-      // Leaf data chunk
+      // Leaf data chunk - raw blob
       parts.push(decrypted);
     }
   }
@@ -323,12 +325,14 @@ async function* streamEncryptedChunksWithOffset(
 
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
-    if (isTreeNode(decrypted)) {
+    if (link.isTree) {
+      // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(decrypted);
       const childOffset = Math.max(0, offset - position);
       yield* streamEncryptedChunksWithOffset(store, childNode, childOffset);
       position += linkSize;
     } else {
+      // Leaf chunk - raw blob
       const chunkStart = position;
       const chunkEnd = position + decrypted.length;
       position = chunkEnd;
@@ -407,7 +411,8 @@ async function readEncryptedRangeFromNode(
 
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
-    if (isTreeNode(decrypted)) {
+    if (link.isTree) {
+      // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(decrypted);
       const childStart = Math.max(0, start - position);
       const childEnd = end !== undefined ? end - position : undefined;
@@ -419,6 +424,7 @@ async function readEncryptedRangeFromNode(
       }
       position += linkSize;
     } else {
+      // Leaf chunk - raw blob
       const chunkStart = position;
       const chunkEnd = position + decrypted.length;
       position = chunkEnd;

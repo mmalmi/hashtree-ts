@@ -105,10 +105,11 @@ export class TreeBuilder {
       }
     }
 
-    // Build tree from chunks
+    // Build tree from chunks (leaf chunks are raw blobs, not tree nodes)
     const chunks: Link[] = chunkHashes.map((hash, i) => ({
       hash,
       size: i < chunkHashes.length - 1 ? this.chunkSize : data.length - i * this.chunkSize,
+      isTree: false,
     }));
     const rootHash = await this.buildTree(chunks, size);
     return { hash: rootHash, size };
@@ -151,7 +152,7 @@ export class TreeBuilder {
       const { data, hash } = await encodeAndHash(node);
       await this.store.put(hash, data);
 
-      subTrees.push({ hash, size: batchSize });
+      subTrees.push({ hash, size: batchSize, isTree: true });
     }
 
     // Recursively build parent level
@@ -274,7 +275,7 @@ export class StreamBuilder {
     const hash = await sha256(chunk);
     await this.store.put(hash, new Uint8Array(chunk));
 
-    this.chunks.push({ hash, size: chunk.length });
+    this.chunks.push({ hash, size: chunk.length, isTree: false });
     this.bufferOffset = 0;
   }
 
@@ -293,7 +294,7 @@ export class StreamBuilder {
       const chunk = this.buffer.slice(0, this.bufferOffset);
       const hash = await sha256(chunk);
       await this.store.put(hash, new Uint8Array(chunk));
-      tempChunks.push({ hash, size: chunk.length });
+      tempChunks.push({ hash, size: chunk.length, isTree: false });
     }
 
     return this.buildTreeFromChunks(tempChunks, this.totalSize);
@@ -350,7 +351,7 @@ export class StreamBuilder {
       const { data, hash } = await encodeAndHash(node);
       await this.store.put(hash, data);
 
-      subTrees.push({ hash, size: batchSize });
+      subTrees.push({ hash, size: batchSize, isTree: true });
     }
 
     return this.buildTreeFromChunks(subTrees, totalSize);

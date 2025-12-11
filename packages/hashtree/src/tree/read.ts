@@ -74,10 +74,12 @@ async function assembleChunks(store: Store, node: TreeNode): Promise<Uint8Array>
       throw new Error(`Missing chunk: ${toHex(link.hash)}`);
     }
 
-    if (isTreeNode(childData)) {
+    if (link.isTree) {
+      // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(childData);
       parts.push(await assembleChunks(store, childNode));
     } else {
+      // Leaf chunk - raw blob
       parts.push(childData);
     }
   }
@@ -135,14 +137,14 @@ async function* streamChunksWithOffset(
       throw new Error(`Missing chunk: ${toHex(link.hash)}`);
     }
 
-    if (isTreeNode(childData)) {
+    if (link.isTree) {
+      // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(childData);
-      // Recurse with adjusted offset
       const childOffset = Math.max(0, offset - position);
       yield* streamChunksWithOffset(store, childNode, childOffset);
       position += linkSize;
     } else {
-      // Leaf chunk
+      // Leaf chunk - raw blob
       const chunkStart = position;
       const chunkEnd = position + childData.length;
       position = chunkEnd;
@@ -214,7 +216,8 @@ async function readRangeFromNode(
       throw new Error(`Missing chunk: ${toHex(link.hash)}`);
     }
 
-    if (isTreeNode(childData)) {
+    if (link.isTree) {
+      // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(childData);
       const childStart = Math.max(0, start - position);
       const childEnd = end !== undefined ? end - position : undefined;
@@ -226,7 +229,7 @@ async function readRangeFromNode(
       }
       position += linkSize;
     } else {
-      // Leaf chunk
+      // Leaf chunk - raw blob
       const chunkStart = position;
       const chunkEnd = position + childData.length;
       position = chunkEnd;
