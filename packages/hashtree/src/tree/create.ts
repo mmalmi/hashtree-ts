@@ -67,13 +67,16 @@ export async function putFile(
 
 /**
  * Build a directory from entries
+ *
+ * Directories are encoded as MessagePack blobs. If the encoded blob exceeds
+ * chunkSize, it's chunked by bytes like files using putFile.
  */
 export async function putDirectory(
   config: CreateConfig,
   entries: DirEntry[],
   metadata?: Record<string, unknown>
 ): Promise<Hash> {
-  const { store, maxLinks } = config;
+  const { store, chunkSize } = config;
   const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
 
   const links: Link[] = sorted.map(e => ({
@@ -86,20 +89,23 @@ export async function putDirectory(
 
   const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
 
-  if (links.length <= maxLinks) {
-    const node: TreeNode = {
-      type: NodeType.Tree,
-      links,
-      totalSize,
-      metadata,
-    };
-    const { data, hash } = await encodeAndHash(node);
+  const node: TreeNode = {
+    type: NodeType.Tree,
+    links,
+    totalSize,
+    metadata,
+  };
+  const { data, hash } = await encodeAndHash(node);
+
+  // Small directory - store directly
+  if (data.length <= chunkSize) {
     await store.put(hash, data);
     return hash;
   }
 
-  // Large directory - split into chunks
-  return buildDirectoryByChunks(config, links, totalSize, metadata);
+  // Large directory - reuse putFile for chunking
+  const { hash: rootHash } = await putFile(config, data);
+  return rootHash;
 }
 
 export async function buildTree(
@@ -143,41 +149,3 @@ export async function buildTree(
   return buildTree(config, subTrees, totalSize);
 }
 
-async function buildDirectoryByChunks(
-  config: CreateConfig,
-  links: Link[],
-  totalSize: number,
-  metadata?: Record<string, unknown>
-): Promise<Hash> {
-  const { store, maxLinks } = config;
-  const subTrees: Link[] = [];
-
-  for (let i = 0; i < links.length; i += maxLinks) {
-    const batch = links.slice(i, i + maxLinks);
-    const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
-
-    const node: TreeNode = {
-      type: NodeType.Tree,
-      links: batch,
-      totalSize: batchSize,
-    };
-    const { data, hash } = await encodeAndHash(node);
-    await store.put(hash, data);
-
-    subTrees.push({ hash, name: `_chunk_${i}`, size: batchSize });
-  }
-
-  if (subTrees.length <= maxLinks) {
-    const node: TreeNode = {
-      type: NodeType.Tree,
-      links: subTrees,
-      totalSize,
-      metadata,
-    };
-    const { data, hash } = await encodeAndHash(node);
-    await store.put(hash, data);
-    return hash;
-  }
-
-  return buildDirectoryByChunks(config, subTrees, totalSize, metadata);
-}

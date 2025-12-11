@@ -4,8 +4,7 @@
  * Blobs are stored raw (not wrapped) for efficiency.
  * Tree nodes are MessagePack-encoded.
  *
- * **Determinism:** Unlike CBOR, MessagePack doesn't have a built-in canonical encoding.
- * We ensure deterministic output by:
+ * **Determinism:** We ensure deterministic output by:
  * 1. Using fixed field order in the encoded map
  * 2. Sorting metadata keys alphabetically before encoding
  */

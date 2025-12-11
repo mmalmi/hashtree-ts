@@ -161,6 +161,10 @@ export class TreeBuilder {
   /**
    * Build a directory from entries
    * Entries can be files or subdirectories
+   *
+   * Directories are encoded as MessagePack blobs. If the encoded blob exceeds
+   * chunkSize, it's chunked by bytes like files using putFile.
+   *
    * @param entries Directory entries
    * @param metadata Optional metadata for root node (timestamp, etc.)
    */
@@ -176,93 +180,23 @@ export class TreeBuilder {
 
     const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
 
-    // Fits in one node
-    if (links.length <= this.maxLinks) {
-      const node: TreeNode = {
-        type: NodeType.Tree,
-        links,
-        totalSize,
-        metadata,
-      };
-      const { data, hash } = await encodeAndHash(node);
+    const node: TreeNode = {
+      type: NodeType.Tree,
+      links,
+      totalSize,
+      metadata,
+    };
+    const { data, hash } = await encodeAndHash(node);
+
+    // Small directory - store directly
+    if (data.length <= this.chunkSize) {
       await this.store.put(hash, data);
       return hash;
     }
 
-    // Large directory - create sub-trees (metadata only on final root)
-    // Group by first character for balanced distribution
-    const groups = new Map<string, Link[]>();
-
-    for (const link of links) {
-      const key = link.name?.[0]?.toLowerCase() ?? '';
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(link);
-    }
-
-    // If groups are still too large, split numerically
-    if (groups.size === 1 || Math.max(...[...groups.values()].map(g => g.length)) > this.maxLinks) {
-      return this.buildDirectoryByChunks(links, totalSize, metadata);
-    }
-
-    // Build sub-tree for each group
-    const subDirs: Link[] = [];
-    for (const [key, groupLinks] of [...groups.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-      const groupSize = groupLinks.reduce((sum, l) => sum + (l.size ?? 0), 0);
-
-      if (groupLinks.length <= this.maxLinks) {
-        const node: TreeNode = {
-          type: NodeType.Tree,
-          links: groupLinks,
-          totalSize: groupSize,
-        };
-        const { data, hash } = await encodeAndHash(node);
-        await this.store.put(hash, data);
-        subDirs.push({ hash, name: `_${key}`, size: groupSize });
-      } else {
-        // Recursively split this group
-        const hash = await this.buildDirectoryByChunks(groupLinks, groupSize);
-        subDirs.push({ hash, name: `_${key}`, size: groupSize });
-      }
-    }
-
-    return this.putDirectory(subDirs.map(l => ({ name: l.name!, hash: l.hash, size: l.size })), metadata);
-  }
-
-  /**
-   * Split directory into numeric chunks when grouping doesn't help
-   */
-  private async buildDirectoryByChunks(links: Link[], totalSize: number, metadata?: Record<string, unknown>): Promise<Hash> {
-    const subTrees: Link[] = [];
-
-    for (let i = 0; i < links.length; i += this.maxLinks) {
-      const batch = links.slice(i, i + this.maxLinks);
-      const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
-
-      const node: TreeNode = {
-        type: NodeType.Tree,
-        links: batch,
-        totalSize: batchSize,
-      };
-      const { data, hash } = await encodeAndHash(node);
-      await this.store.put(hash, data);
-
-      subTrees.push({ hash, name: `_chunk_${i}`, size: batchSize });
-    }
-
-    if (subTrees.length <= this.maxLinks) {
-      const node: TreeNode = {
-        type: NodeType.Tree,
-        links: subTrees,
-        totalSize,
-        metadata,
-      };
-      const { data, hash } = await encodeAndHash(node);
-      await this.store.put(hash, data);
-      return hash;
-    }
-
-    // Recursively build more levels
-    return this.buildDirectoryByChunks(subTrees, totalSize, metadata);
+    // Large directory - reuse putFile for chunking
+    const { hash: rootHash } = await this.putFile(data);
+    return rootHash;
   }
 
   /**

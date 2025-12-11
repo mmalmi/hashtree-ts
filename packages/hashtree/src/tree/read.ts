@@ -262,26 +262,55 @@ async function readRangeFromNode(
 }
 
 /**
+ * Get directory node, handling chunked directories
+ *
+ * For chunked directories (encoded blob > chunkSize), the chunks are assembled
+ * first, then decoded as a TreeNode.
+ */
+async function getDirectoryNode(store: Store, hash: Hash): Promise<TreeNode | null> {
+  const data = await store.get(hash);
+  if (!data) return null;
+
+  if (!isTreeNode(data)) {
+    return null; // Not a tree node at all
+  }
+
+  // Check if it's a directory (has named links) vs chunked blob (no names)
+  if (isDirectoryNode(data)) {
+    return decodeTreeNode(data);
+  }
+
+  // It's a chunked blob - could be a chunked directory
+  // Assemble the chunks and check if result is a directory
+  const node = decodeTreeNode(data);
+  const assembled = await assembleChunks(store, node);
+
+  if (isDirectoryNode(assembled)) {
+    return decodeTreeNode(assembled);
+  }
+
+  return null; // Not a directory
+}
+
+/**
  * List directory entries
+ *
+ * Handles both small directories (single node) and large directories
+ * (chunked by bytes like files - reassembled then decoded).
  */
 export async function listDirectory(store: Store, hash: Hash): Promise<TreeEntry[]> {
-  const node = await getTreeNode(store, hash);
+  const node = await getDirectoryNode(store, hash);
   if (!node) return [];
 
   const entries: TreeEntry[] = [];
 
   for (const link of node.links) {
-    // Skip internal chunk nodes
-    if (link.name?.startsWith('_chunk_') || link.name?.startsWith('_')) {
-      const subEntries = await listDirectory(store, link.hash);
-      entries.push(...subEntries);
-      continue;
-    }
+    if (!link.name) continue; // Skip unnamed links (shouldn't happen in directories)
 
     // Use stored isTree flag if available, otherwise check dynamically
     const childIsDir = link.isTree ?? await isDirectory(store, link.hash);
     entries.push({
-      name: link.name ?? toHex(link.hash),
+      name: link.name,
       cid: cid(link.hash, link.key),
       size: link.size,
       isTree: childIsDir,
@@ -293,6 +322,8 @@ export async function listDirectory(store: Store, hash: Hash): Promise<TreeEntry
 
 /**
  * Resolve a path within a tree
+ *
+ * Handles chunked directories (reassembles bytes to get the full TreeNode).
  */
 export async function resolvePath(store: Store, rootHash: Hash, path: string): Promise<Hash | null> {
   const parts = path.split('/').filter(p => p.length > 0);
@@ -300,38 +331,16 @@ export async function resolvePath(store: Store, rootHash: Hash, path: string): P
   let currentHash = rootHash;
 
   for (const part of parts) {
-    const node = await getTreeNode(store, currentHash);
+    const node = await getDirectoryNode(store, currentHash);
     if (!node) return null;
 
     const link = node.links.find(l => l.name === part);
-    if (!link) {
-      // Check internal nodes
-      const found = await findInSubtrees(store, node, part);
-      if (!found) return null;
-      currentHash = found;
-    } else {
-      currentHash = link.hash;
-    }
+    if (!link) return null;
+
+    currentHash = link.hash;
   }
 
   return currentHash;
-}
-
-async function findInSubtrees(store: Store, node: TreeNode, name: string): Promise<Hash | null> {
-  for (const link of node.links) {
-    if (!link.name?.startsWith('_')) continue;
-
-    const subNode = await getTreeNode(store, link.hash);
-    if (!subNode) continue;
-
-    const found = subNode.links.find(l => l.name === name);
-    if (found) return found.hash;
-
-    const deepFound = await findInSubtrees(store, subNode, name);
-    if (deepFound) return deepFound;
-  }
-
-  return null;
 }
 
 /**
@@ -359,6 +368,8 @@ export async function getSize(store: Store, hash: Hash): Promise<number> {
 
 /**
  * Walk entire tree depth-first
+ *
+ * Handles chunked directories (reassembles bytes to get the full TreeNode).
  */
 export async function* walk(
   store: Store,
@@ -368,24 +379,28 @@ export async function* walk(
   const data = await store.get(hash);
   if (!data) return;
 
+  // Check if it's a directory
+  const dirNode = await getDirectoryNode(store, hash);
+  if (dirNode) {
+    yield { path, hash, isTree: true, size: dirNode.totalSize };
+
+    for (const link of dirNode.links) {
+      if (!link.name) continue;
+
+      const childPath = path ? `${path}/${link.name}` : link.name;
+      yield* walk(store, link.hash, childPath);
+    }
+    return;
+  }
+
+  // Not a directory - could be a file (single blob or chunked)
   if (!isTreeNode(data)) {
+    // Single blob file
     yield { path, hash, isTree: false, size: data.length };
     return;
   }
 
+  // Chunked file - get total size from tree node
   const node = decodeTreeNode(data);
-  yield { path, hash, isTree: true, size: node.totalSize };
-
-  for (const link of node.links) {
-    const childPath = link.name
-      ? (path ? `${path}/${link.name}` : link.name)
-      : path;
-
-    // Skip internal chunk nodes in path
-    if (link.name?.startsWith('_chunk_') || link.name?.startsWith('_')) {
-      yield* walk(store, link.hash, path);
-    } else {
-      yield* walk(store, link.hash, childPath);
-    }
-  }
+  yield { path, hash, isTree: false, size: node.totalSize };
 }
