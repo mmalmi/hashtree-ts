@@ -56,9 +56,6 @@ export {
   tryDecodeTreeNode,
   encodeAndHash,
   getNodeType,
-  isTreeNode,
-  isDirectoryNode,
-  isFileNode,
 } from './codec.js';
 
 // Storage adapters

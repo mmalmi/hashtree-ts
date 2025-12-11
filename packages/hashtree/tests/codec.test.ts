@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { encodeTreeNode, decodeTreeNode, encodeAndHash, isTreeNode } from '../src/codec.js';
+import { encodeTreeNode, decodeTreeNode, encodeAndHash, tryDecodeTreeNode } from '../src/codec.js';
 import { LinkType, TreeNode, toHex } from '../src/types.js';
 import { sha256 } from '../src/hash.js';
 
@@ -109,31 +109,32 @@ describe('codec', () => {
     });
   });
 
-  describe('isTreeNode', () => {
-    it('should detect tree nodes', () => {
+  describe('tryDecodeTreeNode', () => {
+    it('should decode tree nodes', () => {
       const node: TreeNode = {
         type: LinkType.File,
         links: [],
       };
 
       const encoded = encodeTreeNode(node);
-      expect(isTreeNode(encoded)).toBe(true);
+      expect(tryDecodeTreeNode(encoded)).not.toBeNull();
+      expect(tryDecodeTreeNode(encoded)?.type).toBe(LinkType.File);
     });
 
-    it('should return false for raw blobs', () => {
+    it('should return null for raw blobs', () => {
       const blob = new Uint8Array([1, 2, 3, 4, 5]);
-      expect(isTreeNode(blob)).toBe(false);
+      expect(tryDecodeTreeNode(blob)).toBeNull();
     });
 
-    it('should return false for invalid MessagePack', () => {
+    it('should return null for invalid MessagePack', () => {
       const invalid = new Uint8Array([255, 255, 255]);
-      expect(isTreeNode(invalid)).toBe(false);
+      expect(tryDecodeTreeNode(invalid)).toBeNull();
     });
 
-    it('should return false for non-tree MessagePack objects', () => {
+    it('should return null for non-tree MessagePack objects', () => {
       // This would be valid data but not a tree node
       const notTree = new TextEncoder().encode('hello');
-      expect(isTreeNode(notTree)).toBe(false);
+      expect(tryDecodeTreeNode(notTree)).toBeNull();
     });
   });
 

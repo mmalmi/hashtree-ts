@@ -179,13 +179,6 @@ export async function readFileEncrypted(
   return decrypted;
 }
 
-/**
- * Check if decrypted data is a directory node
- */
-function isDirectoryBlob(data: Uint8Array): boolean {
-  const node = tryDecodeTreeNode(data);
-  return node?.type === LinkType.Dir;
-}
 
 /**
  * Get directory node from encrypted storage, handling chunked directories
@@ -201,18 +194,19 @@ async function getEncryptedDirectoryNode(
   const decrypted = await decryptChk(encryptedData, key);
 
   // Check if it's directly a directory (small directory)
-  if (isDirectoryBlob(decrypted)) {
-    return decodeTreeNode(decrypted);
+  const node = tryDecodeTreeNode(decrypted);
+  if (node?.type === LinkType.Dir) {
+    return node;
   }
 
   // It's a chunk tree - could be a chunked directory
-  const node = tryDecodeTreeNode(decrypted);
   if (node) {
     const assembled = await assembleEncryptedChunks(store, node);
 
     // Check if assembled result is a directory
-    if (isDirectoryBlob(assembled)) {
-      return decodeTreeNode(assembled);
+    const assembledNode = tryDecodeTreeNode(assembled);
+    if (assembledNode?.type === LinkType.Dir) {
+      return assembledNode;
     }
   }
 

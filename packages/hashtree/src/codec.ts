@@ -136,33 +136,3 @@ export function getNodeType(data: Uint8Array): LinkType {
   return node?.type ?? LinkType.Blob;
 }
 
-/**
- * Check if data is a tree node (File or Dir, not raw Blob)
- */
-export function isTreeNode(data: Uint8Array): boolean {
-  return tryDecodeTreeNode(data) !== null;
-}
-
-/**
- * Check if data is a directory tree node (type=Dir)
- */
-export function isDirectoryNode(data: Uint8Array): boolean {
-  try {
-    const decoded = decode(data) as TreeNodeMsgpack;
-    return decoded.t === LinkType.Dir;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Check if data is a file tree node (type=File)
- */
-export function isFileNode(data: Uint8Array): boolean {
-  try {
-    const decoded = decode(data) as TreeNodeMsgpack;
-    return decoded.t === LinkType.File;
-  } catch {
-    return false;
-  }
-}
