@@ -143,9 +143,9 @@ export class HashTree {
     return read.getTreeNode(this.store, id.hash);
   }
 
-  async isTree(id: CID): Promise<boolean> {
-    if (!id?.hash) return false;
-    return read.isTree(this.store, id.hash);
+  async getType(id: CID): Promise<LinkType> {
+    if (!id?.hash) return LinkType.Blob;
+    return read.getType(this.store, id.hash);
   }
 
   async isDirectory(id: CID): Promise<boolean> {

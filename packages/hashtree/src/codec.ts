@@ -113,18 +113,27 @@ export async function encodeAndHash(node: TreeNode): Promise<{ data: Uint8Array;
 }
 
 /**
- * Check if data is a MessagePack-encoded tree node (vs raw blob)
+ * Get the type of a chunk: File, Dir, or Blob
  * Tree nodes decode to an object with t=1 (File) or t=2 (Dir)
+ * Raw blobs return LinkType.Blob
  */
-export function isTreeNode(data: Uint8Array): boolean {
+export function getNodeType(data: Uint8Array): LinkType {
   try {
     const decoded = decode(data) as unknown;
-    if (typeof decoded !== 'object' || decoded === null) return false;
+    if (typeof decoded !== 'object' || decoded === null) return LinkType.Blob;
     const t = (decoded as Record<string, unknown>).t;
-    return t === LinkType.File || t === LinkType.Dir;
+    if (t === LinkType.File || t === LinkType.Dir) return t;
+    return LinkType.Blob;
   } catch {
-    return false;
+    return LinkType.Blob;
   }
+}
+
+/**
+ * Check if data is a tree node (File or Dir, not raw Blob)
+ */
+export function isTreeNode(data: Uint8Array): boolean {
+  return getNodeType(data) !== LinkType.Blob;
 }
 
 /**

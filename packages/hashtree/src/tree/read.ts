@@ -3,7 +3,7 @@
  */
 
 import { Store, Hash, TreeNode, LinkType, toHex, CID, cid } from '../types.js';
-import { decodeTreeNode, isTreeNode, isDirectoryNode } from '../codec.js';
+import { decodeTreeNode, getNodeType, isTreeNode, isDirectoryNode } from '../codec.js';
 
 export interface TreeEntry {
   name: string;
@@ -30,13 +30,13 @@ export async function getTreeNode(store: Store, hash: Hash): Promise<TreeNode | 
 }
 
 /**
- * Check if hash points to a tree node
+ * Get the type of a chunk by hash: File, Dir, or Blob
  */
-export async function isTree(store: Store, hash: Hash): Promise<boolean> {
-  if (!hash) return false;
+export async function getType(store: Store, hash: Hash): Promise<LinkType> {
+  if (!hash) return LinkType.Blob;
   const data = await store.get(hash);
-  if (!data) return false;
-  return isTreeNode(data);
+  if (!data) return LinkType.Blob;
+  return getNodeType(data);
 }
 
 /**

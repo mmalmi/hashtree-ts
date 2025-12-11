@@ -54,6 +54,7 @@ export {
   encodeTreeNode,
   decodeTreeNode,
   encodeAndHash,
+  getNodeType,
   isTreeNode,
   isDirectoryNode,
   isFileNode,

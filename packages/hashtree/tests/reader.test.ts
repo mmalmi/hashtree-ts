@@ -48,19 +48,19 @@ describe('HashTree read operations', () => {
     });
   });
 
-  describe('isTree', () => {
-    it('should return true for tree nodes', async () => {
+  describe('getType', () => {
+    it('should return Dir for directory nodes', async () => {
       const { cid: fileCid } = await tree.putFile(new Uint8Array([1]), { public: true });
       const { cid: dirCid } = await tree.putDirectory([
         { name: 'test.txt', cid: fileCid },
       ], { public: true });
 
-      expect(await tree.isTree(dirCid)).toBe(true);
+      expect(await tree.getType(dirCid)).toBe(LinkType.Dir);
     });
 
-    it('should return false for blobs', async () => {
+    it('should return Blob for raw blobs', async () => {
       const hash = await tree.putBlob(new Uint8Array([1, 2, 3]));
-      expect(await tree.isTree({ hash })).toBe(false);
+      expect(await tree.getType({ hash })).toBe(LinkType.Blob);
     });
   });
 

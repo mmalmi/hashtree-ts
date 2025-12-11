@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { HashTree, DEFAULT_CHUNK_SIZE, DEFAULT_MAX_LINKS } from '../src/index.js';
 import { MemoryStore } from '../src/store/memory.js';
-import { toHex, cid } from '../src/types.js';
+import { toHex, cid, LinkType } from '../src/types.js';
 import { sha256 } from '../src/hash.js';
 import { decodeTreeNode } from '../src/codec.js';
 
@@ -58,9 +58,9 @@ describe('HashTree write operations', () => {
 
       expect(size).toBe(data.length);
 
-      // Should be a tree node, not raw blob
-      const isTree = await tree.isTree(fileCid);
-      expect(isTree).toBe(true);
+      // Should be a tree node (File), not raw blob
+      const nodeType = await tree.getType(fileCid);
+      expect(nodeType).toBe(LinkType.File);
 
       // Should reassemble correctly
       const retrieved = await tree.readFile(fileCid);
