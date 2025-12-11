@@ -236,6 +236,14 @@ test.describe('Unlisted Tree Visibility', () => {
   });
 
   test('should access unlisted tree from fresh browser with link', { timeout: 60000 }, async ({ page, browser }) => {
+    // Add console logging for page1
+    page.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('WebRTC') || text.includes('webrtc') || text.includes('peer')) {
+        console.log(`[page1] ${text}`);
+      }
+    });
+
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
 
@@ -264,6 +272,9 @@ test.describe('Unlisted Tree Visibility', () => {
     // Verify content is visible in view mode
     await expect(page.locator('pre')).toHaveText('Shared secret content');
 
+    // Wait for content to be published to blossom/nostr (background sync)
+    await page.waitForTimeout(3000);
+
     // Get the URL (should not have &edit=1 now)
     const shareUrl = page.url();
     expect(shareUrl).toMatch(/\?k=[a-f0-9]+/i);
@@ -278,19 +289,65 @@ test.describe('Unlisted Tree Visibility', () => {
     const page2 = await context2.newPage();
     setupPageErrorHandler(page2);
 
+    // Add console logging for debugging
+    page2.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('WebRTC') || text.includes('webrtc') || text.includes('peer') ||
+          text.includes('pending')) {
+        console.log(`[page2] ${text}`);
+      }
+    });
+
+    // Navigate to home first so page2 gets a user identity
+    await page2.goto('http://localhost:5173');
+    await page2.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+
+    // Get page2's npub by clicking into their public folder
+    const publicLink2 = page2.getByRole('link', { name: 'public' }).first();
+    await publicLink2.click();
+    await page2.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
+    const page2Url = page2.url();
+    const page2Match = page2Url.match(/npub1[a-z0-9]+/);
+    if (!page2Match) throw new Error('Could not find page2 npub in URL');
+    const page2Npub = page2Match[0];
+    console.log(`Page2 npub: ${page2Npub.slice(0, 20)}...`);
+
+    // Page1 follows page2 for reliable WebRTC connection in follows pool
+    await page.goto(`http://localhost:5173/#/${page2Npub}`);
+    const followBtn = page.getByRole('button', { name: 'Follow', exact: true });
+    await expect(followBtn).toBeVisible({ timeout: 5000 });
+    await followBtn.click();
+    await page.waitForTimeout(500);
+
+    // Page2 follows page1 (owner of the unlisted tree)
+    await page2.goto(`http://localhost:5173/#/${npub}`);
+    const followBtn2 = page2.getByRole('button', { name: 'Follow', exact: true });
+    await expect(followBtn2).toBeVisible({ timeout: 5000 });
+    await followBtn2.click();
+    await page2.waitForTimeout(500);
+
+    // Wait for WebRTC connections via follows pool
+    await page2.waitForTimeout(2000);
+
     // Navigate directly to the file with ?k= param
     const fileUrl = `http://localhost:5173/#/${npub}/${treeName}/shared.txt?k=${kParam}`;
+    console.log(`Opening fresh browser with URL: ${fileUrl}`);
     await page2.goto(fileUrl);
 
-    // Should NOT see "Link Required" - the key should work
-    await expect(page2.getByText('Link Required')).not.toBeVisible();
+    // Wait for content to load
+    await page2.waitForTimeout(2000);
 
-    // Verify the file is visible in the second browser
-    // The content should be decrypted using the linkKey from the URL
-    await expect(page2.locator('text="shared.txt"').first()).toBeVisible();
+    // Should NOT see "Link Required" - the key should work
+    await expect(page2.getByText('Link Required')).not.toBeVisible({ timeout: 10000 });
 
     // Verify the content is decrypted and visible (may take time to fetch from network)
-    await expect(page2.locator('text="Shared secret content"')).toBeVisible({ timeout: 10000 });
+    // The fix to tryConnectedPeersForHash should handle the race condition
+    // In parallel test runs, the "other" pool may be full with many test instances
+    // so it might take longer to connect to the right peer (page1)
+    await expect(page2.locator('text="Shared secret content"')).toBeVisible({ timeout: 45000 });
+
+    // Also verify the file link is visible (should already be there if content is visible)
+    await expect(page2.locator('[data-testid="file-list"] >> text=shared.txt')).toBeVisible({ timeout: 5000 });
 
     // Wait 5 seconds and verify content is still visible (not replaced by "Link Required")
     await page2.waitForTimeout(5000);

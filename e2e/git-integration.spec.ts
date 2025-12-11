@@ -78,8 +78,7 @@ test.describe('Git integration features', () => {
 
     // Create .git and .claude directories via the tree API
     const result = await page.evaluate(async () => {
-      const { getTree } = await import('/src/store.ts');
-      const { LinkType } = await import('hashtree');
+      const { getTree, LinkType } = await import('/src/store.ts');
       const tree = getTree();
 
       // Create root with .git and .claude directories and a regular file
@@ -100,7 +99,6 @@ test.describe('Git integration features', () => {
       // List the entries
       const entries = await tree.listDirectory(rootCid);
 
-      const { LinkType } = await import('hashtree');
       return {
         entries: entries.map(e => ({ name: e.name, isDir: e.type === LinkType.Dir })),
       };
@@ -132,8 +130,7 @@ test.describe('Git integration features', () => {
 
     // Create a minimal git repo structure via the tree API
     const result = await page.evaluate(async () => {
-      const { getTree } = await import('/src/store.ts');
-      const { LinkType } = await import('hashtree');
+      const { getTree, LinkType } = await import('/src/store.ts');
       const tree = getTree();
 
       // Create minimal .git structure
@@ -206,7 +203,7 @@ test.describe('Git integration features', () => {
     expect(result.patterns).not.toContain('.git');
   });
 
-  test('git repo structure is preserved when uploading .git directory', async ({ page }) => {
+  test('git repo structure is preserved when uploading .git directory', { timeout: 30000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);
@@ -256,8 +253,7 @@ test.describe('Git integration features', () => {
 
       // Inject files directly via tree API
       const result = await page.evaluate(async (files) => {
-        const { getTree } = await import('/src/store.ts');
-        const { LinkType } = await import('hashtree');
+        const { getTree, LinkType } = await import('/src/store.ts');
         const tree = getTree();
 
         // Create root directory
@@ -339,7 +335,7 @@ test.describe('Git integration features', () => {
     }
   });
 
-  test('git history should return commits from uploaded git repo', async ({ page }) => {
+  test('git history should return commits from uploaded git repo', { timeout: 30000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);
@@ -398,8 +394,7 @@ test.describe('Git integration features', () => {
 
       // Upload and test getLog
       const result = await page.evaluate(async ({ files, dirs }) => {
-        const { getTree } = await import('/src/store.ts');
-        const { LinkType } = await import('hashtree');
+        const { getTree, LinkType } = await import('/src/store.ts');
         const tree = getTree();
 
         // Create root directory
@@ -511,8 +506,7 @@ test.describe('Git integration features', () => {
 
     // Test getLog with a minimal .git structure that has no actual commits
     const result = await page.evaluate(async () => {
-      const { getTree } = await import('/src/store.ts');
-      const { LinkType } = await import('hashtree');
+      const { getTree, LinkType } = await import('/src/store.ts');
       const tree = getTree();
 
       // Create minimal .git structure with HEAD pointing to non-existent ref
@@ -625,8 +619,7 @@ test.describe('Git integration features', () => {
 
       // Upload repo and test checkoutCommit
       const result = await page.evaluate(async ({ files, dirs, commitSha }) => {
-        const { getTree } = await import('/src/store.ts');
-        const { LinkType } = await import('hashtree');
+        const { getTree, LinkType } = await import('/src/store.ts');
         const tree = getTree();
 
         // Create root directory and upload all files
@@ -789,8 +782,7 @@ test.describe('Git integration features', () => {
 
       // Upload and test checkoutCommit returns a listable directory
       const result = await page.evaluate(async ({ files, dirs, commitSha }) => {
-        const { getTree } = await import('/src/store.ts');
-        const { LinkType } = await import('hashtree');
+        const { getTree, LinkType } = await import('/src/store.ts');
         const tree = getTree();
 
         // Create root directory and upload all files

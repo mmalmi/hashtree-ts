@@ -203,10 +203,18 @@ test.describe('Background Sync', () => {
       const statsBBefore = await getStorageStats(pageB);
       console.log(`User B storage before follow: ${statsBBefore.items} items, ${statsBBefore.bytes} bytes`);
 
+      // === User A: Follow User B (mutual follow for WebRTC connection) ===
+      console.log('User A: Following User B for WebRTC...');
+      await followUser(pageA, npubB);
+      console.log('User A: Now following User B');
+
       // === User B: Follow User A ===
       console.log('User B: Following User A...');
       await followUser(pageB, npubA);
       console.log('User B: Now following User A');
+
+      // Wait a moment for WebRTC connection to establish via follows pool
+      await pageB.waitForTimeout(2000);
 
       // === Wait for background sync by polling storage stats ===
       console.log('Waiting for background sync...');
@@ -344,10 +352,12 @@ test.describe('Background Sync', () => {
     });
     const page1 = await context1.newPage();
 
-    // Log sync messages
+    // Log sync and WebRTC messages
     page1.on('console', msg => {
       const text = msg.text();
-      if (text.includes('[backgroundSync]')) console.log(`[Device1] ${text}`);
+      if (text.includes('[backgroundSync]') || text.includes('webrtc') || text.includes('peer') || text.includes('WebRTC')) {
+        console.log(`[Device1] ${text}`);
+      }
     });
 
     try {
@@ -396,7 +406,9 @@ test.describe('Background Sync', () => {
 
       page2.on('console', msg => {
         const text = msg.text();
-        if (text.includes('[backgroundSync]')) console.log(`[Device2] ${text}`);
+        if (text.includes('[backgroundSync]') || text.includes('webrtc') || text.includes('peer') || text.includes('WebRTC')) {
+          console.log(`[Device2] ${text}`);
+        }
       });
 
       // Load app once (it will auto-generate a key), then clear and set our nsec
@@ -423,15 +435,35 @@ test.describe('Background Sync', () => {
       console.log('Device 2: Reloading with nsec...');
       await page2.reload();
       await page2.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
-      await page2.waitForTimeout(3000); // Wait for login and background sync to start
+
+      // Wait for WebRTC connection between Device 1 and Device 2 (same user)
+      // They should connect via the "own devices" pool
+      console.log('Waiting for WebRTC connection between devices...');
+      await page2.waitForTimeout(3000);
+
+      // Trigger a manual sync by navigating - the background sync should kick in
+      await page2.waitForTimeout(5000); // Give more time for sync to complete
 
       // === Navigate to public folder and wait for file to sync ===
       console.log('Device 2: Waiting for file to sync...');
       await page2.goto(`http://localhost:5173/#/${npub}/public`);
 
+      // Wait a bit for the folder view to render
+      await page2.waitForTimeout(2000);
+
       // Wait for the file to appear (synced from Nostr via background sync)
+      // The page may need a reload if content was synced after initial load
       const file = page2.getByRole('link', { name: 'cross-device.txt' });
-      await expect(file).toBeVisible({ timeout: 30000 });
+
+      // First check - might already be visible
+      let visible = await file.isVisible().catch(() => false);
+      if (!visible) {
+        console.log('Device 2: File not visible yet, reloading page...');
+        await page2.reload();
+        await page2.waitForTimeout(2000);
+      }
+
+      await expect(file).toBeVisible({ timeout: 20000 });
       console.log('Device 2: File synced!');
 
       // Get storage stats from Device 2

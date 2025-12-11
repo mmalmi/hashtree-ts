@@ -236,6 +236,15 @@ test.describe('hashtree-rs WebSocket Integration', () => {
   let tempDir: string | null = null;
 
   test.beforeAll(async () => {
+    // Check if hashtree-rs binary exists (skip tests if not built)
+    try {
+      execSync('cargo metadata --manifest-path /workspace/hashtree-rs/Cargo.toml', { stdio: 'ignore' });
+    } catch {
+      console.log('hashtree-rs not available, skipping ws-interop tests');
+      test.skip();
+      return;
+    }
+
     // Create temp directory for Rust server storage
     tempDir = execSync('mktemp -d').toString().trim();
     console.log('Temp directory:', tempDir);
@@ -260,10 +269,10 @@ test.describe('hashtree-rs WebSocket Integration', () => {
       console.log('[hashtree-rs stderr]', data.toString().trim());
     });
 
-    // Wait for server to start
+    // Wait for server to start (longer timeout for initial compilation)
     let serverReady = false;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 500));
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 1000));
       try {
         const response = await fetch(`${HTTP_URL}/api/stats`);
         if (response.ok) {
@@ -277,7 +286,7 @@ test.describe('hashtree-rs WebSocket Integration', () => {
     }
 
     if (!serverReady) {
-      throw new Error('hashtree-rs server failed to start');
+      throw new Error('hashtree-rs server failed to start within 60 seconds');
     }
   });
 

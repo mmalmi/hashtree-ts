@@ -52,7 +52,7 @@ const WEBRTC_TAG = 'webrtc';
 
 
 // Pending request with callbacks
-interface WantedHash {
+interface PendingReq {
   resolve: (data: Uint8Array | null) => void;
   timeout: ReturnType<typeof setTimeout>;
   triedPeers: Set<string>;
@@ -89,7 +89,7 @@ export class WebRTCStore implements Store {
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private eventHandlers = new Set<WebRTCStoreEventHandler>();
   private running = false;
-  private wantedHashes = new Map<Hash, WantedHash[]>();
+  private pendingReqs = new Map<Hash, PendingReq[]>();
   // Deduplicate concurrent get() calls for the same hash
   private pendingGets = new Map<string, Promise<Uint8Array | null>>();
 
@@ -427,7 +427,7 @@ export class WebRTCStore implements Store {
       onConnected: () => {
         this.emit({ type: 'peer-connected', peerId: peerIdStr });
         this.emit({ type: 'update' });
-        this.fetchWantedHashes(peer);
+        this.tryPendingReqs(peer);
       },
       onForwardRequest: (hash, exclude, htl) => this.forwardRequest(hash, exclude, htl),
       requestTimeout: this.config.requestTimeout,
@@ -456,7 +456,7 @@ export class WebRTCStore implements Store {
       onConnected: () => {
         this.emit({ type: 'peer-connected', peerId: peerIdStr });
         this.emit({ type: 'update' });
-        this.fetchWantedHashes(peer);
+        this.tryPendingReqs(peer);
       },
       onForwardRequest: (hash, exclude, htl) => this.forwardRequest(hash, exclude, htl),
       requestTimeout: this.config.requestTimeout,
@@ -835,63 +835,60 @@ export class WebRTCStore implements Store {
   }
 
   /**
-   * Add hash to wants list and wait for it to be resolved by new peers
+   * Add hash to pending requests list and wait for it to be resolved by peers
+   * Also immediately tries any connected peers that weren't tried yet
    */
   private waitForHash(hash: Hash, triedPeers: Set<string>): Promise<Uint8Array | null> {
     return new Promise((resolve) => {
-      // Use longer timeout for wants list - we need to wait for peers to connect
-      const wantsTimeout = Math.max(this.config.requestTimeout * 6, 30000);
+      // Use longer timeout for pending requests - we need to wait for peers to connect
+      const reqTimeout = Math.max(this.config.requestTimeout * 6, 30000);
       const timeout = setTimeout(() => {
-        this.removeWant(hash, want);
+        this.removePendingReq(hash, req);
         resolve(null);
-      }, wantsTimeout);
+      }, reqTimeout);
 
-      const want: WantedHash = { resolve, timeout, triedPeers };
+      const req: PendingReq = { resolve, timeout, triedPeers };
 
-      const existing = this.wantedHashes.get(hash);
+      const existing = this.pendingReqs.get(hash);
       if (existing) {
-        existing.push(want);
+        existing.push(req);
       } else {
-        this.wantedHashes.set(hash, [want]);
+        this.pendingReqs.set(hash, [req]);
       }
 
-      this.log('Added to wants list:', hash.slice(0, 16), 'tried', triedPeers.size, 'peers');
+      this.log('Added to pending reqs:', hash.slice(0, 16), 'tried', triedPeers.size, 'peers');
+
+      // Immediately try any connected peers that weren't tried yet
+      // This handles the race condition where peers connect while we're setting up the request
+      this.tryConnectedPeersForHash(hash);
     });
   }
 
   /**
-   * Remove a want from the list
+   * Try all currently connected peers for a specific hash in the pending requests
    */
-  private removeWant(hash: Hash, want: WantedHash): void {
-    const wants = this.wantedHashes.get(hash);
-    if (!wants) return;
+  private async tryConnectedPeersForHash(hash: Hash): Promise<void> {
+    const reqs = this.pendingReqs.get(hash);
+    if (!reqs || reqs.length === 0) return;
 
-    const idx = wants.indexOf(want);
-    if (idx !== -1) {
-      wants.splice(idx, 1);
-      if (wants.length === 0) {
-        this.wantedHashes.delete(hash);
-      }
-    }
-  }
+    // Get all connected peers
+    const connectedPeers = Array.from(this.peers.values())
+      .filter(({ peer }) => peer.isConnected)
+      .map(({ peer }) => peer);
 
-  /**
-   * Try to fetch wanted hashes from a newly connected peer
-   */
-  private async fetchWantedHashes(peer: Peer): Promise<void> {
-    const peerIdStr = peer.peerId;
+    for (const peer of connectedPeers) {
+      const peerIdStr = peer.peerId;
 
-    for (const [hash, wants] of this.wantedHashes.entries()) {
-      // Find wants that haven't tried this peer yet
-      const untried = wants.filter(w => !w.triedPeers.has(peerIdStr));
+      // Find requests that haven't tried this peer yet
+      const untried = reqs.filter(r => !r.triedPeers.has(peerIdStr));
       if (untried.length === 0) continue;
 
       // Mark as tried
-      for (const w of untried) {
-        w.triedPeers.add(peerIdStr);
+      for (const r of untried) {
+        r.triedPeers.add(peerIdStr);
       }
 
-      this.log('Trying wanted hash from new peer:', hash.slice(0, 16));
+      this.log('Trying pending req from connected peer:', hash.slice(0, 16));
 
       const data = await peer.request(hash);
       if (data) {
@@ -901,13 +898,70 @@ export class WebRTCStore implements Store {
         }
 
         // Resolve all waiting requests
-        for (const w of wants) {
-          clearTimeout(w.timeout);
-          w.resolve(data);
+        const currentReqs = this.pendingReqs.get(hash);
+        if (currentReqs) {
+          for (const r of currentReqs) {
+            clearTimeout(r.timeout);
+            r.resolve(data);
+          }
+          this.pendingReqs.delete(hash);
         }
-        this.wantedHashes.delete(hash);
 
-        this.log('Resolved wanted hash:', hash.slice(0, 16));
+        this.log('Resolved pending req:', hash.slice(0, 16));
+        return;
+      }
+    }
+  }
+
+  /**
+   * Remove a pending request from the list
+   */
+  private removePendingReq(hash: Hash, req: PendingReq): void {
+    const reqs = this.pendingReqs.get(hash);
+    if (!reqs) return;
+
+    const idx = reqs.indexOf(req);
+    if (idx !== -1) {
+      reqs.splice(idx, 1);
+      if (reqs.length === 0) {
+        this.pendingReqs.delete(hash);
+      }
+    }
+  }
+
+  /**
+   * Try pending requests with a newly connected peer
+   */
+  private async tryPendingReqs(peer: Peer): Promise<void> {
+    const peerIdStr = peer.peerId;
+
+    for (const [hash, reqs] of this.pendingReqs.entries()) {
+      // Find requests that haven't tried this peer yet
+      const untried = reqs.filter(r => !r.triedPeers.has(peerIdStr));
+      if (untried.length === 0) continue;
+
+      // Mark as tried
+      for (const r of untried) {
+        r.triedPeers.add(peerIdStr);
+      }
+
+      this.log('Trying pending req from new peer:', hash.slice(0, 16));
+
+      const data = await peer.request(hash);
+      if (data) {
+        // Store locally
+        if (this.config.localStore) {
+          await this.config.localStore.put(hash, data);
+        }
+
+        // Resolve all waiting requests
+        for (const r of reqs) {
+          clearTimeout(r.timeout);
+          r.resolve(data);
+        }
+        this.pendingReqs.delete(hash);
+
+        this.log('Resolved pending req:', hash.slice(0, 16));
       }
     }
   }

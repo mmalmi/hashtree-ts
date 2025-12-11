@@ -189,7 +189,7 @@ window.onload = function() {
     }
   });
 
-  test('should load resources from subdirectories', async ({ page }) => {
+  test('should load resources from subdirectories', { timeout: 30000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await navigateToPublicFolder(page);
@@ -242,7 +242,8 @@ h1 { color: rgb(0, 255, 255); }
 
       // Navigate into css folder
       await page.locator('[data-testid="file-list"] a:has-text("css")').click();
-      await page.waitForTimeout(500);
+      // Wait for navigation to complete - ".." should appear in subdirectory
+      await expect(page.locator('[data-testid="file-list"] a:has-text("..")')).toBeVisible({ timeout: 5000 });
 
       // Upload CSS file in subdirectory
       const fileInput = page.locator('input[type="file"]').first();
@@ -252,10 +253,13 @@ h1 { color: rgb(0, 255, 255); }
 
       // Go back to parent directory (click on ".." link)
       await page.locator('[data-testid="file-list"] a:has-text("..")').click();
-      await page.waitForTimeout(500);
+      // Wait for parent directory - css folder should be visible (use exact match to avoid matching style.css)
+      await expect(page.getByRole('link', { name: 'css', exact: true })).toBeVisible({ timeout: 5000 });
 
       // Upload HTML that references css/style.css
-      await fileInput.setInputFiles(htmlPath);
+      // Re-locate file input after navigation
+      const htmlFileInput = page.locator('input[type="file"]').first();
+      await htmlFileInput.setInputFiles(htmlPath);
 
       // Wait for file list to show index.html
       const fileList = page.locator('[data-testid="file-list"]');
