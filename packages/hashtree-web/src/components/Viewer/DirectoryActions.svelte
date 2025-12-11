@@ -43,7 +43,11 @@
 
   let canEdit = $derived(!viewedNpub || viewedNpub === userNpub || !isLoggedIn);
 
-  // Check if this is a git repo
+  // Quick check if this looks like a git repo (has .git directory)
+  // This allows us to show tabs immediately without waiting for async git info
+  let hasGitDir = $derived(entries.some((e: HashTreeEntry) => e.name === '.git' && e.type === LinkType.Dir));
+
+  // Full git info (branches, etc) - loaded async
   let gitInfoStore = $derived(createGitInfoStore(currentDirCid));
   let gitInfo = $state<{ isRepo: boolean; currentBranch: string | null; branches: string[]; loading: boolean }>({
     isRepo: false,
@@ -163,8 +167,8 @@
   });
 </script>
 
-<!-- If this is a git repo, show GitHub-style directory listing -->
-{#if gitInfo.isRepo && currentDirCid}
+<!-- If this is a git repo (quick check via .git dir), show GitHub-style directory listing -->
+{#if hasGitDir && currentDirCid}
   <div class="flex flex-col h-full">
     <!-- Header with back button, avatar, visibility, folder name -->
     <ViewerHeader

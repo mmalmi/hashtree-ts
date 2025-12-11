@@ -3,7 +3,7 @@
   import Viewer from '../components/Viewer/Viewer.svelte';
   import StreamView from '../components/stream/StreamView.svelte';
   import { nostrStore } from '../nostr';
-  import { routeStore, addRecent, isViewingFileStore, currentHash, currentDirCidStore, createGitInfoStore, directoryEntriesStore } from '../stores';
+  import { routeStore, addRecent, isViewingFileStore, currentHash, currentDirCidStore, directoryEntriesStore } from '../stores';
   import { LinkType } from 'hashtree';
   import { updateRecentVisibility } from '../stores/recents';
   import { nip19 } from 'nostr-tools';
@@ -38,14 +38,12 @@
   // Check if a file is selected (actual check from hashtree, not heuristic)
   let isViewingFile = $derived($isViewingFileStore);
 
-  // Check if current directory is a git repo
+  // Check if current directory is a git repo (quick check via .git dir for immediate UI)
   let currentDirCid = $derived($currentDirCidStore);
-  let gitInfoStore = $derived(createGitInfoStore(currentDirCid));
-  let gitInfo = $derived($gitInfoStore);
-  let isGitRepo = $derived(gitInfo.isRepo);
+  let dirEntries = $derived($directoryEntriesStore);
+  let isGitRepo = $derived(dirEntries.entries.some(e => e.name === '.git' && e.type === LinkType.Dir));
 
   // Check if current directory is a Yjs document (contains .yjs file)
-  let dirEntries = $derived($directoryEntriesStore);
   let isYjsDocument = $derived(dirEntries.entries.some(e => e.name === '.yjs' && e.type !== LinkType.Dir));
 
   // On mobile, show viewer for git repos, Yjs docs, or when file/stream selected
