@@ -60,6 +60,18 @@ test.describe('Livestream Viewer Updates', () => {
     return match[0];
   }
 
+  // Helper to follow a user by their npub
+  async function followUser(page: Page, targetNpub: string) {
+    await page.goto(`http://localhost:5173/#/${targetNpub}`);
+    const followButton = page.getByRole('button', { name: 'Follow', exact: true });
+    await expect(followButton).toBeVisible({ timeout: 5000 });
+    await followButton.click();
+    await expect(
+      page.getByRole('button', { name: 'Following' })
+        .or(page.getByRole('button', { name: 'Unfollow' }))
+    ).toBeVisible({ timeout: 10000 });
+  }
+
   // Read test video file as base64 for injection
   function getTestVideoBase64(): string {
     const videoBuffer = fs.readFileSync(TEST_VIDEO);
@@ -191,6 +203,12 @@ test.describe('Livestream Viewer Updates', () => {
       await setupFreshUser(pageB);
       const npubB = await getNpub(pageB);
       console.log(`Viewer npub: ${npubB.slice(0, 20)}...`);
+
+      // === Mutual follows for reliable WebRTC connection ===
+      console.log('Setting up mutual follows...');
+      await followUser(pageA, npubB);
+      await followUser(pageB, npubA);
+      console.log('Mutual follows established');
 
       // === Broadcaster: Start streaming ===
       console.log('Broadcaster: Starting stream...');

@@ -447,6 +447,16 @@ test.describe('Yjs Collaborative Document Editing', () => {
       const npubB = await getNpub(pageB);
       console.log(`User B npub: ${npubB.slice(0, 20)}...`);
 
+      // === Mutual follows for reliable WebRTC connection ===
+      console.log('User A: Following User B...');
+      await followUser(pageA, npubB);
+      console.log('User B: Following User A...');
+      await followUser(pageB, npubA);
+
+      // Navigate back to public folders after following
+      await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
+      await expect(pageA.getByRole('button', { name: 'New Document' })).toBeVisible({ timeout: 10000 });
+
       // === User A: Create document with B as editor ===
       console.log('User A: Creating document...');
       await createDocument(pageA, 'shared-doc');
@@ -543,6 +553,18 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await setupFreshUser(pageB);
       const npubB = await getNpub(pageB);
       console.log(`User B npub: ${npubB.slice(0, 20)}...`);
+
+      // === Mutual follows for reliable WebRTC connection ===
+      console.log('User A: Following User B...');
+      await followUser(pageA, npubB);
+      console.log('User B: Following User A...');
+      await followUser(pageB, npubA);
+
+      // Navigate back to public folders after following
+      await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
+      await expect(pageA.getByRole('button', { name: 'New Document' })).toBeVisible({ timeout: 10000 });
+      await pageB.goto(`http://localhost:5173/#/${npubB}/public`);
+      await expect(pageB.getByRole('button', { name: 'New Document' })).toBeVisible({ timeout: 10000 });
 
       // === User A: Create document and type content ===
       console.log('User A: Creating document...');

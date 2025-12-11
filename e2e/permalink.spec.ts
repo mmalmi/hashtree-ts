@@ -77,6 +77,9 @@ test.describe('Permalink Navigation', () => {
     await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 3000 });
     await page.getByRole('button', { name: 'Done' }).click();
 
+    // Wait for modal backdrop to close before clicking links
+    await expect(page.locator('[data-modal-backdrop]')).not.toBeVisible({ timeout: 5000 });
+
     // Click on "public" breadcrumb link to go back to directory
     const publicLink = page.locator('a:has-text("public")').first();
     await expect(publicLink).toBeVisible({ timeout: 5000 });
@@ -130,6 +133,9 @@ test.describe('Permalink Navigation', () => {
     // Exit edit mode
     await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 3000 });
     await page.getByRole('button', { name: 'Done' }).click();
+
+    // Wait for any modal to close before clicking
+    await expect(page.locator('[data-modal-backdrop]')).not.toBeVisible({ timeout: 5000 });
 
     // Go back to directory to get permalink - wait for the breadcrumb link
     const treeLink = page.locator('a:has-text("permalink-file-test")').first();
