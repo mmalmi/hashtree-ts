@@ -3,7 +3,7 @@
  */
 
 import { Store, Hash, TreeNode, LinkType, toHex, CID, cid } from '../types.js';
-import { decodeTreeNode, getNodeType, isTreeNode, isDirectoryNode } from '../codec.js';
+import { decodeTreeNode, tryDecodeTreeNode, getNodeType } from '../codec.js';
 
 export interface TreeEntry {
   name: string;
@@ -25,8 +25,7 @@ export async function getBlob(store: Store, hash: Hash): Promise<Uint8Array | nu
 export async function getTreeNode(store: Store, hash: Hash): Promise<TreeNode | null> {
   const data = await store.get(hash);
   if (!data) return null;
-  if (!isTreeNode(data)) return null;
-  return decodeTreeNode(data);
+  return tryDecodeTreeNode(data);
 }
 
 /**
@@ -46,7 +45,8 @@ export async function isDirectory(store: Store, hash: Hash): Promise<boolean> {
   if (!hash) return false;
   const data = await store.get(hash);
   if (!data) return false;
-  return isDirectoryNode(data);
+  const node = tryDecodeTreeNode(data);
+  return node?.type === LinkType.Dir;
 }
 
 /**
@@ -57,11 +57,11 @@ export async function readFile(store: Store, hash: Hash): Promise<Uint8Array | n
   const data = await store.get(hash);
   if (!data) return null;
 
-  if (!isTreeNode(data)) {
+  const node = tryDecodeTreeNode(data);
+  if (!node) {
     return data;
   }
 
-  const node = decodeTreeNode(data);
   return assembleChunks(store, node);
 }
 
@@ -102,13 +102,13 @@ export async function* readFileStream(store: Store, hash: Hash, offset: number =
   const data = await store.get(hash);
   if (!data) return;
 
-  if (!isTreeNode(data)) {
+  const node = tryDecodeTreeNode(data);
+  if (!node) {
     if (offset >= data.length) return;
     yield offset > 0 ? data.slice(offset) : data;
     return;
   }
 
-  const node = decodeTreeNode(data);
   yield* streamChunksWithOffset(store, node, offset);
 }
 
@@ -178,14 +178,14 @@ export async function readFileRange(
   const data = await store.get(hash);
   if (!data) return null;
 
-  if (!isTreeNode(data)) {
+  const node = tryDecodeTreeNode(data);
+  if (!node) {
     // Single blob
     if (start >= data.length) return new Uint8Array(0);
     const actualEnd = end !== undefined ? Math.min(end, data.length) : data.length;
     return data.slice(start, actualEnd);
   }
 
-  const node = decodeTreeNode(data);
   return readRangeFromNode(store, node, start, end);
 }
 
@@ -274,22 +274,23 @@ async function getDirectoryNode(store: Store, hash: Hash): Promise<TreeNode | nu
   const data = await store.get(hash);
   if (!data) return null;
 
-  if (!isTreeNode(data)) {
+  const node = tryDecodeTreeNode(data);
+  if (!node) {
     return null; // Not a tree node at all
   }
 
   // Check if it's a directory (has named links) vs chunked blob (no names)
-  if (isDirectoryNode(data)) {
-    return decodeTreeNode(data);
+  if (node.type === LinkType.Dir) {
+    return node;
   }
 
   // It's a chunked blob - could be a chunked directory
   // Assemble the chunks and check if result is a directory
-  const node = decodeTreeNode(data);
   const assembled = await assembleChunks(store, node);
 
-  if (isDirectoryNode(assembled)) {
-    return decodeTreeNode(assembled);
+  const assembledNode = tryDecodeTreeNode(assembled);
+  if (assembledNode?.type === LinkType.Dir) {
+    return assembledNode;
   }
 
   return null; // Not a directory
@@ -351,11 +352,11 @@ export async function getSize(store: Store, hash: Hash): Promise<number> {
   const data = await store.get(hash);
   if (!data) return 0;
 
-  if (!isTreeNode(data)) {
+  const node = tryDecodeTreeNode(data);
+  if (!node) {
     return data.length;
   }
 
-  const node = decodeTreeNode(data);
   if (node.totalSize !== undefined) {
     return node.totalSize;
   }
@@ -395,13 +396,13 @@ export async function* walk(
   }
 
   // Not a directory - could be a file (single blob or chunked)
-  if (!isTreeNode(data)) {
+  const node = tryDecodeTreeNode(data);
+  if (!node) {
     // Single blob file
     yield { path, hash, type: LinkType.Blob, size: data.length };
     return;
   }
 
   // Chunked file - get total size from tree node
-  const node = decodeTreeNode(data);
   yield { path, hash, type: LinkType.File, size: node.totalSize };
 }

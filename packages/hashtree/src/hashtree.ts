@@ -8,7 +8,7 @@
  */
 
 import { Store, Hash, CID, TreeNode, LinkType, Link, toHex, cid } from './types.js';
-import { decodeTreeNode, isTreeNode, encodeAndHash } from './codec.js';
+import { decodeTreeNode, tryDecodeTreeNode, encodeAndHash } from './codec.js';
 import { sha256 } from './hash.js';
 import { encryptChk, type EncryptionKey } from './crypto.js';
 import * as create from './tree/create.js';
@@ -300,8 +300,8 @@ export class HashTree {
         // If decryption failed or not a tree node, it's a blob (already fetched)
       } else {
         // Unencrypted data - check directly
-        if (isTreeNode(data)) {
-          const node = decodeTreeNode(data);
+        const node = tryDecodeTreeNode(data);
+        if (node) {
           for (const link of node.links) {
             await fetch(link.hash, link.key);
           }
@@ -669,8 +669,8 @@ export async function verifyTree(
       return;
     }
 
-    if (isTreeNode(data)) {
-      const node = decodeTreeNode(data);
+    const node = tryDecodeTreeNode(data);
+    if (node) {
       for (const link of node.links) {
         await check(link.hash);
       }

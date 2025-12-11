@@ -5,7 +5,7 @@
  * All uploads use encryption by default (CHK - Content Hash Key).
  */
 import { writable, get } from 'svelte/store';
-import { toHex, nhashEncode, cid } from 'hashtree';
+import { toHex, nhashEncode, cid, LinkType } from 'hashtree';
 import type { CID } from 'hashtree';
 import { getTree } from '../store';
 import { autosaveIfOwn, saveHashtree, nostrStore } from '../nostr';
@@ -416,7 +416,7 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
         dirName,
         emptyDirCid,
         0,
-        true // isTree
+        LinkType.Dir
       );
       currentRootCid = newRootCid;
     } else if (needsTreeInit) {

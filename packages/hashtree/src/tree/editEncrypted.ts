@@ -73,7 +73,7 @@ async function resolvePathAndCollectKeys(
  * @param hash - Hash of the entry content
  * @param size - Size of the entry content
  * @param key - Encryption key of the entry (for encrypted content)
- * @param isTree - Whether the entry is a directory
+ * @param type - LinkType of the entry (Blob, File, or Dir)
  * @returns New root hash and key
  */
 export async function setEntryEncrypted(

@@ -11,7 +11,7 @@
 
 import { Store, Hash, TreeNode, Link, LinkType, toHex } from './types.js';
 import { sha256 } from './hash.js';
-import { encodeAndHash, decodeTreeNode, isTreeNode } from './codec.js';
+import { encodeAndHash, decodeTreeNode, tryDecodeTreeNode } from './codec.js';
 import { encryptChk, decryptChk, type EncryptionKey } from './crypto.js';
 
 export interface EncryptedTreeConfig {
@@ -170,8 +170,8 @@ export async function readFileEncrypted(
   const decrypted = await decryptChk(encryptedData, key);
 
   // Check if it's a tree node
-  if (isTreeNode(decrypted)) {
-    const node = decodeTreeNode(decrypted);
+  const node = tryDecodeTreeNode(decrypted);
+  if (node) {
     return assembleEncryptedChunks(store, node);
   }
 
@@ -180,13 +180,11 @@ export async function readFileEncrypted(
 }
 
 /**
- * Check if decrypted data is a directory node (TreeNode with named links)
+ * Check if decrypted data is a directory node
  */
 function isDirectoryBlob(data: Uint8Array): boolean {
-  if (!isTreeNode(data)) return false;
-  const node = decodeTreeNode(data);
-  // Directory has named links (or is empty), chunked blob has unnamed links
-  return node.links.length === 0 || node.links[0].name !== undefined;
+  const node = tryDecodeTreeNode(data);
+  return node?.type === LinkType.Dir;
 }
 
 /**
@@ -208,8 +206,8 @@ async function getEncryptedDirectoryNode(
   }
 
   // It's a chunk tree - could be a chunked directory
-  if (isTreeNode(decrypted)) {
-    const node = decodeTreeNode(decrypted);
+  const node = tryDecodeTreeNode(decrypted);
+  if (node) {
     const assembled = await assembleEncryptedChunks(store, node);
 
     // Check if assembled result is a directory
@@ -284,8 +282,8 @@ export async function* readFileEncryptedStream(
   // CHK decrypt
   const decrypted = await decryptChk(encryptedData, key);
 
-  if (isTreeNode(decrypted)) {
-    const node = decodeTreeNode(decrypted);
+  const node = tryDecodeTreeNode(decrypted);
+  if (node) {
     yield* streamEncryptedChunksWithOffset(store, node, offset);
   } else {
     // Single blob (small file)
@@ -366,14 +364,14 @@ export async function readFileEncryptedRange(
 
   const decrypted = await decryptChk(encryptedData, key);
 
-  if (!isTreeNode(decrypted)) {
+  const node = tryDecodeTreeNode(decrypted);
+  if (!node) {
     // Single blob
     if (start >= decrypted.length) return new Uint8Array(0);
     const actualEnd = end !== undefined ? Math.min(end, decrypted.length) : decrypted.length;
     return decrypted.slice(start, actualEnd);
   }
 
-  const node = decodeTreeNode(decrypted);
   return readEncryptedRangeFromNode(store, node, start, end);
 }
 
@@ -574,9 +572,5 @@ export async function getTreeNodeEncrypted(
 
   const decrypted = await decryptChk(encryptedData, key);
 
-  if (!isTreeNode(decrypted)) {
-    return null;
-  }
-
-  return decodeTreeNode(decrypted);
+  return tryDecodeTreeNode(decrypted);
 }

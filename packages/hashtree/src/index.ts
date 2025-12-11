@@ -53,6 +53,7 @@ export {
 export {
   encodeTreeNode,
   decodeTreeNode,
+  tryDecodeTreeNode,
   encodeAndHash,
   getNodeType,
   isTreeNode,
