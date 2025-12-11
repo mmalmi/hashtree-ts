@@ -3,6 +3,7 @@ dist/
 !vendor/*/dist/
 test-results/
 playwright-report/
+e2e/screenshots/
 *.log
 .DS_Store
 .claude
