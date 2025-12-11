@@ -68,7 +68,7 @@
   let peerList = $derived(useAppStore.getState().peers);
   let stats = $derived(useAppStore.getState().stats);
   let myPeerId = $derived(useAppStore.getState().myPeerId);
-  let wsFallback = $derived(useAppStore.getState().wsFallback);
+  let fallbackStoresCount = $derived(useAppStore.getState().fallbackStoresCount);
 
   // Subscribe to app store updates
   onMount(() => {
@@ -80,7 +80,7 @@
       peerList = state.peers;
       stats = state.stats;
       myPeerId = state.myPeerId;
-      wsFallback = state.wsFallback;
+      fallbackStoresCount = state.fallbackStoresCount;
     });
     return unsub;
   });
@@ -133,19 +133,13 @@
             <span class="text-xs text-text-3">{status.charAt(0).toUpperCase() + status.slice(1)}</span>
           </div>
         {/each}
-        {#if wsFallback.url}
+        {#if fallbackStoresCount > 0}
           <div class="flex items-center gap-2 p-3 text-sm">
-            <span class="w-2 h-2 rounded-full {wsFallback.connected ? 'bg-success' : 'bg-text-3'} shrink-0"></span>
+            <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
             <span class="text-text-1 truncate flex-1">
-              {(() => {
-                try {
-                  return new URL(wsFallback.url).hostname;
-                } catch {
-                  return wsFallback.url;
-                }
-              })()}
+              HTTP Fallback
             </span>
-            <span class="text-xs text-text-3">{wsFallback.connected ? 'Connected' : 'Disconnected'}</span>
+            <span class="text-xs text-text-3">{fallbackStoresCount} store{fallbackStoresCount > 1 ? 's' : ''}</span>
           </div>
         {/if}
       </div>

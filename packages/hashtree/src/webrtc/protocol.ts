@@ -1,7 +1,7 @@
 /**
  * Shared protocol utilities for hashtree data exchange
  *
- * Used by both WebRTC (peer.ts) and WebSocket (wsPeer.ts) implementations.
+ * Used by WebRTC peer.ts implementation.
  *
  * Wire format: [type byte][msgpack body]
  * Request:  [0x00][msgpack: {id: u32, h: bytes32, htl?: u8}]

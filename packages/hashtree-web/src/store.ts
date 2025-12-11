@@ -14,6 +14,7 @@ export { LinkType };
 import { getSocialGraph, socialGraphStore } from './utils/socialGraph';
 import { settingsStore, DEFAULT_POOL_SETTINGS } from './stores/settings';
 import { DexieStore } from 'hashtree-dexie';
+import { BlossomStore } from 'hashtree';
 
 // Store instances - using Dexie for more robust IndexedDB handling
 export const idbStore = new DexieStore('hashtree-explorer');
@@ -37,18 +38,13 @@ export interface StorageStats {
 }
 
 // WebSocket fallback status
-export interface WsFallbackStatus {
-  url: string | null;
-  connected: boolean;
-}
-
 // App state store interface
 interface AppState {
   // WebRTC state
   peerCount: number;
   peers: PeerStatus[];
   myPeerId: string | null;
-  wsFallback: WsFallbackStatus;
+  fallbackStoresCount: number;
 
   // Storage stats
   stats: StorageStats;
@@ -60,7 +56,7 @@ function createAppStore() {
     peerCount: 0,
     peers: [],
     myPeerId: null,
-    wsFallback: { url: null, connected: false },
+    fallbackStoresCount: 0,
     stats: { items: 0, bytes: 0 },
   });
 
@@ -79,8 +75,8 @@ function createAppStore() {
       update(state => ({ ...state, myPeerId: id }));
     },
 
-    setWsFallback: (status: WsFallbackStatus) => {
-      update(state => ({ ...state, wsFallback: status }));
+    setFallbackStoresCount: (count: number) => {
+      update(state => ({ ...state, fallbackStoresCount: count }));
     },
 
     setStats: (stats: StorageStats) => {
@@ -186,6 +182,8 @@ export function initWebRTC(
     // Pool-based peer management
     peerClassifier: createPeerClassifier(),
     pools: getPoolConfigFromSettings(),
+    // Fallback to Blossom HTTP server when WebRTC peers don't have the data
+    fallbackStores: [new BlossomStore({ servers: ['https://hashtree.iris.to'] })],
   });
 
   _tree = new HashTree({ store: webrtcStore, chunkSize: 1024 });
@@ -194,7 +192,7 @@ export function initWebRTC(
     if (event.type === 'update') {
       appStore.setPeerCount(webrtcStore?.getConnectedCount() ?? 0);
       appStore.setPeers(webrtcStore?.getPeers() ?? []);
-      appStore.setWsFallback(webrtcStore?.getWsFallbackStatus() ?? { url: null, connected: false });
+      appStore.setFallbackStoresCount(webrtcStore?.getFallbackStoresCount() ?? 0);
     }
   });
 
@@ -221,7 +219,7 @@ export function initWebRTC(
   ];
 
   appStore.setMyPeerId(webrtcStore.getMyPeerId());
-  appStore.setWsFallback(webrtcStore.getWsFallbackStatus());
+  appStore.setFallbackStoresCount(webrtcStore.getFallbackStoresCount());
   webrtcStore.start();
 }
 
@@ -237,7 +235,7 @@ export function stopWebRTC() {
     appStore.setPeerCount(0);
     appStore.setPeers([]);
     appStore.setMyPeerId(null);
-    appStore.setWsFallback({ url: null, connected: false });
+    appStore.setFallbackStoresCount(0);
     _tree = new HashTree({ store: idbStore, chunkSize: 1024 });
   }
 }

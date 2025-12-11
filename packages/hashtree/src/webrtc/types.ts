@@ -116,10 +116,10 @@ export interface WebRTCStoreConfig {
     follows: PoolConfig;
     other: PoolConfig;
   };
-  // WebSocket fallback URL for data relay when WebRTC fails
-  // Defaults to 'wss://hashtree.iris.to/ws/data'
-  // Set to null to disable fallback
-  wsFallbackUrl?: string | null;
+  // Fallback stores to try when WebRTC peers don't have the data
+  // Tried in order after all WebRTC peers fail
+  // Example: [new BlossomStore({ servers: ['https://hashtree.iris.to'] })]
+  fallbackStores?: import('../types.js').Store[];
 }
 
 export interface PeerStatus {

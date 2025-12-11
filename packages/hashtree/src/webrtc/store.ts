@@ -33,7 +33,6 @@ import {
   type PoolConfig,
 } from './types.js';
 import { Peer } from './peer.js';
-import { WebSocketPeer } from './wsPeer.js';
 
 export const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
@@ -43,9 +42,6 @@ export const DEFAULT_RELAYS = [
   'wss://temp.iris.to',
   'wss://relay.snort.social',
 ];
-
-// Default WebSocket fallback server for data relay when WebRTC fails
-const DEFAULT_WS_FALLBACK_URL = 'wss://hashtree.iris.to/ws/data';
 
 const WEBRTC_KIND = 30078; // KIND_APP_DATA - same as iris-client
 const WEBRTC_TAG = 'webrtc';
@@ -72,10 +68,9 @@ export class WebRTCStore implements Store {
     peerQueryDelay: number;
     relays: string[];
     localStore: Store | null;
-    wsFallbackUrl: string | null;
+    fallbackStores: Store[];
     debug: boolean;
   };
-  private wsPeer: WebSocketPeer | null = null;
   private pools: { follows: PoolConfig; other: PoolConfig };
   private peerClassifier: PeerClassifier;
   private signer: EventSigner;
@@ -122,8 +117,7 @@ export class WebRTCStore implements Store {
       peerQueryDelay: config.peerQueryDelay ?? 500,
       relays: config.relays ?? DEFAULT_RELAYS,
       localStore: config.localStore ?? null,
-      // Use default if undefined, but allow explicit null to disable fallback
-      wsFallbackUrl: config.wsFallbackUrl === undefined ? DEFAULT_WS_FALLBACK_URL : config.wsFallbackUrl,
+      fallbackStores: config.fallbackStores ?? [],
       debug: config.debug ?? false,
     };
 
@@ -181,11 +175,6 @@ export class WebRTCStore implements Store {
     this.log('Starting with peerId:', this.myPeerId.short());
     this.log('Pool config:', this.pools);
 
-    // Connect to WebSocket fallback server eagerly (for bidirectional data relay)
-    if (this.config.wsFallbackUrl) {
-      this.connectWebSocket();
-    }
-
     // Subscribe to signaling messages
     this.startSubscription();
 
@@ -201,33 +190,6 @@ export class WebRTCStore implements Store {
     this.cleanupInterval = setInterval(() => {
       this.cleanupConnections();
     }, 5000);
-  }
-
-  /**
-   * Connect to WebSocket fallback server
-   */
-  private connectWebSocket(): void {
-    if (!this.config.wsFallbackUrl || this.wsPeer) return;
-
-    this.wsPeer = new WebSocketPeer({
-      url: this.config.wsFallbackUrl,
-      localStore: this.config.localStore,
-      requestTimeout: this.config.requestTimeout,
-      debug: this.config.debug,
-      onStatusChange: () => {
-        // Emit update when WebSocket status changes (connect, disconnect, reconnect)
-        this.emit({ type: 'update' });
-      },
-    });
-
-    // Connect in background (don't block start)
-    this.wsPeer.connect().then(connected => {
-      if (connected) {
-        this.log('WebSocket fallback connected to', this.config.wsFallbackUrl);
-      } else {
-        this.log('WebSocket fallback failed to connect (will retry with backoff)');
-      }
-    });
   }
 
   /**
@@ -252,12 +214,6 @@ export class WebRTCStore implements Store {
     if (this.subscription) {
       this.subscription.close();
       this.subscription = null;
-    }
-
-    // Close WebSocket peer if connected
-    if (this.wsPeer) {
-      this.wsPeer.close();
-      this.wsPeer = null;
     }
 
     // Close all peer connections
@@ -622,13 +578,11 @@ export class WebRTCStore implements Store {
   }
 
   /**
-   * Get number of connected peers (including WS fallback)
+   * Get number of connected peers
    */
   getConnectedCount(): number {
-    const webrtcCount = Array.from(this.peers.values())
+    return Array.from(this.peers.values())
       .filter(({ peer }) => peer.isConnected).length;
-    const wsCount = this.wsPeer?.isConnected ? 1 : 0;
-    return webrtcCount + wsCount;
   }
 
   /**
@@ -694,13 +648,10 @@ export class WebRTCStore implements Store {
   }
 
   /**
-   * Get WebSocket fallback status
+   * Get fallback stores count
    */
-  getWsFallbackStatus(): { url: string | null; connected: boolean } {
-    return {
-      url: this.config.wsFallbackUrl,
-      connected: this.wsPeer?.isConnected ?? false,
-    };
+  getFallbackStoresCount(): number {
+    return this.config.fallbackStores.length;
   }
 
   // Store interface implementation
@@ -799,32 +750,31 @@ export class WebRTCStore implements Store {
       }
     }
 
-    // All WebRTC peers failed - try WebSocket fallback if configured
-    if (this.config.wsFallbackUrl) {
-      this.log('All peers failed, trying WebSocket fallback');
-      const wsData = await this.requestFromWebSocket(hash);
-      if (wsData) {
-        if (this.config.localStore) {
-          await this.config.localStore.put(hash, wsData);
+    // All WebRTC peers failed - try fallback stores in order
+    if (this.config.fallbackStores.length > 0) {
+      this.log('All peers failed, trying', this.config.fallbackStores.length, 'fallback stores');
+      for (const store of this.config.fallbackStores) {
+        try {
+          const data = await store.get(hash);
+          if (data) {
+            this.log('Got data from fallback store');
+            if (this.config.localStore) {
+              await this.config.localStore.put(hash, data);
+            }
+            return data;
+          }
+        } catch (e) {
+          this.log('Fallback store error:', e);
         }
-        return wsData;
       }
     }
 
-    // If running and not satisfied, add to wants list and wait for new peers
+    // If running and not satisfied, add to pending reqs and wait for new peers
     if (this.running && !this.isSatisfied()) {
       return this.waitForHash(hash, triedPeers);
     }
 
     return null;
-  }
-
-  /**
-   * Request data from WebSocket fallback server
-   */
-  private async requestFromWebSocket(hash: Hash): Promise<Uint8Array | null> {
-    if (!this.wsPeer) return null;
-    return this.wsPeer.request(hash);
   }
 
   /**

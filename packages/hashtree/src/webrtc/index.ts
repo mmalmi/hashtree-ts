@@ -1,6 +1,5 @@
 export { WebRTCStore, DEFAULT_RELAYS } from './store.js';
 export { Peer } from './peer.js';
-export { WebSocketPeer } from './wsPeer.js';
 export {
   PeerId,
   generateUuid,

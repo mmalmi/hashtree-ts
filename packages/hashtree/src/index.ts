@@ -89,7 +89,6 @@ export {
   WebRTCStore,
   DEFAULT_RELAYS,
   Peer,
-  WebSocketPeer,
   PeerId,
   generateUuid,
   type SignalingMessage,
