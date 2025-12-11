@@ -260,7 +260,7 @@ describe('HashTree read operations', () => {
 
       const { cid: rootCid } = await tree.putDirectory([
         { name: 'file.txt', cid: fileCid },
-        { name: 'subdir', cid: subDirCid, isTree: true },
+        { name: 'subdir', cid: subDirCid, isTreeNode: true },
       ], { public: true });
 
       const entries = await tree.listDirectory(rootCid);
@@ -268,8 +268,8 @@ describe('HashTree read operations', () => {
       const fileEntry = entries.find(e => e.name === 'file.txt');
       const dirEntry = entries.find(e => e.name === 'subdir');
 
-      expect(fileEntry!.isTree).toBe(false);
-      expect(dirEntry!.isTree).toBe(true);
+      expect(fileEntry!.isTreeNode).toBe(false);
+      expect(dirEntry!.isTreeNode).toBe(true);
     });
 
     it('should flatten internal chunk nodes', async () => {
@@ -311,11 +311,11 @@ describe('HashTree read operations', () => {
       ], { public: true });
 
       const { cid: subCid } = await tree.putDirectory([
-        { name: 'level2', cid: subSubCid, isTree: true },
+        { name: 'level2', cid: subSubCid, isTreeNode: true },
       ], { public: true });
 
       const { cid: rootCid } = await tree.putDirectory([
-        { name: 'level1', cid: subCid, isTree: true },
+        { name: 'level1', cid: subCid, isTreeNode: true },
       ], { public: true });
 
       const resolved = await tree.resolvePath(rootCid, 'level1/level2/deep.txt');
@@ -368,7 +368,7 @@ describe('HashTree read operations', () => {
 
       const { cid: rootCid } = await tree.putDirectory([
         { name: 'root.txt', cid: f1, size: 1 },
-        { name: 'sub', cid: subCid, isTree: true },
+        { name: 'sub', cid: subCid, isTreeNode: true },
       ], { public: true });
 
       const walked: string[] = [];

@@ -44,6 +44,7 @@ export interface DirEntry {
   name: string;
   hash: Hash;
   size?: number;
+  isTreeNode: boolean;
 }
 
 /**
@@ -109,7 +110,7 @@ export class TreeBuilder {
     const chunks: Link[] = chunkHashes.map((hash, i) => ({
       hash,
       size: i < chunkHashes.length - 1 ? this.chunkSize : data.length - i * this.chunkSize,
-      isTree: false,
+      isTreeNode: false,
     }));
     const rootHash = await this.buildTree(chunks, size);
     return { hash: rootHash, size };
@@ -152,7 +153,7 @@ export class TreeBuilder {
       const { data, hash } = await encodeAndHash(node);
       await this.store.put(hash, data);
 
-      subTrees.push({ hash, size: batchSize, isTree: true });
+      subTrees.push({ hash, size: batchSize, isTreeNode: true });
     }
 
     // Recursively build parent level
@@ -177,6 +178,7 @@ export class TreeBuilder {
       hash: e.hash,
       name: e.name,
       size: e.size,
+      isTreeNode: e.isTreeNode,
     }));
 
     const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
@@ -275,7 +277,7 @@ export class StreamBuilder {
     const hash = await sha256(chunk);
     await this.store.put(hash, new Uint8Array(chunk));
 
-    this.chunks.push({ hash, size: chunk.length, isTree: false });
+    this.chunks.push({ hash, size: chunk.length, isTreeNode: false });
     this.bufferOffset = 0;
   }
 
@@ -294,7 +296,7 @@ export class StreamBuilder {
       const chunk = this.buffer.slice(0, this.bufferOffset);
       const hash = await sha256(chunk);
       await this.store.put(hash, new Uint8Array(chunk));
-      tempChunks.push({ hash, size: chunk.length, isTree: false });
+      tempChunks.push({ hash, size: chunk.length, isTreeNode: false });
     }
 
     return this.buildTreeFromChunks(tempChunks, this.totalSize);
@@ -351,7 +353,7 @@ export class StreamBuilder {
       const { data, hash } = await encodeAndHash(node);
       await this.store.put(hash, data);
 
-      subTrees.push({ hash, size: batchSize, isTree: true });
+      subTrees.push({ hash, size: batchSize, isTreeNode: true });
     }
 
     return this.buildTreeFromChunks(subTrees, totalSize);

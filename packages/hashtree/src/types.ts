@@ -54,8 +54,8 @@ export interface Link {
   size?: number;
   /** CHK decryption key (content hash) for encrypted nodes */
   key?: Uint8Array;
-  /** Whether this link points to a directory/tree (for encrypted entries) */
-  isTree?: boolean;
+  /** Whether this link points to a TreeNode (true) or raw blob (false) */
+  isTreeNode: boolean;
 }
 
 /**
@@ -120,6 +120,8 @@ export interface DirEntry {
   name: string;
   hash: Hash;
   size: number;
+  /** Whether this entry points to a TreeNode (true) or raw blob (false) */
+  isTreeNode: boolean;
 }
 
 /**

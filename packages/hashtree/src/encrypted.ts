@@ -76,7 +76,7 @@ export async function putFileEncrypted(
       hash,
       size: encSize,
       key: chunkKey,
-      isTree: false,
+      isTreeNode: false,
     });
 
     offset = end;
@@ -141,7 +141,7 @@ async function buildEncryptedTree(
       hash,
       size: batchSize,
       key: nodeKey,
-      isTree: true,
+      isTreeNode: true,
     });
   }
 
@@ -244,7 +244,7 @@ async function assembleEncryptedChunks(
 
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
-    if (link.isTree) {
+    if (link.isTreeNode) {
       // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(decrypted);
       parts.push(await assembleEncryptedChunks(store, childNode));
@@ -325,7 +325,7 @@ async function* streamEncryptedChunksWithOffset(
 
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
-    if (link.isTree) {
+    if (link.isTreeNode) {
       // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(decrypted);
       const childOffset = Math.max(0, offset - position);
@@ -411,7 +411,7 @@ async function readEncryptedRangeFromNode(
 
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
-    if (link.isTree) {
+    if (link.isTreeNode) {
       // Intermediate tree node - decode and recurse
       const childNode = decodeTreeNode(decrypted);
       const childStart = Math.max(0, start - position);
@@ -467,8 +467,8 @@ export interface EncryptedDirEntry {
   size?: number;
   /** CHK key for encrypted children */
   key?: Uint8Array;
-  /** Whether this entry is a directory (tree) */
-  isTree?: boolean;
+  /** Whether this entry points to a TreeNode (true) or raw blob (false) */
+  isTreeNode: boolean;
 }
 
 /**
@@ -495,7 +495,7 @@ export async function putDirectoryEncrypted(
     name: e.name,
     size: e.size,
     key: e.key,
-    isTree: e.isTree,
+    isTreeNode: e.isTreeNode,
   }));
 
   const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
@@ -548,7 +548,7 @@ export async function listDirectoryEncrypted(
         hash: link.hash,
         size: link.size,
         key: link.key,
-        isTree: link.isTree,
+        isTreeNode: link.isTreeNode,
       });
     }
   }

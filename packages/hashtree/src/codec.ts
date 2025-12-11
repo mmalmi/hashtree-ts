@@ -26,8 +26,8 @@ interface LinkMsgpack {
   s?: number;
   /** CHK decryption key (optional) */
   k?: Uint8Array;
-  /** isTree - whether link points to directory (optional) */
-  d?: boolean;
+  /** isTreeNode - whether link points to TreeNode (true) or raw blob (false) */
+  i: boolean;
 }
 
 /**
@@ -62,11 +62,10 @@ export function encodeTreeNode(node: TreeNode): Uint8Array {
   const msgpack: TreeNodeMsgpack = {
     t: 1,
     l: node.links.map(link => {
-      const l: LinkMsgpack = { h: link.hash };
+      const l: LinkMsgpack = { h: link.hash, i: link.isTreeNode };
       if (link.name !== undefined) l.n = link.name;
       if (link.size !== undefined) l.s = link.size;
       if (link.key !== undefined) l.k = link.key;
-      if (link.isTree !== undefined) l.d = link.isTree;
       return l;
     }),
   };
@@ -90,11 +89,10 @@ export function decodeTreeNode(data: Uint8Array): TreeNode {
   const node: TreeNode = {
     type: NodeType.Tree,
     links: msgpack.l.map(l => {
-      const link: Link = { hash: l.h };
+      const link: Link = { hash: l.h, isTreeNode: l.i ?? false };
       if (l.n !== undefined) link.name = l.n;
       if (l.s !== undefined) link.size = l.s;
       if (l.k !== undefined) link.key = l.k;
-      if (l.d !== undefined) link.isTree = l.d;
       return link;
     }),
   };

@@ -30,9 +30,9 @@ export async function setEntry(
   const entries = await listDirectory(store, dirHash);
   const newEntries: DirEntry[] = entries
     .filter(e => e.name !== name)
-    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, isTree: e.isTree }));
+    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, isTreeNode: e.isTreeNode }));
 
-  newEntries.push({ name, cid: entryCid, size, isTree });
+  newEntries.push({ name, cid: entryCid, size, isTreeNode: isTree });
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -57,7 +57,7 @@ export async function removeEntry(
   const entries = await listDirectory(store, dirHash);
   const newEntries: DirEntry[] = entries
     .filter(e => e.name !== name)
-    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, isTree: e.isTree }));
+    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, isTreeNode: e.isTreeNode }));
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -90,9 +90,9 @@ export async function renameEntry(
 
   const newEntries: DirEntry[] = entries
     .filter(e => e.name !== oldName)
-    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, isTree: e.isTree }));
+    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, isTreeNode: e.isTreeNode }));
 
-  newEntries.push({ name: newName, cid: entry.cid, size: entry.size ?? 0, isTree: entry.isTree });
+  newEntries.push({ name: newName, cid: entry.cid, size: entry.size ?? 0, isTreeNode: entry.isTreeNode });
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -132,7 +132,7 @@ export async function moveEntry(
     name,
     entry.cid,
     entry.size ?? 0,
-    entry.isTree
+    entry.isTreeNode
   );
 
   return newRoot;
@@ -171,8 +171,8 @@ async function rebuildPath(
     const parentEntries = await listDirectory(store, parentHash);
     const newParentEntries: DirEntry[] = parentEntries.map(e =>
       e.name === childName
-        ? { name: e.name, cid: cid(childHash), size: e.size ?? 0, isTree: e.isTree }
-        : { name: e.name, cid: e.cid, size: e.size ?? 0, isTree: e.isTree }
+        ? { name: e.name, cid: cid(childHash), size: e.size ?? 0, isTreeNode: e.isTreeNode }
+        : { name: e.name, cid: e.cid, size: e.size ?? 0, isTreeNode: e.isTreeNode }
     );
 
     childHash = await putDirectory(config, newParentEntries);

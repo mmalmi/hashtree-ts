@@ -108,10 +108,10 @@ export async function setEntryEncrypted(
       hash: e.hash,
       size: e.size,
       key: e.key,
-      isTree: e.isTree,
+      isTreeNode: e.isTreeNode,
     }));
 
-  newEntries.push({ name, hash, size, key, isTree: _isTree });
+  newEntries.push({ name, hash, size, key, isTreeNode: _isTree });
 
   // Create new encrypted directory
   const newDir = await putDirectoryEncrypted(config, newEntries);
@@ -156,7 +156,7 @@ export async function removeEntryEncrypted(
       hash: e.hash,
       size: e.size,
       key: e.key,
-      isTree: e.isTree,
+      isTreeNode: e.isTreeNode,
     }));
 
   const newDir = await putDirectoryEncrypted(config, newEntries);
@@ -210,7 +210,7 @@ export async function renameEntryEncrypted(
       hash: e.hash,
       size: e.size,
       key: e.key,
-      isTree: e.isTree,
+      isTreeNode: e.isTreeNode,
     }));
 
   newEntries.push({
@@ -218,7 +218,7 @@ export async function renameEntryEncrypted(
     hash: entry.hash,
     size: entry.size,
     key: entry.key,
-    isTree: entry.isTree,
+    isTreeNode: entry.isTreeNode,
   });
 
   const newDir = await putDirectoryEncrypted(config, newEntries);
@@ -284,8 +284,8 @@ async function rebuildPathEncrypted(
     const parentEntries = await listDirectoryEncrypted(store, parentHash, parentKey);
     const newParentEntries: EncryptedDirEntry[] = parentEntries.map(e =>
       e.name === childName
-        ? { name: e.name, hash: childHash, size: e.size, key: childKey, isTree: e.isTree }
-        : { name: e.name, hash: e.hash, size: e.size, key: e.key, isTree: e.isTree }
+        ? { name: e.name, hash: childHash, size: e.size, key: childKey, isTreeNode: e.isTreeNode }
+        : { name: e.name, hash: e.hash, size: e.size, key: e.key, isTreeNode: e.isTreeNode }
     );
 
     const newParent = await putDirectoryEncrypted(config, newParentEntries);

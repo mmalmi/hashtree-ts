@@ -16,7 +16,7 @@ export interface DirEntry {
   name: string;
   cid: CID;
   size?: number;
-  isTree?: boolean;
+  isTreeNode: boolean;
 }
 
 /**
@@ -59,7 +59,7 @@ export async function putFile(
   const links: Link[] = chunkHashes.map((hash, i) => ({
     hash,
     size: i < chunkHashes.length - 1 ? chunkSize : data.length - i * chunkSize,
-    isTree: false,
+    isTreeNode: false,
   }));
 
   const rootHash = await buildTree(config, links, size);
@@ -85,7 +85,7 @@ export async function putDirectory(
     key: e.cid.key,
     name: e.name,
     size: e.size,
-    isTree: e.isTree,
+    isTreeNode: e.isTreeNode,
   }));
 
   const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
@@ -144,7 +144,7 @@ export async function buildTree(
     const { data, hash } = await encodeAndHash(node);
     await store.put(hash, data);
 
-    subTrees.push({ hash, size: batchSize, isTree: true });
+    subTrees.push({ hash, size: batchSize, isTreeNode: true });
   }
 
   return buildTree(config, subTrees, totalSize);

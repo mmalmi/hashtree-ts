@@ -42,14 +42,14 @@ export interface TreeEntry {
   name: string;
   cid: CID;
   size?: number;
-  isTree: boolean;
+  isTreeNode: boolean;
 }
 
 export interface DirEntry {
   name: string;
   cid: CID;
   size?: number;
-  isTree?: boolean;
+  isTreeNode: boolean;
 }
 
 /**
@@ -110,7 +110,7 @@ export class HashTree {
         name: e.name,
         cid: e.cid,
         size: e.size ?? 0,
-        isTree: e.isTree,
+        isTreeNode: e.isTreeNode,
       }));
       const hash = await create.putDirectory(this.config, dirEntries, options.metadata);
       return { cid: { hash }, size };
@@ -121,7 +121,7 @@ export class HashTree {
       hash: e.cid.hash,
       size: e.size,
       key: e.cid.key,
-      isTree: e.isTree,
+      isTreeNode: e.isTreeNode,
     }));
     const result = await putDirectoryEncrypted(this.config, encryptedEntries, options?.metadata);
     return { cid: cid(result.hash, result.key), size };
@@ -208,7 +208,7 @@ export class HashTree {
         name: e.name,
         cid: cid(e.hash, e.key),
         size: e.size,
-        isTree: e.isTree ?? false,
+        isTreeNode: e.isTreeNode ?? false,
       }));
     }
     const entries = await read.listDirectory(this.store, id.hash);
@@ -216,7 +216,7 @@ export class HashTree {
       name: e.name,
       cid: e.cid,
       size: e.size,
-      isTree: e.isTree,
+      isTreeNode: e.isTreeNode,
     }));
   }
 
@@ -230,7 +230,7 @@ export class HashTree {
   async resolvePath(
     root: CID,
     path: string | string[]
-  ): Promise<{ cid: CID; isTree: boolean } | null> {
+  ): Promise<{ cid: CID; isTreeNode: boolean } | null> {
     const parts = Array.isArray(path)
       ? path
       : path.split('/').filter(p => p.length > 0);
@@ -246,10 +246,10 @@ export class HashTree {
       }
 
       current = entry.cid;
-      isTree = entry.isTree;
+      isTree = entry.isTreeNode;
     }
 
-    return { cid: current, isTree };
+    return { cid: current, isTreeNode: isTree };
   }
 
   async getSize(hash: Hash): Promise<number> {
@@ -259,7 +259,7 @@ export class HashTree {
   async *walk(
     hash: Hash,
     path: string = ''
-  ): AsyncGenerator<{ path: string; hash: Hash; isTree: boolean; size?: number }> {
+  ): AsyncGenerator<{ path: string; hash: Hash; isTreeNode: boolean; size?: number }> {
     yield* read.walk(this.store, hash, path);
   }
 
@@ -505,7 +505,7 @@ export class StreamWriter {
       // Public mode: store plaintext
       const hash = await sha256(chunk);
       await this.store.put(hash, chunk);
-      this.chunks.push({ hash, size: chunk.length, isTree: false });
+      this.chunks.push({ hash, size: chunk.length, isTreeNode: false });
     } else {
       // Encrypted mode: CHK encrypt the chunk
       // Store PLAINTEXT size in link.size for correct range seeking
@@ -513,7 +513,7 @@ export class StreamWriter {
       const { ciphertext, key } = await encryptChk(chunk);
       const hash = await sha256(ciphertext);
       await this.store.put(hash, ciphertext);
-      this.chunks.push({ hash, size: plaintextSize, key, isTree: false });
+      this.chunks.push({ hash, size: plaintextSize, key, isTreeNode: false });
     }
 
     this.bufferOffset = 0;
@@ -537,14 +537,14 @@ export class StreamWriter {
       if (this.isPublic) {
         const hash = await sha256(chunk);
         await this.store.put(hash, chunk);
-        tempChunks.push({ hash, size: chunk.length, isTree: false });
+        tempChunks.push({ hash, size: chunk.length, isTreeNode: false });
       } else {
         // Store PLAINTEXT size in link.size for correct range seeking
         const plaintextSize = chunk.length;
         const { ciphertext, key } = await encryptChk(chunk);
         const hash = await sha256(ciphertext);
         await this.store.put(hash, ciphertext);
-        tempChunks.push({ hash, size: plaintextSize, key, isTree: false });
+        tempChunks.push({ hash, size: plaintextSize, key, isTreeNode: false });
       }
     }
 
@@ -624,12 +624,12 @@ export class StreamWriter {
 
       if (this.isPublic) {
         await this.store.put(nodeHash, data);
-        subTrees.push({ hash: nodeHash, size: batchSize, isTree: true });
+        subTrees.push({ hash: nodeHash, size: batchSize, isTreeNode: true });
       } else {
         const { ciphertext, key } = await encryptChk(data);
         const hash = await sha256(ciphertext);
         await this.store.put(hash, ciphertext);
-        subTrees.push({ hash, size: batchSize, key, isTree: true });
+        subTrees.push({ hash, size: batchSize, key, isTreeNode: true });
       }
     }
 
