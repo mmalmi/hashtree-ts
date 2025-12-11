@@ -29,8 +29,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build explorer
-        run: pnpm --filter hashtree-web build
+      - name: Build dependencies and explorer
+        run: pnpm run build
         env:
           GITHUB_PAGES: true
 
