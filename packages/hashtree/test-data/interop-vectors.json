@@ -92,24 +92,25 @@
     }
   },
   {
-    "name": "tree_node_with_metadata",
+    "name": "tree_node_with_link_meta",
     "input": {
       "type": "tree_node",
       "node": {
         "links": [
           {
-            "hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+            "hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "size": 0,
+            "meta": {
+              "author": "test",
+              "version": 1
+            }
           }
-        ],
-        "metadata": {
-          "version": 1,
-          "author": "test"
-        }
+        ]
       }
     },
     "expected": {
-      "hash": "3512e0d4d57ba0df8f5535ccd446421d985703f7275a47c065ea51a61e650a9c",
-      "msgpack": "82a17402a16c9183a168c420cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcda173c0a17400"
+      "hash": "c1a8cef46af72701cca2a7d033ad3ae8e4f878950c17dfc485eff14c72e0373b",
+      "msgpack": "82a17402a16c9184a168c420cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcda17300a17400a16d82a6617574686f72a474657374a776657273696f6e01"
     }
   },
   {

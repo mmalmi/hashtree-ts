@@ -24,9 +24,9 @@ interface TestVector {
         hash: string;
         name?: string;
         size?: number;
+        meta?: Record<string, unknown>;
       }>;
       totalSize?: number;
-      metadata?: Record<string, unknown>;
     };
     entries?: Array<{
       name: string;
@@ -174,24 +174,22 @@ describe('Interoperability Test Vectors', () => {
     });
   });
 
-  it('should generate tree node with metadata', async () => {
+  it('should generate tree node with link meta', async () => {
     const linkHash = new Uint8Array(32).fill(0xcd);
     const node: TreeNode = {
       type: LinkType.Dir,
-      links: [{ hash: linkHash, type: LinkType.Blob }],
-      metadata: { version: 1, author: 'test' },
+      links: [{ hash: linkHash, size: 0, type: LinkType.Blob, meta: { author: 'test', version: 1 } }],
     };
 
     const encoded = encodeTreeNode(node);
     const hash = await sha256(encoded);
 
     vectors.push({
-      name: 'tree_node_with_metadata',
+      name: 'tree_node_with_link_meta',
       input: {
         type: 'tree_node',
         node: {
-          links: [{ hash: toHex(linkHash) }],
-          metadata: { version: 1, author: 'test' }
+          links: [{ hash: toHex(linkHash), size: 0, meta: { author: 'test', version: 1 } }]
         }
       },
       expected: {
