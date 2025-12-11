@@ -11,7 +11,7 @@
     ]
   },
   "scripts": {
-    "build": "pnpm -r build",
+    "build": "pnpm -r --sequential build",
     "build:hashtree": "pnpm --filter hashtree build",
     "build:web": "pnpm --filter hashtree-web build",
     "dev": "pnpm --filter hashtree-web dev",
