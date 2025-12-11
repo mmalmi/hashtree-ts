@@ -57,20 +57,32 @@ function sortObjectKeys<T extends Record<string, unknown>>(obj: T): T {
 
 /**
  * Encode a tree node to MessagePack
+ * Fields are ordered alphabetically for canonical encoding
  */
 export function encodeTreeNode(node: TreeNode): Uint8Array {
+  // TreeNode fields in alphabetical order: l, s?, t
   const msgpack: TreeNodeMsgpack = {
-    t: node.type,
     l: node.links.map(link => {
-      const l: LinkMsgpack = { h: link.hash, s: link.size, t: link.type };
-      if (link.name !== undefined) l.n = link.name;
-      if (link.key !== undefined) l.k = link.key;
-      // Sort metadata keys for deterministic encoding
-      if (link.meta !== undefined) l.m = sortObjectKeys(link.meta);
+      // Link fields in alphabetical order: h, k?, m?, n?, s, t
+      // Build object with all fields in order, undefined values are omitted by msgpack
+      const l: LinkMsgpack = {
+        h: link.hash,
+        k: link.key,
+        m: link.meta !== undefined ? sortObjectKeys(link.meta) : undefined,
+        n: link.name,
+        s: link.size,
+        t: link.type,
+      } as LinkMsgpack;
+      // Remove undefined fields to match skip_serializing_if behavior
+      if (l.k === undefined) delete l.k;
+      if (l.m === undefined) delete l.m;
+      if (l.n === undefined) delete l.n;
       return l;
     }),
+    s: node.totalSize,
+    t: node.type,
   };
-  if (node.totalSize !== undefined) msgpack.s = node.totalSize;
+  if (msgpack.s === undefined) delete msgpack.s;
 
   return encode(msgpack);
 }
