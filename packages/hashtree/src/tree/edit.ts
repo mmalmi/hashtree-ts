@@ -30,7 +30,7 @@ export async function setEntry(
   const entries = await listDirectory(store, dirHash);
   const newEntries: DirEntry[] = entries
     .filter(e => e.name !== name)
-    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, type: e.type }));
+    .map(e => ({ name: e.name, cid: e.cid, size: e.size, type: e.type, meta: e.meta }));
 
   newEntries.push({ name, cid: entryCid, size, type });
 
@@ -57,7 +57,7 @@ export async function removeEntry(
   const entries = await listDirectory(store, dirHash);
   const newEntries: DirEntry[] = entries
     .filter(e => e.name !== name)
-    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, type: e.type }));
+    .map(e => ({ name: e.name, cid: e.cid, size: e.size, type: e.type, meta: e.meta }));
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -90,9 +90,9 @@ export async function renameEntry(
 
   const newEntries: DirEntry[] = entries
     .filter(e => e.name !== oldName)
-    .map(e => ({ name: e.name, cid: e.cid, size: e.size ?? 0, type: e.type }));
+    .map(e => ({ name: e.name, cid: e.cid, size: e.size, type: e.type, meta: e.meta }));
 
-  newEntries.push({ name: newName, cid: entry.cid, size: entry.size ?? 0, type: entry.type });
+  newEntries.push({ name: newName, cid: entry.cid, size: entry.size, type: entry.type, meta: entry.meta });
 
   const newDirHash = await putDirectory(config, newEntries);
   return rebuildPath(config, rootHash, path, newDirHash);
@@ -131,7 +131,7 @@ export async function moveEntry(
     targetPath,
     name,
     entry.cid,
-    entry.size ?? 0,
+    entry.size,
     entry.type
   );
 
@@ -171,8 +171,8 @@ async function rebuildPath(
     const parentEntries = await listDirectory(store, parentHash);
     const newParentEntries: DirEntry[] = parentEntries.map(e =>
       e.name === childName
-        ? { name: e.name, cid: cid(childHash), size: e.size ?? 0, type: e.type }
-        : { name: e.name, cid: e.cid, size: e.size ?? 0, type: e.type }
+        ? { name: e.name, cid: cid(childHash), size: e.size, type: e.type, meta: e.meta }
+        : { name: e.name, cid: e.cid, size: e.size, type: e.type, meta: e.meta }
     );
 
     childHash = await putDirectory(config, newParentEntries);

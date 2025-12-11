@@ -8,8 +8,9 @@ import { decodeTreeNode, tryDecodeTreeNode, getNodeType } from '../codec.js';
 export interface TreeEntry {
   name: string;
   cid: CID;
-  size?: number;
+  size: number;
   type: LinkType;
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -316,6 +317,7 @@ export async function listDirectory(store: Store, hash: Hash): Promise<TreeEntry
       cid: cid(link.hash, link.key),
       size: link.size,
       type: link.type,
+      meta: link.meta,
     });
   }
 
@@ -363,7 +365,7 @@ export async function getSize(store: Store, hash: Hash): Promise<number> {
 
   let total = 0;
   for (const link of node.links) {
-    total += link.size ?? await getSize(store, link.hash);
+    total += link.size;
   }
   return total;
 }

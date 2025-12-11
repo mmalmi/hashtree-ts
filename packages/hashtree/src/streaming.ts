@@ -177,7 +177,7 @@ export class StreamWriter {
     const subTrees: Link[] = [];
     for (let i = 0; i < chunks.length; i += this.maxLinks) {
       const batch = chunks.slice(i, i + this.maxLinks);
-      const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
+      const batchSize = batch.reduce((sum, l) => sum + l.size, 0);
 
       const node: TreeNode = {
         type: LinkType.File,

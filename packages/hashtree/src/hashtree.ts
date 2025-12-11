@@ -43,15 +43,17 @@ export interface HashTreeConfig {
 export interface TreeEntry {
   name: string;
   cid: CID;
-  size?: number;
+  size: number;
   type: LinkType;
+  meta?: Record<string, unknown>;
 }
 
 export interface DirEntry {
   name: string;
   cid: CID;
-  size?: number;
+  size: number;
   type: LinkType;
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -99,22 +101,23 @@ export class HashTree {
   /**
    * Store a directory
    * @param entries - Directory entries
-   * @param options - { public?: boolean, metadata?: Record } - if public true, store without encryption
+   * @param options - { public?: boolean } - if public true, store without encryption
    * @returns { cid, size }
    */
   async putDirectory(
     entries: DirEntry[],
-    options?: { public?: boolean; metadata?: Record<string, unknown> }
+    options?: { public?: boolean }
   ): Promise<{ cid: CID; size: number }> {
-    const size = entries.reduce((sum, e) => sum + (e.size ?? 0), 0);
+    const size = entries.reduce((sum, e) => sum + e.size, 0);
     if (options?.public) {
       const dirEntries: create.DirEntry[] = entries.map(e => ({
         name: e.name,
         cid: e.cid,
-        size: e.size ?? 0,
+        size: e.size,
         type: e.type,
+        meta: e.meta,
       }));
-      const hash = await create.putDirectory(this.config, dirEntries, options.metadata);
+      const hash = await create.putDirectory(this.config, dirEntries);
       return { cid: { hash }, size };
     }
     // Encrypted by default
@@ -124,8 +127,9 @@ export class HashTree {
       size: e.size,
       key: e.cid.key,
       type: e.type,
+      meta: e.meta,
     }));
-    const result = await putDirectoryEncrypted(this.config, encryptedEntries, options?.metadata);
+    const result = await putDirectoryEncrypted(this.config, encryptedEntries);
     return { cid: cid(result.hash, result.key), size };
   }
 
@@ -211,6 +215,7 @@ export class HashTree {
         cid: cid(e.hash, e.key),
         size: e.size,
         type: e.type ?? LinkType.Blob,
+        meta: e.meta,
       }));
     }
     const entries = await read.listDirectory(this.store, id.hash);
@@ -219,6 +224,7 @@ export class HashTree {
       cid: e.cid,
       size: e.size,
       type: e.type,
+      meta: e.meta,
     }));
   }
 

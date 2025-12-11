@@ -43,8 +43,9 @@ export interface FileEntry {
 export interface DirEntry {
   name: string;
   hash: Hash;
-  size?: number;
+  size: number;
   type: LinkType;
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -143,7 +144,7 @@ export class TreeBuilder {
 
     for (let i = 0; i < links.length; i += this.maxLinks) {
       const batch = links.slice(i, i + this.maxLinks);
-      const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
+      const batchSize = batch.reduce((sum, l) => sum + l.size, 0);
 
       const node: TreeNode = {
         type: LinkType.File,
@@ -168,9 +169,8 @@ export class TreeBuilder {
    * chunkSize, it's chunked by bytes like files using putFile.
    *
    * @param entries Directory entries
-   * @param metadata Optional metadata for root node (timestamp, etc.)
    */
-  async putDirectory(entries: DirEntry[], metadata?: Record<string, unknown>): Promise<Hash> {
+  async putDirectory(entries: DirEntry[]): Promise<Hash> {
     // Sort entries by name for deterministic hashing
     const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
 
@@ -179,15 +179,15 @@ export class TreeBuilder {
       name: e.name,
       size: e.size,
       type: e.type,
+      meta: e.meta,
     }));
 
-    const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
+    const totalSize = links.reduce((sum, l) => sum + l.size, 0);
 
     const node: TreeNode = {
       type: LinkType.Dir,
       links,
       totalSize,
-      metadata,
     };
     const { data, hash } = await encodeAndHash(node);
 
@@ -203,21 +203,19 @@ export class TreeBuilder {
   }
 
   /**
-   * Create a tree node with custom metadata
+   * Create a tree node
    * @param nodeType - LinkType.File or LinkType.Dir
    */
   async putTreeNode(
     nodeType: LinkType.File | LinkType.Dir,
-    links: Link[],
-    metadata?: Record<string, unknown>
+    links: Link[]
   ): Promise<Hash> {
-    const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
+    const totalSize = links.reduce((sum, l) => sum + l.size, 0);
 
     const node: TreeNode = {
       type: nodeType,
       links,
       totalSize,
-      metadata,
     };
 
     const { data, hash } = await encodeAndHash(node);
@@ -348,7 +346,7 @@ export class StreamBuilder {
     const subTrees: Link[] = [];
     for (let i = 0; i < chunks.length; i += this.maxLinks) {
       const batch = chunks.slice(i, i + this.maxLinks);
-      const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
+      const batchSize = batch.reduce((sum, l) => sum + l.size, 0);
 
       const node: TreeNode = {
         type: LinkType.File,

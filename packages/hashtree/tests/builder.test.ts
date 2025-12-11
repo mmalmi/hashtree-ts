@@ -287,47 +287,46 @@ describe('StreamWriter via createStream()', () => {
     });
   });
 
-  describe('directory metadata', () => {
-    it('should store metadata on directory root', async () => {
+  describe('link meta', () => {
+    it('should store meta on directory entries', async () => {
       const fileHash = await tree.putBlob(new TextEncoder().encode('test'));
-      const metadata = {
+      const meta = {
         createdAt: 1700000000,
         version: '1.0',
         author: 'test-user',
       };
 
       const { cid: dirCid } = await tree.putDirectory(
-        [{ name: 'file.txt', cid: cid(fileHash), size: 4 }],
-        { public: true, metadata }
+        [{ name: 'file.txt', cid: cid(fileHash), size: 4, type: LinkType.Blob, meta }],
+        { public: true }
       );
 
-      // Read back the tree node and verify metadata
+      // Read back the tree node and verify link meta
       const encoded = await store.get(dirCid.hash);
       expect(encoded).not.toBeNull();
 
       const node = decodeTreeNode(encoded!);
-      expect(node.metadata).toEqual(metadata);
-      expect(node.metadata!.createdAt).toBe(1700000000);
-      expect(node.metadata!.version).toBe('1.0');
+      expect(node.links[0].meta).toEqual(meta);
+      expect(node.links[0].meta!.createdAt).toBe(1700000000);
+      expect(node.links[0].meta!.version).toBe('1.0');
     });
 
-    it('should preserve metadata on large directories', async () => {
+    it('should preserve link meta on large directories', async () => {
       const smallTree = new HashTree({ store, maxLinks: 4 });
 
       // Create enough entries to trigger sub-tree creation
       const entries = [];
       for (let i = 0; i < 10; i++) {
         const hash = await smallTree.putBlob(new Uint8Array([i]));
-        entries.push({ name: `file${i}.txt`, cid: cid(hash), size: 1 });
+        entries.push({ name: `file${i}.txt`, cid: cid(hash), size: 1, type: LinkType.Blob, meta: { createdAt: 1700000000 + i } });
       }
 
-      const metadata = { createdAt: 1700000000 };
-      const { cid: dirCid } = await smallTree.putDirectory(entries, { public: true, metadata });
+      const { cid: dirCid } = await smallTree.putDirectory(entries, { public: true });
 
-      // Read back root and verify metadata
-      const encoded = await store.get(dirCid.hash);
-      const node = decodeTreeNode(encoded!);
-      expect(node.metadata).toEqual(metadata);
+      // Read back directory and verify link meta is preserved
+      const listing = await smallTree.listDirectory(dirCid);
+      const file5 = listing.find(e => e.name === 'file5.txt');
+      expect(file5?.meta).toEqual({ createdAt: 1700000005 });
     });
   });
 });

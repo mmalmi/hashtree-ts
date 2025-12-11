@@ -22,12 +22,14 @@ interface LinkMsgpack {
   h: Uint8Array;
   /** name (optional) */
   n?: string;
-  /** size (optional) */
-  s?: number;
+  /** size (required) */
+  s: number;
   /** CHK decryption key (optional) */
   k?: Uint8Array;
   /** type - 0=Blob, 1=File, 2=Dir */
   t: number;
+  /** metadata (optional) - keys must be sorted for determinism */
+  m?: Record<string, unknown>;
 }
 
 /**
@@ -40,8 +42,6 @@ interface TreeNodeMsgpack {
   l: LinkMsgpack[];
   /** totalSize (optional) */
   s?: number;
-  /** metadata (optional) - keys must be sorted for determinism */
-  m?: Record<string, unknown>;
 }
 
 /**
@@ -62,16 +62,15 @@ export function encodeTreeNode(node: TreeNode): Uint8Array {
   const msgpack: TreeNodeMsgpack = {
     t: node.type,
     l: node.links.map(link => {
-      const l: LinkMsgpack = { h: link.hash, t: link.type };
+      const l: LinkMsgpack = { h: link.hash, s: link.size, t: link.type };
       if (link.name !== undefined) l.n = link.name;
-      if (link.size !== undefined) l.s = link.size;
       if (link.key !== undefined) l.k = link.key;
+      // Sort metadata keys for deterministic encoding
+      if (link.meta !== undefined) l.m = sortObjectKeys(link.meta);
       return l;
     }),
   };
   if (node.totalSize !== undefined) msgpack.s = node.totalSize;
-  // Sort metadata keys for deterministic encoding
-  if (node.metadata !== undefined) msgpack.m = sortObjectKeys(node.metadata);
 
   return encode(msgpack);
 }
@@ -91,16 +90,15 @@ export function tryDecodeTreeNode(data: Uint8Array): TreeNode | null {
     const node: TreeNode = {
       type: msgpack.t as LinkType.File | LinkType.Dir,
       links: msgpack.l.map(l => {
-        const link: Link = { hash: l.h, type: l.t ?? LinkType.Blob };
+        const link: Link = { hash: l.h, size: l.s ?? 0, type: l.t ?? LinkType.Blob };
         if (l.n !== undefined) link.name = l.n;
-        if (l.s !== undefined) link.size = l.s;
         if (l.k !== undefined) link.key = l.k;
+        if (l.m !== undefined) link.meta = l.m;
         return link;
       }),
     };
 
     if (msgpack.s !== undefined) node.totalSize = msgpack.s;
-    if (msgpack.m !== undefined) node.metadata = msgpack.m;
 
     return node;
   } catch {

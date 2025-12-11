@@ -52,12 +52,14 @@ export interface Link {
   hash: Hash;
   /** Optional name (for directory entries) */
   name?: string;
-  /** Size of subtree in bytes (for efficient seeks) */
-  size?: number;
+  /** Size of subtree in bytes (for efficient seeks). 0 for Dir links. */
+  size: number;
   /** CHK decryption key (content hash) for encrypted nodes */
   key?: Uint8Array;
   /** Type of content this link points to: Blob, File, or Dir */
   type: LinkType;
+  /** Optional metadata (for directory entries: createdAt, mimeType, thumbnail, etc.) */
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -74,8 +76,6 @@ export interface TreeNode {
   links: Link[];
   /** Total size of all data in this subtree */
   totalSize?: number;
-  /** Optional metadata */
-  metadata?: Record<string, unknown>;
 }
 
 /**

@@ -124,7 +124,7 @@ async function buildEncryptedTree(
   const subTrees: Link[] = [];
   for (let i = 0; i < links.length; i += maxLinks) {
     const batch = links.slice(i, i + maxLinks);
-    const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
+    const batchSize = batch.reduce((sum, l) => sum + l.size, 0);
 
     const node: TreeNode = {
       type: LinkType.File,
@@ -456,11 +456,13 @@ async function readEncryptedRangeFromNode(
 export interface EncryptedDirEntry {
   name: string;
   hash: Hash;
-  size?: number;
+  size: number;
   /** CHK key for encrypted children */
   key?: Uint8Array;
   /** Type of this entry: Blob, File, or Dir */
   type: LinkType;
+  /** Optional metadata (createdAt, mimeType, thumbnail, etc.) */
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -471,13 +473,11 @@ export interface EncryptedDirEntry {
  *
  * @param config - Tree configuration
  * @param entries - Directory entries (with keys for encrypted children)
- * @param metadata - Optional metadata
  * @returns Hash of encrypted directory and the encryption key
  */
 export async function putDirectoryEncrypted(
   config: EncryptedTreeConfig,
-  entries: EncryptedDirEntry[],
-  metadata?: Record<string, unknown>
+  entries: EncryptedDirEntry[]
 ): Promise<EncryptedPutResult> {
   const { store, chunkSize } = config;
   const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
@@ -488,15 +488,15 @@ export async function putDirectoryEncrypted(
     size: e.size,
     key: e.key,
     type: e.type,
+    meta: e.meta,
   }));
 
-  const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
+  const totalSize = links.reduce((sum, l) => sum + l.size, 0);
 
   const node: TreeNode = {
     type: LinkType.Dir,
     links,
     totalSize,
-    metadata,
   };
   const { data } = await encodeAndHash(node);
 
@@ -541,6 +541,7 @@ export async function listDirectoryEncrypted(
         size: link.size,
         key: link.key,
         type: link.type,
+        meta: link.meta,
       });
     }
   }

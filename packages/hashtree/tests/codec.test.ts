@@ -53,17 +53,17 @@ describe('codec', () => {
       expect(decoded.totalSize).toBe(12345);
     });
 
-    it('should preserve metadata', () => {
+    it('should preserve link meta', () => {
+      const hash = new Uint8Array(32).fill(1);
       const node: TreeNode = {
         type: LinkType.Dir,
-        links: [],
-        metadata: { version: 1, author: 'test' },
+        links: [{ hash, name: 'file.txt', size: 100, type: LinkType.Blob, meta: { version: 1, author: 'test' } }],
       };
 
       const encoded = encodeTreeNode(node);
       const decoded = decodeTreeNode(encoded);
 
-      expect(decoded.metadata).toEqual({ version: 1, author: 'test' });
+      expect(decoded.links[0].meta).toEqual({ version: 1, author: 'test' });
     });
 
     it('should handle links without optional fields', () => {
@@ -71,14 +71,15 @@ describe('codec', () => {
 
       const node: TreeNode = {
         type: LinkType.File,
-        links: [{ hash, type: LinkType.Blob }],
+        links: [{ hash, size: 0, type: LinkType.Blob }],
       };
 
       const encoded = encodeTreeNode(node);
       const decoded = decodeTreeNode(encoded);
 
       expect(decoded.links[0].name).toBeUndefined();
-      expect(decoded.links[0].size).toBeUndefined();
+      expect(decoded.links[0].size).toBe(0);
+      expect(decoded.links[0].meta).toBeUndefined();
       expect(toHex(decoded.links[0].hash)).toBe(toHex(hash));
     });
   });
@@ -99,7 +100,7 @@ describe('codec', () => {
     it('should produce consistent hashes', async () => {
       const node: TreeNode = {
         type: LinkType.Dir,
-        links: [{ hash: new Uint8Array(32).fill(1), name: 'test', type: LinkType.Blob }],
+        links: [{ hash: new Uint8Array(32).fill(1), name: 'test', size: 100, type: LinkType.Blob }],
       };
 
       const result1 = await encodeAndHash(node);
@@ -155,25 +156,23 @@ describe('codec', () => {
       expect(toHex(encoded2)).toBe(toHex(encoded3));
     });
 
-    it('should produce identical bytes regardless of metadata key insertion order', async () => {
+    it('should produce identical bytes regardless of link meta key insertion order', async () => {
       const hash = new Uint8Array(32).fill(1);
 
-      // Create metadata with keys in different orders
+      // Create meta with keys in different orders
       // Note: JavaScript object key order is preserved since ES2015,
       // but we still sort them explicitly for cross-platform determinism
-      const metadata1 = { zebra: 'last', alpha: 'first', middle: 'mid' };
-      const metadata2 = { alpha: 'first', middle: 'mid', zebra: 'last' };
+      const meta1 = { zebra: 'last', alpha: 'first', middle: 'mid' };
+      const meta2 = { alpha: 'first', middle: 'mid', zebra: 'last' };
 
       const node1: TreeNode = {
-        type: LinkType.File,
-        links: [{ hash, type: LinkType.Blob }],
-        metadata: metadata1,
+        type: LinkType.Dir,
+        links: [{ hash, name: 'file', size: 100, type: LinkType.Blob, meta: meta1 }],
       };
 
       const node2: TreeNode = {
-        type: LinkType.File,
-        links: [{ hash, type: LinkType.Blob }],
-        metadata: metadata2,
+        type: LinkType.Dir,
+        links: [{ hash, name: 'file', size: 100, type: LinkType.Blob, meta: meta2 }],
       };
 
       const encoded1 = encodeTreeNode(node1);

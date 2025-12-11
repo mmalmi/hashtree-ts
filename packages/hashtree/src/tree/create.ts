@@ -15,8 +15,9 @@ export interface CreateConfig {
 export interface DirEntry {
   name: string;
   cid: CID;
-  size?: number;
+  size: number;
   type: LinkType;
+  meta?: Record<string, unknown>;
 }
 
 /**
@@ -74,8 +75,7 @@ export async function putFile(
  */
 export async function putDirectory(
   config: CreateConfig,
-  entries: DirEntry[],
-  metadata?: Record<string, unknown>
+  entries: DirEntry[]
 ): Promise<Hash> {
   const { store, chunkSize } = config;
   const sorted = [...entries].sort((a, b) => a.name.localeCompare(b.name));
@@ -86,15 +86,15 @@ export async function putDirectory(
     name: e.name,
     size: e.size,
     type: e.type,
+    meta: e.meta,
   }));
 
-  const totalSize = links.reduce((sum, l) => sum + (l.size ?? 0), 0);
+  const totalSize = links.reduce((sum, l) => sum + l.size, 0);
 
   const node: TreeNode = {
     type: LinkType.Dir,
     links,
     totalSize,
-    metadata,
   };
   const { data, hash } = await encodeAndHash(node);
 
@@ -134,7 +134,7 @@ export async function buildTree(
   const subTrees: Link[] = [];
   for (let i = 0; i < links.length; i += maxLinks) {
     const batch = links.slice(i, i + maxLinks);
-    const batchSize = batch.reduce((sum, l) => sum + (l.size ?? 0), 0);
+    const batchSize = batch.reduce((sum, l) => sum + l.size, 0);
 
     const node: TreeNode = {
       type: LinkType.File,
