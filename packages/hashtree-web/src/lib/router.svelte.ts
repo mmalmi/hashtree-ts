@@ -1,7 +1,7 @@
 /**
  * Simple hash router for Svelte 5 using stores for reliable reactivity
  */
-import { writable, derived } from 'svelte/store';
+import { writable } from 'svelte/store';
 
 // Get initial path from hash
 function getHashPath(): string {

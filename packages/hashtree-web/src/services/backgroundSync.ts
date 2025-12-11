@@ -12,7 +12,7 @@
  * - Enforced only when total storage exceeds cap
  */
 import { get } from 'svelte/store';
-import type { CID, RefResolverListEntry } from 'hashtree';
+import type { CID } from 'hashtree';
 import { toHex, fromHex } from 'hashtree';
 import { getRefResolver } from '../refResolver';
 import { createFollowsStore, type Follows } from '../stores/follows';

@@ -8,8 +8,7 @@
  */
 
 import { Store, Hash, CID, TreeNode, LinkType, toHex, cid } from './types.js';
-import { decodeTreeNode, tryDecodeTreeNode } from './codec.js';
-import { type EncryptionKey } from './crypto.js';
+import { tryDecodeTreeNode } from './codec.js';
 import { StreamWriter } from './streaming.js';
 export { StreamWriter } from './streaming.js';
 export { verifyTree } from './verify.js';

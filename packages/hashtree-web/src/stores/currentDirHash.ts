@@ -26,8 +26,6 @@ const resolvingPathStore = writable<boolean>(false);
 let prevRootHash: string | null = null;
 let prevRootKey: string | null = null;
 let prevPathKey: string | null = null;
-// Track if resolution has ever completed for this path
-let hasResolvedCurrentPath = false;
 
 // Reactive update based on rootCid and path changes
 async function updateCurrentDirCid() {
@@ -38,11 +36,6 @@ async function updateCurrentDirCid() {
   const rootHash = rootCid?.hash ? toHex(rootCid.hash) : null;
   const rootKey = rootCid?.key ? toHex(rootCid.key) : null;
   const pathKey = urlPath.join('/');
-
-  // Check if path changed - reset resolution tracking
-  if (pathKey !== prevPathKey) {
-    hasResolvedCurrentPath = false;
-  }
 
   // Skip if no change
   if (rootHash === prevRootHash && rootKey === prevRootKey && pathKey === prevPathKey) {
@@ -84,14 +77,12 @@ async function updateCurrentDirCid() {
         isViewingFileStore.set(false);
       }
       resolvingPathStore.set(false);
-      hasResolvedCurrentPath = true;
       return;
     }
 
     currentDirCidStore.set(rootCid);
     isViewingFileStore.set(false);
     resolvingPathStore.set(false);
-    hasResolvedCurrentPath = true;
     return;
   }
 
@@ -131,12 +122,10 @@ async function updateCurrentDirCid() {
       }
     }
     resolvingPathStore.set(false);
-    hasResolvedCurrentPath = true;
   } catch {
     currentDirCidStore.set(null);
     isViewingFileStore.set(false);
     resolvingPathStore.set(false);
-    hasResolvedCurrentPath = true;
   }
 }
 

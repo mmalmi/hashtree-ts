@@ -5,7 +5,7 @@
   import ConnectivityIndicator from './components/ConnectivityIndicator.svelte';
   import SearchInput from './components/SearchInput.svelte';
   import MobileSearch from './components/MobileSearch.svelte';
-  import WalletLink from './components/WalletLink.svelte';
+  // import WalletLink from './components/WalletLink.svelte';
   import Toast from './components/Toast.svelte';
   import Router from './components/Router.svelte';
   import { currentPath, initRouter, getQueryParams } from './lib/router.svelte';
@@ -61,7 +61,7 @@
       <MobileSearch />
       <div class="hidden md:block"><SearchInput /></div>
       <ConnectivityIndicator />
-      <WalletLink />
+      <!-- <WalletLink /> -->
       <NostrLogin />
     </div>
   </header>

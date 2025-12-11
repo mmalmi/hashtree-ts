@@ -4,7 +4,6 @@
 import type { Store, Hash } from '../types.js';
 import type {
   SignalingMessage,
-  DataMessage,
   DataRequest,
   PeerId,
 } from './types.js';
