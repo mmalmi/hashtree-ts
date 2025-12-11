@@ -1,40 +1,30 @@
 # hashtree-ts
 
-Content-addressed merkle tree storage library for the browser.
+Content-addressed merkle tree storage for the browser.
 
-## Design Philosophy
+## Design
 
-**Simple over clever.** SHA256 for hashing, MessagePack for encoding. No multicodec, multibase, or CID versioning. One way to do things.
+- **SHA256** hashing via Web Crypto API
+- **MessagePack** encoding for tree nodes (deterministic)
+- **Simple**: No multicodec, multibase, or CID versioning
+- **Dumb storage**: Works with any key-value store (hash → bytes). Unlike BitTorrent, no active merkle proof computation needed—just store and retrieve blobs by hash.
+- **16KB chunks** by default: Fits WebRTC data channel limits and matches BitTorrent v2 piece size.
 
-**Core does one thing.** Merkle trees over any key-value store. That's it. The library doesn't know about networks, peers, or protocols.
+## Packages
 
-**Composition over integration.** Want WebRTC sync? Nostr discovery? Blossom storage? Those are separate layers that *use* hashtree, not part of it. You pick what you need.
+- `hashtree` - Core merkle tree library
+- `hashtree-dexie` - IndexedDB/Dexie storage adapter
+- `hashtree-web` - Web app with Nostr integration
 
-**Read the code in an afternoon.** If you can't understand the entire codebase quickly, it's too complex. No abstraction astronautics.
+## Storage Backends
 
-## Features
+The `Store` interface is just `get(hash) → bytes` and `put(hash, bytes)`. Implementations:
 
-- SHA256 hashing via Web Crypto API
-- MessagePack encoding for tree nodes (deterministic, fast)
-- File chunking with configurable size
-- Directory support with nested trees
-- Streaming append for large files
-- Tree verification
-- BEP52 (BitTorrent v2) compatible binary merkle algorithm (experimental)
-- CHK (Content Hash Key) deterministic encryption (experimental)
-
-## Storage Adapters
-
-- `MemoryStore` - In-memory storage
-- `IndexedDBStore` - Browser IndexedDB persistence
-- `BlossomStore` - Remote blossom server storage
-- `WebRTCStore` - P2P sync via WebRTC with Nostr signaling
-
-## Installation
-
-```bash
-npm install hashtree
-```
+- `MemoryStore` - In-memory
+- `DexieStore` - IndexedDB via Dexie (in `hashtree-dexie`)
+- `OpfsStore` - Origin Private File System
+- `BlossomStore` - Remote blossom server
+- `WebRTCStore` - P2P network (fetches from peers)
 
 ## Usage
 
@@ -46,85 +36,61 @@ const tree = new HashTree({ store, chunkSize: 1024 });
 
 // Store a file
 const data = new TextEncoder().encode('Hello, World!');
-const { hash, size } = await tree.putFile(data);
-console.log('File hash:', toHex(hash));
+const cid = await tree.put(data);
+console.log('Hash:', toHex(cid.hash));
 
 // Read it back
-const content = await tree.readFile(hash);
-console.log(new TextDecoder().decode(content));
+const content = await tree.get(cid);
 
 // Create a directory
-const dirHash = await tree.putDirectory([
-  { name: 'hello.txt', hash, size },
+const dirCid = await tree.putDirectory([
+  { name: 'hello.txt', hash: cid.hash, size: cid.size },
 ]);
 
 // List directory
-const entries = await tree.listDirectory(dirHash);
-console.log(entries);
-
-// Resolve path
-const fileHash = await tree.resolvePath(dirHash, 'hello.txt');
+const entries = await tree.listDirectory(dirCid.hash);
 ```
 
-### Streaming
+## Tree Nodes
+
+Every stored item is either raw bytes or a tree node. Tree nodes are MessagePack-encoded with a `type` field:
+
+- `Blob` (0) - Raw data chunk (not a tree node, just bytes)
+- `File` (1) - Chunked file: links are unnamed, ordered by byte offset
+- `Dir` (2) - Directory: links have names, may point to files or subdirs
+
+Wire format: `{t: LinkType, l: [{h: hash, s: size, n?: name, t: linkType, ...}], s?: totalSize}`
+
+## P2P Transport (WebRTC)
+
+The core library is transport-agnostic—any system that can fetch bytes by hash works. `WebRTCStore` is one implementation using WebRTC with Nostr signaling:
 
 ```typescript
-import { StreamBuilder } from 'hashtree';
+import { WebRTCStore } from 'hashtree';
 
-const stream = new StreamBuilder({ store, chunkSize: 1024 });
-
-await stream.append(new TextEncoder().encode('chunk 1'));
-await stream.append(new TextEncoder().encode('chunk 2'));
-
-const { hash, size } = await stream.finalize();
-```
-
-### Verification
-
-```typescript
-import { verifyTree } from 'hashtree';
-
-const { valid, missing } = await verifyTree(store, rootHash);
-if (!valid) {
-  console.log('Missing chunks:', missing.map(toHex));
-}
-```
-
-### BEP52 Binary Merkle Algorithm
-
-For BitTorrent v2 compatibility exploration, the builder supports a binary merkle algorithm using 16KB chunks and power-of-2 padded hash pairs:
-
-```typescript
-import { TreeBuilder, BEP52_CHUNK_SIZE } from 'hashtree';
-
-const builder = new TreeBuilder({
-  store,
-  chunkSize: BEP52_CHUNK_SIZE,  // 16KB
-  merkleAlgorithm: 'binary',    // BEP52-style hash pairs
+const store = new WebRTCStore({
+  signer,           // NIP-07 compatible
+  pubkey,
+  encrypt,          // NIP-04
+  decrypt,
+  localStore,       // Fallback store
+  relays: ['wss://relay.example.com'],
 });
 
-const { hash, size, leafHashes } = await builder.putFile(data);
+await store.start();
+const data = await store.get(hash);  // Fetches from peers
 ```
 
-Note: Binary mode computes root hashes only (no intermediate nodes stored). Use default mode for full tree traversal with TreeReader.
+**Request forwarding**: Peers forward requests they can't fulfill locally. HTL (Hops-To-Live, default 10) limits propagation depth. Uses Freenet-style probabilistic decrement—each peer randomly decides whether to decrement at HTL boundaries, making it harder to infer request origin.
 
 ## Development
 
 ```bash
-# Install dependencies
-npm install
-
-# Run tests
-npm test
-
-# Build
-npm run build
-
-# Run example app
-npm run dev:example
-
-# Run E2E tests
-npm run test:e2e
+npm install      # Install dependencies
+npm test         # Run tests
+npm run build    # Build
+npm run dev      # Dev server
+npm run test:e2e # E2E tests
 ```
 
 ## License

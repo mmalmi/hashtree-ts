@@ -131,8 +131,7 @@ test.describe('Directory upload features', () => {
     // We inject test data directly since we can't easily trigger webkitdirectory in tests
     const result = await page.evaluate(async () => {
       // Access the app's internal functions
-      const { getTree } = await import('/src/store.ts');
-      const { LinkType } = await import('hashtree');
+      const { getTree, LinkType } = await import('/src/store.ts');
       const tree = getTree();
 
       // Create a mock directory structure:

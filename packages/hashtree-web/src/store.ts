@@ -5,8 +5,12 @@ import { writable, get } from 'svelte/store';
 import {
   HashTree,
   WebRTCStore,
+  LinkType,
 } from 'hashtree';
 import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClassifier } from 'hashtree';
+
+// Re-export LinkType for e2e tests that can't import 'hashtree' directly
+export { LinkType };
 import { getSocialGraph, socialGraphStore } from './utils/socialGraph';
 import { settingsStore, DEFAULT_POOL_SETTINGS } from './stores/settings';
 import { DexieStore } from 'hashtree-dexie';

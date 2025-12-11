@@ -329,7 +329,7 @@
         const pathExists = await tree.resolvePath(rootCid, fullPath);
         if (!pathExists) {
           const { cid: emptyDirCid } = await tree.putDirectory([]);
-          rootCid = await tree.setEntry(rootCid, parentPath, dirName, emptyDirCid, 0, true);
+          rootCid = await tree.setEntry(rootCid, parentPath, dirName, emptyDirCid, 0, LinkType.Dir);
         }
       }
 
@@ -344,7 +344,7 @@
           const yjsContent = collaborators.join('\n') + '\n';
           const yjsData = new TextEncoder().encode(yjsContent);
           const { cid: yjsCid, size: yjsSize } = await tree.putFile(yjsData);
-          rootCid = await tree.setEntry(rootCid, currentPath, '.yjs', yjsCid, yjsSize, false);
+          rootCid = await tree.setEntry(rootCid, currentPath, '.yjs', yjsCid, yjsSize, LinkType.Blob);
         }
       }
 
@@ -353,7 +353,7 @@
       if (!deltasResult) {
         // Create deltas folder
         const { cid: emptyDirCid } = await tree.putDirectory([]);
-        rootCid = await tree.setEntry(rootCid, currentPath, 'deltas', emptyDirCid, 0, true);
+        rootCid = await tree.setEntry(rootCid, currentPath, 'deltas', emptyDirCid, 0, LinkType.Dir);
       }
 
       // Write the state snapshot file
@@ -364,7 +364,7 @@
         deltaName,
         deltaCid,
         deltaSize,
-        false
+        LinkType.Blob
       );
 
       // Publish update
