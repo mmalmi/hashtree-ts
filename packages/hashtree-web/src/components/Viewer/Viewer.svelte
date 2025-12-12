@@ -608,12 +608,20 @@
 </script>
 
 {#if urlFileName && isEditing}
-  <!-- Edit mode - show even if entry not found yet (newly created file) -->
-  <FileEditor
-    fileName={urlFileName}
-    initialContent={fileContent || ''}
-    onDone={exitEditMode}
-  />
+  <!-- Edit mode -->
+  {#if entryFromStore && loading}
+    <!-- Existing file still loading - show spinner -->
+    <div class="flex-1 flex items-center justify-center">
+      <span class="i-lucide-loader-2 animate-spin text-2xl text-text-3"></span>
+    </div>
+  {:else}
+    <!-- File loaded, or new file (no entry) -->
+    <FileEditor
+      fileName={urlFileName}
+      initialContent={fileContent || ''}
+      onDone={exitEditMode}
+    />
+  {/if}
 {:else if urlFileName && entryFromStore}
   <!-- File view - show content -->
   <div class="flex-1 flex flex-col min-h-0 bg-surface-0">
