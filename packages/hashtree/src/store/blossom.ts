@@ -38,22 +38,44 @@ export type BlossomSigner = (event: {
   tags: string[][];
 }) => Promise<BlossomAuthEvent>;
 
+/** Log entry for blossom operations */
+export interface BlossomLogEntry {
+  timestamp: number;
+  operation: 'get' | 'put' | 'has' | 'delete';
+  server: string;
+  hash: string;
+  success: boolean;
+  error?: string;
+  bytes?: number;
+}
+
+/** Logger callback for blossom operations */
+export type BlossomLogger = (entry: BlossomLogEntry) => void;
+
 export interface BlossomStoreConfig {
   /** Blossom servers to use */
   servers: (string | BlossomServer)[];
   /** Signer for write operations */
   signer?: BlossomSigner;
+  /** Optional logger for operations */
+  logger?: BlossomLogger;
 }
 
 export class BlossomStore implements StoreWithMeta {
   private servers: BlossomServer[];
   private signer?: BlossomSigner;
+  private logger?: BlossomLogger;
 
   constructor(config: BlossomStoreConfig) {
     this.servers = config.servers.map(s =>
       typeof s === 'string' ? { url: s, write: false } : s
     );
     this.signer = config.signer;
+    this.logger = config.logger;
+  }
+
+  private log(entry: Omit<BlossomLogEntry, 'timestamp'>) {
+    this.logger?.({ ...entry, timestamp: Date.now() });
   }
 
   /**
@@ -105,21 +127,32 @@ export class BlossomStore implements StoreWithMeta {
     // Upload to all write-enabled servers in parallel, succeed if any succeeds
     const results = await Promise.allSettled(
       writeServers.map(async (server) => {
-        const response = await fetch(`${server.url}/upload`, {
-          method: 'PUT',
-          headers: {
-            'Authorization': authHeader,
-            'Content-Type': contentType || 'application/octet-stream',
-            'X-SHA-256': hashHex,
-          },
-          body: new Blob([data.buffer as ArrayBuffer]),
-        });
+        try {
+          const response = await fetch(`${server.url}/upload`, {
+            method: 'PUT',
+            headers: {
+              'Authorization': authHeader,
+              'Content-Type': contentType || 'application/octet-stream',
+              'X-SHA-256': hashHex,
+            },
+            body: new Blob([data.buffer as ArrayBuffer]),
+          });
 
-        if (!response.ok && response.status !== 409) {
-          const text = await response.text();
-          throw new Error(`${server.url}: ${response.status} ${text}`);
+          if (!response.ok && response.status !== 409) {
+            const text = await response.text();
+            const error = `${response.status} ${text}`;
+            this.log({ operation: 'put', server: server.url, hash: hashHex, success: false, error });
+            throw new Error(`${server.url}: ${error}`);
+          }
+          this.log({ operation: 'put', server: server.url, hash: hashHex, success: true, bytes: data.length });
+          return response.status !== 409; // true if new, false if already existed
+        } catch (e) {
+          const error = e instanceof Error ? e.message : String(e);
+          if (!error.includes(server.url)) { // Don't double-log
+            this.log({ operation: 'put', server: server.url, hash: hashHex, success: false, error });
+          }
+          throw e;
         }
-        return response.status !== 409; // true if new, false if already existed
       })
     );
 
@@ -147,12 +180,15 @@ export class BlossomStore implements StoreWithMeta {
           // Verify hash
           const computed = await sha256(data);
           if (toHex(computed) === hashHex) {
+            this.log({ operation: 'get', server: server.url, hash: hashHex, success: true, bytes: data.length });
             return data;
           }
-          console.warn(`Hash mismatch from ${server.url}`);
+          this.log({ operation: 'get', server: server.url, hash: hashHex, success: false, error: 'Hash mismatch' });
+        } else {
+          this.log({ operation: 'get', server: server.url, hash: hashHex, success: false, error: `${response.status}` });
         }
-      } catch {
-        // Try next server
+      } catch (e) {
+        this.log({ operation: 'get', server: server.url, hash: hashHex, success: false, error: e instanceof Error ? e.message : 'Network error' });
         continue;
       }
     }
@@ -169,9 +205,12 @@ export class BlossomStore implements StoreWithMeta {
           method: 'HEAD',
         });
         if (response.ok) {
+          this.log({ operation: 'has', server: server.url, hash: hashHex, success: true });
           return true;
         }
-      } catch {
+        // Don't log 404s for 'has' - that's expected
+      } catch (e) {
+        this.log({ operation: 'has', server: server.url, hash: hashHex, success: false, error: e instanceof Error ? e.message : 'Network error' });
         continue;
       }
     }

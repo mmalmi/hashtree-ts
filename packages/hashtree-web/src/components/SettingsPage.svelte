@@ -10,6 +10,7 @@
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { syncedStorageStore, refreshSyncedStorage, type UserStorageStats } from '../stores/chunkMetadata';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS, DEFAULT_POOL_SETTINGS } from '../stores/settings';
+  import { blossomLogStore } from '../stores/blossomLog';
   import { BackButton } from './ui';
   import { UserRow } from './User';
 
@@ -48,6 +49,9 @@
   // Pool settings
   let poolSettings = $derived($settingsStore.pools);
   let editingPools = $state(false);
+
+  // Blossom log
+  let blossomLogs = $derived($blossomLogStore);
 
   function addRelay() {
     const url = newRelayUrl.trim();
@@ -334,6 +338,33 @@
         <button onclick={resetBlossomServers} class="btn-ghost mt-2 text-xs text-text-3">
           Reset to defaults
         </button>
+      {/if}
+
+      <!-- Blossom Log -->
+      {#if blossomLogs.length > 0}
+        <div class="mt-3">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-text-3">Recent activity</span>
+            <button onclick={() => blossomLogStore.clear()} class="btn-ghost text-xs text-text-3">Clear</button>
+          </div>
+          <div class="bg-surface-3 rounded text-xs font-mono max-h-32 overflow-y-auto p-2 space-y-1">
+            {#each blossomLogs as log}
+              {@const time = new Date(log.timestamp).toLocaleTimeString()}
+              {@const host = (() => { try { return new URL(log.server).hostname; } catch { return log.server; } })()}
+              <div class="flex items-center gap-2 {log.success ? 'text-success' : 'text-danger'}">
+                <span class="text-text-3 shrink-0">{time}</span>
+                <span class="shrink-0">{log.operation.toUpperCase()}</span>
+                <span class="text-text-2 truncate">{host}</span>
+                <span class="text-text-3 truncate flex-1">{log.hash.slice(0, 8)}...</span>
+                {#if log.success && log.bytes}
+                  <span class="text-text-3 shrink-0">{log.bytes}B</span>
+                {:else if log.error}
+                  <span class="truncate" title={log.error}>{log.error}</span>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
       {/if}
     </div>
 

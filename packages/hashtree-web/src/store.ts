@@ -13,6 +13,7 @@ import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClass
 export { LinkType };
 import { getSocialGraph, socialGraphStore } from './utils/socialGraph';
 import { settingsStore, DEFAULT_POOL_SETTINGS, DEFAULT_NETWORK_SETTINGS } from './stores/settings';
+import { blossomLogStore } from './stores/blossomLog';
 import { DexieStore } from 'hashtree-dexie';
 import { BlossomStore } from 'hashtree';
 
@@ -194,7 +195,11 @@ export function initWebRTC(
     pools: getPoolConfigFromSettings(),
     // Fallback to Blossom HTTP server when WebRTC peers don't have the data
     // Pass signer so writes can be authenticated (NIP-98)
-    fallbackStores: [new BlossomStore({ servers: blossomServers, signer: signer as BlossomSigner })],
+    fallbackStores: [new BlossomStore({
+      servers: blossomServers,
+      signer: signer as BlossomSigner,
+      logger: (entry) => blossomLogStore.add(entry),
+    })],
   });
 
   _tree = new HashTree({ store: webrtcStore, chunkSize: 1024 });
