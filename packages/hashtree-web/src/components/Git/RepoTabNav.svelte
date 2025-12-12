@@ -26,7 +26,7 @@
   {#each tabs as tab}
     <a
       href={getHref(tab)}
-      class="flex items-center gap-2 px-3 py-3 text-sm transition-colors b-b-2 b-b-solid -mb-px {
+      class="flex items-center gap-2 px-3 py-3 text-sm transition-colors b-b-2 b-b-solid -mb-px no-underline {
         activeTab === tab.id
           ? 'b-b-accent text-text-1 font-medium'
           : 'b-b-transparent text-text-2 hover:text-text-1 hover:b-b-surface-3'

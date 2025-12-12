@@ -88,7 +88,7 @@
         <td class="py-3 px-4 truncate max-w-md hidden sm:table-cell" title={latestCommit.message}>
           <a
             href={buildCommitHref(latestCommit.oid)}
-            class="text-text-2 hover:text-accent hover:underline"
+            class="text-text-2 hover:text-accent hover:underline no-underline"
             onclick={(e) => e.stopPropagation()}
           >
             {getCommitTitle(latestCommit.message)}
@@ -127,7 +127,7 @@
           {#if commitInfo}
             <a
               href={buildCommitHref(commitInfo.oid)}
-              class="text-muted hover:text-accent hover:underline"
+              class="text-muted hover:text-accent hover:underline no-underline"
               onclick={(e) => e.stopPropagation()}
             >
               {getCommitTitle(commitInfo.message)}
