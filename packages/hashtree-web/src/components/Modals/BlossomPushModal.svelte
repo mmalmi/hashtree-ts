@@ -7,7 +7,7 @@
   import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../../stores/settings';
   import { getTree } from '../../store';
   import { signEvent } from '../../nostr';
-  import { LinkType, toHex, BlossomStore, tryDecodeTreeNode } from 'hashtree';
+  import { LinkType, toHex, BlossomStore, cid as makeCid } from 'hashtree';
   import type { CID, BlossomSigner, Hash } from 'hashtree';
 
   interface PushResult {
@@ -77,31 +77,34 @@
   });
 
   // Recursively collect all blocks (hashes) in a merkle tree
+  // Uses tree.getTreeNode() which handles encrypted nodes
   // Returns list of missing hashes if any blocks couldn't be fetched
   async function collectBlocks(
-    hash: Hash,
+    id: CID,
     blocks: Map<string, { hash: Hash; data: Uint8Array }>,
     missing: string[] = []
   ): Promise<string[]> {
-    const hex = toHex(hash);
+    const hex = toHex(id.hash);
     if (blocks.has(hex)) return missing; // Already collected
 
     const tree = getTree();
     const store = tree.getStore();
     // store.get() will try WebRTC peers if not local
-    const data = await store.get(hash);
+    const data = await store.get(id.hash);
     if (!data) {
       missing.push(hex);
       return missing; // Can't traverse children if parent missing
     }
 
-    blocks.set(hex, { hash, data });
+    blocks.set(hex, { hash: id.hash, data });
 
-    // Check if this is a tree node (has children to traverse)
-    const node = tryDecodeTreeNode(data);
+    // Use tree.getTreeNode() which handles encrypted nodes
+    const node = await tree.getTreeNode(id);
     if (node) {
       for (const link of node.links) {
-        await collectBlocks(link.hash, blocks, missing);
+        // Build CID for child - link may have its own key
+        const childCid = makeCid(link.hash, link.key);
+        await collectBlocks(childCid, blocks, missing);
       }
     }
     return missing;
@@ -139,10 +142,10 @@
       signer: createBlossomSigner(),
     });
 
-    // Collect all blocks in the merkle tree
+    // Collect all blocks in the merkle tree (handles encrypted nodes)
     currentFile = 'Collecting blocks...';
     const blocks = new Map<string, { hash: Hash; data: Uint8Array }>();
-    const missingBlocks = await collectBlocks(target.cid.hash, blocks);
+    const missingBlocks = await collectBlocks(target.cid, blocks);
 
     const blockList = Array.from(blocks.values());
     progress = { current: 0, total: blockList.length + missingBlocks.length };
