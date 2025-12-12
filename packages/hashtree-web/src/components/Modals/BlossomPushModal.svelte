@@ -1,13 +1,14 @@
 <script lang="ts">
   /**
    * BlossomPushModal - Push directory/file contents to Blossom servers
+   * Uses BlossomStore from hashtree for uploads with proper auth and backoff
    */
   import { modalsStore, closeBlossomPushModal } from '../../stores/modals';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../../stores/settings';
   import { getTree } from '../../store';
   import { signEvent } from '../../nostr';
-  import { LinkType, toHex, sha256 } from 'hashtree';
-  import type { CID, Hash } from 'hashtree';
+  import { LinkType, toHex, BlossomStore } from 'hashtree';
+  import type { CID, BlossomSigner } from 'hashtree';
 
   interface PushResult {
     hash: string;
@@ -94,64 +95,17 @@
     }
   }
 
-  // Create auth header for Blossom upload
-  async function createAuthHeader(hash: Hash): Promise<string> {
-    const hashHex = toHex(hash);
-    const expiration = Math.floor(Date.now() / 1000) + 300; // 5 min
-
-    const tags: string[][] = [
-      ['t', 'upload'],
-      ['x', hashHex],
-      ['expiration', expiration.toString()],
-    ];
-
-    const event = await signEvent({
-      kind: 24242,
-      created_at: Math.floor(Date.now() / 1000),
-      content: `upload ${hashHex}`,
-      tags,
-      pubkey: '', // Will be filled by signEvent
-      id: '',
-      sig: '',
-    });
-
-    return `Nostr ${btoa(JSON.stringify(event))}`;
-  }
-
-  // Push a single file to a server
-  async function pushFile(
-    data: Uint8Array,
-    hash: Hash,
-    serverUrl: string
-  ): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
-    try {
-      const authHeader = await createAuthHeader(hash);
-      const hashHex = toHex(hash);
-
-      const response = await fetch(`${serverUrl}/upload`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/octet-stream',
-          'X-SHA-256': hashHex,
-        },
-        body: new Blob([data.buffer as ArrayBuffer]),
+  // Create BlossomSigner adapter from nostr signEvent
+  function createBlossomSigner(): BlossomSigner {
+    return async (event) => {
+      const signed = await signEvent({
+        ...event,
+        pubkey: '',
+        id: '',
+        sig: '',
       });
-
-      if (response.status === 409) {
-        // Already exists
-        return { success: true, skipped: true };
-      }
-
-      if (!response.ok) {
-        const text = await response.text();
-        return { success: false, error: `${response.status}: ${text}` };
-      }
-
-      return { success: true };
-    } catch (e) {
-      return { success: false, error: e instanceof Error ? e.message : String(e) };
-    }
+      return signed;
+    };
   }
 
   async function startPush() {
@@ -167,6 +121,12 @@
     cancelled = false;
     results = [];
     const tree = getTree();
+
+    // Create BlossomStore with only the selected servers
+    const blossomStore = new BlossomStore({
+      servers: selectedServers.map(s => ({ url: s.url, write: true })),
+      signer: createBlossomSigner(),
+    });
 
     // Collect files
     const files: Array<{ cid: CID; path: string; size: number }> = [];
@@ -189,7 +149,7 @@
       status: 'pending',
     }));
 
-    // Push each file
+    // Push each file using BlossomStore
     for (let i = 0; i < files.length; i++) {
       if (cancelled) break;
 
@@ -207,41 +167,19 @@
         continue;
       }
 
-      // Verify hash
-      const computed = await sha256(data);
-      if (toHex(computed) !== toHex(file.cid.hash)) {
-        results[resultIdx] = { ...results[resultIdx], status: 'error', error: 'Hash mismatch' };
-        progress = { ...progress, current: i + 1 };
-        continue;
-      }
-
-      // Push to each selected server
-      let anySuccess = false;
-      let anySkipped = false;
-      let lastError = '';
-
-      for (const server of selectedServers) {
-        if (cancelled) break;
-        const result = await pushFile(data, file.cid.hash, server.url);
-        if (result.success) {
-          anySuccess = true;
-          if (result.skipped) anySkipped = true;
-        } else if (result.error) {
-          lastError = result.error;
-        }
-      }
-
-      if (anySuccess) {
+      // Use BlossomStore.put() - handles auth, hash verification, parallel uploads
+      try {
+        const isNew = await blossomStore.put(file.cid.hash, data);
         results[resultIdx] = {
           ...results[resultIdx],
-          status: anySkipped ? 'skipped' : 'success',
+          status: isNew ? 'success' : 'skipped',
           size: data.length,
         };
-      } else {
+      } catch (e) {
         results[resultIdx] = {
           ...results[resultIdx],
           status: 'error',
-          error: lastError || 'Unknown error',
+          error: e instanceof Error ? e.message : String(e),
         };
       }
 
