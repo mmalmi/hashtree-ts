@@ -24,6 +24,7 @@
   import IssuesView from './Git/IssuesView.svelte';
   import PullRequestDetailView from './Git/PullRequestDetailView.svelte';
   import IssueDetailView from './Git/IssueDetailView.svelte';
+  import CommitView from './Git/CommitView.svelte';
 
   // Route definitions with patterns
   // Note: More specific routes must come before less specific ones
@@ -58,6 +59,14 @@
     return null;
   }
 
+  // Check for ?commit=<hash> query param (commit view)
+  function parseCommitQuery(fullHash: string): string | null {
+    const qIdx = fullHash.indexOf('?');
+    if (qIdx === -1) return null;
+    const params = new URLSearchParams(fullHash.slice(qIdx + 1));
+    return params.get('commit');
+  }
+
   interface Props {
     currentPath: string;
   }
@@ -69,6 +78,9 @@
 
   // Check for NIP-34 tab query param (?tab=pulls or ?tab=issues) and optional id
   let nip34Query = $derived(parseNip34Query(fullHash));
+
+  // Check for commit query param (?commit=<hash>)
+  let commitHash = $derived(parseCommitQuery(fullHash));
 
   // Find matching route
   function findRoute(path: string) {
@@ -95,7 +107,9 @@
 </script>
 
 <div class="flex-1 flex flex-col lg:flex-row min-h-0">
-  {#if nip34Query?.tab === 'pulls' && nip34Query.id && route.params.npub && route.params.treeName}
+  {#if commitHash && route.params.npub && route.params.treeName}
+    <CommitView npub={route.params.npub} repoName={nip34RepoPath || route.params.treeName} {commitHash} />
+  {:else if nip34Query?.tab === 'pulls' && nip34Query.id && route.params.npub && route.params.treeName}
     <PullRequestDetailView npub={route.params.npub} repoName={nip34RepoPath} prId={nip34Query.id} />
   {:else if nip34Query?.tab === 'issues' && nip34Query.id && route.params.npub && route.params.treeName}
     <IssueDetailView npub={route.params.npub} repoName={nip34RepoPath} issueId={nip34Query.id} />

@@ -140,6 +140,15 @@
     return '#/' + parts.map(encodeURIComponent).join('/') + suffix;
   }
 
+  function buildCommitHref(commitOid: string): string {
+    const parts: string[] = [];
+    if (route.npub && route.treeName) {
+      parts.push(route.npub, route.treeName, ...currentPath);
+    }
+    const basePath = '#/' + parts.map(encodeURIComponent).join('/');
+    return `${basePath}?commit=${commitOid}`;
+  }
+
   function handleBranchSelect(branch: string) {
     // TODO: Implement branch checkout
     console.log('Switch to branch:', branch);
@@ -324,7 +333,7 @@
   <!-- Directory listing table - GitHub style -->
   <div class="b-1 b-surface-3 b-solid rounded-lg overflow-hidden bg-surface-0">
     <!-- File table with commit info header -->
-    <FileTable {entries} {fileCommits} {buildEntryHref} {latestCommit} {commitsLoading} />
+    <FileTable {entries} {fileCommits} {buildEntryHref} {buildCommitHref} {latestCommit} {commitsLoading} />
   </div>
 
   <!-- README.md panel -->

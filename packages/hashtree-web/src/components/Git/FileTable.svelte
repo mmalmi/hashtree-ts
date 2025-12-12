@@ -9,11 +9,12 @@
     entries: TreeEntry[];
     fileCommits: Map<string, { oid: string; message: string; timestamp: number }>;
     buildEntryHref: (entry: TreeEntry) => string;
+    buildCommitHref: (commitOid: string) => string;
     latestCommit?: CommitInfo | null;
     commitsLoading?: boolean;
   }
 
-  let { entries, fileCommits, buildEntryHref, latestCommit = null, commitsLoading = false }: Props = $props();
+  let { entries, fileCommits, buildEntryHref, buildCommitHref, latestCommit = null, commitsLoading = false }: Props = $props();
 
   // Sort entries: directories first, then files, alphabetically
   let sortedEntries = $derived([...entries].sort((a, b) => {
@@ -84,8 +85,14 @@
         <td class="py-3 px-4 text-text-1 font-medium whitespace-nowrap">
           {latestCommit.author}
         </td>
-        <td class="py-3 px-4 text-text-2 truncate max-w-md hidden sm:table-cell" title={latestCommit.message}>
-          {getCommitTitle(latestCommit.message)}
+        <td class="py-3 px-4 truncate max-w-md hidden sm:table-cell" title={latestCommit.message}>
+          <a
+            href={buildCommitHref(latestCommit.oid)}
+            class="text-text-2 hover:text-accent hover:underline"
+            onclick={(e) => e.stopPropagation()}
+          >
+            {getCommitTitle(latestCommit.message)}
+          </a>
         </td>
         <td class="py-3 px-4 text-right text-text-3 whitespace-nowrap">
           {formatRelativeTime(latestCommit.timestamp)}
@@ -116,8 +123,16 @@
         <td class="py-2 px-3 {isGitDir ? 'text-text-3' : 'text-accent'} whitespace-nowrap">
           {entry.name}
         </td>
-        <td class="py-2 px-3 text-muted truncate max-w-xs hidden md:table-cell" title={commitInfo?.message}>
-          {commitInfo ? getCommitTitle(commitInfo.message) : ''}
+        <td class="py-2 px-3 truncate max-w-xs hidden md:table-cell" title={commitInfo?.message}>
+          {#if commitInfo}
+            <a
+              href={buildCommitHref(commitInfo.oid)}
+              class="text-muted hover:text-accent hover:underline"
+              onclick={(e) => e.stopPropagation()}
+            >
+              {getCommitTitle(commitInfo.message)}
+            </a>
+          {/if}
         </td>
         <td class="py-2 px-3 text-right text-muted whitespace-nowrap w-24">
           {commitInfo ? formatRelativeTime(commitInfo.timestamp) : ''}
