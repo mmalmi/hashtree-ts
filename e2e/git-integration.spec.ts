@@ -729,6 +729,139 @@ test.describe('Git integration features', () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
+  test('git directory listing should show last commit info for files', { timeout: 60000 }, async ({ page }) => {
+    setupPageErrorHandler(page);
+
+    // Capture console logs for debugging
+    const logs: string[] = [];
+    page.on('console', msg => {
+      if (msg.text().includes('[wasm-git]') || msg.text().includes('fileCommits')) {
+        logs.push(msg.text());
+      }
+    });
+
+    await page.goto('/');
+    await navigateToPublicFolder(page);
+
+    // Create a real git repo with commits using CLI
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { execSync } = await import('child_process');
+    const os = await import('os');
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-file-commits-'));
+
+    try {
+      // Initialize git repo and create commits
+      execSync('git init', { cwd: tmpDir });
+      execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+      execSync('git config user.name "Test User"', { cwd: tmpDir });
+
+      // Create first commit with README
+      await fs.writeFile(path.join(tmpDir, 'README.md'), '# Test Repo\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Add README"', { cwd: tmpDir });
+
+      // Create second commit with src directory
+      await fs.mkdir(path.join(tmpDir, 'src'));
+      await fs.writeFile(path.join(tmpDir, 'src', 'index.ts'), 'export const x = 1;\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Add src directory"', { cwd: tmpDir });
+
+      // Read all files and directories
+      interface FileEntry { type: 'file'; path: string; content: number[]; }
+      interface DirEntry { type: 'dir'; path: string; }
+      type Entry = FileEntry | DirEntry;
+
+      const getAllEntries = async (dir: string, base = ''): Promise<Entry[]> => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const result: Entry[] = [];
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          const relativePath = base ? `${base}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            result.push({ type: 'dir', path: relativePath });
+            result.push(...await getAllEntries(fullPath, relativePath));
+          } else {
+            const content = await fs.readFile(fullPath);
+            result.push({ type: 'file', path: relativePath, content: Array.from(content) });
+          }
+        }
+        return result;
+      };
+
+      const allEntries = await getAllEntries(tmpDir);
+      const allFiles = allEntries.filter((e): e is FileEntry => e.type === 'file');
+      const allDirs = allEntries.filter((e): e is DirEntry => e.type === 'dir').map(d => d.path);
+
+      // Upload and test getFileLastCommits
+      const result = await page.evaluate(async ({ files, dirs }) => {
+        const { getTree, LinkType } = await import('/src/store.ts');
+        const tree = getTree();
+
+        // Create root directory and upload all files
+        let { cid: rootCid } = await tree.putDirectory([]);
+
+        // Create directories
+        const dirPaths = new Set<string>(dirs);
+        for (const file of files) {
+          const parts = file.path.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            dirPaths.add(parts.slice(0, i).join('/'));
+          }
+        }
+        const sortedDirs = Array.from(dirPaths).sort((a, b) =>
+          a.split('/').length - b.split('/').length
+        );
+
+        for (const dir of sortedDirs) {
+          const parts = dir.split('/');
+          const name = parts.pop()!;
+          const { cid: emptyDir } = await tree.putDirectory([]);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, LinkType.Dir);
+        }
+
+        // Add files
+        for (const file of files) {
+          const parts = file.path.split('/');
+          const name = parts.pop()!;
+          const data = new Uint8Array(file.content);
+          const { cid: fileCid, size } = await tree.putFile(data);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, LinkType.Blob);
+        }
+
+        // List root directory entries
+        const entries = await tree.listDirectory(rootCid);
+        const entryNames = entries.map(e => e.name);
+
+        // Test getFileLastCommits
+        const { getFileLastCommits } = await import('/src/utils/git.ts');
+        const fileCommits = await getFileLastCommits(rootCid, entryNames);
+
+        return {
+          entryNames,
+          fileCommitsSize: fileCommits.size,
+          fileCommitsKeys: Array.from(fileCommits.keys()),
+          readmeCommit: fileCommits.get('README.md'),
+          srcCommit: fileCommits.get('src'),
+        };
+      }, { files: allFiles, dirs: allDirs });
+
+      console.log('File commits result:', JSON.stringify(result, null, 2));
+      console.log('Console logs:', logs);
+
+      // Verify we got commit info for files and directories
+      expect(result.fileCommitsSize).toBeGreaterThan(0);
+      expect(result.fileCommitsKeys).toContain('README.md');
+      expect(result.fileCommitsKeys).toContain('src'); // Directory should also have commit info
+      expect(result.readmeCommit?.message).toContain('Add README');
+      expect(result.srcCommit?.message).toContain('Add src');
+
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   test('git init button should initialize a git repo in a directory', { timeout: 60000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');

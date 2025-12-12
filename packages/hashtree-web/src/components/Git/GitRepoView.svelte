@@ -44,10 +44,14 @@
   $effect(() => {
     const filenames = entries.map(e => e.name);
     let cancelled = false;
+    console.log('[GitRepoView] Loading file commits for:', filenames);
     getFileLastCommits(dirCid, filenames).then(result => {
       if (!cancelled) {
+        console.log('[GitRepoView] Got file commits:', result.size, 'entries');
         fileCommits = result;
       }
+    }).catch(err => {
+      console.error('[GitRepoView] Failed to load file commits:', err);
     });
     return () => { cancelled = true; };
   });
