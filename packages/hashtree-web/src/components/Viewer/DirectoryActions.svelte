@@ -180,7 +180,7 @@
       icon="i-lucide-folder-open text-warning"
       name={currentDirName}
     />
-    <div class="flex-1 overflow-auto p-3">
+    <div class="flex-1 overflow-auto">
       <GitRepoView
         dirCid={currentDirCid}
         {entries}

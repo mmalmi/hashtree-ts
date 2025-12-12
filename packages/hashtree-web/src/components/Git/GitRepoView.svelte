@@ -13,6 +13,7 @@
   import BranchDropdown from './BranchDropdown.svelte';
   import FileTable from './FileTable.svelte';
   import type { GitStatusResult } from '../../utils/wasmGit';
+  import type { CommitInfo } from '../../stores/git';
 
   interface Props {
     dirCid: CID;
@@ -29,8 +30,12 @@
 
   // Create git log store
   let gitLogStore = $derived(createGitLogStore(dirCid, 1000));
-  let commits = $state<Array<{ oid: string; message: string }>>([]);
+  let commits = $state<CommitInfo[]>([]);
   let headOid = $state<string | null>(null);
+  let commitsLoading = $state(true);
+
+  // Latest commit for the header row
+  let latestCommit = $derived(commits.length > 0 ? commits[0] : null);
 
   // File last commit info (GitHub-style)
   let fileCommits = $state<Map<string, { oid: string; message: string; timestamp: number }>>(new Map());
@@ -40,6 +45,7 @@
     const unsub = store.subscribe(value => {
       commits = value.commits;
       headOid = value.headOid;
+      commitsLoading = value.loading;
     });
     return unsub;
   });
@@ -240,74 +246,85 @@
   }
 </script>
 
-<div class="flex flex-col gap-4">
-  <!-- Tab navigation for Code/PRs/Issues - show for any git repo (not just tree root) -->
-  {#if route.npub && route.treeName}
-    {@const repoPath = currentPath.length > 0 ? `${route.treeName}/${currentPath.join('/')}` : route.treeName}
-    <RepoTabNav npub={route.npub} repoName={repoPath} activeTab="code" />
-  {/if}
+<!-- Tab navigation for Code/PRs/Issues - show for any git repo (not just tree root) -->
+{#if route.npub && route.treeName}
+  {@const repoPath = currentPath.length > 0 ? `${route.treeName}/${currentPath.join('/')}` : route.treeName}
+  <RepoTabNav npub={route.npub} repoName={repoPath} activeTab="code" />
+{/if}
 
+<div class="flex flex-col gap-4 p-3">
   <!-- Folder actions -->
   <FolderActions {dirCid} {canEdit} />
 
+  <!-- Branch selector row (above table, like GitHub) -->
+  <div class="flex flex-wrap items-center gap-3 text-sm">
+    <!-- Branch dropdown -->
+    <BranchDropdown
+      {branches}
+      {currentBranch}
+      {branchDisplay}
+      {canEdit}
+      {dirCid}
+      onBranchSelect={handleBranchSelect}
+    />
+
+    <!-- Branch count -->
+    <span class="flex items-center gap-1.5 text-sm text-text-2">
+      <span class="i-lucide-git-branch text-text-3"></span>
+      <span>{branches.length} branch{branches.length !== 1 ? 'es' : ''}</span>
+    </span>
+
+    <!-- Git status indicator and commit button -->
+    {#if canEdit}
+      {#if statusLoading}
+        <span class="text-text-3 text-xs flex items-center gap-1">
+          <span class="i-lucide-loader-2 animate-spin"></span>
+        </span>
+      {:else if totalChanges > 0}
+        <button
+          onclick={() => openGitCommitModal(dirCid, handleCommit)}
+          class="btn-ghost flex items-center gap-1 px-2 h-8 text-sm"
+          title="{totalChanges} uncommitted change{totalChanges !== 1 ? 's' : ''}"
+        >
+          <span class="i-lucide-git-commit text-warning"></span>
+          <span class="text-warning">{totalChanges}</span>
+          <span class="hidden sm:inline">uncommitted</span>
+        </button>
+      {:else}
+        <span class="text-text-3 text-xs flex items-center gap-1" title="No uncommitted changes">
+          <span class="i-lucide-check-circle text-success"></span>
+          <span class="hidden sm:inline">clean</span>
+        </span>
+      {/if}
+    {/if}
+
+    <!-- Spacer -->
+    <div class="flex-1"></div>
+
+    <!-- Shell button -->
+    <button
+      onclick={() => openGitShellModal(dirCid, canEdit, canEdit ? handleGitChange : undefined)}
+      class="btn-ghost flex items-center gap-1 px-2 h-8 text-sm"
+      title="Git Shell"
+    >
+      <span class="i-lucide-terminal"></span>
+      <span class="hidden sm:inline">Shell</span>
+    </button>
+
+    <!-- Commits count (clickable) -->
+    <button
+      onclick={() => openGitHistoryModal(dirCid, canEdit, canEdit ? handleCheckout : undefined)}
+      class="flex items-center gap-1.5 text-sm text-text-2 hover:text-accent bg-transparent b-0 cursor-pointer"
+    >
+      <span class="i-lucide-history text-text-3"></span>
+      <span>{commits.length > 0 ? `${commits.length} commits` : 'Commits'}</span>
+    </button>
+  </div>
+
   <!-- Directory listing table - GitHub style -->
   <div class="b-1 b-surface-3 b-solid rounded-lg overflow-hidden bg-surface-0">
-    <!-- Branch info header row -->
-    <div class="flex items-center gap-3 px-3 py-2 bg-surface-1 b-b-1 b-b-solid b-b-surface-3 text-sm">
-      <!-- Branch dropdown -->
-      <BranchDropdown
-        {branches}
-        {currentBranch}
-        {branchDisplay}
-        {canEdit}
-        {dirCid}
-        onBranchSelect={handleBranchSelect}
-      />
-
-      <!-- Git status indicator and commit button -->
-      {#if canEdit}
-        {#if statusLoading}
-          <span class="text-text-3 text-xs flex items-center gap-1">
-            <span class="i-lucide-loader-2 animate-spin"></span>
-          </span>
-        {:else if totalChanges > 0}
-          <button
-            onclick={() => openGitCommitModal(dirCid, handleCommit)}
-            class="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
-            title="{totalChanges} uncommitted change{totalChanges !== 1 ? 's' : ''}"
-          >
-            <span class="i-lucide-git-commit text-warning"></span>
-            <span class="text-warning">{totalChanges}</span>
-            <span class="hidden sm:inline">uncommitted</span>
-          </button>
-        {:else}
-          <span class="text-text-3 text-xs flex items-center gap-1" title="No uncommitted changes">
-            <span class="i-lucide-check-circle text-success"></span>
-            <span class="hidden sm:inline">clean</span>
-          </span>
-        {/if}
-      {/if}
-
-      <button
-        onclick={() => openGitShellModal(dirCid, canEdit, canEdit ? handleGitChange : undefined)}
-        class="ml-auto btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
-        title="Git Shell"
-      >
-        <span class="i-lucide-terminal"></span>
-        Shell
-      </button>
-
-      <button
-        onclick={() => openGitHistoryModal(dirCid, canEdit, canEdit ? handleCheckout : undefined)}
-        class="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
-      >
-        <span class="i-lucide-history"></span>
-        {commits.length > 0 ? `${commits.length} commits` : 'Commits'}
-      </button>
-    </div>
-
-    <!-- File table -->
-    <FileTable {entries} {fileCommits} {buildEntryHref} />
+    <!-- File table with commit info header -->
+    <FileTable {entries} {fileCommits} {buildEntryHref} {latestCommit} {commitsLoading} />
   </div>
 
   <!-- README.md panel -->

@@ -3,7 +3,7 @@
    * PullRequestsView - Lists pull requests for a repository using NIP-34
    * Layout matches TreeRoute: FileBrowser on left, content on right
    */
-  import { createPullRequestsStore, filterByStatus, countByStatus, openNewPullRequestModal } from '../../stores';
+  import { createPullRequestsStore, filterByStatus, countByStatus, openNewPullRequestModal, routeStore, treeRootStore, createTreesStore } from '../../stores';
   import { nostrStore } from '../../nostr';
   import { encodeEventId, type PullRequest, type ItemStatus } from '../../nip34';
   import ItemStatusBadge from './ItemStatusBadge.svelte';
@@ -11,6 +11,7 @@
   import RepoTabNav from './RepoTabNav.svelte';
   import AuthorName from './AuthorName.svelte';
   import FileBrowser from '../FileBrowser.svelte';
+  import ViewerHeader from '../Viewer/ViewerHeader.svelte';
 
   interface Props {
     npub: string;
@@ -18,6 +19,39 @@
   }
 
   let { npub, repoName }: Props = $props();
+
+  let route = $derived($routeStore);
+  let rootCid = $derived($treeRootStore);
+  let currentPath = $derived(route.path);
+
+  // Get tree visibility info
+  let treesStore = $derived(createTreesStore(npub));
+  let trees = $state<Array<{ name: string; visibility?: string }>>([]);
+
+  $effect(() => {
+    const store = treesStore;
+    const unsub = store.subscribe(value => {
+      trees = value;
+    });
+    return unsub;
+  });
+
+  // Extract the base tree name from repoName (which may include subdir path)
+  let baseTreeName = $derived(repoName.split('/')[0]);
+  let currentTree = $derived(trees.find(t => t.name === baseTreeName));
+
+  // Build back URL (to code tab at same location)
+  let backUrl = $derived.by(() => {
+    const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+    if (currentPath.length > 0) {
+      // In a subdirectory - link to that directory
+      return `#/${npub}/${route.treeName}/${currentPath.join('/')}${linkKeySuffix}`;
+    }
+    return `#/${npub}/${route.treeName}${linkKeySuffix}`;
+  });
+
+  // Get current directory name for header
+  let currentDirName = $derived(currentPath.length > 0 ? currentPath[currentPath.length - 1] : baseTreeName);
 
   // Create store for this repo's PRs
   let prStore = $derived(createPullRequestsStore(npub, repoName));
@@ -74,6 +108,16 @@
 
 <!-- Right panel with PRs -->
 <div class="hidden lg:flex flex-1 flex-col min-w-0 min-h-0 bg-surface-0">
+  <!-- Header with back button, avatar, visibility, folder name -->
+  <ViewerHeader
+    {backUrl}
+    {npub}
+    {rootCid}
+    visibility={currentTree?.visibility}
+    icon="i-lucide-folder-open text-warning"
+    name={currentDirName}
+  />
+
   <!-- Tab navigation -->
   <RepoTabNav {npub} {repoName} activeTab="pulls" />
 

@@ -3,14 +3,17 @@
    * FileTable - GitHub-style file listing with commit info
    */
   import { LinkType, type TreeEntry } from 'hashtree';
+  import type { CommitInfo } from '../../stores/git';
 
   interface Props {
     entries: TreeEntry[];
     fileCommits: Map<string, { oid: string; message: string; timestamp: number }>;
     buildEntryHref: (entry: TreeEntry) => string;
+    latestCommit?: CommitInfo | null;
+    commitsLoading?: boolean;
   }
 
-  let { entries, fileCommits, buildEntryHref }: Props = $props();
+  let { entries, fileCommits, buildEntryHref, latestCommit = null, commitsLoading = false }: Props = $props();
 
   // Sort entries: directories first, then files, alphabetically
   let sortedEntries = $derived([...entries].sort((a, b) => {
@@ -62,6 +65,42 @@
 </script>
 
 <table class="w-full text-sm border-collapse">
+  <!-- Commit info header row - always shown -->
+  <thead>
+    <tr class="bg-surface-1 b-b-1 b-b-solid b-b-surface-3">
+      {#if commitsLoading}
+        <!-- Loading state -->
+        <td class="py-3 px-4 w-10">
+          <span class="i-lucide-loader-2 animate-spin text-text-3"></span>
+        </td>
+        <td class="py-3 px-4 text-text-3" colspan="3">
+          Loading commit info...
+        </td>
+      {:else if latestCommit}
+        <!-- Commit info -->
+        <td class="py-3 px-4 w-10">
+          <span class="i-lucide-user-circle text-text-3"></span>
+        </td>
+        <td class="py-3 px-4 text-text-1 font-medium whitespace-nowrap">
+          {latestCommit.author}
+        </td>
+        <td class="py-3 px-4 text-text-2 truncate max-w-md hidden sm:table-cell" title={latestCommit.message}>
+          {getCommitTitle(latestCommit.message)}
+        </td>
+        <td class="py-3 px-4 text-right text-text-3 whitespace-nowrap">
+          {formatRelativeTime(latestCommit.timestamp)}
+        </td>
+      {:else}
+        <!-- No commits yet -->
+        <td class="py-3 px-4 w-10">
+          <span class="i-lucide-git-commit text-text-3"></span>
+        </td>
+        <td class="py-3 px-4 text-text-3" colspan="3">
+          No commits yet
+        </td>
+      {/if}
+    </tr>
+  </thead>
   <tbody>
     {#each sortedEntries as entry}
       {@const isGitDir = entry.name === '.git'}
