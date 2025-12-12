@@ -11,6 +11,7 @@
   import { nostrStore, autosaveIfOwn } from '../nostr';
   import { getTree } from '../store';
   import { createZipFromDirectory, downloadBlob } from '../utils/compression';
+  import { setUploadProgress } from '../stores/upload';
   import { readFilesFromWebkitDirectory, supportsDirectoryUpload } from '../utils/directory';
   import { routeStore, createTreesStore } from '../stores';
   import { isGitRepo, initGitRepo } from '../utils/git';
@@ -178,11 +179,20 @@
     isDownloading = true;
     try {
       const tree = getTree();
-      const zipData = await createZipFromDirectory(tree, dirCid, forkBaseName);
+      const zipData = await createZipFromDirectory(tree, dirCid, forkBaseName, (progress) => {
+        setUploadProgress({
+          current: progress.current,
+          total: progress.total,
+          fileName: progress.fileName,
+          status: 'zipping',
+        });
+      });
+      setUploadProgress(null);
       const zipName = `${forkBaseName}.zip`;
       downloadBlob(zipData, zipName, 'application/zip');
     } catch (err) {
       console.error('Failed to create ZIP:', err);
+      setUploadProgress(null);
       alert('Failed to create ZIP file');
     } finally {
       isDownloading = false;

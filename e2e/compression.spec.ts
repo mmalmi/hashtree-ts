@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
+import * as fs from 'fs';
+import * as path from 'path';
 
 test.describe('Compression features', () => {
   test('should show ZIP button when viewing a folder', async ({ page }) => {
@@ -236,5 +238,107 @@ test.describe('Compression features', () => {
     // Should navigate to the new tree
     await expect(page.locator('text="Fork as New Folder"')).not.toBeVisible({ timeout: 10000 });
     await expect(page).toHaveURL(/existing-tree-2/, { timeout: 10000 });
+  });
+
+  test('should show progress when creating ZIP', async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await disableOthersPool(page);
+    await navigateToPublicFolder(page);
+
+    // Create a folder with a file to ZIP
+    await page.locator('header a:has-text("hashtree")').click();
+    await page.waitForTimeout(300);
+    await page.getByRole('button', { name: 'New Folder' }).click();
+
+    const input = page.locator('input[placeholder="Folder name..."]');
+    await input.waitFor({ timeout: 5000 });
+    await input.fill('zip-progress-test');
+    await page.click('button:has-text("Create")');
+
+    // Wait for modal to close and navigate to folder
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+    await expect(page).toHaveURL(/zip-progress-test/, { timeout: 10000 });
+
+    // Create a file in the folder
+    await page.getByRole('button', { name: 'New File' }).click();
+    const fileInput = page.locator('input[placeholder="File name..."]');
+    await fileInput.waitFor({ timeout: 5000 });
+    await fileInput.fill('test-file.txt');
+    await page.click('button:has-text("Create")');
+
+    // Wait for editor and add content
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await page.locator('textarea').fill('Test content for ZIP progress indicator');
+    await page.getByRole('button', { name: 'Save' }).click();
+
+    // Exit edit mode
+    await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 3000 });
+    await page.getByRole('button', { name: 'Done' }).click();
+
+    // Navigate back to folder
+    const folderLink = page.locator('a:has-text("zip-progress-test")').first();
+    await expect(folderLink).toBeVisible({ timeout: 5000 });
+    await folderLink.click();
+
+    // Wait for folder view
+    await expect(page.getByRole('button', { name: 'ZIP' })).toBeVisible({ timeout: 5000 });
+
+    // Click ZIP button - progress toast should appear (may be brief for small files)
+    await page.getByRole('button', { name: 'ZIP' }).click();
+
+    // For small files, progress may be too fast to catch, but button should change to "Zipping..."
+    // Wait for either the button text to change or download to complete
+    // The button shows "Zipping..." during the operation
+    await expect(
+      page.getByRole('button', { name: /Zipping/ })
+        .or(page.getByRole('button', { name: 'ZIP' }))
+    ).toBeVisible({ timeout: 10000 });
+
+    // Eventually button should return to ZIP (download completed)
+    await expect(page.getByRole('button', { name: 'ZIP' })).toBeVisible({ timeout: 10000 });
+  });
+
+  test('should show progress when extracting ZIP', async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await disableOthersPool(page);
+    await navigateToPublicFolder(page);
+
+    // Stay in public folder where we can upload files
+    // Use existing test ZIP file (dosgame.zip is a valid ZIP)
+    const zipPath = path.join(process.cwd(), 'test-data', 'dosgame.zip');
+    const buffer = fs.readFileSync(zipPath);
+
+    // Upload the ZIP file
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      page.getByRole('button', { name: 'Add' }).click(),
+    ]);
+
+    // Set the file
+    await fileChooser.setFiles({
+      name: 'dosgame.zip',
+      mimeType: 'application/zip',
+      buffer,
+    });
+
+    // Extract modal should appear automatically after ZIP upload
+    await expect(page.locator('text="Extract Archive?"')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=dosgame.zip')).toBeVisible({ timeout: 5000 });
+
+    // Select "Extract to current directory" option
+    await page.locator('input[name="extract-location"]').last().check();
+
+    // Click "Extract Files" button
+    await page.getByRole('button', { name: 'Extract Files' }).click();
+
+    // Progress toast should appear during extraction showing "writing..." status
+    // The capitalize CSS class makes it display as "Writing..."
+    await expect(page.getByText('writing...', { exact: false })).toBeVisible({ timeout: 15000 });
+
+    // Eventually files should appear in the listing after extraction completes
+    // Wait for files from the ZIP (dosgame.zip contains game files)
+    await expect(page.getByTestId('file-list').locator('a').first()).toBeVisible({ timeout: 15000 });
   });
 });

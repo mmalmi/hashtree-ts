@@ -29,7 +29,7 @@ export interface UploadProgress {
   fileName: string;
   bytes?: number;
   totalBytes?: number;
-  status?: 'reading' | 'writing' | 'finalizing';
+  status?: 'reading' | 'writing' | 'finalizing' | 'zipping';
 }
 
 // Svelte store for upload progress
