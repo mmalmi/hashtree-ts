@@ -662,7 +662,7 @@ export async function getStatusWithWasmGit(
       }
 
       // Parse porcelain format:
-      // XY PATH
+      // XY PATH (with space between XY and PATH)
       // X = index status, Y = working tree status
       // ?? = untracked, A = added, M = modified, D = deleted, R = renamed
       const staged: GitStatusEntry[] = [];
@@ -675,7 +675,8 @@ export async function getStatusWithWasmGit(
 
         const x = line[0]; // Index status
         const y = line[1]; // Working tree status
-        const rest = line.slice(3);
+        // Path starts after XY and optional space (some git versions don't include space)
+        const rest = line[2] === ' ' ? line.slice(3) : line.slice(2);
 
         // Handle renames: "R  old -> new"
         let path = rest;

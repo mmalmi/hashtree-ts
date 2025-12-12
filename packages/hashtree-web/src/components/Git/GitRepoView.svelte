@@ -29,6 +29,7 @@
   // Create git log store
   let gitLogStore = $derived(createGitLogStore(dirCid, 1000));
   let commits = $state<Array<{ oid: string; message: string }>>([]);
+  let headOid = $state<string | null>(null);
 
   // File last commit info (GitHub-style)
   let fileCommits = $state<Map<string, { oid: string; message: string; timestamp: number }>>(new Map());
@@ -37,9 +38,13 @@
     const store = gitLogStore;
     const unsub = store.subscribe(value => {
       commits = value.commits;
+      headOid = value.headOid;
     });
     return unsub;
   });
+
+  // Detached HEAD state - show short commit hash instead of branch name
+  let branchDisplay = $derived(currentBranch || (headOid ? headOid.slice(0, 7) : 'detached'));
 
   // Load file last commit info when entries or dirCid change
   $effect(() => {
@@ -338,7 +343,7 @@
             class="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
           >
             <span class="i-lucide-git-branch"></span>
-            {currentBranch || 'detached'}
+            <span class={currentBranch ? '' : 'font-mono text-xs'}>{branchDisplay}</span>
             <span class="i-lucide-chevron-down text-xs"></span>
           </button>
         {/snippet}
