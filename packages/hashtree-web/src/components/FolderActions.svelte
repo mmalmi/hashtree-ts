@@ -5,7 +5,7 @@
    */
   import { nhashEncode, toHex, LinkType } from 'hashtree';
   import type { CID } from 'hashtree';
-  import { openCreateModal, openRenameModal, openForkModal, openShareModal } from '../stores/modals';
+  import { openCreateModal, openRenameModal, openForkModal, openShareModal, openBlossomPushModal } from '../stores/modals';
   import { uploadFiles, uploadDirectory } from '../stores/upload';
   import { deleteCurrentFolder, buildRouteUrl } from '../actions';
   import { nostrStore, autosaveIfOwn } from '../nostr';
@@ -353,6 +353,15 @@
       <button onclick={handleFork} class="btn-ghost {btnClass}" title="Fork as new top-level folder">
         <span class="i-lucide-git-fork"></span>
         Fork
+      </button>
+      <button
+        onclick={() => openBlossomPushModal(dirCid!, forkBaseName, true)}
+        class="btn-ghost {btnClass}"
+        title="Push to Blossom servers"
+        data-testid="blossom-push-btn"
+      >
+        <span class="i-lucide-upload-cloud"></span>
+        Push
       </button>
     {/if}
   </div>

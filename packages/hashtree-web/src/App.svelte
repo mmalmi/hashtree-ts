@@ -24,6 +24,7 @@
   import UnsavedChangesModal from './components/Modals/UnsavedChangesModal.svelte';
   import NewPullRequestModal from './components/Git/NewPullRequestModal.svelte';
   import NewIssueModal from './components/Git/NewIssueModal.svelte';
+  import BlossomPushModal from './components/Modals/BlossomPushModal.svelte';
 
   // Handle fullscreen mode from URL
   function isFullscreen(): boolean {
@@ -89,5 +90,6 @@
   <UnsavedChangesModal />
   <NewPullRequestModal />
   <NewIssueModal />
+  <BlossomPushModal />
   <Toast />
 </div>

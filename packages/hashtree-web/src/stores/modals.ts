@@ -89,6 +89,15 @@ interface GitCommitTarget {
   onCommit?: (newDirCid: CID) => Promise<void>;
 }
 
+interface BlossomPushTarget {
+  /** Directory or file CID to push */
+  cid: CID;
+  /** Name of the directory/file for display */
+  name: string;
+  /** Whether this is a directory (recursive) or single file */
+  isDirectory: boolean;
+}
+
 interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
@@ -118,6 +127,8 @@ interface ModalState {
   newIssueTarget: NewIssueTarget | null;
   showGitCommitModal: boolean;
   gitCommitTarget: GitCommitTarget | null;
+  showBlossomPushModal: boolean;
+  blossomPushTarget: BlossomPushTarget | null;
   modalInput: string;
 }
 
@@ -150,6 +161,8 @@ const initialState: ModalState = {
   newIssueTarget: null,
   showGitCommitModal: false,
   gitCommitTarget: null,
+  showBlossomPushModal: false,
+  blossomPushTarget: null,
   modalInput: '',
 };
 
@@ -273,4 +286,12 @@ export function closeGitCommitModal() {
   modalsStore.update(s => ({ ...s, showGitCommitModal: false, gitCommitTarget: null, modalInput: '' }));
 }
 
-export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, GitShellTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget };
+export function openBlossomPushModal(cid: CID, name: string, isDirectory: boolean) {
+  modalsStore.update(s => ({ ...s, showBlossomPushModal: true, blossomPushTarget: { cid, name, isDirectory } }));
+}
+
+export function closeBlossomPushModal() {
+  modalsStore.update(s => ({ ...s, showBlossomPushModal: false, blossomPushTarget: null }));
+}
+
+export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, GitShellTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget, BlossomPushTarget };
