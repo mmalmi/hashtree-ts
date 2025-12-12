@@ -1605,6 +1605,91 @@ test.describe('Git integration features', () => {
     await expect(historyModal).not.toBeVisible({ timeout: 5000 });
   });
 
+  test('git status should show correct filename (not truncated)', { timeout: 60000 }, async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await navigateToPublicFolder(page);
+
+    // Create a folder and init as git repo
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    const folderInput = page.locator('input[placeholder="Folder name..."]');
+    await folderInput.waitFor({ timeout: 5000 });
+    await folderInput.fill('filename-test');
+    await page.click('button:has-text("Create")');
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+    // Navigate into folder
+    const folderLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'filename-test' }).first();
+    await expect(folderLink).toBeVisible({ timeout: 15000 });
+    await folderLink.click();
+    await page.waitForURL(/filename-test/, { timeout: 10000 });
+
+    // Create initial file and init git
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+
+      const content = new TextEncoder().encode('initial');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'test.txt', cid, size, LinkType.Blob);
+      autosaveIfOwn(rootCid);
+    });
+
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'test.txt' })).toBeVisible({ timeout: 15000 });
+
+    const gitInitBtn = page.getByRole('button', { name: 'Git Init' });
+    await expect(gitInitBtn).toBeVisible({ timeout: 15000 });
+    await gitInitBtn.click();
+    await expect(gitInitBtn).not.toBeVisible({ timeout: 30000 });
+
+    // Now add a file starting with 'a' (regression test for filename truncation bug)
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+
+      // File starting with 'a' to test for truncation bug
+      const content = new TextEncoder().encode('test content');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'asdf.txt', cid, size, LinkType.Blob);
+      autosaveIfOwn(rootCid);
+    });
+
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'asdf.txt' })).toBeVisible({ timeout: 15000 });
+
+    // Wait for uncommitted indicator
+    const uncommittedBtn = page.locator('button').filter({ hasText: /uncommitted/i });
+    await expect(uncommittedBtn).toBeVisible({ timeout: 30000 });
+
+    // Open commit modal
+    await uncommittedBtn.click();
+    const commitModal = page.locator('.fixed.inset-0').filter({ hasText: 'Commit Changes' });
+    await expect(commitModal).toBeVisible({ timeout: 5000 });
+
+    // CRITICAL: Verify filename shows as "asdf.txt" not "sdf.txt" (truncated)
+    // This is a regression test for a bug where the first character was being cut off
+    await expect(commitModal.locator('text=asdf.txt')).toBeVisible({ timeout: 5000 });
+
+    // Verify the actual filename in the entry
+    const fileText = await commitModal.locator('button').filter({ hasText: /\.txt/ }).first().textContent();
+    expect(fileText).toContain('asdf.txt');
+
+    await page.keyboard.press('Escape');
+  });
+
   test('git status shows changes count correctly', { timeout: 60000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
