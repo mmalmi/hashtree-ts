@@ -149,9 +149,47 @@
     return `${basePath}?commit=${commitOid}`;
   }
 
-  function handleBranchSelect(branch: string) {
-    // TODO: Implement branch checkout
-    console.log('Switch to branch:', branch);
+  // Handle branch selection - checkout the branch
+  async function handleBranchSelect(branch: string) {
+    // Skip if already on this branch
+    if (branch === currentBranch) return;
+
+    const { checkoutCommit } = await import('../../utils/git');
+    const { autosaveIfOwn } = await import('../../nostr');
+    const { getCurrentRootCid } = await import('../../actions/route');
+
+    // Get current tree root
+    const treeRootCid = getCurrentRootCid();
+    if (!treeRootCid) return;
+
+    try {
+      // Checkout the branch - git checkout works with branch names too
+      const newDirCid = await checkoutCommit(dirCid, branch);
+
+      let newRootCid;
+      if (currentPath.length === 0) {
+        // Git repo is at tree root
+        newRootCid = newDirCid;
+      } else {
+        // Git repo is in a subdirectory - replace it at that path
+        const tree = getTree();
+        const parentPath = currentPath.slice(0, -1);
+        const dirName = currentPath[currentPath.length - 1];
+        newRootCid = await tree.setEntry(
+          treeRootCid,
+          parentPath,
+          dirName,
+          newDirCid,
+          0,
+          LinkType.Dir
+        );
+      }
+
+      // Save and publish - UI will react automatically via store subscriptions
+      autosaveIfOwn(newRootCid);
+    } catch (err) {
+      console.error('Failed to switch branch:', err);
+    }
   }
 
   // Handle commit callback - replaces the directory at current path

@@ -94,8 +94,8 @@ export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
     'wss://relay.snort.social',
   ],
   blossomServers: [
-    { url: 'https://blossom.iris.to', read: true, write: true },
-    { url: 'https://hashtree.iris.to', read: true, write: true },
+    { url: 'https://files.iris.to', read: true, write: false },
+    { url: 'https://blossom.iris.to', read: false, write: true },
     { url: 'https://blossom.nostr.build', read: true, write: true },
   ],
   negentropyEnabled: false,

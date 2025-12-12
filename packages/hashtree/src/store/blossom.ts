@@ -61,10 +61,21 @@ export interface BlossomStoreConfig {
   logger?: BlossomLogger;
 }
 
+/** Server health tracking for backoff */
+interface ServerHealth {
+  lastErrorTime: number;
+  consecutiveErrors: number;
+}
+
+/** Backoff config */
+const BASE_BACKOFF_MS = 1000; // 1 second
+const MAX_BACKOFF_MS = 60000; // 1 minute
+
 export class BlossomStore implements StoreWithMeta {
   private servers: BlossomServer[];
   private signer?: BlossomSigner;
   private logger?: BlossomLogger;
+  private serverHealth: Map<string, ServerHealth> = new Map();
 
   constructor(config: BlossomStoreConfig) {
     this.servers = config.servers.map(s =>
@@ -72,6 +83,31 @@ export class BlossomStore implements StoreWithMeta {
     );
     this.signer = config.signer;
     this.logger = config.logger;
+  }
+
+  /** Check if server is in backoff period */
+  private isServerInBackoff(serverUrl: string): boolean {
+    const health = this.serverHealth.get(serverUrl);
+    if (!health || health.consecutiveErrors === 0) return false;
+
+    const backoffMs = Math.min(
+      BASE_BACKOFF_MS * Math.pow(2, health.consecutiveErrors - 1),
+      MAX_BACKOFF_MS
+    );
+    return Date.now() - health.lastErrorTime < backoffMs;
+  }
+
+  /** Record server error */
+  private recordError(serverUrl: string): void {
+    const health = this.serverHealth.get(serverUrl) || { lastErrorTime: 0, consecutiveErrors: 0 };
+    health.lastErrorTime = Date.now();
+    health.consecutiveErrors++;
+    this.serverHealth.set(serverUrl, health);
+  }
+
+  /** Record server success - reset backoff */
+  private recordSuccess(serverUrl: string): void {
+    this.serverHealth.delete(serverUrl);
   }
 
   private log(entry: Omit<BlossomLogEntry, 'timestamp'>) {
@@ -116,15 +152,21 @@ export class BlossomStore implements StoreWithMeta {
       throw new Error('Hash does not match data');
     }
 
-    const writeServers = this.servers.filter(s => s.write);
+    // Filter to write-enabled servers not in backoff
+    const writeServers = this.servers.filter(s => s.write && !this.isServerInBackoff(s.url));
     if (writeServers.length === 0) {
-      throw new Error('No write-enabled server configured');
+      // Check if we have any write servers at all
+      const anyWriteServers = this.servers.filter(s => s.write);
+      if (anyWriteServers.length === 0) {
+        throw new Error('No write-enabled server configured');
+      }
+      throw new Error('All write servers are in backoff');
     }
 
     const authHeader = await this.createAuthHeader('upload', hash, contentType);
     const hashHex = toHex(hash);
 
-    // Upload to all write-enabled servers in parallel, succeed if any succeeds
+    // Upload to all available write-enabled servers in parallel, succeed if any succeeds
     const results = await Promise.allSettled(
       writeServers.map(async (server) => {
         try {
@@ -142,14 +184,17 @@ export class BlossomStore implements StoreWithMeta {
             const text = await response.text();
             const error = `${response.status} ${text}`;
             this.log({ operation: 'put', server: server.url, hash: hashHex, success: false, error });
+            this.recordError(server.url);
             throw new Error(`${server.url}: ${error}`);
           }
           this.log({ operation: 'put', server: server.url, hash: hashHex, success: true, bytes: data.length });
+          this.recordSuccess(server.url);
           return response.status !== 409; // true if new, false if already existed
         } catch (e) {
           const error = e instanceof Error ? e.message : String(e);
           if (!error.includes(server.url)) { // Don't double-log
             this.log({ operation: 'put', server: server.url, hash: hashHex, success: false, error });
+            this.recordError(server.url);
           }
           throw e;
         }
@@ -171,8 +216,13 @@ export class BlossomStore implements StoreWithMeta {
   async get(hash: Hash): Promise<Uint8Array | null> {
     const hashHex = toHex(hash);
 
-    // Try each server until success
+    // Try each server until success, respecting backoff
     for (const server of this.servers) {
+      // Skip servers in backoff
+      if (this.isServerInBackoff(server.url)) {
+        continue;
+      }
+
       try {
         const response = await fetch(`${server.url}/${hashHex}`);
         if (response.ok) {
@@ -181,14 +231,22 @@ export class BlossomStore implements StoreWithMeta {
           const computed = await sha256(data);
           if (toHex(computed) === hashHex) {
             this.log({ operation: 'get', server: server.url, hash: hashHex, success: true, bytes: data.length });
+            this.recordSuccess(server.url);
             return data;
           }
           this.log({ operation: 'get', server: server.url, hash: hashHex, success: false, error: 'Hash mismatch' });
+          this.recordError(server.url);
+        } else if (response.status === 404) {
+          // 404 is not an error - blob just doesn't exist on this server
+          this.log({ operation: 'get', server: server.url, hash: hashHex, success: false, error: '404' });
         } else {
+          // Other errors trigger backoff
           this.log({ operation: 'get', server: server.url, hash: hashHex, success: false, error: `${response.status}` });
+          this.recordError(server.url);
         }
       } catch (e) {
         this.log({ operation: 'get', server: server.url, hash: hashHex, success: false, error: e instanceof Error ? e.message : 'Network error' });
+        this.recordError(server.url);
         continue;
       }
     }
@@ -200,17 +258,28 @@ export class BlossomStore implements StoreWithMeta {
     const hashHex = toHex(hash);
 
     for (const server of this.servers) {
+      // Skip servers in backoff
+      if (this.isServerInBackoff(server.url)) {
+        continue;
+      }
+
       try {
         const response = await fetch(`${server.url}/${hashHex}`, {
           method: 'HEAD',
         });
         if (response.ok) {
           this.log({ operation: 'has', server: server.url, hash: hashHex, success: true });
+          this.recordSuccess(server.url);
           return true;
         }
-        // Don't log 404s for 'has' - that's expected
+        // 404 is expected, not an error - don't backoff
+        // Other errors trigger backoff
+        if (response.status !== 404 && response.status >= 500) {
+          this.recordError(server.url);
+        }
       } catch (e) {
         this.log({ operation: 'has', server: server.url, hash: hashHex, success: false, error: e instanceof Error ? e.message : 'Network error' });
+        this.recordError(server.url);
         continue;
       }
     }

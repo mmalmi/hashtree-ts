@@ -92,9 +92,8 @@ test.describe('Git branch features', () => {
     await expect(historyModal).not.toBeVisible({ timeout: 30000 });
 
     // VERIFY: Branch selector should show short commit hash (7 chars), not "HEAD" or "detached"
-    // Wait for UI to update
-    await page.waitForTimeout(1000);
-    const branchBtn = page.locator('.bg-surface-1 button').filter({ has: page.locator('.i-lucide-git-branch') }).first();
+    const branchBtn = page.locator('button').filter({ has: page.locator('.i-lucide-git-branch') }).first();
+    await expect(branchBtn).toContainText(/[a-f0-9]{7}/i, { timeout: 10000 });
     const branchText = await branchBtn.textContent();
     console.log('Branch selector text after checkout:', branchText);
     // Should be a 7-char hex string (commit hash), not "HEAD" or "detached"
@@ -212,6 +211,129 @@ test.describe('Git branch features', () => {
     // the new branch may not show up immediately via getBranches
     // But the UI flow should work without errors
     expect(result.error).toBeNull();
+  });
+
+  test('checkout older commit changes visible files', { timeout: 90000 }, async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await navigateToPublicFolder(page);
+
+    // Create folder and init git with 2 commits containing different files
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    const folderInput = page.locator('input[placeholder="Folder name..."]');
+    await folderInput.waitFor({ timeout: 5000 });
+    await folderInput.fill('commit-checkout-test');
+    await page.click('button:has-text("Create")');
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+    const folderLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'commit-checkout-test' }).first();
+    await expect(folderLink).toBeVisible({ timeout: 15000 });
+    await folderLink.click();
+    await page.waitForURL(/commit-checkout-test/, { timeout: 10000 });
+
+    // Create initial file
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+      const content = new TextEncoder().encode('First file content');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'first.txt', cid, size, LinkType.Blob);
+      autosaveIfOwn(rootCid);
+    });
+
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'first.txt' })).toBeVisible({ timeout: 15000 });
+
+    // Git init (creates initial commit with first.txt)
+    const gitInitBtn = page.getByRole('button', { name: 'Git Init' });
+    await expect(gitInitBtn).toBeVisible({ timeout: 15000 });
+    await gitInitBtn.click();
+    await expect(gitInitBtn).not.toBeVisible({ timeout: 30000 });
+
+    // Wait for git features
+    const branchBtn = page.locator('button').filter({ has: page.locator('.i-lucide-git-branch') }).first();
+    await expect(branchBtn).toBeVisible({ timeout: 10000 });
+
+    // Add second file
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+      const content = new TextEncoder().encode('Second file content');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'second.txt', cid, size, LinkType.Blob);
+      autosaveIfOwn(rootCid);
+    });
+
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'second.txt' })).toBeVisible({ timeout: 15000 });
+
+    // Commit the second file
+    const uncommittedBtn = page.locator('button').filter({ hasText: /uncommitted/i });
+    await expect(uncommittedBtn).toBeVisible({ timeout: 30000 });
+    await uncommittedBtn.click();
+
+    const commitModal = page.locator('.fixed.inset-0').filter({ hasText: 'Commit Changes' });
+    await expect(commitModal).toBeVisible({ timeout: 5000 });
+    await commitModal.locator('textarea').fill('Add second file');
+    await commitModal.getByRole('button', { name: /Commit/ }).click();
+    await expect(commitModal).not.toBeVisible({ timeout: 30000 });
+
+    // Now we have 2 commits - verify
+    const commitsBtn = page.getByRole('button', { name: /commits/i });
+    await expect(commitsBtn).toContainText(/2/, { timeout: 15000 });
+
+    // Both files should be visible on latest commit
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'first.txt' })).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'second.txt' })).toBeVisible({ timeout: 5000 });
+
+    // Checkout the first commit (Initial commit) via history modal
+    await commitsBtn.click();
+    const historyModal = page.locator('.fixed.inset-0').filter({ hasText: 'Commit History' });
+    await expect(historyModal).toBeVisible({ timeout: 5000 });
+
+    // Wait for commits to load
+    await expect(historyModal.locator('button').filter({ hasText: 'Checkout' }).first()).toBeVisible({ timeout: 10000 });
+
+    // Click checkout on the older commit
+    const checkoutBtns = historyModal.locator('button').filter({ hasText: 'Checkout' });
+    const checkoutCount = await checkoutBtns.count();
+    // Use second button if available (older commit), otherwise first
+    const targetBtn = checkoutCount > 1 ? checkoutBtns.nth(1) : checkoutBtns.first();
+    await targetBtn.click();
+    await expect(historyModal).not.toBeVisible({ timeout: 30000 });
+
+    // VERIFY: After checkout to initial commit, second.txt should NOT be visible
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'second.txt' })).not.toBeVisible({ timeout: 10000 });
+
+    // VERIFY: first.txt should still be visible
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'first.txt' })).toBeVisible({ timeout: 5000 });
+
+    // VERIFY: Branch selector should show commit hash (detached HEAD state)
+    await expect(branchBtn).toContainText(/[a-f0-9]{7}/i, { timeout: 10000 });
+
+    // VERIFY: Branch dropdown still shows master as available branch
+    await branchBtn.click();
+    await expect(page.locator('button').filter({ hasText: 'master' })).toBeVisible({ timeout: 5000 });
+
+    // Click master to switch back to master branch
+    await page.locator('button').filter({ hasText: 'master' }).click();
+
+    // VERIFY: Branch selector should now show "master"
+    await expect(branchBtn).toContainText(/master/i, { timeout: 15000 });
+
+    // VERIFY: After switching to master, second.txt should be visible again
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'second.txt' })).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'first.txt' })).toBeVisible({ timeout: 5000 });
   });
 
 });

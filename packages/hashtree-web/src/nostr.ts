@@ -282,13 +282,24 @@ setTimeout(updateConnectedRelayCount, 500);
 setTimeout(updateConnectedRelayCount, 1500);
 setTimeout(updateConnectedRelayCount, 3000);
 
-// Update NDK relays when settings are loaded or changed
+// Update NDK relays when settings are loaded or relay list changes
+// Only trigger on relay changes, not blossom server changes
 let prevNetworkSettings = settingsStore.getState().network;
+let prevRelaysJson = JSON.stringify(prevNetworkSettings?.relays);
 settingsStore.subscribe((state) => {
-  // Only update when networkLoaded becomes true or network settings actually change
+  // Quick object reference check first (cheap)
   if (state.networkLoaded && state.network !== prevNetworkSettings) {
+    // Network object changed - check if relays specifically changed
+    const newRelaysJson = JSON.stringify(state.network?.relays);
+    const relaysChanged = newRelaysJson !== prevRelaysJson;
+
     prevNetworkSettings = state.network;
-    updateNdkRelays().catch(console.error);
+    prevRelaysJson = newRelaysJson;
+
+    // Only update NDK relays if the relay list actually changed
+    if (relaysChanged) {
+      updateNdkRelays().catch(console.error);
+    }
   }
 });
 
