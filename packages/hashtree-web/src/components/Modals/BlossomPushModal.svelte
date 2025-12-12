@@ -7,7 +7,7 @@
   import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../../stores/settings';
   import { getTree } from '../../store';
   import { signEvent } from '../../nostr';
-  import { LinkType, toHex, BlossomStore, cid as makeCid } from 'hashtree';
+  import { LinkType, toHex, BlossomStore } from 'hashtree';
   import type { CID, BlossomSigner, Hash } from 'hashtree';
 
   interface PushResult {
@@ -76,40 +76,6 @@
     return () => document.removeEventListener('keydown', handleKeyDown);
   });
 
-  // Recursively collect all blocks (hashes) in a merkle tree
-  // Uses tree.getTreeNode() which handles encrypted nodes
-  // Returns list of missing hashes if any blocks couldn't be fetched
-  async function collectBlocks(
-    id: CID,
-    blocks: Map<string, { hash: Hash; data: Uint8Array }>,
-    missing: string[] = []
-  ): Promise<string[]> {
-    const hex = toHex(id.hash);
-    if (blocks.has(hex)) return missing; // Already collected
-
-    const tree = getTree();
-    const store = tree.getStore();
-    // store.get() will try WebRTC peers if not local
-    const data = await store.get(id.hash);
-    if (!data) {
-      missing.push(hex);
-      return missing; // Can't traverse children if parent missing
-    }
-
-    blocks.set(hex, { hash: id.hash, data });
-
-    // Use tree.getTreeNode() which handles encrypted nodes
-    const node = await tree.getTreeNode(id);
-    if (node) {
-      for (const link of node.links) {
-        // Build CID for child - link may have its own key
-        const childCid = makeCid(link.hash, link.key);
-        await collectBlocks(childCid, blocks, missing);
-      }
-    }
-    return missing;
-  }
-
   // Create BlossomSigner adapter from nostr signEvent
   function createBlossomSigner(): BlossomSigner {
     return async (event) => {
@@ -142,30 +108,25 @@
       signer: createBlossomSigner(),
     });
 
-    // Collect all blocks in the merkle tree (handles encrypted nodes)
+    // Use tree.walkBlocks() to iterate all blocks (handles encryption)
     currentFile = 'Collecting blocks...';
-    const blocks = new Map<string, { hash: Hash; data: Uint8Array }>();
-    const missingBlocks = await collectBlocks(target.cid, blocks);
+    const tree = getTree();
 
-    const blockList = Array.from(blocks.values());
-    progress = { current: 0, total: blockList.length + missingBlocks.length };
+    // First collect all blocks to know total count
+    const blockList: Array<{ hash: Hash; data: Uint8Array }> = [];
+    for await (const block of tree.walkBlocks(target.cid)) {
+      blockList.push(block);
+    }
 
-    // Initialize results - include missing blocks as errors
-    results = [
-      ...blockList.map(b => ({
-        hash: toHex(b.hash),
-        name: toHex(b.hash).slice(0, 12) + '...', // Short hash as name
-        size: b.data.length,
-        status: 'pending' as const,
-      })),
-      ...missingBlocks.map(hex => ({
-        hash: hex,
-        name: hex.slice(0, 12) + '...',
-        size: 0,
-        status: 'error' as const,
-        error: 'Block not found locally or from peers',
-      })),
-    ];
+    progress = { current: 0, total: blockList.length };
+
+    // Initialize results
+    results = blockList.map(b => ({
+      hash: toHex(b.hash),
+      name: toHex(b.hash).slice(0, 12) + '...',
+      size: b.data.length,
+      status: 'pending' as const,
+    }));
 
     // Push each block using BlossomStore
     for (let i = 0; i < blockList.length; i++) {

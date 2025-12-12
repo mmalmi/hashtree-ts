@@ -271,6 +271,49 @@ export class HashTree {
   }
 
   /**
+   * Iterate over all raw blocks in a merkle tree
+   * Yields each block's hash and data, traversing encrypted nodes correctly
+   * Useful for syncing to remote stores (e.g., Blossom push)
+   */
+  async *walkBlocks(id: CID): AsyncGenerator<{ hash: Hash; data: Uint8Array }> {
+    const visited = new Set<string>();
+
+    const traverse = async function* (
+      store: Store,
+      hash: Hash,
+      key?: Uint8Array
+    ): AsyncGenerator<{ hash: Hash; data: Uint8Array }> {
+      const hex = toHex(hash);
+      if (visited.has(hex)) return;
+      visited.add(hex);
+
+      const data = await store.get(hash);
+      if (!data) return;
+
+      yield { hash, data };
+
+      // Handle encrypted vs unencrypted tree nodes
+      if (key) {
+        const decrypted = await getTreeNodeEncrypted(store, hash, key);
+        if (decrypted) {
+          for (const link of decrypted.links) {
+            yield* traverse(store, link.hash, link.key);
+          }
+        }
+      } else {
+        const node = tryDecodeTreeNode(data);
+        if (node) {
+          for (const link of node.links) {
+            yield* traverse(store, link.hash, link.key);
+          }
+        }
+      }
+    };
+
+    yield* traverse(this.store, id.hash, id.key);
+  }
+
+  /**
    * Pull (fetch) all chunks for a tree recursively
    * Triggers WebRTC fetches for any missing chunks
    * @returns Stats about what was pulled
