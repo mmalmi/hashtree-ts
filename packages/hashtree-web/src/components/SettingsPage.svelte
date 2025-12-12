@@ -9,7 +9,7 @@
   import { useAppStore, formatBytes, updateStorageStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { syncedStorageStore, refreshSyncedStorage, type UserStorageStats } from '../stores/chunkMetadata';
-  import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../stores/settings';
+  import { settingsStore, DEFAULT_NETWORK_SETTINGS, DEFAULT_POOL_SETTINGS } from '../stores/settings';
   import { BackButton } from './ui';
   import { UserRow } from './User';
 
@@ -44,6 +44,10 @@
   let newBlossomUrl = $state('');
   let editingRelays = $state(false);
   let editingBlossom = $state(false);
+
+  // Pool settings
+  let poolSettings = $derived($settingsStore.pools);
+  let editingPools = $state(false);
 
   function addRelay() {
     const url = newRelayUrl.trim();
@@ -328,6 +332,103 @@
           <button onclick={addBlossomServer} class="btn-primary text-sm">Add</button>
         </div>
         <button onclick={resetBlossomServers} class="btn-ghost mt-2 text-xs text-text-3">
+          Reset to defaults
+        </button>
+      {/if}
+    </div>
+
+    <!-- WebRTC Pool Settings -->
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-xs font-medium text-muted uppercase tracking-wide">
+          WebRTC Pools
+        </h3>
+        <button
+          onclick={() => editingPools = !editingPools}
+          class="btn-ghost text-xs text-accent"
+        >
+          {editingPools ? 'Done' : 'Edit'}
+        </button>
+      </div>
+      <p class="text-xs text-text-3 mb-3">Max peer connections by category</p>
+      <div class="bg-surface-2 rounded divide-y divide-surface-3">
+        <!-- Follows pool -->
+        <div class="p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm text-text-1">Follows</span>
+            <span class="text-xs text-text-3">Peers you follow</span>
+          </div>
+          {#if editingPools}
+            <div class="grid grid-cols-2 gap-3 text-sm">
+              <label class="flex flex-col gap-1">
+                <span class="text-xs text-text-3">Max connections</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={poolSettings.followsMax}
+                  onchange={(e) => settingsStore.setPoolSettings({ followsMax: parseInt(e.currentTarget.value) || 20 })}
+                  class="input text-sm"
+                />
+              </label>
+              <label class="flex flex-col gap-1">
+                <span class="text-xs text-text-3">Satisfied at</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={poolSettings.followsSatisfied}
+                  onchange={(e) => settingsStore.setPoolSettings({ followsSatisfied: parseInt(e.currentTarget.value) || 10 })}
+                  class="input text-sm"
+                />
+              </label>
+            </div>
+          {:else}
+            <div class="text-sm text-text-2">
+              Max: {poolSettings.followsMax}, Satisfied: {poolSettings.followsSatisfied}
+            </div>
+          {/if}
+        </div>
+        <!-- Others pool -->
+        <div class="p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm text-text-1">Others</span>
+            <span class="text-xs text-text-3">Other peers</span>
+          </div>
+          {#if editingPools}
+            <div class="grid grid-cols-2 gap-3 text-sm">
+              <label class="flex flex-col gap-1">
+                <span class="text-xs text-text-3">Max connections</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={poolSettings.otherMax}
+                  onchange={(e) => settingsStore.setPoolSettings({ otherMax: parseInt(e.currentTarget.value) || 10 })}
+                  class="input text-sm"
+                />
+              </label>
+              <label class="flex flex-col gap-1">
+                <span class="text-xs text-text-3">Satisfied at</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={poolSettings.otherSatisfied}
+                  onchange={(e) => settingsStore.setPoolSettings({ otherSatisfied: parseInt(e.currentTarget.value) || 5 })}
+                  class="input text-sm"
+                />
+              </label>
+            </div>
+          {:else}
+            <div class="text-sm text-text-2">
+              Max: {poolSettings.otherMax}, Satisfied: {poolSettings.otherSatisfied}
+            </div>
+          {/if}
+        </div>
+      </div>
+      {#if editingPools}
+        <button onclick={() => settingsStore.resetPoolSettings()} class="btn-ghost mt-2 text-xs text-text-3">
           Reset to defaults
         </button>
       {/if}
