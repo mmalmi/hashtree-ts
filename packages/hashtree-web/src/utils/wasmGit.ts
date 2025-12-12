@@ -519,6 +519,315 @@ export async function initGitRepoWithWasmGit(
 }
 
 /**
+ * Git status entry from porcelain format
+ */
+export interface GitStatusEntry {
+  /** Two-character status code (XY) */
+  status: string;
+  /** File path */
+  path: string;
+  /** Original path (for renames) */
+  origPath?: string;
+}
+
+/**
+ * Git status result
+ */
+export interface GitStatusResult {
+  /** Staged files (to be committed) */
+  staged: GitStatusEntry[];
+  /** Modified but not staged */
+  unstaged: GitStatusEntry[];
+  /** Untracked files */
+  untracked: GitStatusEntry[];
+  /** Whether there are any changes */
+  hasChanges: boolean;
+}
+
+/**
+ * Get git status using wasm-git
+ * Returns parsed status with staged, unstaged, and untracked files
+ */
+export async function getStatusWithWasmGit(
+  rootCid: CID
+): Promise<GitStatusResult> {
+  const tree = getTree();
+
+  // Check for .git directory
+  const gitDirResult = await tree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+    return { staged: [], unstaged: [], untracked: [], hasChanges: false };
+  }
+
+  const module = await loadWasmGit();
+  const repoPath = `/repo_${Date.now()}`;
+  const originalCwd = module.FS.cwd();
+
+  try {
+    module.FS.mkdir(repoPath);
+
+    try {
+      module.FS.writeFile('/home/web_user/.gitconfig', '[user]\nname = Reader\nemail = reader@example.com\n');
+    } catch {
+      // May already exist
+    }
+
+    module.FS.chdir(repoPath);
+
+    try {
+      module.callMain(['init', '.']);
+    } catch {
+      // Ignore init errors
+    }
+
+    // Copy entire repo (not just .git) so we can compare working tree
+    await copyToWasmFS(module, rootCid, '.');
+
+    // Run git status --porcelain
+    let output = '';
+    try {
+      output = module.callWithOutput(['status', '--porcelain']);
+    } catch {
+      // Status may fail on fresh repos
+      return { staged: [], unstaged: [], untracked: [], hasChanges: false };
+    }
+
+    if (!output || output.trim() === '') {
+      return { staged: [], unstaged: [], untracked: [], hasChanges: false };
+    }
+
+    // Parse porcelain format:
+    // XY PATH
+    // X = index status, Y = working tree status
+    // ?? = untracked, A = added, M = modified, D = deleted, R = renamed
+    const staged: GitStatusEntry[] = [];
+    const unstaged: GitStatusEntry[] = [];
+    const untracked: GitStatusEntry[] = [];
+
+    const lines = output.trim().split('\n');
+    for (const line of lines) {
+      if (line.length < 3) continue;
+
+      const x = line[0]; // Index status
+      const y = line[1]; // Working tree status
+      const rest = line.slice(3);
+
+      // Handle renames: "R  old -> new"
+      let path = rest;
+      let origPath: string | undefined;
+      if (rest.includes(' -> ')) {
+        const parts = rest.split(' -> ');
+        origPath = parts[0];
+        path = parts[1];
+      }
+
+      const status = x + y;
+
+      if (status === '??') {
+        untracked.push({ status, path });
+      } else {
+        // X indicates staged changes
+        if (x !== ' ' && x !== '?') {
+          staged.push({ status, path, origPath });
+        }
+        // Y indicates unstaged changes
+        if (y !== ' ' && y !== '?') {
+          unstaged.push({ status, path, origPath });
+        }
+      }
+    }
+
+    return {
+      staged,
+      unstaged,
+      untracked,
+      hasChanges: staged.length > 0 || unstaged.length > 0 || untracked.length > 0,
+    };
+  } catch (err) {
+    console.error('[wasm-git] getStatus failed:', err);
+    return { staged: [], unstaged: [], untracked: [], hasChanges: false };
+  } finally {
+    try {
+      module.FS.chdir(originalCwd);
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
+ * Create a new branch using wasm-git
+ */
+export async function createBranchWithWasmGit(
+  rootCid: CID,
+  branchName: string,
+  checkout: boolean = true
+): Promise<{ success: boolean; error?: string }> {
+  const tree = getTree();
+
+  // Check for .git directory
+  const gitDirResult = await tree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+    return { success: false, error: 'Not a git repository' };
+  }
+
+  const module = await loadWasmGit();
+  const repoPath = `/repo_${Date.now()}`;
+  const originalCwd = module.FS.cwd();
+
+  try {
+    module.FS.mkdir(repoPath);
+
+    try {
+      module.FS.writeFile('/home/web_user/.gitconfig', '[user]\nname = User\nemail = user@example.com\n');
+    } catch {
+      // May already exist
+    }
+
+    module.FS.chdir(repoPath);
+
+    try {
+      module.callMain(['init', '.']);
+    } catch {
+      // Ignore init errors
+    }
+
+    await copyToWasmFS(module, gitDirResult.cid, '.git');
+
+    // Create the branch
+    try {
+      if (checkout) {
+        module.callMain(['checkout', '-b', branchName]);
+      } else {
+        module.callMain(['branch', branchName]);
+      }
+      return { success: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { success: false, error: message };
+    }
+  } catch (err) {
+    console.error('[wasm-git] createBranch failed:', err);
+    return { success: false, error: 'Failed to create branch' };
+  } finally {
+    try {
+      module.FS.chdir(originalCwd);
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
+ * Stage files and create a commit using wasm-git
+ * Returns the updated .git directory files to be saved back to hashtree
+ */
+export async function commitWithWasmGit(
+  rootCid: CID,
+  message: string,
+  authorName: string,
+  authorEmail: string,
+  filesToStage?: string[] // If undefined, stages all changes
+): Promise<{ success: boolean; gitFiles?: Array<{ name: string; data: Uint8Array; isDir: boolean }>; error?: string }> {
+  const tree = getTree();
+
+  // Check for .git directory
+  const gitDirResult = await tree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+    return { success: false, error: 'Not a git repository' };
+  }
+
+  const module = await loadWasmGit();
+  const repoPath = `/repo_${Date.now()}`;
+  const originalCwd = module.FS.cwd();
+
+  try {
+    module.FS.mkdir(repoPath);
+
+    // Set up git config with user info
+    try {
+      module.FS.writeFile('/home/web_user/.gitconfig', `[user]\nname = ${authorName}\nemail = ${authorEmail}\n`);
+    } catch {
+      // May already exist
+    }
+
+    module.FS.chdir(repoPath);
+
+    try {
+      module.callMain(['init', '.']);
+    } catch {
+      // Ignore init errors
+    }
+
+    // Copy entire repo so we have working tree + .git
+    await copyToWasmFS(module, rootCid, '.');
+
+    // Stage files
+    try {
+      if (filesToStage && filesToStage.length > 0) {
+        for (const file of filesToStage) {
+          module.callMain(['add', file]);
+        }
+      } else {
+        // Stage all changes
+        module.callMain(['add', '-A']);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: `Failed to stage files: ${msg}` };
+    }
+
+    // Create commit
+    try {
+      module.callMain(['commit', '-m', message]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: `Failed to commit: ${msg}` };
+    }
+
+    // Read updated .git directory and return files
+    const gitFiles: Array<{ name: string; data: Uint8Array; isDir: boolean }> = [];
+
+    function readGitDir(path: string, prefix: string): void {
+      const entries = module.FS.readdir(path);
+      for (const entry of entries) {
+        if (entry === '.' || entry === '..') continue;
+
+        const fullPath = `${path}/${entry}`;
+        const relativePath = prefix ? `${prefix}/${entry}` : entry;
+
+        try {
+          const stat = module.FS.stat(fullPath);
+          const isDir = (stat.mode & 0o170000) === 0o040000;
+          if (isDir) {
+            gitFiles.push({ name: relativePath, data: new Uint8Array(0), isDir: true });
+            readGitDir(fullPath, relativePath);
+          } else {
+            const data = module.FS.readFile(fullPath) as Uint8Array;
+            gitFiles.push({ name: relativePath, data, isDir: false });
+          }
+        } catch {
+          // Skip files we can't read
+        }
+      }
+    }
+
+    readGitDir('.git', '.git');
+
+    return { success: true, gitFiles };
+  } catch (err) {
+    console.error('[wasm-git] commit failed:', err);
+    return { success: false, error: 'Failed to commit' };
+  } finally {
+    try {
+      module.FS.chdir(originalCwd);
+    } catch {
+      // Ignore
+    }
+  }
+}
+
+/**
  * Checkout a specific commit using wasm-git
  * Returns files from that commit as a directory listing
  */

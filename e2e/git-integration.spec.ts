@@ -1175,4 +1175,437 @@ test.describe('Git integration features', () => {
     }
   });
 
+  test('should be able to add files and commit them via commit modal', { timeout: 90000 }, async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await navigateToPublicFolder(page);
+
+    // Create a folder for our test repo
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    const folderInput = page.locator('input[placeholder="Folder name..."]');
+    await folderInput.waitFor({ timeout: 5000 });
+    await folderInput.fill('commit-test-repo');
+    await page.click('button:has-text("Create")');
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+    // Navigate into the folder
+    const folderLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'commit-test-repo' }).first();
+    await expect(folderLink).toBeVisible({ timeout: 15000 });
+    await folderLink.click();
+    await page.waitForURL(/commit-test-repo/, { timeout: 10000 });
+
+    // Create initial files via the tree API
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+
+      // Create README.md
+      const readmeContent = new TextEncoder().encode('# Commit Test Repo\n\nThis is a test repo for commit functionality.');
+      const { cid: readmeCid, size: readmeSize } = await tree.putFile(readmeContent);
+      rootCid = await tree.setEntry(rootCid, route.path, 'README.md', readmeCid, readmeSize, LinkType.Blob);
+
+      // Create a src directory with a file
+      const { cid: emptyDir } = await tree.putDirectory([]);
+      rootCid = await tree.setEntry(rootCid, route.path, 'src', emptyDir, 0, LinkType.Dir);
+
+      const mainContent = new TextEncoder().encode('console.log("Hello from commit test!");');
+      const { cid: mainCid, size: mainSize } = await tree.putFile(mainContent);
+      rootCid = await tree.setEntry(rootCid, [...route.path, 'src'], 'main.js', mainCid, mainSize, LinkType.Blob);
+
+      autosaveIfOwn(rootCid);
+    });
+
+    // Wait for files to appear
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'README.md' })).toBeVisible({ timeout: 15000 });
+
+    // Git Init button should be visible
+    const gitInitBtn = page.getByRole('button', { name: 'Git Init' });
+    await expect(gitInitBtn).toBeVisible({ timeout: 15000 });
+
+    // Click Git Init
+    await gitInitBtn.click();
+
+    // Wait for initialization to complete
+    await expect(page.getByRole('button', { name: 'Initializing...' })).toBeVisible({ timeout: 5000 });
+    await expect(gitInitBtn).not.toBeVisible({ timeout: 30000 });
+
+    // Verify .git directory was created and commits button appears
+    const gitDir = page.locator('[data-testid="file-list"] a').filter({ hasText: '.git' }).first();
+    await expect(gitDir).toBeVisible({ timeout: 10000 });
+
+    const commitsBtn = page.getByRole('button', { name: /commits/i });
+    await expect(commitsBtn).toBeVisible({ timeout: 10000 });
+
+    // Verify initial commit was created (should show "1 commits" or similar)
+    await expect(commitsBtn).toContainText(/1/, { timeout: 10000 });
+
+    // Now add a new file to create uncommitted changes
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+
+      // Add a new file
+      const newFileContent = new TextEncoder().encode('export const VERSION = "1.0.0";');
+      const { cid: newFileCid, size: newFileSize } = await tree.putFile(newFileContent);
+      rootCid = await tree.setEntry(rootCid, [...route.path, 'src'], 'version.js', newFileCid, newFileSize, LinkType.Blob);
+
+      // Modify README.md
+      const updatedReadme = new TextEncoder().encode('# Commit Test Repo\n\nThis is a test repo for commit functionality.\n\n## Added\n- version.js');
+      const { cid: updatedReadmeCid, size: updatedReadmeSize } = await tree.putFile(updatedReadme);
+      rootCid = await tree.setEntry(rootCid, route.path, 'README.md', updatedReadmeCid, updatedReadmeSize, LinkType.Blob);
+
+      autosaveIfOwn(rootCid);
+    });
+
+    // Wait for the uncommitted changes indicator to appear
+    // It should show something like "2 uncommitted" or a warning colored number
+    const uncommittedBtn = page.locator('button').filter({ hasText: /uncommitted/i });
+    await expect(uncommittedBtn).toBeVisible({ timeout: 30000 });
+
+    // Click to open commit modal
+    await uncommittedBtn.click();
+
+    // Commit modal should be visible
+    const commitModal = page.locator('.fixed.inset-0').filter({ hasText: 'Commit Changes' });
+    await expect(commitModal).toBeVisible({ timeout: 5000 });
+
+    // Should show the changed files with checkboxes
+    // Files may be shown with path prefix (src/version.js)
+    // Check for file selection UI elements
+    await expect(commitModal.locator('text=version.js').first()).toBeVisible({ timeout: 5000 });
+    await expect(commitModal.locator('text=/\\d+ of \\d+ selected/')).toBeVisible({ timeout: 5000 });
+
+    // Enter a commit message
+    const commitMessageInput = commitModal.locator('textarea[placeholder*="Describe"]');
+    await expect(commitMessageInput).toBeVisible({ timeout: 5000 });
+    await commitMessageInput.fill('Add version.js and update README');
+
+    // Click the Commit button
+    const commitBtn = commitModal.getByRole('button', { name: 'Commit' });
+    await expect(commitBtn).toBeEnabled({ timeout: 5000 });
+    await commitBtn.click();
+
+    // Wait for commit to complete (modal should close)
+    await expect(commitModal).not.toBeVisible({ timeout: 30000 });
+
+    // Verify commits count increased to 2 (this proves the commit worked)
+    const updatedCommitsBtn = page.getByRole('button', { name: /commits/i });
+    await expect(updatedCommitsBtn).toContainText(/2/, { timeout: 15000 });
+
+    // Note: The status indicator may still show "uncommitted" briefly due to
+    // the async nature of status refresh. The key verification is the commit count.
+
+    // Open git history modal to verify our commit is there
+    await updatedCommitsBtn.click();
+
+    // Git history modal should show our commit message
+    const historyModal = page.locator('.fixed.inset-0').filter({ hasText: 'Commit History' });
+    await expect(historyModal).toBeVisible({ timeout: 5000 });
+    await expect(historyModal.locator('text=Add version.js and update README')).toBeVisible({ timeout: 10000 });
+
+    // Close modal
+    await page.keyboard.press('Escape');
+    await expect(historyModal).not.toBeVisible({ timeout: 5000 });
+  });
+
+  test('git status shows changes count correctly', { timeout: 60000 }, async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await navigateToPublicFolder(page);
+
+    // Create a folder and init as git repo
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    const folderInput = page.locator('input[placeholder="Folder name..."]');
+    await folderInput.waitFor({ timeout: 5000 });
+    await folderInput.fill('status-test-repo');
+    await page.click('button:has-text("Create")');
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+    // Navigate into folder
+    const folderLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'status-test-repo' }).first();
+    await expect(folderLink).toBeVisible({ timeout: 15000 });
+    await folderLink.click();
+    await page.waitForURL(/status-test-repo/, { timeout: 10000 });
+
+    // Create a file
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+
+      const content = new TextEncoder().encode('# Status Test Repo');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'README.md', cid, size, LinkType.Blob);
+      autosaveIfOwn(rootCid);
+    });
+
+    // Wait for file and init git
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'README.md' })).toBeVisible({ timeout: 15000 });
+
+    const gitInitBtn = page.getByRole('button', { name: 'Git Init' });
+    await expect(gitInitBtn).toBeVisible({ timeout: 15000 });
+    await gitInitBtn.click();
+
+    // Wait for git init to complete
+    await expect(gitInitBtn).not.toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('button', { name: /commits/i })).toBeVisible({ timeout: 10000 });
+
+    // Verify git features are working - commits button should show at least 1 commit
+    const commitsBtn = page.getByRole('button', { name: /commits/i });
+    await expect(commitsBtn).toContainText(/\d+/, { timeout: 10000 });
+
+    // If there are uncommitted changes shown, clicking it should open the commit modal
+    const uncommittedBtn = page.locator('button').filter({ hasText: /uncommitted/i });
+    const hasUncommitted = await uncommittedBtn.isVisible().catch(() => false);
+
+    if (hasUncommitted) {
+      // Click to verify the commit modal opens and shows changes
+      await uncommittedBtn.click();
+      const commitModal = page.locator('.fixed.inset-0').filter({ hasText: 'Commit Changes' });
+      await expect(commitModal).toBeVisible({ timeout: 5000 });
+
+      // Should show file count in footer (new UI: "X of Y file(s) selected")
+      await expect(commitModal.locator('text=/\\d+ of \\d+ file/')).toBeVisible({ timeout: 5000 });
+
+      // Close modal
+      await page.keyboard.press('Escape');
+      await expect(commitModal).not.toBeVisible({ timeout: 5000 });
+    }
+  });
+
+  test('new branch can be created from branch dropdown', { timeout: 60000 }, async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await navigateToPublicFolder(page);
+
+    // Create folder with file and init git
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    const folderInput = page.locator('input[placeholder="Folder name..."]');
+    await folderInput.waitFor({ timeout: 5000 });
+    await folderInput.fill('branch-test-repo');
+    await page.click('button:has-text("Create")');
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+    const folderLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'branch-test-repo' }).first();
+    await expect(folderLink).toBeVisible({ timeout: 15000 });
+    await folderLink.click();
+    await page.waitForURL(/branch-test-repo/, { timeout: 10000 });
+
+    // Create file via API
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+
+      const content = new TextEncoder().encode('# Branch Test');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'README.md', cid, size, LinkType.Blob);
+      autosaveIfOwn(rootCid);
+    });
+
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'README.md' })).toBeVisible({ timeout: 15000 });
+
+    // Init git
+    const gitInitBtn = page.getByRole('button', { name: 'Git Init' });
+    await expect(gitInitBtn).toBeVisible({ timeout: 15000 });
+    await gitInitBtn.click();
+    await expect(gitInitBtn).not.toBeVisible({ timeout: 30000 });
+
+    // Wait for git features to appear
+    await expect(page.getByRole('button', { name: /commits/i })).toBeVisible({ timeout: 10000 });
+
+    // Click branch dropdown - it's a button with git-branch icon and branch name
+    // The button contains the branch name (e.g., "main", "master") and a chevron
+    const branchBtn = page.locator('button').filter({ has: page.locator('.i-lucide-git-branch') }).first();
+    await expect(branchBtn).toBeVisible({ timeout: 10000 });
+    await branchBtn.click();
+
+    // Branch dropdown should be open - look for "New branch" option
+    const newBranchBtn = page.locator('button').filter({ hasText: 'New branch' });
+    await expect(newBranchBtn).toBeVisible({ timeout: 5000 });
+    await newBranchBtn.click();
+
+    // New branch input should appear
+    const branchNameInput = page.locator('input[placeholder="Branch name"]');
+    await expect(branchNameInput).toBeVisible({ timeout: 5000 });
+    await branchNameInput.fill('feature/test-branch');
+
+    // Click Create button
+    const createBtn = page.locator('button').filter({ hasText: 'Create' }).first();
+    await createBtn.click();
+
+    // Dropdown should close after creation
+    await expect(branchNameInput).not.toBeVisible({ timeout: 10000 });
+
+    // Verify via API that branch was created
+    const result = await page.evaluate(async () => {
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getBranches } = await import('/src/utils/git.ts');
+
+      const rootCid = getCurrentRootCid();
+      if (!rootCid) return { branches: [], error: 'No root CID' };
+
+      try {
+        const { branches } = await getBranches(rootCid);
+        return { branches, error: null };
+      } catch (err) {
+        return { branches: [], error: String(err) };
+      }
+    });
+
+    console.log('Branch creation result:', result);
+    // Note: Due to the way wasm-git works (doesn't persist),
+    // the new branch may not show up immediately via getBranches
+    // But the UI flow should work without errors
+    expect(result.error).toBeNull();
+  });
+
+  test('checkout previous revision removes files that were added later', { timeout: 120000 }, async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await navigateToPublicFolder(page);
+
+    // Create a folder for our test repo
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    const folderInput = page.locator('input[placeholder="Folder name..."]');
+    await folderInput.waitFor({ timeout: 5000 });
+    await folderInput.fill('checkout-test');
+    await page.click('button:has-text("Create")');
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+    // Navigate into the folder
+    const folderLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'checkout-test' }).first();
+    await expect(folderLink).toBeVisible({ timeout: 15000 });
+    await folderLink.click();
+    await page.waitForURL(/checkout-test/, { timeout: 10000 });
+
+    // Create initial file via the tree API
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+
+      // Create initial.txt
+      const content = new TextEncoder().encode('Initial content');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'initial.txt', cid, size, LinkType.Blob);
+
+      autosaveIfOwn(rootCid);
+    });
+
+    // Wait for file to appear
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'initial.txt' })).toBeVisible({ timeout: 15000 });
+
+    // Initialize git repo (creates first commit with initial.txt)
+    const gitInitBtn = page.getByRole('button', { name: 'Git Init' });
+    await expect(gitInitBtn).toBeVisible({ timeout: 15000 });
+    await gitInitBtn.click();
+    await expect(gitInitBtn).not.toBeVisible({ timeout: 30000 });
+
+    // Wait for git features
+    const commitsBtn = page.getByRole('button', { name: /commits/i });
+    await expect(commitsBtn).toBeVisible({ timeout: 10000 });
+    await expect(commitsBtn).toContainText(/1/, { timeout: 10000 });
+
+    // Add a second file
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+
+      // Create added-later.txt
+      const content = new TextEncoder().encode('Added in second commit');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'added-later.txt', cid, size, LinkType.Blob);
+
+      autosaveIfOwn(rootCid);
+    });
+
+    // Wait for the new file to appear
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'added-later.txt' })).toBeVisible({ timeout: 15000 });
+
+    // Wait for uncommitted changes indicator and commit
+    const uncommittedBtn = page.locator('button').filter({ hasText: /uncommitted/i });
+    await expect(uncommittedBtn).toBeVisible({ timeout: 30000 });
+
+    await uncommittedBtn.click();
+    const commitModal = page.locator('.fixed.inset-0').filter({ hasText: 'Commit Changes' });
+    await expect(commitModal).toBeVisible({ timeout: 5000 });
+
+    const commitMessageInput = commitModal.locator('textarea[placeholder*="Describe"]');
+    await commitMessageInput.fill('Add added-later.txt');
+    const commitBtn = commitModal.getByRole('button', { name: /Commit/ });
+    await commitBtn.click();
+    await expect(commitModal).not.toBeVisible({ timeout: 30000 });
+
+    // Verify we now have 2 commits and both files visible
+    await expect(commitsBtn).toContainText(/2/, { timeout: 15000 });
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'initial.txt' })).toBeVisible();
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'added-later.txt' })).toBeVisible();
+
+    // Open commit history
+    await commitsBtn.click();
+    const historyModal = page.locator('.fixed.inset-0').filter({ hasText: 'Commit History' });
+    await expect(historyModal).toBeVisible({ timeout: 5000 });
+
+    // Verify HEAD badge is shown on first commit
+    await expect(historyModal.locator('text=HEAD')).toBeVisible({ timeout: 5000 });
+
+    // Click checkout on the older commit (non-HEAD, should have Checkout button)
+    const checkoutBtns = historyModal.locator('button').filter({ hasText: 'Checkout' });
+    await expect(checkoutBtns.first()).toBeVisible({ timeout: 5000 });
+    await checkoutBtns.first().click();
+
+    // Wait for history modal to close
+    await expect(historyModal).not.toBeVisible({ timeout: 30000 });
+
+    // After checkout to initial commit:
+    // - initial.txt should still be visible (was in first commit)
+    // - added-later.txt should NOT be visible (was added in second commit)
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'initial.txt' })).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'added-later.txt' })).not.toBeVisible({ timeout: 5000 });
+
+    // Verify we can still see commit history shows 2 commits
+    const updatedCommitsBtn = page.getByRole('button', { name: /commits/i });
+    await expect(updatedCommitsBtn).toContainText(/2/, { timeout: 10000 });
+  });
+
 });

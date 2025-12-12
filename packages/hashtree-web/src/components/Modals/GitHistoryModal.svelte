@@ -161,10 +161,11 @@
           {/if}
           <div class="flex flex-col">
             {#each logState.commits as commit, i}
-              <div class="flex gap-3 pb-4 {i < logState.commits.length - 1 ? 'b-b-1 b-b-solid b-b-surface-3 mb-4' : ''}">
+              {@const isHead = i === 0}
+              <div class="flex gap-3 pb-4 {i < logState.commits.length - 1 ? 'b-b-1 b-b-solid b-b-surface-3 mb-4' : ''} {isHead ? 'bg-accent/5 -mx-4 px-4 py-3 rounded-lg' : ''}">
                 <!-- Timeline dot -->
                 <div class="flex flex-col items-center shrink-0">
-                  <div class="w-3 h-3 rounded-full bg-accent"></div>
+                  <div class="w-3 h-3 rounded-full {isHead ? 'bg-success ring-2 ring-success/30' : 'bg-accent'}"></div>
                   {#if i < logState.commits.length - 1}
                     <div class="w-0.5 flex-1 bg-surface-3 mt-1"></div>
                   {/if}
@@ -172,8 +173,16 @@
 
                 <!-- Commit info -->
                 <div class="flex-1 min-w-0">
-                  <div class="font-medium text-text-1 mb-1 truncate" title={commit.message}>
-                    {getCommitTitle(commit.message)}
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="font-medium text-text-1 truncate" title={commit.message}>
+                      {getCommitTitle(commit.message)}
+                    </span>
+                    {#if isHead}
+                      <span class="shrink-0 text-xs font-medium px-1.5 py-0.5 rounded bg-success/20 text-success flex items-center gap-1">
+                        <span class="i-lucide-circle-dot text-[10px]"></span>
+                        HEAD
+                      </span>
+                    {/if}
                   </div>
                   <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-3">
                     <span class="font-mono bg-surface-2 px-1.5 py-0.5 rounded text-xs">
@@ -193,19 +202,23 @@
                 <!-- Action button -->
                 <div class="shrink-0">
                   {#if target.canEdit && target.onCheckout}
-                    <button
-                      onclick={() => handleCheckout(commit.oid)}
-                      disabled={checkoutInProgress !== null}
-                      class="btn-ghost px-2 py-1 text-xs flex items-center gap-1"
-                      title="Checkout this commit (replaces working directory)"
-                    >
-                      {#if checkoutInProgress === commit.oid}
-                        <span class="i-lucide-loader-2 animate-spin"></span>
-                      {:else}
-                        <span class="i-lucide-git-branch-plus"></span>
-                      {/if}
-                      Checkout
-                    </button>
+                    {#if isHead}
+                      <span class="text-xs text-text-3 px-2 py-1">Current</span>
+                    {:else}
+                      <button
+                        onclick={() => handleCheckout(commit.oid)}
+                        disabled={checkoutInProgress !== null}
+                        class="btn-ghost px-2 py-1 text-xs flex items-center gap-1"
+                        title="Checkout this commit (replaces working directory)"
+                      >
+                        {#if checkoutInProgress === commit.oid}
+                          <span class="i-lucide-loader-2 animate-spin"></span>
+                        {:else}
+                          <span class="i-lucide-git-branch-plus"></span>
+                        {/if}
+                        Checkout
+                      </button>
+                    {/if}
                   {:else}
                     <button
                       onclick={() => handleBrowse(commit.oid)}

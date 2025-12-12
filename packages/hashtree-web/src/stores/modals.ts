@@ -75,6 +75,11 @@ interface NewIssueTarget {
   onCreate?: (issue: { id: string; title: string }) => void;
 }
 
+interface GitCommitTarget {
+  dirCid: CID;
+  /** Callback when commit is created */
+  onCommit?: (newDirCid: CID) => Promise<void>;
+}
 
 interface ModalState {
   showCreateModal: boolean;
@@ -101,6 +106,8 @@ interface ModalState {
   newPullRequestTarget: NewPullRequestTarget | null;
   showNewIssueModal: boolean;
   newIssueTarget: NewIssueTarget | null;
+  showGitCommitModal: boolean;
+  gitCommitTarget: GitCommitTarget | null;
   modalInput: string;
 }
 
@@ -129,6 +136,8 @@ const initialState: ModalState = {
   newPullRequestTarget: null,
   showNewIssueModal: false,
   newIssueTarget: null,
+  showGitCommitModal: false,
+  gitCommitTarget: null,
   modalInput: '',
 };
 
@@ -236,4 +245,12 @@ export function closeNewIssueModal() {
   modalsStore.update(s => ({ ...s, showNewIssueModal: false, newIssueTarget: null, modalInput: '' }));
 }
 
-export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget };
+export function openGitCommitModal(dirCid: CID, onCommit?: (newDirCid: CID) => Promise<void>) {
+  modalsStore.update(s => ({ ...s, showGitCommitModal: true, gitCommitTarget: { dirCid, onCommit }, modalInput: '' }));
+}
+
+export function closeGitCommitModal() {
+  modalsStore.update(s => ({ ...s, showGitCommitModal: false, gitCommitTarget: null, modalInput: '' }));
+}
+
+export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget };

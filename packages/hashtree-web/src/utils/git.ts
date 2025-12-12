@@ -84,6 +84,43 @@ export async function getBranches(rootCid: CID) {
 }
 
 /**
+ * Get git status (staged, unstaged, untracked files)
+ * Uses wasm-git (libgit2)
+ */
+export async function getStatus(rootCid: CID) {
+  try {
+    const { getStatusWithWasmGit } = await import('./wasmGit');
+    return await getStatusWithWasmGit(rootCid);
+  } catch {
+    return { staged: [], unstaged: [], untracked: [], hasChanges: false };
+  }
+}
+
+/**
+ * Create a new branch
+ * Uses wasm-git (libgit2)
+ */
+export async function createBranch(rootCid: CID, branchName: string, checkout: boolean = true) {
+  const { createBranchWithWasmGit } = await import('./wasmGit');
+  return await createBranchWithWasmGit(rootCid, branchName, checkout);
+}
+
+/**
+ * Stage files and create a commit
+ * Returns the updated .git directory files to be saved back to hashtree
+ */
+export async function commit(
+  rootCid: CID,
+  message: string,
+  authorName: string,
+  authorEmail: string,
+  filesToStage?: string[]
+) {
+  const { commitWithWasmGit } = await import('./wasmGit');
+  return await commitWithWasmGit(rootCid, message, authorName, authorEmail, filesToStage);
+}
+
+/**
  * Get diff between two commits
  * Note: Full diff implementation requires tree walking - not yet implemented
  */

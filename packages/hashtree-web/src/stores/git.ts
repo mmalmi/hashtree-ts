@@ -3,7 +3,8 @@
  */
 import { writable, type Readable } from 'svelte/store';
 import type { CID } from 'hashtree';
-import { isGitRepo, getBranches, getLog } from '../utils/git';
+import { isGitRepo, getBranches, getLog, getStatus } from '../utils/git';
+import type { GitStatusResult } from '../utils/wasmGit';
 
 export interface GitInfo {
   isRepo: boolean;
@@ -96,4 +97,53 @@ export function createGitLogStore(dirCid: CID | null, depth = 20): Readable<{
   }
 
   return { subscribe };
+}
+
+/**
+ * Create a store to get git status (staged, unstaged, untracked files)
+ */
+export function createGitStatusStore(dirCid: CID | null): Readable<{
+  status: GitStatusResult;
+  loading: boolean;
+  error: string | null;
+}> & { refresh: () => void } {
+  const emptyStatus: GitStatusResult = { staged: [], unstaged: [], untracked: [], hasChanges: false };
+  const { subscribe, set } = writable<{
+    status: GitStatusResult;
+    loading: boolean;
+    error: string | null;
+  }>({
+    status: emptyStatus,
+    loading: true,
+    error: null,
+  });
+
+  let currentCid = dirCid;
+
+  function load() {
+    if (!currentCid) {
+      set({ status: emptyStatus, loading: false, error: null });
+      return;
+    }
+
+    set({ status: emptyStatus, loading: true, error: null });
+
+    getStatus(currentCid).then((status) => {
+      set({ status, loading: false, error: null });
+    }).catch((err) => {
+      set({
+        status: emptyStatus,
+        loading: false,
+        error: err instanceof Error ? err.message : 'Failed to get git status',
+      });
+    });
+  }
+
+  // Initial load
+  load();
+
+  return {
+    subscribe,
+    refresh: () => load(),
+  };
 }
