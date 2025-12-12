@@ -363,21 +363,36 @@ export async function getBranchesWithWasmGit(
         // Ignore
       }
 
-      // Get list of branches using for-each-ref
+      // Get list of branches using git branch
       const branches: string[] = [];
       try {
-        const refsOutput = module.callWithOutput(['for-each-ref', '--format=%(refname:short)', 'refs/heads/']);
-        if (refsOutput) {
-          const lines = refsOutput.trim().split('\n');
+        const branchOutput = module.callWithOutput(['branch']);
+        if (branchOutput) {
+          const lines = branchOutput.trim().split('\n');
           for (const line of lines) {
-            const branch = line.trim();
-            if (branch) {
+            // Branch output format: "* master" or "  feature-branch"
+            const branch = line.replace(/^\*?\s*/, '').trim();
+            if (branch && branch !== '(HEAD' && !branch.startsWith('(HEAD')) {
               branches.push(branch);
             }
           }
         }
       } catch {
-        // Ignore - may not have any branches
+        // Fallback to for-each-ref if git branch fails
+        try {
+          const refsOutput = module.callWithOutput(['for-each-ref', '--format=%(refname:short)', 'refs/heads/']);
+          if (refsOutput) {
+            const lines = refsOutput.trim().split('\n');
+            for (const line of lines) {
+              const branch = line.trim();
+              if (branch) {
+                branches.push(branch);
+              }
+            }
+          }
+        } catch {
+          // Ignore
+        }
       }
 
       return { branches, currentBranch };
