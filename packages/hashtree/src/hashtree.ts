@@ -316,9 +316,9 @@ export class HashTree {
   /**
    * Pull (fetch) all chunks for a tree recursively
    * Triggers WebRTC fetches for any missing chunks
-   * @returns Stats about what was pulled
+   * @returns { cid, chunks, bytes } - The CID and stats about what was pulled
    */
-  async pull(id: CID): Promise<{ chunks: number; bytes: number }> {
+  async pull(id: CID): Promise<{ cid: CID; chunks: number; bytes: number }> {
     const visited = new Set<string>();
     let chunks = 0;
     let bytes = 0;
@@ -361,7 +361,71 @@ export class HashTree {
     };
 
     await fetch(id.hash, id.key);
-    return { chunks, bytes };
+    return { cid: id, chunks, bytes };
+  }
+
+  /**
+   * Push all chunks for a tree to a target store
+   * Useful for syncing to remote stores (e.g., Blossom servers)
+   * @param id - CID of the tree to push
+   * @param targetStore - Store to push blocks to (must support put())
+   * @param options - callbacks for progress and per-block status
+   * @returns { cid, pushed, skipped, failed, bytes, errors } - The CID and detailed stats
+   */
+  async push(
+    id: CID,
+    targetStore: Store,
+    options?: {
+      onProgress?: (current: number, total: number) => void;
+      onBlock?: (hash: Hash, status: 'success' | 'skipped' | 'error', error?: Error) => void;
+    }
+  ): Promise<{
+    cid: CID;
+    pushed: number;
+    skipped: number;
+    failed: number;
+    bytes: number;
+    errors: Array<{ hash: Hash; error: Error }>;
+  }> {
+    // First pull to ensure all blocks are available locally
+    await this.pull(id);
+
+    // Collect all blocks
+    const blocks: Array<{ hash: Hash; data: Uint8Array }> = [];
+    for await (const block of this.walkBlocks(id)) {
+      blocks.push(block);
+    }
+
+    let pushed = 0;
+    let skipped = 0;
+    let failed = 0;
+    let bytes = 0;
+    const errors: Array<{ hash: Hash; error: Error }> = [];
+
+    for (let i = 0; i < blocks.length; i++) {
+      const { hash, data } = blocks[i];
+      options?.onProgress?.(i + 1, blocks.length);
+
+      try {
+        // Put to target store - it may return false/skip if already exists
+        const isNew = await targetStore.put(hash, data);
+        if (isNew === false) {
+          skipped++;
+          options?.onBlock?.(hash, 'skipped');
+        } else {
+          pushed++;
+          bytes += data.length;
+          options?.onBlock?.(hash, 'success');
+        }
+      } catch (e) {
+        failed++;
+        const error = e instanceof Error ? e : new Error(String(e));
+        errors.push({ hash, error });
+        options?.onBlock?.(hash, 'error', error);
+      }
+    }
+
+    return { cid: id, pushed, skipped, failed, bytes, errors };
   }
 
   // Edit operations

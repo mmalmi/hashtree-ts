@@ -1,5 +1,8 @@
 import { test, expect, type Route } from '@playwright/test';
 import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 test.describe('Blossom Push', () => {
   test('can open push modal and see server selection', { timeout: 60000 }, async ({ page }) => {
@@ -96,28 +99,63 @@ test.describe('Blossom Push', () => {
     // Navigate to public folder
     await navigateToPublicFolder(page);
 
-    // Click push button
-    await page.getByRole('button', { name: 'Push' }).first().click();
+    // Create a test file to upload - we need actual content to test multi-block push
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'blossom-test-'));
+    const testFilePath = path.join(tmpDir, 'test-content.txt');
+    // Create content that will result in multiple merkle tree blocks
+    // Each chunk is ~16KB, so create ~50KB of content for multiple chunks
+    const testContent = 'Hello from Blossom push test! '.repeat(2000);
+    fs.writeFileSync(testFilePath, testContent);
 
-    // Modal should appear
-    const modal = page.locator('[data-testid="blossom-push-modal"]');
-    await expect(modal).toBeVisible({ timeout: 5000 });
+    try {
+      // Upload file to the public folder
+      const fileInput = page.locator('input[type="file"]').first();
+      await fileInput.setInputFiles(testFilePath);
 
-    // Start push
-    const startPushBtn = page.locator('[data-testid="start-push-btn"]');
-    await expect(startPushBtn).toBeVisible({ timeout: 5000 });
-    await startPushBtn.click();
+      // Wait for file to appear in the sidebar
+      await expect(page.locator('[data-testid="file-list"] a:has-text("test-content.txt")')).toBeVisible({ timeout: 10000 });
 
-    // Should show progress or completion
-    // Wait for done state (may be quick with mocked server)
-    await expect(modal.locator('button', { hasText: 'Done' })).toBeVisible({ timeout: 30000 });
+      // Navigate back to folder view - click on public folder link in sidebar
+      await page.locator('[data-testid="file-list"] a:has-text("public")').click();
 
-    // Verify some uploads were attempted
-    console.log('Uploaded blobs:', uploadedBlobs.length);
+      // Wait for folder actions to be visible
+      await expect(page.getByRole('button', { name: 'Push' }).first()).toBeVisible({ timeout: 10000 });
 
-    // Close modal
-    await page.locator('button', { hasText: 'Done' }).click();
-    await expect(modal).not.toBeVisible({ timeout: 5000 });
+      // Click push button
+      await page.getByRole('button', { name: 'Push' }).first().click();
+
+      // Modal should appear
+      const modal = page.locator('[data-testid="blossom-push-modal"]');
+      await expect(modal).toBeVisible({ timeout: 5000 });
+
+      // Start push
+      const startPushBtn = page.locator('[data-testid="start-push-btn"]');
+      await expect(startPushBtn).toBeVisible({ timeout: 5000 });
+      await startPushBtn.click();
+
+      // Should show progress or completion
+      // Wait for done state (may be quick with mocked server)
+      await expect(modal.locator('button', { hasText: 'Done' })).toBeVisible({ timeout: 30000 });
+
+      // Verify uploads - with actual file content we should have multiple blocks:
+      // - directory node
+      // - file tree node (if chunked)
+      // - chunk blobs
+      const uniqueHashes = new Set(uploadedBlobs);
+      console.log('Uploaded blobs:', uploadedBlobs.length, 'unique:', uniqueHashes.size);
+      console.log('Unique hashes:', [...uniqueHashes]);
+
+      // Should have at least 2 unique blocks (directory + file/chunk)
+      // Each block is uploaded to 2 servers, so total uploads = uniqueBlocks * 2
+      expect(uniqueHashes.size).toBeGreaterThanOrEqual(2);
+
+      // Close modal
+      await page.locator('button', { hasText: 'Done' }).click();
+      await expect(modal).not.toBeVisible({ timeout: 5000 });
+    } finally {
+      // Cleanup temp files
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   test('push modal handles upload errors gracefully', { timeout: 90000 }, async ({ page }) => {
@@ -141,23 +179,45 @@ test.describe('Blossom Push', () => {
     // Navigate to public folder
     await navigateToPublicFolder(page);
 
-    // Click push button
-    await page.getByRole('button', { name: 'Push' }).first().click();
+    // Create a test file so we have something to push
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'blossom-error-test-'));
+    const testFilePath = path.join(tmpDir, 'error-test.txt');
+    fs.writeFileSync(testFilePath, 'Test content for error handling');
 
-    // Start push
-    const modal = page.locator('[data-testid="blossom-push-modal"]');
-    await expect(modal).toBeVisible({ timeout: 5000 });
+    try {
+      // Upload file to the public folder
+      const fileInput = page.locator('input[type="file"]').first();
+      await fileInput.setInputFiles(testFilePath);
 
-    await page.locator('[data-testid="start-push-btn"]').click();
+      // Wait for file to appear in the sidebar
+      await expect(page.locator('[data-testid="file-list"] a:has-text("error-test.txt")')).toBeVisible({ timeout: 10000 });
 
-    // Wait for completion with errors
-    await expect(modal.locator('button', { hasText: 'Done' })).toBeVisible({ timeout: 30000 });
+      // Navigate back to folder view - click on public folder link in sidebar
+      await page.locator('[data-testid="file-list"] a:has-text("public")').click();
 
-    // Should show error count (Failed label should be visible in stats grid)
-    await expect(modal.locator('.text-danger').first()).toBeVisible();
+      // Wait for folder actions to be visible
+      await expect(page.getByRole('button', { name: 'Push' }).first()).toBeVisible({ timeout: 10000 });
 
-    // Close modal
-    await page.locator('button', { hasText: 'Done' }).click();
-    await expect(modal).not.toBeVisible({ timeout: 5000 });
+      // Click push button
+      await page.getByRole('button', { name: 'Push' }).first().click();
+
+      // Start push
+      const modal = page.locator('[data-testid="blossom-push-modal"]');
+      await expect(modal).toBeVisible({ timeout: 5000 });
+
+      await page.locator('[data-testid="start-push-btn"]').click();
+
+      // Wait for completion with errors
+      await expect(modal.locator('button', { hasText: 'Done' })).toBeVisible({ timeout: 30000 });
+
+      // Should show error count (Failed label should be visible in stats grid)
+      await expect(modal.locator('.text-danger').first()).toBeVisible();
+
+      // Close modal
+      await page.locator('button', { hasText: 'Done' }).click();
+      await expect(modal).not.toBeVisible({ timeout: 5000 });
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

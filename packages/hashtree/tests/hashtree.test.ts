@@ -450,4 +450,203 @@ describe('HashTree', () => {
       expect(resolved!.type).toBe(LinkType.Dir);
     });
   });
+
+  describe('pull', () => {
+    it('should pull all blocks for a simple file', async () => {
+      const data = new TextEncoder().encode('hello world');
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const result = await tree.pull(cid);
+
+      expect(result.cid).toEqual(cid);
+      expect(result.chunks).toBe(1);
+      expect(result.bytes).toBe(11);
+    });
+
+    it('should pull all blocks for a chunked file', async () => {
+      const smallTree = new HashTree({ store, chunkSize: 10 });
+      const data = new TextEncoder().encode('this is a longer message that will be chunked');
+      const { cid } = await smallTree.putFile(data, { public: true });
+
+      const result = await smallTree.pull(cid);
+
+      expect(result.cid).toEqual(cid);
+      expect(result.chunks).toBeGreaterThan(1);
+      expect(result.bytes).toBeGreaterThan(data.length); // includes tree nodes
+    });
+
+    it('should pull all blocks for directory with files', async () => {
+      const { cid: file1 } = await tree.putFile(new TextEncoder().encode('content1'), { public: true });
+      const { cid: file2 } = await tree.putFile(new TextEncoder().encode('content2'), { public: true });
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'a.txt', cid: file1, size: 8, type: LinkType.Blob },
+        { name: 'b.txt', cid: file2, size: 8, type: LinkType.Blob },
+      ], { public: true });
+
+      const result = await tree.pull(dirCid);
+
+      expect(result.cid).toEqual(dirCid);
+      expect(result.chunks).toBe(3); // dir + 2 files
+    });
+
+    it('should pull encrypted directory', async () => {
+      const { cid: fileCid } = await tree.putFile(new TextEncoder().encode('secret'));
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'secret.txt', cid: fileCid, size: 6, type: LinkType.Blob },
+      ]);
+
+      const result = await tree.pull(dirCid);
+
+      expect(result.cid).toEqual(dirCid);
+      expect(result.cid.key).toBeDefined();
+      expect(result.chunks).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('push', () => {
+    it('should push all blocks to target store', async () => {
+      const data = new TextEncoder().encode('hello world');
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const targetStore = new MemoryStore();
+      const result = await tree.push(cid, targetStore);
+
+      expect(result.cid).toEqual(cid);
+      expect(result.pushed).toBe(1);
+      expect(result.skipped).toBe(0);
+      expect(result.bytes).toBe(11);
+
+      // Verify data is in target store
+      const retrieved = await targetStore.get(cid.hash);
+      expect(retrieved).toEqual(data);
+    });
+
+    it('should push chunked file to target store', async () => {
+      const smallTree = new HashTree({ store, chunkSize: 10 });
+      const data = new TextEncoder().encode('this is a longer message that will be chunked');
+      const { cid } = await smallTree.putFile(data, { public: true });
+
+      const targetStore = new MemoryStore();
+      const result = await smallTree.push(cid, targetStore);
+
+      expect(result.cid).toEqual(cid);
+      expect(result.pushed).toBeGreaterThan(1);
+
+      // Verify tree can be read from target store
+      const targetTree = new HashTree({ store: targetStore, chunkSize: 10 });
+      const retrieved = await targetTree.readFile(cid);
+      expect(retrieved).toEqual(data);
+    });
+
+    it('should push directory with files to target store', async () => {
+      const { cid: file1 } = await tree.putFile(new TextEncoder().encode('content1'), { public: true });
+      const { cid: file2 } = await tree.putFile(new TextEncoder().encode('content2'), { public: true });
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'a.txt', cid: file1, size: 8, type: LinkType.Blob },
+        { name: 'b.txt', cid: file2, size: 8, type: LinkType.Blob },
+      ], { public: true });
+
+      const targetStore = new MemoryStore();
+      const result = await tree.push(dirCid, targetStore);
+
+      expect(result.cid).toEqual(dirCid);
+      expect(result.pushed).toBe(3); // dir + 2 files
+
+      // Verify directory can be read from target store
+      const targetTree = new HashTree({ store: targetStore });
+      const entries = await targetTree.listDirectory(dirCid);
+      expect(entries).toHaveLength(2);
+    });
+
+    it('should skip blocks that already exist in target', async () => {
+      const data = new TextEncoder().encode('hello world');
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const targetStore = new MemoryStore();
+
+      // Push once
+      const result1 = await tree.push(cid, targetStore);
+      expect(result1.pushed).toBe(1);
+      expect(result1.skipped).toBe(0);
+      expect(result1.failed).toBe(0);
+
+      // Push again - should skip
+      const result2 = await tree.push(cid, targetStore);
+      expect(result2.pushed).toBe(0);
+      expect(result2.skipped).toBe(1);
+      expect(result2.failed).toBe(0);
+    });
+
+    it('should handle errors and return them in errors array', async () => {
+      const data = new TextEncoder().encode('hello world');
+      const { cid } = await tree.putFile(data, { public: true });
+
+      // Create a store that always throws
+      const failingStore: MemoryStore = {
+        ...new MemoryStore(),
+        put: async () => { throw new Error('Upload failed'); },
+        get: async () => null,
+      };
+
+      const result = await tree.push(cid, failingStore);
+
+      expect(result.pushed).toBe(0);
+      expect(result.failed).toBe(1);
+      expect(result.errors).toHaveLength(1);
+      expect(result.errors[0].error.message).toBe('Upload failed');
+    });
+
+    it('should call onBlock callback for each block', async () => {
+      const data = new TextEncoder().encode('hello world');
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const targetStore = new MemoryStore();
+      const blockStatuses: Array<{ status: string }> = [];
+
+      await tree.push(cid, targetStore, {
+        onBlock: (hash, status) => blockStatuses.push({ status }),
+      });
+
+      expect(blockStatuses).toHaveLength(1);
+      expect(blockStatuses[0].status).toBe('success');
+    });
+
+    it('should call onProgress callback', async () => {
+      const smallTree = new HashTree({ store, chunkSize: 10 });
+      const data = new TextEncoder().encode('this is a longer message');
+      const { cid } = await smallTree.putFile(data, { public: true });
+
+      const targetStore = new MemoryStore();
+      const progressCalls: Array<[number, number]> = [];
+
+      await smallTree.push(cid, targetStore, {
+        onProgress: (current, total) => progressCalls.push([current, total]),
+      });
+
+      expect(progressCalls.length).toBeGreaterThan(0);
+      // Last call should be (total, total)
+      const lastCall = progressCalls[progressCalls.length - 1];
+      expect(lastCall[0]).toBe(lastCall[1]);
+    });
+
+    it('should push encrypted tree to target store', async () => {
+      const { cid: fileCid } = await tree.putFile(new TextEncoder().encode('secret'));
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'secret.txt', cid: fileCid, size: 6, type: LinkType.Blob },
+      ]);
+
+      const targetStore = new MemoryStore();
+      const result = await tree.push(dirCid, targetStore);
+
+      expect(result.cid).toEqual(dirCid);
+      expect(result.cid.key).toBeDefined();
+      expect(result.pushed).toBeGreaterThanOrEqual(2);
+
+      // Verify encrypted tree can be read from target store
+      const targetTree = new HashTree({ store: targetStore });
+      const entries = await targetTree.listDirectory(dirCid);
+      expect(entries).toHaveLength(1);
+      expect(entries[0].name).toBe('secret.txt');
+    });
+  });
 });

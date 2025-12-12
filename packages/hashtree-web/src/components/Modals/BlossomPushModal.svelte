@@ -108,53 +108,27 @@
       signer: createBlossomSigner(),
     });
 
-    // Use tree.walkBlocks() to iterate all blocks (handles encryption)
-    currentFile = 'Collecting blocks...';
     const tree = getTree();
 
-    // First collect all blocks to know total count
-    const blockList: Array<{ hash: Hash; data: Uint8Array }> = [];
-    for await (const block of tree.walkBlocks(target.cid)) {
-      blockList.push(block);
-    }
+    // Use tree.push() which handles pull + walkBlocks + per-block uploads
+    currentFile = 'Pushing...';
 
-    progress = { current: 0, total: blockList.length };
-
-    // Initialize results
-    results = blockList.map(b => ({
-      hash: toHex(b.hash),
-      name: toHex(b.hash).slice(0, 12) + '...',
-      size: b.data.length,
-      status: 'pending' as const,
-    }));
-
-    // Push each block using BlossomStore
-    for (let i = 0; i < blockList.length; i++) {
-      if (cancelled) break;
-
-      const block = blockList[i];
-      const resultIdx = i;
-      currentFile = toHex(block.hash).slice(0, 16) + '...';
-
-      results[resultIdx] = { ...results[resultIdx], status: 'uploading' };
-
-      // Use BlossomStore.put() - handles auth, hash verification, parallel uploads
-      try {
-        const isNew = await blossomStore.put(block.hash, block.data);
-        results[resultIdx] = {
-          ...results[resultIdx],
-          status: isNew ? 'success' : 'skipped',
-        };
-      } catch (e) {
-        results[resultIdx] = {
-          ...results[resultIdx],
-          status: 'error',
-          error: e instanceof Error ? e.message : String(e),
-        };
-      }
-
-      progress = { ...progress, current: i + 1 };
-    }
+    const pushResult = await tree.push(target.cid, blossomStore, {
+      onProgress: (current, total) => {
+        progress = { current, total };
+      },
+      onBlock: (hash, status, error) => {
+        const hexHash = toHex(hash);
+        results = [...results, {
+          hash: hexHash,
+          name: hexHash.slice(0, 12) + '...',
+          size: 0,
+          status: status === 'error' ? 'error' : status === 'skipped' ? 'skipped' : 'success',
+          error: error?.message,
+        }];
+        currentFile = hexHash.slice(0, 16) + '...';
+      },
+    });
 
     phase = 'done';
     currentFile = '';
