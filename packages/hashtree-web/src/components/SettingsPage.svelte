@@ -6,7 +6,7 @@
   import { onMount } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { nostrStore, type RelayStatus, getNsec } from '../nostr';
-  import { appStore, formatBytes, updateStorageStats } from '../store';
+  import { appStore, formatBytes, updateStorageStats, refreshWebRTCStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { syncedStorageStore, refreshSyncedStorage, type UserStorageStats } from '../stores/chunkMetadata';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS, DEFAULT_POOL_SETTINGS } from '../stores/settings';
@@ -165,11 +165,18 @@
   let peerList = $derived(appState.peers);
   let stats = $derived(appState.stats);
   let myPeerId = $derived(appState.myPeerId);
+  let webrtcStats = $derived(appState.webrtcStats);
+  let perPeerStats = $derived(appState.perPeerStats);
 
-  // Load initial data on mount
+  // Load initial data on mount and refresh stats periodically
   onMount(() => {
     updateStorageStats();
     refreshSyncedStorage();
+    refreshWebRTCStats();
+
+    // Refresh WebRTC stats every second while on settings page
+    const statsInterval = setInterval(refreshWebRTCStats, 1000);
+    return () => clearInterval(statsInterval);
   });
 
   // Helper function to extract uuid from peerId (format: "pubkey:uuid")
@@ -185,6 +192,11 @@
       case 'failed': return '#f85149';
       default: return '#8b949e';
     }
+  }
+
+  // Helper function to get peer stats
+  function getPeerStats(peerId: string) {
+    return perPeerStats?.get(peerId)?.stats;
   }
 </script>
 
@@ -441,6 +453,43 @@
         Peers ({peerList.length})
       </h3>
       <p class="text-xs text-text-3 mb-3">WebRTC connections for file exchange</p>
+
+      <!-- Aggregate stats -->
+      {#if webrtcStats && isLoggedIn}
+        <div class="bg-surface-2 rounded p-3 mb-3">
+          <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <div class="flex justify-between">
+              <span class="text-text-3">Reqs sent</span>
+              <span class="text-text-1 font-mono">{webrtcStats.requestsSent}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-3">Reqs received</span>
+              <span class="text-text-1 font-mono">{webrtcStats.requestsReceived}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-3">Res from local</span>
+              <span class="text-text-1 font-mono">{webrtcStats.responsesFromLocal}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-3">Res forwarded</span>
+              <span class="text-text-1 font-mono">{webrtcStats.responsesForwarded}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-3">Reqs forwarded</span>
+              <span class="text-text-1 font-mono">{webrtcStats.requestsForwarded}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-3">Pending our reqs</span>
+              <span class="text-text-1 font-mono">{webrtcStats.pendingOurRequests}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-3">Pending their reqs</span>
+              <span class="text-text-1 font-mono">{webrtcStats.pendingTheirRequests}</span>
+            </div>
+          </div>
+        </div>
+      {/if}
+
       {#if myPeerId}
         <div class="text-xs text-muted mb-2 font-mono">
           Your ID: {myPeerId}
@@ -457,24 +506,54 @@
       {:else}
         <div class="bg-surface-2 rounded divide-y divide-surface-3">
           {#each peerList as peer}
+            {@const peerStats = getPeerStats(peer.peerId)}
             <a
               href="#/{nip19.npubEncode(peer.pubkey)}"
-              class="flex items-center gap-2 p-3 text-sm hover:bg-surface-3 transition-colors"
+              class="flex flex-col p-3 hover:bg-surface-3 transition-colors no-underline"
             >
-              <span
-                class="w-2 h-2 rounded-full shrink-0"
-                style="background: {stateColor(peer.state)}"
-              ></span>
-              <UserRow
-                pubkey={peer.pubkey}
-                description={peer.isSelf ? 'You' : `${peer.state}${peer.pool === 'follows' ? ' (follow)' : ''}`}
-                avatarSize={32}
-                showBadge
-                class="flex-1 min-w-0"
-              />
-              <span class="text-xs text-muted font-mono shrink-0">
-                {getPeerUuid(peer.peerId).slice(0, 8)}
-              </span>
+              <div class="flex items-center gap-2 text-sm">
+                <span
+                  class="w-2 h-2 rounded-full shrink-0"
+                  style="background: {stateColor(peer.state)}"
+                ></span>
+                <UserRow
+                  pubkey={peer.pubkey}
+                  description={peer.isSelf ? 'You' : `${peer.state}${peer.pool === 'follows' ? ' (follow)' : ''}`}
+                  avatarSize={32}
+                  showBadge
+                  class="flex-1 min-w-0"
+                />
+                <span class="text-xs text-muted font-mono shrink-0">
+                  {getPeerUuid(peer.peerId).slice(0, 8)}
+                </span>
+              </div>
+              <!-- Per-peer stats -->
+              {#if peerStats && peer.state === 'connected'}
+                <div class="mt-2 ml-4 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-3">
+                  <span title="Requests sent to this peer">
+                    <span class="i-lucide-arrow-up-right inline-block align-middle mr-0.5"></span>{peerStats.requestsSent}
+                  </span>
+                  <span title="Requests received from this peer">
+                    <span class="i-lucide-arrow-down-left inline-block align-middle mr-0.5"></span>{peerStats.requestsReceived}
+                  </span>
+                  <span title="Responses from local store">
+                    <span class="i-lucide-database inline-block align-middle mr-0.5"></span>{peerStats.responsesFromLocal}
+                  </span>
+                  <span title="Responses via other peers">
+                    <span class="i-lucide-share-2 inline-block align-middle mr-0.5"></span>{peerStats.responsesForwarded}
+                  </span>
+                  {#if peerStats.pendingOurRequests > 0}
+                    <span title="Our pending requests to this peer" class="text-accent">
+                      <span class="i-lucide-loader-2 inline-block align-middle mr-0.5"></span>{peerStats.pendingOurRequests}
+                    </span>
+                  {/if}
+                  {#if peerStats.pendingTheirRequests > 0}
+                    <span title="Pending requests from this peer" class="text-warning">
+                      <span class="i-lucide-clock inline-block align-middle mr-0.5"></span>{peerStats.pendingTheirRequests}
+                    </span>
+                  {/if}
+                </div>
+              {/if}
             </a>
           {/each}
         </div>

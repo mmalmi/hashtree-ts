@@ -104,6 +104,7 @@ export {
   type PeerPool,
   type PeerClassifier,
   type PoolConfig,
+  type WebRTCStats,
 } from './webrtc/index.js';
 
 // BEP52 (BitTorrent v2) compatible merkle tree

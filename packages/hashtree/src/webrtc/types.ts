@@ -139,6 +139,18 @@ export type WebRTCStoreEvent =
 
 export type WebRTCStoreEventHandler = (event: WebRTCStoreEvent) => void;
 
+// Stats tracking
+export interface WebRTCStats {
+  requestsSent: number;           // Own requests sent to peers
+  requestsReceived: number;       // Requests received from peers
+  requestsForwarded: number;      // Requests forwarded to other peers
+  responsesFromLocal: number;     // Responses sent from local store
+  responsesForwarded: number;     // Responses sent after forwarding to peers
+  responsesFailed: number;        // Requests we couldn't fulfill
+  pendingOurRequests: number;     // Current pending requests we sent to peers
+  pendingTheirRequests: number;   // Current pending requests from peers
+}
+
 export function generateUuid(): string {
   return Math.random().toString(36).substring(2, 15) +
     Math.random().toString(36).substring(2, 15);

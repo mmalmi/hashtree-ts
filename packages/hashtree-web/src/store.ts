@@ -7,7 +7,7 @@ import {
   WebRTCStore,
   LinkType,
 } from 'hashtree';
-import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClassifier, BlossomSigner } from 'hashtree';
+import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClassifier, BlossomSigner, WebRTCStats, PeerPool } from 'hashtree';
 
 // Re-export LinkType for e2e tests that can't import 'hashtree' directly
 export { LinkType };
@@ -38,6 +38,22 @@ export interface StorageStats {
   bytes: number;
 }
 
+// Per-peer stats
+export interface PeerStatsInfo {
+  pubkey: string;
+  pool: PeerPool;
+  stats: {
+    requestsSent: number;
+    requestsReceived: number;
+    requestsForwarded: number;
+    responsesFromLocal: number;
+    responsesForwarded: number;
+    responsesFailed: number;
+    pendingOurRequests: number;
+    pendingTheirRequests: number;
+  };
+}
+
 // WebSocket fallback status
 // App state store interface
 interface AppState {
@@ -46,6 +62,10 @@ interface AppState {
   peers: PeerStatus[];
   myPeerId: string | null;
   fallbackStoresCount: number;
+
+  // WebRTC stats
+  webrtcStats: WebRTCStats | null;
+  perPeerStats: Map<string, PeerStatsInfo>;
 
   // Storage stats
   stats: StorageStats;
@@ -58,6 +78,8 @@ function createAppStore() {
     peers: [],
     myPeerId: null,
     fallbackStoresCount: 0,
+    webrtcStats: null,
+    perPeerStats: new Map(),
     stats: { items: 0, bytes: 0 },
   });
 
@@ -78,6 +100,13 @@ function createAppStore() {
 
     setFallbackStoresCount: (count: number) => {
       update(state => ({ ...state, fallbackStoresCount: count }));
+    },
+
+    setWebRTCStats: (
+      webrtcStats: WebRTCStats | null,
+      perPeerStats: Map<string, PeerStatsInfo>
+    ) => {
+      update(state => ({ ...state, webrtcStats, perPeerStats }));
     },
 
     setStats: (stats: StorageStats) => {
@@ -209,6 +238,12 @@ export function initWebRTC(
       appStore.setPeerCount(webrtcStore?.getConnectedCount() ?? 0);
       appStore.setPeers(webrtcStore?.getPeers() ?? []);
       appStore.setFallbackStoresCount(webrtcStore?.getFallbackStoresCount() ?? 0);
+
+      // Update stats
+      if (webrtcStore) {
+        const { aggregate, perPeer } = webrtcStore.getStats();
+        appStore.setWebRTCStats(aggregate, perPeer);
+      }
     }
   });
 
@@ -259,4 +294,12 @@ export function stopWebRTC() {
 // Get WebRTC store for P2P fetching
 export function getWebRTCStore(): WebRTCStore | null {
   return webrtcStore;
+}
+
+// Refresh WebRTC stats (call periodically to update UI)
+export function refreshWebRTCStats(): void {
+  if (webrtcStore) {
+    const { aggregate, perPeer } = webrtcStore.getStats();
+    appStore.setWebRTCStats(aggregate, perPeer);
+  }
 }

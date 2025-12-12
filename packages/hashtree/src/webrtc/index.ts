@@ -14,4 +14,5 @@ export {
   type PeerPool,
   type PeerClassifier,
   type PoolConfig,
+  type WebRTCStats,
 } from './types.js';

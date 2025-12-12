@@ -72,6 +72,19 @@ export class Peer {
   // htl parameter is the decremented HTL to use when forwarding
   private onForwardRequest?: (hash: Uint8Array, excludePeerId: string, htl: number) => Promise<Uint8Array | null>;
 
+  // Stats callback
+  private onStats?: (stat: 'requestReceived' | 'responseFromLocal' | 'responseForwarded' | 'responseFailed' | 'requestForwarded') => void;
+
+  // Per-peer stats tracking
+  private stats = {
+    requestsSent: 0,
+    requestsReceived: 0,
+    requestsForwarded: 0,
+    responsesFromLocal: 0,
+    responsesForwarded: 0,
+    responsesFailed: 0,
+  };
+
   // Per-peer HTL decrement config (Freenet-style probabilistic)
   private htlConfig: PeerHTLConfig;
 
@@ -86,6 +99,7 @@ export class Peer {
     onClose: () => void;
     onConnected?: () => void;
     onForwardRequest?: (hash: Uint8Array, excludePeerId: string, htl: number) => Promise<Uint8Array | null>;
+    onStats?: (stat: 'requestReceived' | 'responseFromLocal' | 'responseForwarded' | 'responseFailed' | 'requestForwarded') => void;
     requestTimeout?: number;
     debug?: boolean;
   }) {
@@ -97,6 +111,7 @@ export class Peer {
     this.onClose = options.onClose;
     this.onConnected = options.onConnected;
     this.onForwardRequest = options.onForwardRequest;
+    this.onStats = options.onStats;
     this.requestTimeout = options.requestTimeout ?? 5000;
     this.debug = options.debug ?? false;
     this.createdAt = Date.now();
@@ -119,6 +134,10 @@ export class Peer {
 
   get isConnected(): boolean {
     return this.pc.connectionState === 'connected';
+  }
+
+  get pendingTheirRequestsCount(): number {
+    return this.theirRequests.size;
   }
 
   private scheduleCandidateBatch(): void {
@@ -211,12 +230,17 @@ export class Peer {
     const hash = req.h;
     const hashKey = hashToKey(hash);
 
+    this.stats.requestsReceived++;
+    this.onStats?.('requestReceived');
+
     // Try local store first
     if (this.localStore) {
       const data = await this.localStore.get(hash);
 
       if (data) {
         this.sendResponse(hash, data);
+        this.stats.responsesFromLocal++;
+        this.onStats?.('responseFromLocal');
         return;
       }
     }
@@ -232,6 +256,9 @@ export class Peer {
       // Decrement HTL before forwarding (Freenet-style per-peer decrement)
       const forwardHTL = decrementHTL(htl, this.htlConfig);
 
+      this.stats.requestsForwarded++;
+      this.onStats?.('requestForwarded');
+
       // Forward to other peers (excluding this one)
       const data = await this.onForwardRequest(hash, this.peerId, forwardHTL);
 
@@ -239,12 +266,16 @@ export class Peer {
         // Got it from another peer, send response
         this.theirRequests.delete(hashKey);
         this.sendResponse(hash, data);
+        this.stats.responsesForwarded++;
+        this.onStats?.('responseForwarded');
         return;
       }
       // If not found, keep in theirRequests for later push
     }
 
     // Not found anywhere - stay silent, let requester timeout.
+    this.stats.responsesFailed++;
+    this.onStats?.('responseFailed');
   }
 
   private sendResponse(hash: Uint8Array, data: Uint8Array): void {
@@ -280,6 +311,8 @@ export class Peer {
     // Decrement HTL before sending (Freenet-style per-peer decrement)
     const sendHTL = decrementHTL(htl, this.htlConfig);
 
+    this.stats.requestsSent++;
+
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         this.ourRequests.delete(hashKey);
@@ -291,6 +324,26 @@ export class Peer {
       const req = createRequest(hash, sendHTL);
       this.dataChannel!.send(encodeRequest(req));
     });
+  }
+
+  /**
+   * Get per-peer statistics
+   */
+  getStats(): {
+    requestsSent: number;
+    requestsReceived: number;
+    requestsForwarded: number;
+    responsesFromLocal: number;
+    responsesForwarded: number;
+    responsesFailed: number;
+    pendingOurRequests: number;
+    pendingTheirRequests: number;
+  } {
+    return {
+      ...this.stats,
+      pendingOurRequests: this.ourRequests.size,
+      pendingTheirRequests: this.theirRequests.size,
+    };
   }
 
   /**
