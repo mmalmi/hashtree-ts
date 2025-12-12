@@ -143,9 +143,9 @@
   function getMimeType(filename: string): string {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
     const mimeTypes: Record<string, string> = {
-      // Video
-      'webm': 'video/webm; codecs="vp8, opus"',
-      'mp4': 'video/mp4; codecs="avc1.42E01E, mp4a.40.2"',
+      // Video - don't specify codecs, let MSE auto-detect from container
+      'webm': 'video/webm',
+      'mp4': 'video/mp4',
       'ogg': 'video/ogg',
       'ogv': 'video/ogg',
       'mov': 'video/quicktime',
@@ -159,7 +159,7 @@
       'aac': 'audio/aac',
       'oga': 'audio/ogg',
     };
-    return mimeTypes[ext] || (isAudio ? 'audio/mpeg' : 'video/webm; codecs="vp8, opus"');
+    return mimeTypes[ext] || (isAudio ? 'audio/mpeg' : 'video/webm');
   }
 
   // Check if MSE is supported for this mime type
@@ -302,7 +302,9 @@
     try {
       mediaSource = new MediaSource();
 
-      if (!mediaRef) return;
+      if (!mediaRef) {
+        return;
+      }
       mediaRef.src = URL.createObjectURL(mediaSource);
 
       abortController = new AbortController();
@@ -467,8 +469,6 @@
 
     const currentCidHash = toHex(cid.hash);
     if (currentCidHash === lastCidHash) return;
-
-    console.log('[MediaPlayer] CID changed, reloading blob URL for live stream');
 
     // Remember current playback position
     const currentPlaybackTime = mediaRef.currentTime;
