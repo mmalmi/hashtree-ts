@@ -72,17 +72,13 @@ export class Peer {
   // htl parameter is the decremented HTL to use when forwarding
   private onForwardRequest?: (hash: Uint8Array, excludePeerId: string, htl: number) => Promise<Uint8Array | null>;
 
-  // Stats callback
-  private onStats?: (stat: 'requestReceived' | 'responseFromLocal' | 'responseForwarded' | 'responseFailed' | 'requestForwarded') => void;
-
   // Per-peer stats tracking
   private stats = {
     requestsSent: 0,
     requestsReceived: 0,
-    requestsForwarded: 0,
-    responsesFromLocal: 0,
-    responsesForwarded: 0,
-    responsesFailed: 0,
+    responsesSent: 0,
+    responsesReceived: 0,
+    receiveErrors: 0,
   };
 
   // Per-peer HTL decrement config (Freenet-style probabilistic)
@@ -99,7 +95,6 @@ export class Peer {
     onClose: () => void;
     onConnected?: () => void;
     onForwardRequest?: (hash: Uint8Array, excludePeerId: string, htl: number) => Promise<Uint8Array | null>;
-    onStats?: (stat: 'requestReceived' | 'responseFromLocal' | 'responseForwarded' | 'responseFailed' | 'requestForwarded') => void;
     requestTimeout?: number;
     debug?: boolean;
   }) {
@@ -111,7 +106,6 @@ export class Peer {
     this.onClose = options.onClose;
     this.onConnected = options.onConnected;
     this.onForwardRequest = options.onForwardRequest;
-    this.onStats = options.onStats;
     this.requestTimeout = options.requestTimeout ?? 5000;
     this.debug = options.debug ?? false;
     this.createdAt = Date.now();
@@ -212,16 +206,35 @@ export class Peer {
   }
 
   private async handleMessage(data: ArrayBuffer): Promise<void> {
-    const msg = parseMessage(data);
-    if (!msg) {
-      this.log('Failed to parse message');
-      return;
-    }
+    try {
+      const msg = parseMessage(data);
+      if (!msg) {
+        this.log('Failed to parse message');
+        this.stats.receiveErrors++;
+        return;
+      }
 
-    if (msg.type === MSG_TYPE_REQUEST) {
-      await this.handleRequest(msg.body);
-    } else if (msg.type === MSG_TYPE_RESPONSE) {
-      await handleResponse(msg.body, this.ourRequests);
+      if (msg.type === MSG_TYPE_REQUEST) {
+        await this.handleRequest(msg.body);
+      } else if (msg.type === MSG_TYPE_RESPONSE) {
+        // Track that we received a response (before verification)
+        const hashKey = hashToKey(msg.body.h);
+        const hadPending = this.ourRequests.has(hashKey);
+
+        const verified = await handleResponse(msg.body, this.ourRequests);
+
+        // If we had a pending request and now it's resolved, count it
+        if (hadPending && !this.ourRequests.has(hashKey)) {
+          if (verified) {
+            this.stats.responsesReceived++;
+          } else {
+            this.stats.receiveErrors++;
+          }
+        }
+      }
+    } catch (err) {
+      this.log('Error handling message:', err);
+      this.stats.receiveErrors++;
     }
   }
 
@@ -231,7 +244,6 @@ export class Peer {
     const hashKey = hashToKey(hash);
 
     this.stats.requestsReceived++;
-    this.onStats?.('requestReceived');
 
     // Try local store first
     if (this.localStore) {
@@ -239,8 +251,7 @@ export class Peer {
 
       if (data) {
         this.sendResponse(hash, data);
-        this.stats.responsesFromLocal++;
-        this.onStats?.('responseFromLocal');
+        this.stats.responsesSent++;
         return;
       }
     }
@@ -256,9 +267,6 @@ export class Peer {
       // Decrement HTL before forwarding (Freenet-style per-peer decrement)
       const forwardHTL = decrementHTL(htl, this.htlConfig);
 
-      this.stats.requestsForwarded++;
-      this.onStats?.('requestForwarded');
-
       // Forward to other peers (excluding this one)
       const data = await this.onForwardRequest(hash, this.peerId, forwardHTL);
 
@@ -266,16 +274,13 @@ export class Peer {
         // Got it from another peer, send response
         this.theirRequests.delete(hashKey);
         this.sendResponse(hash, data);
-        this.stats.responsesForwarded++;
-        this.onStats?.('responseForwarded');
+        this.stats.responsesSent++;
         return;
       }
       // If not found, keep in theirRequests for later push
     }
 
     // Not found anywhere - stay silent, let requester timeout.
-    this.stats.responsesFailed++;
-    this.onStats?.('responseFailed');
   }
 
   private sendResponse(hash: Uint8Array, data: Uint8Array): void {
@@ -332,18 +337,11 @@ export class Peer {
   getStats(): {
     requestsSent: number;
     requestsReceived: number;
-    requestsForwarded: number;
-    responsesFromLocal: number;
-    responsesForwarded: number;
-    responsesFailed: number;
-    pendingOurRequests: number;
-    pendingTheirRequests: number;
+    responsesSent: number;
+    responsesReceived: number;
+    receiveErrors: number;
   } {
-    return {
-      ...this.stats,
-      pendingOurRequests: this.ourRequests.size,
-      pendingTheirRequests: this.theirRequests.size,
-    };
+    return { ...this.stats };
   }
 
   /**
@@ -361,6 +359,7 @@ export class Peer {
 
     // Send response with data
     this.sendResponse(hash, data);
+    this.stats.responsesSent++;
 
     this.log('Sent data for hash:', hashKey.slice(0, 16));
     return true;

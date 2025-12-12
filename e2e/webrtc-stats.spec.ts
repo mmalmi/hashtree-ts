@@ -209,14 +209,16 @@ test.describe('WebRTC Stats', () => {
       // Check stats changed
       if (finalStats1?.aggregate && initialStats1?.aggregate) {
         const sentDiff = finalStats1.aggregate.requestsSent - (initialStats1.aggregate.requestsSent || 0);
+        const recvDiff = finalStats1.aggregate.responsesReceived - (initialStats1.aggregate.responsesReceived || 0);
         console.log('Peer 1 requestsSent diff:', sentDiff);
+        console.log('Peer 1 responsesReceived diff:', recvDiff);
       }
 
       if (finalStats2?.aggregate && initialStats2?.aggregate) {
         const recvDiff = finalStats2.aggregate.requestsReceived - (initialStats2.aggregate.requestsReceived || 0);
-        const localDiff = finalStats2.aggregate.responsesFromLocal - (initialStats2.aggregate.responsesFromLocal || 0);
+        const sentDiff = finalStats2.aggregate.responsesSent - (initialStats2.aggregate.responsesSent || 0);
         console.log('Peer 2 requestsReceived diff:', recvDiff);
-        console.log('Peer 2 responsesFromLocal diff:', localDiff);
+        console.log('Peer 2 responsesSent diff:', sentDiff);
       }
 
       // Verify at least some activity occurred

@@ -467,25 +467,19 @@
               <span class="text-text-1 font-mono">{webrtcStats.requestsReceived}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-text-3">Res from local</span>
-              <span class="text-text-1 font-mono">{webrtcStats.responsesFromLocal}</span>
+              <span class="text-text-3">Res sent</span>
+              <span class="text-text-1 font-mono">{webrtcStats.responsesSent}</span>
             </div>
             <div class="flex justify-between">
-              <span class="text-text-3">Res forwarded</span>
-              <span class="text-text-1 font-mono">{webrtcStats.responsesForwarded}</span>
+              <span class="text-text-3">Res received</span>
+              <span class="text-text-1 font-mono">{webrtcStats.responsesReceived}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-text-3">Reqs forwarded</span>
-              <span class="text-text-1 font-mono">{webrtcStats.requestsForwarded}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-text-3">Pending our reqs</span>
-              <span class="text-text-1 font-mono">{webrtcStats.pendingOurRequests}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-text-3">Pending their reqs</span>
-              <span class="text-text-1 font-mono">{webrtcStats.pendingTheirRequests}</span>
-            </div>
+            {#if webrtcStats.receiveErrors > 0}
+              <div class="flex justify-between col-span-2">
+                <span class="text-danger">Receive errors</span>
+                <span class="text-danger font-mono">{webrtcStats.receiveErrors}</span>
+              </div>
+            {/if}
           </div>
         </div>
       {/if}
@@ -536,20 +530,15 @@
                   <span title="Requests received from this peer">
                     <span class="i-lucide-arrow-down-left inline-block align-middle mr-0.5"></span>{peerStats.requestsReceived}
                   </span>
-                  <span title="Responses from local store">
-                    <span class="i-lucide-database inline-block align-middle mr-0.5"></span>{peerStats.responsesFromLocal}
+                  <span title="Responses sent to this peer">
+                    <span class="i-lucide-upload inline-block align-middle mr-0.5"></span>{peerStats.responsesSent}
                   </span>
-                  <span title="Responses via other peers">
-                    <span class="i-lucide-share-2 inline-block align-middle mr-0.5"></span>{peerStats.responsesForwarded}
+                  <span title="Responses received from this peer">
+                    <span class="i-lucide-download inline-block align-middle mr-0.5"></span>{peerStats.responsesReceived}
                   </span>
-                  {#if peerStats.pendingOurRequests > 0}
-                    <span title="Our pending requests to this peer" class="text-accent">
-                      <span class="i-lucide-loader-2 inline-block align-middle mr-0.5"></span>{peerStats.pendingOurRequests}
-                    </span>
-                  {/if}
-                  {#if peerStats.pendingTheirRequests > 0}
-                    <span title="Pending requests from this peer" class="text-warning">
-                      <span class="i-lucide-clock inline-block align-middle mr-0.5"></span>{peerStats.pendingTheirRequests}
+                  {#if peerStats.receiveErrors > 0}
+                    <span title="Receive errors from this peer" class="text-danger">
+                      <span class="i-lucide-alert-triangle inline-block align-middle mr-0.5"></span>{peerStats.receiveErrors}
                     </span>
                   {/if}
                 </div>

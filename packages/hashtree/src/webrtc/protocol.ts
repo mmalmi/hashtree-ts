@@ -155,14 +155,15 @@ export function hashToKey(hash: Uint8Array): string {
 
 /**
  * Handle a response message - verify hash and resolve pending request
+ * Returns true if hash verified, false if hash mismatch, undefined if no pending request
  */
 export async function handleResponse(
   res: DataResponse,
   pendingRequests: Map<string, PendingRequest>,
-): Promise<void> {
+): Promise<boolean | undefined> {
   const key = hashToKey(res.h);
   const pending = pendingRequests.get(key);
-  if (!pending) return;
+  if (!pending) return undefined;
 
   clearTimeout(pending.timeout);
   pendingRequests.delete(key);
@@ -173,6 +174,7 @@ export async function handleResponse(
   } else {
     pending.resolve(null);
   }
+  return isValid;
 }
 
 /**

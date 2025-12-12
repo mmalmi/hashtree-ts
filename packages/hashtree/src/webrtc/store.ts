@@ -88,17 +88,6 @@ export class WebRTCStore implements Store {
   private pendingReqs = new Map<Hash, PendingReq[]>();
   // Deduplicate concurrent get() calls for the same hash
   private pendingGets = new Map<string, Promise<Uint8Array | null>>();
-  // Global stats counters (aggregated from all peers plus our own tracking)
-  private stats: WebRTCStats = {
-    requestsSent: 0,
-    requestsReceived: 0,
-    requestsForwarded: 0,
-    responsesFromLocal: 0,
-    responsesForwarded: 0,
-    responsesFailed: 0,
-    pendingOurRequests: 0,
-    pendingTheirRequests: 0,
-  };
 
   constructor(config: WebRTCStoreConfig) {
     this.signer = config.signer;
@@ -139,29 +128,6 @@ export class WebRTCStore implements Store {
   private log(...args: unknown[]): void {
     if (this.config.debug) {
       console.log('[WebRTCStore]', ...args);
-    }
-  }
-
-  /**
-   * Handle stats events from peers
-   */
-  private handlePeerStats(stat: 'requestReceived' | 'responseFromLocal' | 'responseForwarded' | 'responseFailed' | 'requestForwarded'): void {
-    switch (stat) {
-      case 'requestReceived':
-        this.stats.requestsReceived++;
-        break;
-      case 'responseFromLocal':
-        this.stats.responsesFromLocal++;
-        break;
-      case 'responseForwarded':
-        this.stats.responsesForwarded++;
-        break;
-      case 'responseFailed':
-        this.stats.responsesFailed++;
-        break;
-      case 'requestForwarded':
-        this.stats.requestsForwarded++;
-        break;
     }
   }
 
@@ -421,7 +387,6 @@ export class WebRTCStore implements Store {
         this.tryPendingReqs(peer);
       },
       onForwardRequest: (hash, exclude, htl) => this.forwardRequest(hash, exclude, htl),
-      onStats: (stat) => this.handlePeerStats(stat),
       requestTimeout: this.config.requestTimeout,
       debug: this.config.debug,
     });
@@ -451,7 +416,6 @@ export class WebRTCStore implements Store {
         this.tryPendingReqs(peer);
       },
       onForwardRequest: (hash, exclude, htl) => this.forwardRequest(hash, exclude, htl),
-      onStats: (stat) => this.handlePeerStats(stat),
       requestTimeout: this.config.requestTimeout,
       debug: this.config.debug,
     });
@@ -702,10 +666,14 @@ export class WebRTCStore implements Store {
       stats: ReturnType<Peer['getStats']>;
     }>;
   } {
-    // Aggregate requestsSent and pending counts from all peers (since they're tracked per-peer)
-    let totalRequestsSent = 0;
-    let totalPendingOurRequests = 0;
-    let totalPendingTheirRequests = 0;
+    // Aggregate stats from all peers
+    const aggregate: WebRTCStats = {
+      requestsSent: 0,
+      requestsReceived: 0,
+      responsesSent: 0,
+      responsesReceived: 0,
+      receiveErrors: 0,
+    };
 
     const perPeer = new Map<string, {
       pubkey: string;
@@ -715,9 +683,11 @@ export class WebRTCStore implements Store {
 
     for (const [peerIdStr, { peer, pool }] of this.peers) {
       const peerStats = peer.getStats();
-      totalRequestsSent += peerStats.requestsSent;
-      totalPendingOurRequests += peerStats.pendingOurRequests;
-      totalPendingTheirRequests += peerStats.pendingTheirRequests;
+      aggregate.requestsSent += peerStats.requestsSent;
+      aggregate.requestsReceived += peerStats.requestsReceived;
+      aggregate.responsesSent += peerStats.responsesSent;
+      aggregate.responsesReceived += peerStats.responsesReceived;
+      aggregate.receiveErrors += peerStats.receiveErrors;
       perPeer.set(peerIdStr, {
         pubkey: peer.pubkey,
         pool,
@@ -725,15 +695,7 @@ export class WebRTCStore implements Store {
       });
     }
 
-    return {
-      aggregate: {
-        ...this.stats,
-        requestsSent: totalRequestsSent,
-        pendingOurRequests: totalPendingOurRequests,
-        pendingTheirRequests: totalPendingTheirRequests,
-      },
-      perPeer,
-    };
+    return { aggregate, perPeer };
   }
 
   // Store interface implementation

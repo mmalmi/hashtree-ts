@@ -141,14 +141,11 @@ export type WebRTCStoreEventHandler = (event: WebRTCStoreEvent) => void;
 
 // Stats tracking
 export interface WebRTCStats {
-  requestsSent: number;           // Own requests sent to peers
-  requestsReceived: number;       // Requests received from peers
-  requestsForwarded: number;      // Requests forwarded to other peers
-  responsesFromLocal: number;     // Responses sent from local store
-  responsesForwarded: number;     // Responses sent after forwarding to peers
-  responsesFailed: number;        // Requests we couldn't fulfill
-  pendingOurRequests: number;     // Current pending requests we sent to peers
-  pendingTheirRequests: number;   // Current pending requests from peers
+  requestsSent: number;           // Requests we sent to peers
+  requestsReceived: number;       // Requests we received from peers
+  responsesSent: number;          // Responses we sent to peers
+  responsesReceived: number;      // Responses we received from peers
+  receiveErrors: number;          // Errors handling incoming messages (parse, hash mismatch, etc)
 }
 
 export function generateUuid(): string {

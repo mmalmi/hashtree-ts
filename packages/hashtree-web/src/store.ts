@@ -45,12 +45,9 @@ export interface PeerStatsInfo {
   stats: {
     requestsSent: number;
     requestsReceived: number;
-    requestsForwarded: number;
-    responsesFromLocal: number;
-    responsesForwarded: number;
-    responsesFailed: number;
-    pendingOurRequests: number;
-    pendingTheirRequests: number;
+    responsesSent: number;
+    responsesReceived: number;
+    receiveErrors: number;
   };
 }
 
