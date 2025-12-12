@@ -8,14 +8,19 @@
     href?: string;
     label?: string;
     onclick?: () => void;
+    /** Use browser history.back() if available, fallback to href */
+    useHistory?: boolean;
     class?: string;
   }
 
-  let { href = '/', label, onclick, class: className = '' }: Props = $props();
+  let { href = '/', label, onclick, useHistory = false, class: className = '' }: Props = $props();
 
   function handleClick() {
     if (onclick) {
       onclick();
+    } else if (useHistory && window.history.length > 1) {
+      // Check if we have history to go back to
+      window.history.back();
     } else {
       navigate(href);
     }
