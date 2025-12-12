@@ -74,6 +74,10 @@
     inputValue = '';
     isRunning = true;
 
+    // Restore focus immediately after submit (not after command completes)
+    // Use setTimeout to ensure the input is re-rendered after isRunning changes
+    setTimeout(() => inputElement?.focus(), 0);
+
     const isWrite = isWriteCommand(command);
 
     // Check if write command is allowed
@@ -139,8 +143,6 @@
       }];
     } finally {
       isRunning = false;
-      // Re-focus the input after command completes
-      inputElement?.focus();
     }
   }
 

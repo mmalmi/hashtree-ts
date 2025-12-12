@@ -101,13 +101,13 @@
   }
 </script>
 
-<!-- File browser on left (same as TreeRoute) -->
-<div class="flex flex-1 lg:flex-none lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col min-h-0">
+<!-- File browser on left - hidden on mobile since we're showing Issues content -->
+<div class="hidden lg:flex lg:w-80 shrink-0 lg:border-r border-surface-3 flex-col min-h-0">
   <FileBrowser />
 </div>
 
-<!-- Right panel with Issues -->
-<div class="hidden lg:flex flex-1 flex-col min-w-0 min-h-0 bg-surface-0">
+<!-- Right panel with Issues - shown on mobile -->
+<div class="flex flex-1 flex-col min-w-0 min-h-0 bg-surface-0">
   <!-- Header with back button, avatar, visibility, folder name -->
   <ViewerHeader
     {backUrl}
