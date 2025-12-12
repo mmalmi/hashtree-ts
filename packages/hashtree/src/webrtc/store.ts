@@ -665,6 +665,14 @@ export class WebRTCStore implements Store {
     // Send to any peers who have requested this hash
     this.sendToInterestedPeers(hash, data);
 
+    // Fire-and-forget writes to fallback stores (e.g. blossom servers)
+    // Don't await - let them complete in background
+    for (const store of this.config.fallbackStores) {
+      store.put(hash, data).catch(() => {
+        // Silently ignore failures - fallback stores are best-effort
+      });
+    }
+
     return success;
   }
 

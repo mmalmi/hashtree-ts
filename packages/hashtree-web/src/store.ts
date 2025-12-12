@@ -7,7 +7,7 @@ import {
   WebRTCStore,
   LinkType,
 } from 'hashtree';
-import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClassifier } from 'hashtree';
+import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClassifier, BlossomSigner } from 'hashtree';
 
 // Re-export LinkType for e2e tests that can't import 'hashtree' directly
 export { LinkType };
@@ -193,7 +193,8 @@ export function initWebRTC(
     peerClassifier: createPeerClassifier(),
     pools: getPoolConfigFromSettings(),
     // Fallback to Blossom HTTP server when WebRTC peers don't have the data
-    fallbackStores: [new BlossomStore({ servers: blossomServers })],
+    // Pass signer so writes can be authenticated (NIP-98)
+    fallbackStores: [new BlossomStore({ servers: blossomServers, signer: signer as BlossomSigner })],
   });
 
   _tree = new HashTree({ store: webrtcStore, chunkSize: 1024 });

@@ -80,6 +80,8 @@ export interface NetworkSettings {
   relays: string[];
   /** Blossom server configurations */
   blossomServers: BlossomServerConfig[];
+  /** Whether negentropy sync is enabled */
+  negentropyEnabled: boolean;
 }
 
 // Default network settings
@@ -95,6 +97,7 @@ export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
     { url: 'https://hashtree.iris.to', read: true, write: true },
     { url: 'https://blossom.nostr.build', read: true, write: true },
   ],
+  negentropyEnabled: false,
 };
 
 // Dexie database for settings persistence
@@ -310,6 +313,7 @@ async function loadSettings() {
       updates.network = {
         relays: network.relays ?? DEFAULT_NETWORK_SETTINGS.relays,
         blossomServers,
+        negentropyEnabled: network.negentropyEnabled ?? DEFAULT_NETWORK_SETTINGS.negentropyEnabled,
       };
     }
 
