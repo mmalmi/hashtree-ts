@@ -1605,6 +1605,125 @@ test.describe('Git integration features', () => {
     await expect(historyModal).not.toBeVisible({ timeout: 5000 });
   });
 
+  test('detached HEAD should show commit id and allow branch checkout', { timeout: 90000 }, async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await navigateToPublicFolder(page);
+
+    // Create a folder and init as git repo with 2 commits
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    const folderInput = page.locator('input[placeholder="Folder name..."]');
+    await folderInput.waitFor({ timeout: 5000 });
+    await folderInput.fill('detached-head-test');
+    await page.click('button:has-text("Create")');
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+    const folderLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'detached-head-test' }).first();
+    await expect(folderLink).toBeVisible({ timeout: 15000 });
+    await folderLink.click();
+    await page.waitForURL(/detached-head-test/, { timeout: 10000 });
+
+    // Create initial file
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+      const content = new TextEncoder().encode('initial');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'file1.txt', cid, size, LinkType.Blob);
+      autosaveIfOwn(rootCid);
+    });
+
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'file1.txt' })).toBeVisible({ timeout: 15000 });
+
+    // Git init
+    const gitInitBtn = page.getByRole('button', { name: 'Git Init' });
+    await expect(gitInitBtn).toBeVisible({ timeout: 15000 });
+    await gitInitBtn.click();
+    await expect(gitInitBtn).not.toBeVisible({ timeout: 30000 });
+
+    // Verify branch selector shows "master"
+    const branchSelector = page.locator('button').filter({ hasText: /master|main/i }).first();
+    await expect(branchSelector).toBeVisible({ timeout: 10000 });
+
+    // Add second file and commit
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+      const content = new TextEncoder().encode('second file');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'file2.txt', cid, size, LinkType.Blob);
+      autosaveIfOwn(rootCid);
+    });
+
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'file2.txt' })).toBeVisible({ timeout: 15000 });
+
+    // Commit the second file
+    const uncommittedBtn = page.locator('button').filter({ hasText: /uncommitted/i });
+    await expect(uncommittedBtn).toBeVisible({ timeout: 30000 });
+    await uncommittedBtn.click();
+
+    const commitModal = page.locator('.fixed.inset-0').filter({ hasText: 'Commit Changes' });
+    await expect(commitModal).toBeVisible({ timeout: 5000 });
+    await commitModal.locator('textarea').fill('Add file2');
+    await commitModal.getByRole('button', { name: /Commit/ }).click();
+    await expect(commitModal).not.toBeVisible({ timeout: 30000 });
+
+    // Now have 2 commits - checkout the first one
+    const commitsBtn = page.getByRole('button', { name: /commits/i });
+    await expect(commitsBtn).toContainText(/2/, { timeout: 15000 });
+    await commitsBtn.click();
+
+    const historyModal = page.locator('.fixed.inset-0').filter({ hasText: 'Commit History' });
+    await expect(historyModal).toBeVisible({ timeout: 5000 });
+
+    // Click checkout on the older commit (Initial commit)
+    const checkoutBtn = historyModal.locator('button').filter({ hasText: 'Checkout' }).first();
+    await expect(checkoutBtn).toBeVisible({ timeout: 5000 });
+    await checkoutBtn.click();
+    await expect(historyModal).not.toBeVisible({ timeout: 30000 });
+
+    // VERIFY: Branch selector should show short commit hash (7 chars), not "HEAD" or "detached"
+    // Wait for UI to update
+    await page.waitForTimeout(1000);
+    const branchBtn = page.locator('.bg-surface-1 button').filter({ has: page.locator('.i-lucide-git-branch') }).first();
+    const branchText = await branchBtn.textContent();
+    console.log('Branch selector text after checkout:', branchText);
+    // Should be a 7-char hex string (commit hash), not "HEAD" or "detached"
+    expect(branchText).toMatch(/[a-f0-9]{7}/i);
+    expect(branchText?.toLowerCase()).not.toContain('head');
+
+    // VERIFY: Branch dropdown should still show "master" branch
+    await branchBtn.click();
+    await expect(page.locator('button').filter({ hasText: 'master' })).toBeVisible({ timeout: 5000 });
+
+    // VERIFY: History modal should show detached HEAD warning with branch button
+    await page.keyboard.press('Escape'); // Close dropdown
+    const commitsBtn2 = page.getByRole('button', { name: /commits/i });
+    await commitsBtn2.click();
+
+    const historyModal2 = page.locator('.fixed.inset-0').filter({ hasText: 'Commit History' });
+    await expect(historyModal2).toBeVisible({ timeout: 5000 });
+
+    // Should show detached HEAD warning
+    await expect(historyModal2.locator('text=Detached HEAD')).toBeVisible({ timeout: 5000 });
+    // Should have button to switch to master branch
+    await expect(historyModal2.locator('button').filter({ hasText: 'master' })).toBeVisible({ timeout: 5000 });
+
+    await page.keyboard.press('Escape');
+  });
+
   test('git status should show correct filename (not truncated)', { timeout: 60000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
@@ -1980,9 +2099,9 @@ test.describe('Git integration features', () => {
     const historyModal2 = page.locator('.fixed.inset-0').filter({ hasText: 'Commit History' });
     await expect(historyModal2).toBeVisible({ timeout: 5000 });
 
-    // The "Initial commit" should be visible and marked as HEAD
+    // The "Initial commit" should be visible and marked as HEAD (the green badge, not "Detached HEAD" warning)
     await expect(historyModal2.locator('text=Initial commit')).toBeVisible({ timeout: 5000 });
-    await expect(historyModal2.locator('text=HEAD')).toBeVisible({ timeout: 5000 });
+    await expect(historyModal2.locator('.bg-success\\/20:has-text("HEAD")')).toBeVisible({ timeout: 5000 });
 
     // The "Add added-later.txt" commit won't be visible because it's not an ancestor of HEAD
     // (This is correct git behavior - git log shows only ancestors of HEAD)

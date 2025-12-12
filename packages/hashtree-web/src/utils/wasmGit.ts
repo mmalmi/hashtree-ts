@@ -355,44 +355,33 @@ export async function getBranchesWithWasmGit(
       let currentBranch: string | null = null;
       try {
         const statusOutput = module.callWithOutput(['status']);
-        const branchMatch = statusOutput.match(/On branch (\S+)/);
-        if (branchMatch) {
-          currentBranch = branchMatch[1];
+        // Check for detached HEAD first
+        if (statusOutput.includes('HEAD detached') || statusOutput.includes('detached HEAD')) {
+          currentBranch = null; // Explicitly detached
+        } else {
+          const branchMatch = statusOutput.match(/On branch (\S+)/);
+          if (branchMatch && branchMatch[1] !== 'HEAD') {
+            currentBranch = branchMatch[1];
+          }
         }
       } catch {
         // Ignore
       }
 
-      // Get list of branches using git branch
+      // Get list of branches by reading refs/heads directory directly
+      // wasm-git has limited commands (no 'branch', no 'for-each-ref')
       const branches: string[] = [];
       try {
-        const branchOutput = module.callWithOutput(['branch']);
-        if (branchOutput) {
-          const lines = branchOutput.trim().split('\n');
-          for (const line of lines) {
-            // Branch output format: "* master" or "  feature-branch"
-            const branch = line.replace(/^\*?\s*/, '').trim();
-            if (branch && branch !== '(HEAD' && !branch.startsWith('(HEAD')) {
-              branches.push(branch);
-            }
+        const refsHeadsPath = '.git/refs/heads';
+        const branchFiles = module.FS.readdir(refsHeadsPath);
+        for (const file of branchFiles) {
+          if (file !== '.' && file !== '..') {
+            branches.push(file);
           }
         }
-      } catch {
-        // Fallback to for-each-ref if git branch fails
-        try {
-          const refsOutput = module.callWithOutput(['for-each-ref', '--format=%(refname:short)', 'refs/heads/']);
-          if (refsOutput) {
-            const lines = refsOutput.trim().split('\n');
-            for (const line of lines) {
-              const branch = line.trim();
-              if (branch) {
-                branches.push(branch);
-              }
-            }
-          }
-        } catch {
-          // Ignore
-        }
+      } catch (e) {
+        // refs/heads may not exist
+        console.log('[wasm-git] reading refs/heads failed:', e);
       }
 
       return { branches, currentBranch };
