@@ -199,13 +199,15 @@
 
 <div class="flex-1 flex flex-col min-h-0 bg-surface-0">
   <!-- Header -->
-  <div class="h-12 px-4 flex items-center gap-3 border-b border-surface-3 bg-surface-1 shrink-0">
-    <BackButton href="/" />
-    <span class="font-semibold text-text-1">Settings</span>
+  <div class="border-b border-surface-3 shrink-0">
+    <div class="h-12 px-4 flex items-center gap-3 w-full max-w-2xl mx-auto">
+      <BackButton href="/" />
+      <span class="font-semibold text-text-1">Settings</span>
+    </div>
   </div>
 
   <!-- Content -->
-  <div class="flex-1 overflow-y-auto p-4 space-y-6 w-full max-w-md mx-auto">
+  <div class="flex-1 overflow-y-auto p-4 space-y-6 w-full max-w-2xl mx-auto">
     <!-- Relays -->
     <div>
       <div class="flex items-center justify-between mb-1">
@@ -347,19 +349,18 @@
             <span class="text-xs text-text-3">Recent activity</span>
             <button onclick={() => blossomLogStore.clear()} class="btn-ghost text-xs text-text-3">Clear</button>
           </div>
-          <div class="bg-surface-3 rounded text-xs font-mono max-h-32 overflow-y-auto p-2 space-y-1">
+          <div class="bg-surface-3 rounded text-xs font-mono max-h-32 overflow-y-auto overflow-x-auto p-2 space-y-1">
             {#each blossomLogs as log}
               {@const time = new Date(log.timestamp).toLocaleTimeString()}
-              {@const host = (() => { try { return new URL(log.server).hostname; } catch { return log.server; } })()}
-              <div class="flex items-center gap-2 {log.success ? 'text-success' : 'text-danger'}">
-                <span class="text-text-3 shrink-0">{time}</span>
-                <span class="shrink-0">{log.operation.toUpperCase()}</span>
-                <span class="text-text-2 truncate">{host}</span>
-                <span class="text-text-3 truncate flex-1">{log.hash.slice(0, 8)}...</span>
+              <div class="flex items-center gap-2 whitespace-nowrap {log.success ? 'text-success' : 'text-danger'}">
+                <span class="text-text-3">{time}</span>
+                <span>{log.operation.toUpperCase()}</span>
+                <span class="text-text-2">{log.server}</span>
+                <span class="text-text-3">{log.hash.slice(0, 8)}...</span>
                 {#if log.success && log.bytes}
-                  <span class="text-text-3 shrink-0">{log.bytes}B</span>
+                  <span class="text-text-3">{log.bytes}B</span>
                 {:else if log.error}
-                  <span class="truncate" title={log.error}>{log.error}</span>
+                  <span>{log.error}</span>
                 {/if}
               </div>
             {/each}
