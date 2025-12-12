@@ -6,7 +6,7 @@
   import { onMount } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { nostrStore, type RelayStatus, getNsec } from '../nostr';
-  import { useAppStore, formatBytes, updateStorageStats } from '../store';
+  import { appStore, formatBytes, updateStorageStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { syncedStorageStore, refreshSyncedStorage, type UserStorageStats } from '../stores/chunkMetadata';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS, DEFAULT_POOL_SETTINGS } from '../stores/settings';
@@ -134,16 +134,15 @@
     editingBlossom = false;
   }
 
-  // Social graph stats
+  // Social graph stats - depend on version to trigger re-computation
   let isRecrawling = $derived($socialGraphStore.isRecrawling);
-  let graphSize = $derived(getGraphSize());
-  let myFollowsCount = $derived(myPubkey ? getFollows(myPubkey).size : 0);
-
-  // Re-derive when graph version changes
-  $effect(() => {
-    $socialGraphStore.version;
-    graphSize = getGraphSize();
-    myFollowsCount = myPubkey ? getFollows(myPubkey).size : 0;
+  let graphSize = $derived.by(() => {
+    $socialGraphStore.version; // Track version changes
+    return getGraphSize();
+  });
+  let myFollowsCount = $derived.by(() => {
+    $socialGraphStore.version; // Track version changes
+    return myPubkey ? getFollows(myPubkey).size : 0;
   });
 
   function getStatusColor(status: RelayStatus): string {
@@ -161,23 +160,16 @@
     return relayStatuses.get(normalized) || relayStatuses.get(url) || 'disconnected';
   }
 
-  // App store
-  let peerList = $derived(useAppStore.getState().peers);
-  let stats = $derived(useAppStore.getState().stats);
-  let myPeerId = $derived(useAppStore.getState().myPeerId);
+  // App store - use $derived from the store directly
+  let appState = $derived($appStore);
+  let peerList = $derived(appState.peers);
+  let stats = $derived(appState.stats);
+  let myPeerId = $derived(appState.myPeerId);
 
-  // Subscribe to app store updates
+  // Load initial data on mount
   onMount(() => {
     updateStorageStats();
-    refreshSyncedStorage(); // Load initial data into reactive store
-
-    // Subscribe to store changes
-    const unsub = useAppStore.subscribe((state) => {
-      peerList = state.peers;
-      stats = state.stats;
-      myPeerId = state.myPeerId;
-    });
-    return unsub;
+    refreshSyncedStorage();
   });
 
   // Helper function to extract uuid from peerId (format: "pubkey:uuid")

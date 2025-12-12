@@ -251,18 +251,25 @@ function updateConnectedRelayCount() {
     ? settings.network.relays
     : DEFAULT_NETWORK_SETTINGS.relays;
 
+  // Create a set of normalized configured relay URLs for quick lookup
+  const configuredSet = new Set(configuredRelays.map(normalizeRelayUrl));
+
   // Initialize all configured relays as disconnected
   for (const url of configuredRelays) {
     statuses.set(normalizeRelayUrl(url), 'disconnected');
   }
 
-  // Update with actual statuses from pool
+  // Update with actual statuses from pool (only count configured relays)
   for (const relay of pool.relays.values()) {
-    const status = ndkStatusToRelayStatus(relay.status);
     const normalizedUrl = normalizeRelayUrl(relay.url);
-    statuses.set(normalizedUrl, status);
-    if (relay.status >= NDK_RELAY_STATUS_CONNECTED) {
-      connected++;
+    const status = ndkStatusToRelayStatus(relay.status);
+
+    // Only track configured relays (ignore NDK-discovered relays)
+    if (configuredSet.has(normalizedUrl)) {
+      statuses.set(normalizedUrl, status);
+      if (relay.status >= NDK_RELAY_STATUS_CONNECTED) {
+        connected++;
+      }
     }
   }
 
