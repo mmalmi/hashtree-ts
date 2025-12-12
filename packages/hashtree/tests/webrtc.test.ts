@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  decrementHTL,
+  shouldForward,
+  generatePeerHTLConfig,
+} from '../src/webrtc/protocol.js';
+import { MAX_HTL } from '../src/webrtc/types.js';
 import { MemoryStore } from '../src/store/memory.js';
 import { sha256 } from '../src/hash.js';
 import { toHex, fromHex } from '../src/types.js';
@@ -139,5 +145,81 @@ describe('PeerId', () => {
 
     expect(peerId.pubkey).toBe('a'.repeat(64));
     expect(peerId.uuid).toBe('myuuid123');
+  });
+});
+
+describe('HTL (Hops To Live)', () => {
+  describe('decrementHTL', () => {
+    it('should always decrement at middle values regardless of config', () => {
+      const configNever = { decrementAtMax: false, decrementAtMin: false };
+      const configAlways = { decrementAtMax: true, decrementAtMin: true };
+
+      // Middle values (2 to MAX_HTL-1) always decrement
+      expect(decrementHTL(5, configNever)).toBe(4);
+      expect(decrementHTL(5, configAlways)).toBe(4);
+      expect(decrementHTL(2, configNever)).toBe(1);
+      expect(decrementHTL(2, configAlways)).toBe(1);
+    });
+
+    it('should respect config.decrementAtMax at MAX_HTL', () => {
+      expect(decrementHTL(MAX_HTL, { decrementAtMax: true, decrementAtMin: false })).toBe(MAX_HTL - 1);
+      expect(decrementHTL(MAX_HTL, { decrementAtMax: false, decrementAtMin: false })).toBe(MAX_HTL);
+    });
+
+    it('should respect config.decrementAtMin at HTL=1', () => {
+      expect(decrementHTL(1, { decrementAtMax: false, decrementAtMin: true })).toBe(0);
+      expect(decrementHTL(1, { decrementAtMax: false, decrementAtMin: false })).toBe(1);
+    });
+
+    it('should return 0 when HTL is already 0 or negative', () => {
+      const config = { decrementAtMax: true, decrementAtMin: true };
+      expect(decrementHTL(0, config)).toBe(0);
+      expect(decrementHTL(-1, config)).toBe(0);
+    });
+  });
+
+  describe('shouldForward', () => {
+    it('should return true when HTL > 0', () => {
+      expect(shouldForward(MAX_HTL)).toBe(true);
+      expect(shouldForward(5)).toBe(true);
+      expect(shouldForward(1)).toBe(true);
+    });
+
+    it('should return false when HTL <= 0', () => {
+      expect(shouldForward(0)).toBe(false);
+      expect(shouldForward(-1)).toBe(false);
+    });
+  });
+
+  describe('generatePeerHTLConfig', () => {
+    it('should produce valid boolean config', () => {
+      const config = generatePeerHTLConfig();
+      expect(typeof config.decrementAtMax).toBe('boolean');
+      expect(typeof config.decrementAtMin).toBe('boolean');
+    });
+
+    it('should produce varied configs over many generations', () => {
+      // Generate many configs and check we get some variation
+      // (probabilistically this should pass - 50% and 25% chances)
+      let maxTrue = 0;
+      let maxFalse = 0;
+      let minTrue = 0;
+      let minFalse = 0;
+
+      for (let i = 0; i < 100; i++) {
+        const config = generatePeerHTLConfig();
+        if (config.decrementAtMax) maxTrue++;
+        else maxFalse++;
+        if (config.decrementAtMin) minTrue++;
+        else minFalse++;
+      }
+
+      // With 100 samples at 50% probability, we should see both values
+      expect(maxTrue).toBeGreaterThan(0);
+      expect(maxFalse).toBeGreaterThan(0);
+      // With 100 samples at 25% probability, we should see both values
+      expect(minTrue).toBeGreaterThan(0);
+      expect(minFalse).toBeGreaterThan(0);
+    });
   });
 });

@@ -5,20 +5,190 @@
  * - Peer A connects to Peer B (mutual follows)
  * - Peer B connects to Peer C (mutual follows)
  * - Peer A does NOT connect to Peer C (not following each other)
- * - Peer C has content in their public tree
- * - A navigates to C's npub/public and receives content via B's forwarding
+ * - Peer C has content in their store
+ * - A requests content by hash and receives it via B's forwarding
  *
- * This tests the request forwarding feature where peers relay requests
- * to their other connected peers when they don't have the content locally.
+ * Pool configuration: others.max = 0 so only followed users connect.
  */
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 test.describe('WebRTC Request Forwarding', () => {
   test.setTimeout(180000);
 
-  // Skip: WebRTC connection timing is inherently flaky across browser contexts
-  // Peers may disconnect before content can be forwarded due to timing issues
-  test.skip('peer A receives content from peer C via peer B forwarding', async ({ browser }) => {
+  /**
+   * Clear storage and get a fresh session with auto-generated key
+   */
+  async function setupFreshPeer(page: Page): Promise<string> {
+    // Clear all storage
+    await page.evaluate(async () => {
+      localStorage.clear();
+      sessionStorage.clear();
+      const dbs = await indexedDB.databases();
+      for (const db of dbs) {
+        if (db.name) indexedDB.deleteDatabase(db.name);
+      }
+    });
+    await page.reload();
+    await page.waitForLoadState('load');
+
+    // Wait for app to auto-generate key and initialize
+    await page.waitForFunction(
+      () => {
+        const nostrStore = (window as any).__nostrStore;
+        return nostrStore?.getState?.()?.pubkey;
+      },
+      { timeout: 15000 }
+    );
+
+    // Get the pubkey
+    const pubkey = await page.evaluate(() => {
+      return (window as any).__nostrStore.getState().pubkey;
+    });
+
+    return pubkey;
+  }
+
+  /**
+   * Wait for test helpers to be available
+   */
+  async function waitForHelpers(page: Page): Promise<void> {
+    await page.waitForFunction(
+      () => {
+        return (
+          (window as any).__testHelpers?.followPubkey &&
+          (window as any).webrtcStore &&
+          (window as any).__idbStore &&
+          (window as any).__settingsStore
+        );
+      },
+      { timeout: 15000 }
+    );
+  }
+
+  /**
+   * Set pool config (others.max = 0 means only follows can connect)
+   */
+  async function setPoolConfig(
+    page: Page,
+    config: { followsMax: number; followsSatisfied: number; otherMax: number; otherSatisfied: number }
+  ): Promise<void> {
+    await page.evaluate((cfg) => {
+      const settingsStore = (window as any).__settingsStore;
+      if (settingsStore?.setPools) {
+        settingsStore.setPools(cfg);
+      }
+      // Also update webrtc store directly
+      const webrtcStore = (window as any).webrtcStore;
+      if (webrtcStore?.setPoolConfig) {
+        webrtcStore.setPoolConfig({
+          follows: { maxConnections: cfg.followsMax, satisfiedConnections: cfg.followsSatisfied },
+          other: { maxConnections: cfg.otherMax, satisfiedConnections: cfg.otherSatisfied },
+        });
+      }
+    }, config);
+  }
+
+  /**
+   * Follow a pubkey using the app's follow system
+   */
+  async function followUser(page: Page, targetPubkey: string): Promise<boolean> {
+    return page.evaluate(async (pk) => {
+      const { followPubkey } = (window as any).__testHelpers;
+      if (!followPubkey) {
+        console.error('followPubkey not available');
+        return false;
+      }
+      return followPubkey(pk);
+    }, targetPubkey);
+  }
+
+  /**
+   * Store content in a peer's local IDB store and return the hash
+   */
+  async function storeContent(page: Page, content: string): Promise<string> {
+    return page.evaluate(async (text) => {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+
+      // Hash the content
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hash = new Uint8Array(hashBuffer);
+
+      // Store in IDB via the app's store
+      const idbStore = (window as any).__idbStore;
+      if (idbStore) {
+        await idbStore.put(hash, data);
+      }
+
+      // Return hash as hex
+      return Array.from(hash).map(b => b.toString(16).padStart(2, '0')).join('');
+    }, content);
+  }
+
+  /**
+   * Request content by hash from WebRTC peers
+   */
+  async function requestContent(page: Page, hashHex: string): Promise<{ found: boolean; data?: string }> {
+    return page.evaluate(async (hex) => {
+      // Convert hex to Uint8Array
+      const hash = new Uint8Array(hex.match(/.{2}/g)!.map((b: string) => parseInt(b, 16)));
+
+      // Request via WebRTC store
+      const webrtcStore = (window as any).webrtcStore;
+      if (!webrtcStore) {
+        return { found: false, error: 'No WebRTC store' };
+      }
+
+      const data = await webrtcStore.get(hash);
+      if (data) {
+        const text = new TextDecoder().decode(data);
+        return { found: true, data: text };
+      }
+
+      return { found: false };
+    }, hashHex);
+  }
+
+  /**
+   * Get peer info (pubkeys and pools)
+   */
+  async function getPeerInfo(page: Page): Promise<Array<{ pubkey: string; pool: string; state: string }>> {
+    return page.evaluate(() => {
+      const webrtcStore = (window as any).webrtcStore;
+      const peers = webrtcStore?.getPeers?.() ?? [];
+      return peers.map((p: any) => ({
+        pubkey: p.pubkey?.slice(0, 16) + '...',
+        pool: p.pool,
+        state: p.state,
+      }));
+    });
+  }
+
+  /**
+   * Wait for specific number of connected peers
+   */
+  async function waitForPeers(page: Page, count: number, timeout = 60000): Promise<void> {
+    await page.waitForFunction(
+      (expected) => {
+        const webrtcStore = (window as any).webrtcStore;
+        const current = webrtcStore?.getConnectedCount?.() ?? 0;
+        return current >= expected;
+      },
+      count,
+      { timeout }
+    );
+  }
+
+  test('peer A receives content from peer C via peer B forwarding', async ({ browser }) => {
+    // Pool config: only follows can connect (others.max = 0)
+    // B needs to connect to 2 follows (A and C), so satisfiedConnections must be >= 2
+    const poolConfig = {
+      followsMax: 10,
+      followsSatisfied: 2,
+      otherMax: 0,
+      otherSatisfied: 0,
+    };
+
     // Create three browser contexts with separate storage
     const contextA = await browser.newContext();
     const contextB = await browser.newContext();
@@ -28,211 +198,205 @@ test.describe('WebRTC Request Forwarding', () => {
     const pageB = await contextB.newPage();
     const pageC = await contextC.newPage();
 
-    // Log browser console for debugging
-    pageA.on('console', msg => {
+    // Log relevant console messages for debugging
+    const logFilter = (label: string) => (msg: any) => {
       const text = msg.text();
-      if (text.includes('CONNECTED') || text.includes('GOT') || text.includes('forward') || text.includes('WebRTC')) {
-        console.log(`[A] ${text}`);
+      if (text.includes('WebRTC') || text.includes('peer') || text.includes('forward') ||
+          text.includes('hello') || text.includes('Pool')) {
+        console.log(`[${label}] ${text.slice(0, 200)}`);
       }
-    });
-    pageB.on('console', msg => {
-      const text = msg.text();
-      if (text.includes('CONNECTED') || text.includes('forward') || text.includes('WebRTC') || text.includes('Sent data')) {
-        console.log(`[B] ${text}`);
+    };
+    pageA.on('console', logFilter('A'));
+    pageB.on('console', logFilter('B'));
+    pageC.on('console', logFilter('C'));
+
+    try {
+      // Navigate all pages to the app
+      await Promise.all([
+        pageA.goto('http://localhost:5173'),
+        pageB.goto('http://localhost:5173'),
+        pageC.goto('http://localhost:5173'),
+      ]);
+
+      // Wait for helpers to be ready on all pages
+      await Promise.all([
+        waitForHelpers(pageA),
+        waitForHelpers(pageB),
+        waitForHelpers(pageC),
+      ]);
+
+      console.log('\n=== Setting up Peer C (content provider) ===');
+      const pubkeyC = await setupFreshPeer(pageC);
+      await waitForHelpers(pageC);
+      await setPoolConfig(pageC, poolConfig);
+      console.log(`Peer C pubkey: ${pubkeyC.slice(0, 16)}...`);
+
+      // Store content on C
+      const testContent = 'Hello from Peer C via forwarding!';
+      const contentHash = await storeContent(pageC, testContent);
+      console.log(`Content stored with hash: ${contentHash.slice(0, 16)}...`);
+
+      console.log('\n=== Setting up Peer B (forwarder) ===');
+      const pubkeyB = await setupFreshPeer(pageB);
+      await waitForHelpers(pageB);
+      await setPoolConfig(pageB, poolConfig);
+      console.log(`Peer B pubkey: ${pubkeyB.slice(0, 16)}...`);
+
+      console.log('\n=== Setting up Peer A (requester) ===');
+      const pubkeyA = await setupFreshPeer(pageA);
+      await waitForHelpers(pageA);
+      await setPoolConfig(pageA, poolConfig);
+      console.log(`Peer A pubkey: ${pubkeyA.slice(0, 16)}...`);
+
+      console.log('\n=== Setting up follow relationships ===');
+      // B follows C (will publish kind 3 event)
+      console.log('B follows C...');
+      await followUser(pageB, pubkeyC);
+
+      // C follows B (mutual follow for B-C connection)
+      console.log('C follows B...');
+      await followUser(pageC, pubkeyB);
+
+      // A follows B (will publish kind 3 event)
+      console.log('A follows B...');
+      await followUser(pageA, pubkeyB);
+
+      // B follows A (mutual follow for A-B connection)
+      console.log('B follows A...');
+      await followUser(pageB, pubkeyA);
+
+      // Force recalculate follow distances and update peer classifiers
+      // This is needed because kind 3 events trigger async recalculation
+      console.log('Forcing peer classifier updates...');
+      await Promise.all([
+        pageA.evaluate(async () => {
+          const getSocialGraph = (window as any).__getSocialGraph;
+          const graph = getSocialGraph?.();
+          if (graph?.recalculateFollowDistances) {
+            await graph.recalculateFollowDistances();
+          }
+          // Force peer classifier update
+          const webrtcStore = (window as any).webrtcStore;
+          if (webrtcStore?.setPeerClassifier) {
+            webrtcStore.setPeerClassifier((pubkey: string) => {
+              const g = getSocialGraph();
+              if (!g) return 'other';
+              const distance = g.getFollowDistance(pubkey);
+              return distance <= 1 ? 'follows' : 'other';
+            });
+          }
+        }),
+        pageB.evaluate(async () => {
+          const getSocialGraph = (window as any).__getSocialGraph;
+          const graph = getSocialGraph?.();
+          if (graph?.recalculateFollowDistances) {
+            await graph.recalculateFollowDistances();
+          }
+          const webrtcStore = (window as any).webrtcStore;
+          if (webrtcStore?.setPeerClassifier) {
+            webrtcStore.setPeerClassifier((pubkey: string) => {
+              const g = getSocialGraph();
+              if (!g) return 'other';
+              const distance = g.getFollowDistance(pubkey);
+              return distance <= 1 ? 'follows' : 'other';
+            });
+          }
+        }),
+        pageC.evaluate(async () => {
+          const getSocialGraph = (window as any).__getSocialGraph;
+          const graph = getSocialGraph?.();
+          if (graph?.recalculateFollowDistances) {
+            await graph.recalculateFollowDistances();
+          }
+          const webrtcStore = (window as any).webrtcStore;
+          if (webrtcStore?.setPeerClassifier) {
+            webrtcStore.setPeerClassifier((pubkey: string) => {
+              const g = getSocialGraph();
+              if (!g) return 'other';
+              const distance = g.getFollowDistance(pubkey);
+              return distance <= 1 ? 'follows' : 'other';
+            });
+          }
+        }),
+      ]);
+
+      console.log('\n=== Waiting for connections to establish ===');
+
+      // Wait for B to have 2 connections (A and C)
+      console.log('Waiting for B to connect to both A and C...');
+      await waitForPeers(pageB, 2, 90000);
+
+      const bPeers = await getPeerInfo(pageB);
+      console.log('B connected peers:', JSON.stringify(bPeers));
+
+      // Wait for A to connect to B
+      console.log('Waiting for A to connect to B...');
+      await waitForPeers(pageA, 1, 30000);
+
+      const aPeers = await getPeerInfo(pageA);
+      console.log('A connected peers:', JSON.stringify(aPeers));
+
+      // Verify A is NOT connected to C directly
+      const aConnectedToPubkeys = aPeers.map(p => p.pubkey);
+      const cPubkeyPrefix = pubkeyC.slice(0, 16) + '...';
+      expect(aConnectedToPubkeys).not.toContain(cPubkeyPrefix);
+      console.log('Verified: A is NOT directly connected to C');
+
+      // Give connections a moment to stabilize
+      await pageA.waitForTimeout(2000);
+
+      console.log('\n=== A requesting content by hash ===');
+      const result = await requestContent(pageA, contentHash);
+
+      console.log('\n=== Results ===');
+      console.log(`Content received: ${result.found}`);
+      if (result.data) {
+        console.log(`Content: "${result.data}"`);
       }
-    });
-    pageC.on('console', msg => {
-      const text = msg.text();
-      if (text.includes('CONNECTED') || text.includes('WebRTC') || text.includes('Stored')) {
-        console.log(`[C] ${text}`);
-      }
-    });
 
-    // Clear storage and navigate all pages to the app
-    // This prevents the app's own WebRTCStore from interfering with the test
-    await Promise.all([
-      contextA.clearCookies(),
-      contextB.clearCookies(),
-      contextC.clearCookies(),
-    ]);
+      // Final peer states
+      const finalAPeers = await getPeerInfo(pageA);
+      const finalBPeers = await getPeerInfo(pageB);
+      const finalCPeers = await getPeerInfo(pageC);
 
-    await Promise.all([
-      pageA.goto('http://localhost:5173'),
-      pageB.goto('http://localhost:5173'),
-      pageC.goto('http://localhost:5173'),
-    ]);
+      console.log('\nFinal peer states:');
+      console.log(`A peers: ${JSON.stringify(finalAPeers)}`);
+      console.log(`B peers: ${JSON.stringify(finalBPeers)}`);
+      console.log(`C peers: ${JSON.stringify(finalCPeers)}`);
 
-    // Clear localStorage to prevent auto-login which starts the app's WebRTCStore
-    await Promise.all([
-      pageA.evaluate(() => localStorage.clear()),
-      pageB.evaluate(() => localStorage.clear()),
-      pageC.evaluate(() => localStorage.clear()),
-    ]);
+      // Verify others pool is empty on all peers
+      const aOtherPeers = finalAPeers.filter(p => p.pool === 'other');
+      const bOtherPeers = finalBPeers.filter(p => p.pool === 'other');
+      const cOtherPeers = finalCPeers.filter(p => p.pool === 'other');
 
-    // Reload to apply the cleared state
-    await Promise.all([
-      pageA.reload(),
-      pageB.reload(),
-      pageC.reload(),
-    ]);
+      console.log('\nOthers pool check:');
+      console.log(`A others: ${aOtherPeers.length}, B others: ${bOtherPeers.length}, C others: ${cOtherPeers.length}`);
 
-    await Promise.all([
-      pageA.waitForLoadState('load'),
-      pageB.waitForLoadState('load'),
-      pageC.waitForLoadState('load'),
-    ]);
+      // Assertions
+      expect(aOtherPeers.length).toBe(0);
+      expect(bOtherPeers.length).toBe(0);
+      expect(cOtherPeers.length).toBe(0);
 
-    // Wait for test function to be available
-    await Promise.all([
-      pageA.waitForFunction(() => typeof (window as any).runForwardingTest === 'function', { timeout: 10000 }),
-      pageB.waitForFunction(() => typeof (window as any).runForwardingTest === 'function', { timeout: 10000 }),
-      pageC.waitForFunction(() => typeof (window as any).runForwardingTest === 'function', { timeout: 10000 }),
-    ]);
+      expect(result.found).toBe(true);
+      expect(result.data).toBe(testContent);
 
-    const testContent = 'Content from Peer C via B forwarding!';
+      // Verify A got content through B (not directly from C)
+      const finalAConnectedToPubkeys = finalAPeers.map(p => p.pubkey);
+      expect(finalAConnectedToPubkeys).not.toContain(cPubkeyPrefix);
 
-    // Step 1: Start peer C first (content provider)
-    // Note: runForwardingTest runs for 2 minutes, we don't await it - we'll close contexts when done
-    console.log('\n=== Starting Peer C (content provider) ===');
-    pageC.evaluate((content) => (window as any).runForwardingTest({
-      role: 'content-provider',
-      content,
-    }), testContent).catch(() => {}); // Ignore errors when context closes
+      console.log('\n=== Test passed ===');
+      console.log('- A received content from C via B forwarding');
+      console.log('- A was NOT directly connected to C');
+      console.log('- B was connected to both A and C');
+      console.log('- Others pool is 0 for all peers');
 
-    // Wait for C to be ready with pubkey and content hash
-    await pageC.waitForFunction(
-      () => (window as any).forwardingTestState?.pubkey && (window as any).forwardingTestState?.contentNhash,
-      { timeout: 15000 }
-    );
-    const stateC = await pageC.evaluate(() => (window as any).forwardingTestState);
-    console.log(`Peer C pubkey: ${stateC.pubkey.slice(0, 16)}...`);
-    console.log(`Content hash: ${stateC.contentHash?.slice(0, 16)}...`);
-    console.log(`Content nhash: ${stateC.contentNhash}`);
-
-    // Step 2: Start peer B (relay/forwarder)
-    // B follows C, so they will connect
-    console.log('\n=== Starting Peer B (forwarder) ===');
-    pageB.evaluate((cPubkey) => (window as any).runForwardingTest({
-      role: 'forwarder',
-      followPubkeys: [cPubkey], // B follows C
-    }), stateC.pubkey).catch(() => {}); // Ignore errors when context closes
-
-    // Wait for B to be ready
-    await pageB.waitForFunction(
-      () => (window as any).forwardingTestState?.pubkey,
-      { timeout: 15000 }
-    );
-    const stateB = await pageB.evaluate(() => (window as any).forwardingTestState);
-    console.log(`Peer B pubkey: ${stateB.pubkey.slice(0, 16)}...`);
-
-    // Update C to follow B (mutual follow)
-    await pageC.evaluate((bPubkey) => {
-      (window as any).forwardingTestState.addFollow(bPubkey);
-    }, stateB.pubkey);
-
-    // Step 3: Start peer A (requester)
-    // A follows B only, NOT C
-    console.log('\n=== Starting Peer A (requester) ===');
-    pageA.evaluate((bPubkey) => (window as any).runForwardingTest({
-      role: 'requester',
-      followPubkeys: [bPubkey], // A follows B only
-    }), stateB.pubkey).catch(() => {}); // Ignore errors when context closes
-
-    // Wait for A to be ready
-    await pageA.waitForFunction(
-      () => (window as any).forwardingTestState?.pubkey,
-      { timeout: 15000 }
-    );
-    const stateA = await pageA.evaluate(() => (window as any).forwardingTestState);
-    console.log(`Peer A pubkey: ${stateA.pubkey.slice(0, 16)}...`);
-
-    // Update B to follow A (mutual follow A<->B)
-    await pageB.evaluate((aPubkey) => {
-      (window as any).forwardingTestState.addFollow(aPubkey);
-    }, stateA.pubkey);
-
-    // Wait for connections to establish
-    console.log('\n=== Waiting for connections ===');
-
-    // Wait for A to connect to B (poll every 500ms, up to 60s)
-    for (let i = 0; i < 120; i++) {
-      const aConnected = await pageA.evaluate(() => (window as any).forwardingTestState?.connectedPeers > 0);
-      if (aConnected) break;
-      await pageA.waitForTimeout(500);
+    } finally {
+      // Cleanup
+      await Promise.all([
+        contextA.close(),
+        contextB.close(),
+        contextC.close(),
+      ]);
     }
-    console.log('A connected to peers');
-
-    // Wait for B to connect to both A and C
-    for (let i = 0; i < 120; i++) {
-      const bConnected = await pageB.evaluate(() => (window as any).forwardingTestState?.connectedPeers >= 2);
-      if (bConnected) break;
-      await pageB.waitForTimeout(500);
-    }
-    console.log('B connected to multiple peers');
-
-    // Now have A request the content by hash
-    // This simulates what happens when navigating to /{nhash} URL
-    // The viewer calls tree.readFile() -> store.get(hash) -> WebRTC forwarding
-    console.log('\n=== A requesting content (simulates navigation to nhash URL) ===');
-    console.log(`Content would be at URL: http://localhost:5173/${stateC.contentNhash}`);
-
-    // Give the connections a moment to stabilize before request
-    await pageA.waitForTimeout(2000);
-
-    const result = await pageA.evaluate(async (hash) => {
-      const state = (window as any).forwardingTestState;
-      if (!state || !state.requestContent) {
-        return { found: false, error: 'No requestContent function' };
-      }
-      return state.requestContent(hash);
-    }, stateC.contentHash);
-
-    console.log('\n=== Results ===');
-    console.log(`Content received: ${result.found}`);
-    if (result.data) {
-      console.log(`Content: "${result.data}"`);
-    }
-
-    // Get peer states to verify A was not directly connected to C
-    const finalAPeers = await pageA.evaluate(() => (window as any).forwardingTestState?.peers || []);
-    const finalBPeers = await pageB.evaluate(() => (window as any).forwardingTestState?.peers || []);
-    const finalCPeers = await pageC.evaluate(() => (window as any).forwardingTestState?.peers || []);
-
-    console.log(`\nPeer A peers: ${JSON.stringify(finalAPeers)}`);
-    console.log(`Peer B peers: ${JSON.stringify(finalBPeers)}`);
-    console.log(`Peer C peers: ${JSON.stringify(finalCPeers)}`);
-
-    // Clean up
-    await Promise.all([
-      contextA.close(),
-      contextB.close(),
-      contextC.close(),
-    ]);
-
-    // Verify:
-    // 1. A got the content
-    expect(result.found).toBe(true);
-    expect(result.data).toBe(testContent);
-
-    // 2. A was not directly connected to C (only to B)
-    // The content came via B's forwarding
-    const aPeerPubkeys = finalAPeers.map((p: any) => p.pubkey);
-    const cPubkeyPrefix = stateC.pubkey.slice(0, 16);
-    const bPubkeyPrefix = stateB.pubkey.slice(0, 16);
-
-    // A should NOT be connected to C
-    expect(aPeerPubkeys).not.toContain(cPubkeyPrefix);
-
-    // A should be connected to B (the forwarder)
-    expect(aPeerPubkeys).toContain(bPubkeyPrefix);
-
-    // B should be connected to both A and C (acting as the bridge)
-    const bPeerPubkeys = finalBPeers.map((p: any) => p.pubkey);
-    expect(bPeerPubkeys).toContain(stateA.pubkey.slice(0, 16));
-    expect(bPeerPubkeys).toContain(cPubkeyPrefix);
-
-    console.log('\n✓ Verified: A received content from C via B forwarding');
-    console.log('✓ Verified: A was NOT directly connected to C');
-    console.log('✓ Verified: B was connected to both A and C');
   });
 });
