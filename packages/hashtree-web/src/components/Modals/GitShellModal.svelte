@@ -154,6 +154,73 @@
   function clearHistory() {
     commandHistory = [];
   }
+
+  /**
+   * Colorize git output for better readability
+   */
+  function colorizeOutput(output: string, command: string): string {
+    const lines = output.split('\n');
+    const firstWord = command.trim().split(/\s+/)[0];
+
+    // Escape HTML to prevent XSS
+    const escape = (s: string) => s
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    return lines.map(line => {
+      const escaped = escape(line);
+
+      // Diff output coloring
+      if (firstWord === 'diff' || firstWord === 'show') {
+        if (line.startsWith('+') && !line.startsWith('+++')) {
+          return `<span class="text-success">${escaped}</span>`;
+        }
+        if (line.startsWith('-') && !line.startsWith('---')) {
+          return `<span class="text-error">${escaped}</span>`;
+        }
+        if (line.startsWith('@@')) {
+          return `<span class="text-accent">${escaped}</span>`;
+        }
+        if (line.startsWith('diff --git') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
+          return `<span class="text-text-3">${escaped}</span>`;
+        }
+      }
+
+      // Status output coloring
+      if (firstWord === 'status') {
+        if (line.includes('modified:') || line.includes('deleted:') || line.includes('renamed:')) {
+          return `<span class="text-warning">${escaped}</span>`;
+        }
+        if (line.includes('new file:')) {
+          return `<span class="text-success">${escaped}</span>`;
+        }
+        if (line.startsWith('\t')) {
+          // Untracked files
+          return `<span class="text-error">${escaped}</span>`;
+        }
+      }
+
+      // Log output - commit hashes
+      if (firstWord === 'log') {
+        if (line.startsWith('commit ')) {
+          return `<span class="text-warning">${escaped}</span>`;
+        }
+        if (line.startsWith('Author:') || line.startsWith('Date:')) {
+          return `<span class="text-text-3">${escaped}</span>`;
+        }
+      }
+
+      // Branch output
+      if (firstWord === 'branch') {
+        if (line.startsWith('* ')) {
+          return `<span class="text-success">${escaped}</span>`;
+        }
+      }
+
+      return escaped;
+    }).join('\n');
+  }
 </script>
 
 {#if show && target}
@@ -200,7 +267,7 @@
               {#if result.error}
                 <pre class="text-error mt-1 whitespace-pre-wrap">{result.error}</pre>
               {:else if result.output}
-                <pre class="text-text-2 mt-1 whitespace-pre-wrap">{result.output}</pre>
+                <pre class="text-text-2 mt-1 whitespace-pre-wrap">{@html colorizeOutput(result.output, result.command)}</pre>
               {:else}
                 <div class="text-text-3 mt-1">(no output)</div>
               {/if}
