@@ -591,9 +591,32 @@
       <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-3">
         About
       </h3>
-      <p class="text-sm text-text-2">
+      <p class="text-sm text-text-2 mb-3">
         hashtree - Content-addressed file storage on Nostr
       </p>
+      <div class="bg-surface-2 rounded p-3 text-sm space-y-3">
+        <div class="flex justify-between items-center">
+          <span class="text-muted">Build</span>
+          <span class="text-text-1 font-mono text-xs">
+            {(() => {
+              const buildTime = import.meta.env.VITE_BUILD_TIME;
+              if (!buildTime || buildTime === 'undefined') return 'development';
+              try {
+                return new Date(buildTime).toLocaleString();
+              } catch {
+                return buildTime;
+              }
+            })()}
+          </span>
+        </div>
+        <button
+          onclick={() => window.location.reload()}
+          class="btn-ghost w-full flex items-center justify-center gap-2"
+        >
+          <span class="i-lucide-refresh-cw text-sm"></span>
+          <span>Refresh App</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>
