@@ -6,7 +6,7 @@
   import { createGitLogStore, type CommitInfo } from '../../stores/git';
   import { nhashEncode } from 'hashtree';
   import { bytesToHex } from '@noble/hashes/utils.js';
-  import { checkoutCommit } from '../../utils/git';
+  import { checkoutCommit, getBranches } from '../../utils/git';
 
   let show = $derived($modalsStore.showGitHistoryModal);
   let target = $derived($modalsStore.gitHistoryTarget);
@@ -20,6 +20,10 @@
     error: null,
   });
 
+  // Branch info for detached HEAD detection
+  let branchInfo = $state<{ branches: string[]; currentBranch: string | null }>({ branches: [], currentBranch: null });
+  let isDetachedHead = $derived(branchInfo.currentBranch === null && logState.commits.length > 0);
+
   let checkoutInProgress = $state<string | null>(null);
   let checkoutError = $state<string | null>(null);
 
@@ -32,6 +36,17 @@
       logState = value;
     });
     return unsub;
+  });
+
+  // Fetch branch info when modal opens
+  $effect(() => {
+    if (!target) {
+      branchInfo = { branches: [], currentBranch: null };
+      return;
+    }
+    getBranches(target.dirCid).then(info => {
+      branchInfo = info;
+    });
   });
 
   // Handle ESC key
@@ -100,6 +115,26 @@
     }
   }
 
+  // Handle checkout branch (for returning from detached HEAD)
+  async function handleCheckoutBranch(branchName: string) {
+    if (!target || checkoutInProgress) return;
+
+    checkoutInProgress = branchName;
+    checkoutError = null;
+
+    try {
+      if (target.onCheckout) {
+        // Checkout branch by name (git will resolve to the branch's HEAD)
+        await target.onCheckout(branchName);
+        closeGitHistoryModal();
+      }
+    } catch (err) {
+      checkoutError = err instanceof Error ? err.message : String(err);
+    } finally {
+      checkoutInProgress = null;
+    }
+  }
+
   // Handle browse button click (for others' repos)
   async function handleBrowse(commitSha: string) {
     if (!target) return;
@@ -158,6 +193,33 @@
             <div class="mb-4 p-3 bg-error/10 text-error rounded-lg text-sm flex items-center gap-2">
               <span class="i-lucide-alert-circle"></span>
               {checkoutError}
+            </div>
+          {/if}
+          {#if isDetachedHead && target?.canEdit && branchInfo.branches.length > 0}
+            <div class="mb-4 p-3 bg-warning/10 text-warning rounded-lg text-sm">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="i-lucide-alert-triangle"></span>
+                <span class="font-medium">Detached HEAD</span>
+              </div>
+              <p class="text-text-2 text-xs mb-2">
+                You're viewing an older commit. Switch to a branch to see all commits:
+              </p>
+              <div class="flex flex-wrap gap-2">
+                {#each branchInfo.branches as branch}
+                  <button
+                    onclick={() => handleCheckoutBranch(branch)}
+                    disabled={checkoutInProgress !== null}
+                    class="btn-ghost px-2 py-1 text-xs flex items-center gap-1 bg-surface-2"
+                  >
+                    {#if checkoutInProgress === branch}
+                      <span class="i-lucide-loader-2 animate-spin"></span>
+                    {:else}
+                      <span class="i-lucide-git-branch"></span>
+                    {/if}
+                    {branch}
+                  </button>
+                {/each}
+              </div>
             </div>
           {/if}
           <div class="flex flex-col">
