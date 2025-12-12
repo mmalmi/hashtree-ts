@@ -1,10 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Git basic features', () => {
-  test('navigating to .git directory should show directory view not file download', { timeout: 30000 }, async ({ page }) => {
+  // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
+  test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
+  });
+
+  test('navigating to .git directory should show directory view not file download', { timeout: 30000 }, async ({ page }) => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
@@ -58,8 +63,6 @@ test.describe('Git basic features', () => {
   });
 
   test('dotfiles like .git and .claude should be treated as directories', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
@@ -111,8 +114,6 @@ test.describe('Git basic features', () => {
   });
 
   test('should detect git repo and show git features when .git directory exists', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
@@ -178,8 +179,6 @@ test.describe('Git basic features', () => {
   });
 
   test('.git directory should be uploaded when adding a folder', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Check that .git is NOT in the default ignore patterns
@@ -204,8 +203,6 @@ test.describe('Git basic features', () => {
   });
 
   test('git repo structure is preserved when uploading .git directory', { timeout: 30000 }, async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Create a real git repo with commits using CLI

@@ -1,10 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Git branch features', () => {
-  test('detached HEAD should show commit id and allow branch checkout', { timeout: 90000 }, async ({ page }) => {
+  // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
+  test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
+  });
+
+  test('detached HEAD should show commit id and allow branch checkout', { timeout: 90000 }, async ({ page }) => {
     await navigateToPublicFolder(page);
 
     // Create a folder and init as git repo with 2 commits
@@ -121,8 +126,6 @@ test.describe('Git branch features', () => {
   });
 
   test('new branch can be created from branch dropdown', { timeout: 60000 }, async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Create folder with file and init git
@@ -214,8 +217,6 @@ test.describe('Git branch features', () => {
   });
 
   test('checkout older commit changes visible files', { timeout: 90000 }, async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Create folder and init git with 2 commits containing different files

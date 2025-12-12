@@ -22,6 +22,8 @@ import * as os from 'os';
 const HASHTREE_RS_DIR = '/workspace/hashtree-rs';
 
 test.describe('Git push to htree:// and view in browser', () => {
+  // Serial mode: WebRTC from parallel tests can interfere with local git state
+  test.describe.configure({ mode: 'serial' });
   test.setTimeout(180000); // 3 minutes - git operations can be slow
 
   let tempDir: string;

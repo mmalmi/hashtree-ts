@@ -8,7 +8,7 @@
  * - Verifying visibility icons in tree list and inside tree view
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Unlisted Tree Visibility', () => {
   // Increase timeout for all tests since new user setup now creates 3 default folders
@@ -19,6 +19,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Go to page first to be able to clear storage
     await page.goto('/');
+    await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
 
     // Clear IndexedDB and localStorage before each test
     await page.evaluate(async () => {
@@ -32,10 +33,10 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Reload to get truly fresh state (after clearing storage)
     await page.reload();
-    await page.waitForTimeout(500);
+    await disableOthersPool(page); // Re-apply after reload
 
     // App auto-generates key on first visit, wait for header to appear
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await expect(page.locator('header span:has-text("hashtree")')).toBeVisible({ timeout: 5000 });
 
     // New users get auto-redirected to their public folder - wait for that
     await navigateToPublicFolder(page);

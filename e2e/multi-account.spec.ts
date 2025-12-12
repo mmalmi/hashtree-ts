@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 // Helper to navigate to accounts page
 async function navigateToAccountsPage(page: any) {
@@ -22,6 +22,7 @@ test.describe('Multi-Account Management', () => {
     setupPageErrorHandler(page);
 
     await page.goto('/');
+    await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
 
     // Clear storage
     await page.evaluate(async () => {
@@ -34,8 +35,8 @@ test.describe('Multi-Account Management', () => {
     });
 
     await page.reload();
-    await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await disableOthersPool(page); // Re-apply after reload
+    await expect(page.locator('header span:has-text("hashtree")')).toBeVisible({ timeout: 5000 });
     await navigateToPublicFolder(page);
   });
 

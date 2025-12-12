@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { disableOthersPool } from './test-utils.js';
 
 test.describe('Copy and Share functionality', () => {
   // Grant clipboard permissions
@@ -8,9 +9,11 @@ test.describe('Copy and Share functionality', () => {
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
     // Login with new account
     await page.getByRole('button', { name: /New/i }).click();
-    await page.waitForTimeout(1500);
+    // Wait for login to complete
+    await expect(page.getByRole('link', { name: 'public' })).toBeVisible({ timeout: 10000 });
   });
 
   // Helper to close any open modals

@@ -1,13 +1,18 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('NIP-34 Pull Requests', () => {
   // PR/Issues views are hidden on small screens (lg:flex), need wider viewport
   test.use({ viewport: { width: 1280, height: 720 } });
 
-  test('should navigate to Pull Requests view via URL', async ({ page }) => {
+  // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
+  test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
+  });
+
+  test('should navigate to Pull Requests view via URL', async ({ page }) => {
     await navigateToPublicFolder(page);
 
     // Get the current URL parts
@@ -34,8 +39,6 @@ test.describe('NIP-34 Pull Requests', () => {
   });
 
   test('should navigate to Issues view via URL', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Get the current URL parts
@@ -62,8 +65,6 @@ test.describe('NIP-34 Pull Requests', () => {
   });
 
   test('should show FileBrowser on left side in PR view', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Get the current URL parts
@@ -91,8 +92,6 @@ test.describe('NIP-34 Pull Requests', () => {
   });
 
   test('should switch between Code, PRs, and Issues tabs', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Get the current URL parts
@@ -153,8 +152,6 @@ test.describe('NIP-34 Pull Requests', () => {
   });
 
   test('PR list title should be a link with nevent ID', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Get URL parts for navigation
@@ -177,8 +174,6 @@ test.describe('NIP-34 Pull Requests', () => {
   });
 
   test('should navigate to PR detail view via URL with nevent id', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Get URL parts for navigation
@@ -210,8 +205,6 @@ test.describe('NIP-34 Pull Requests', () => {
   });
 
   test('should navigate to Issue detail view via URL with nevent id', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Get URL parts for navigation
@@ -241,8 +234,6 @@ test.describe('NIP-34 Pull Requests', () => {
   });
 
   test.skip('should have back button in PR detail view that navigates to list', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Get URL parts for navigation
@@ -279,8 +270,6 @@ test.describe('NIP-34 Pull Requests', () => {
   });
 
   test.skip('should have back button in Issue detail view that navigates to list', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Get URL parts for navigation

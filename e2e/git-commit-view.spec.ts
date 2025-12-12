@@ -1,10 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Git commit view', () => {
-  test('clicking commit message should navigate to commit view with details', { timeout: 90000 }, async ({ page }) => {
+  // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
+  test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
+  });
+
+  test('clicking commit message should navigate to commit view with details', { timeout: 90000 }, async ({ page }) => {
     await navigateToPublicFolder(page);
 
     // Create a folder for our test repo
@@ -105,8 +110,6 @@ test.describe('Git commit view', () => {
   });
 
   test('commit view shows commit details and browse files link', { timeout: 90000 }, async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Create a folder for test
@@ -174,8 +177,6 @@ test.describe('Git commit view', () => {
   });
 
   test('tab navigation shows on commit view', { timeout: 90000 }, async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Create a folder

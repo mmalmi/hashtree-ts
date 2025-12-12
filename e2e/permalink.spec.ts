@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { disableOthersPool } from './test-utils.js';
 
 test.describe('Permalink Navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
 
     // Wait for app to load
     await expect(page.locator('header span:has-text("hashtree")')).toBeVisible({ timeout: 5000 });
@@ -85,12 +87,16 @@ test.describe('Permalink Navigation', () => {
     await expect(publicLink).toBeVisible({ timeout: 5000 });
     await publicLink.click();
 
-    // Wait for directory view to load - the file should be visible in the file list
+    // Wait for directory view to load - New File button indicates we're in directory view
+    await expect(page.getByRole('button', { name: /New File/i })).toBeVisible({ timeout: 5000 });
+
+    // Wait for file to appear in the file list
     await expect(page.getByTestId('file-list').locator('text=test-in-dir.txt')).toBeVisible({ timeout: 5000 });
 
-    // Find the directory Permalink link in folder actions (should be in DirectoryActions, not Viewer)
-    const dirPermalinkLink = page.getByRole('link', { name: 'Permalink', exact: true }).first();
-    await expect(dirPermalinkLink).toBeVisible({ timeout: 5000 });
+    // Find the directory Permalink link - use the data-testid
+    // The link may be hidden on small screens, so wait for it to exist (not necessarily visible)
+    const dirPermalinkLink = page.locator('[data-testid="permalink-link"]').first();
+    await expect(dirPermalinkLink).toHaveCount(1, { timeout: 5000 });
 
     // Get the href - should NOT have a filename
     const dirPermalinkHref = await dirPermalinkLink.getAttribute('href');
@@ -154,10 +160,11 @@ test.describe('Permalink Navigation', () => {
 
     // Wait for page to load and decrypt - file should appear in listing
     // The permalink page may need time to decrypt and load directory entries
-    await expect(page.getByText('test-content.txt')).toBeVisible({ timeout: 15000 });
+    // Use file-list testid to be specific about which element we're looking for
+    await expect(page.locator('[data-testid="file-list"]').getByText('test-content.txt')).toBeVisible({ timeout: 15000 });
 
-    // Click on the file
-    await page.getByRole('link', { name: 'test-content.txt' }).click();
+    // Click on the file - use .first() to handle any duplicate elements
+    await page.getByRole('link', { name: 'test-content.txt' }).first().click();
 
     // Should see the file content (not a broken image) - allow more time for decryption
     await expect(page.getByText('Hello from encrypted file!')).toBeVisible({ timeout: 15000 });

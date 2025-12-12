@@ -48,3 +48,50 @@ export async function goToTreeList(page: any) {
   // Wait for tree list to be visible
   await page.waitForTimeout(500);
 }
+
+/**
+ * Disable the "others pool" for WebRTC connections.
+ * This prevents the app from connecting to random peers from other parallel tests.
+ * Use this for single-user tests that don't need WebRTC connections but might be
+ * affected by incoming data from parallel test instances.
+ *
+ * IMPORTANT: Call this BEFORE any navigation or state changes in the test.
+ */
+export async function disableOthersPool(page: any) {
+  await page.evaluate(async () => {
+    // Import the settings store and set othersMax to 0
+    const { settingsStore } = await import('/src/stores/settings.ts');
+    settingsStore.setPoolSettings({ otherMax: 0, otherSatisfied: 0 });
+
+    // Also update the WebRTC store if it exists
+    const { webRTCStore } = await import('/src/store.ts');
+    if (webRTCStore) {
+      webRTCStore.setPoolConfig({
+        follows: { maxConnections: 20, satisfiedConnections: 10 },
+        other: { maxConnections: 0, satisfiedConnections: 0 },
+      });
+    }
+  });
+}
+
+/**
+ * Helper to follow a user by their npub.
+ * Navigates to target's profile and clicks Follow, waiting for completion.
+ * Use this to establish reliable WebRTC connections via the "follows pool".
+ */
+export async function followUser(page: any, targetNpub: string) {
+  // Navigate to the user's profile page
+  await page.goto(`http://localhost:5173/#/${targetNpub}`);
+
+  // Click the Follow button
+  const followButton = page.getByRole('button', { name: 'Follow', exact: true });
+  await expect(followButton).toBeVisible({ timeout: 5000 });
+  await followButton.click();
+
+  // Wait for follow to complete - button becomes disabled or changes to "Following" or "Unfollow"
+  await expect(
+    page.getByRole('button', { name: 'Following' })
+      .or(page.getByRole('button', { name: 'Unfollow' }))
+      .or(followButton.and(page.locator('[disabled]')))
+  ).toBeVisible({ timeout: 10000 });
+}

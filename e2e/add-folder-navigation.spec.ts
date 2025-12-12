@@ -1,10 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Add Folder Navigation', () => {
-  test('should navigate into folder created via new folder button', async ({ page }) => {
+  // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
+  test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
+  });
+
+  test('should navigate into folder created via new folder button', async ({ page }) => {
     await navigateToPublicFolder(page);
 
     // Click "New Folder" button using getByRole - will find the visible one
@@ -26,8 +31,6 @@ test.describe('Add Folder Navigation', () => {
   });
 
   test('debug: check path resolution after clicking folder', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Get npub and treeName
@@ -136,8 +139,6 @@ test.describe('Add Folder Navigation', () => {
   });
 
   test('debug folder entry type after upload', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Simulate what uploadFilesWithPaths does
@@ -200,8 +201,6 @@ test.describe('Add Folder Navigation', () => {
   });
 
   test('should navigate into folder created via Add Folder (directory upload)', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Simulate the uploadDirectory flow by calling uploadFilesWithPaths directly
@@ -297,8 +296,6 @@ test.describe('Add Folder Navigation', () => {
   });
 
   test('debug: verify folder entry type is correct for navigation', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // First create a folder with a file like Add Folder does

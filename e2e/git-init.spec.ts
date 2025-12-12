@@ -1,10 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Git init features', () => {
-  test('git init button should initialize a git repo in a directory', { timeout: 60000 }, async ({ page }) => {
+  // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
+  test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
+  });
+
+  test('git init button should initialize a git repo in a directory', { timeout: 60000 }, async ({ page }) => {
     await navigateToPublicFolder(page);
 
     // Create a folder with some files
@@ -42,8 +47,8 @@ test.describe('Git init features', () => {
       autosaveIfOwn(newRootCid);
     });
 
-    // Wait for file to appear
-    await page.waitForTimeout(1000);
+    // Wait for file to appear - check for the file in the list
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'README.md' })).toBeVisible({ timeout: 10000 });
 
     // Git Init button should be visible (not a git repo yet)
     const gitInitBtn = page.getByRole('button', { name: 'Git Init' });

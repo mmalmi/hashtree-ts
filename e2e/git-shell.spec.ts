@@ -1,10 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Git shell features', () => {
-  test('git shell modal should run commands and display output', { timeout: 60000 }, async ({ page }) => {
+  // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
+  test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
+  });
+
+  test('git shell modal should run commands and display output', { timeout: 60000 }, async ({ page }) => {
     await navigateToPublicFolder(page);
 
     // Import Node.js modules
@@ -127,8 +132,6 @@ test.describe('Git shell features', () => {
   });
 
   test('git shell should support write commands like add and commit', { timeout: 60000 }, async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Import Node.js modules

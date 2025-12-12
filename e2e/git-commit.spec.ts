@@ -1,10 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Git commit features', () => {
-  test('should be able to add files and commit them via commit modal', { timeout: 90000 }, async ({ page }) => {
+  // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
+  test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
+  });
+
+  test('should be able to add files and commit them via commit modal', { timeout: 90000 }, async ({ page }) => {
     await navigateToPublicFolder(page);
 
     // Create a folder for our test repo
@@ -151,8 +156,6 @@ test.describe('Git commit features', () => {
   });
 
   test('git status should show correct filename (not truncated)', { timeout: 60000 }, async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Create a folder and init as git repo
@@ -236,8 +239,6 @@ test.describe('Git commit features', () => {
   });
 
   test('git status shows changes count correctly', { timeout: 60000 }, async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Create a folder and init as git repo

@@ -1,9 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Git checkout features', () => {
-  test('checkout commit should return a valid directory CID that can be listed', { timeout: 60000 }, async ({ page }) => {
+  // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
+  test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
+    await page.goto('/');
+    await disableOthersPool(page);
+  });
+
+  test('checkout commit should return a valid directory CID that can be listed', { timeout: 60000 }, async ({ page }) => {
 
     // Capture wasm-git logs
     const wasmGitLogs: string[] = [];
@@ -14,7 +20,6 @@ test.describe('Git checkout features', () => {
       }
     });
 
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Import Node.js modules
@@ -177,8 +182,6 @@ test.describe('Git checkout features', () => {
   });
 
   test('checkout previous revision removes files that were added later', { timeout: 120000 }, async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Create a folder for our test repo

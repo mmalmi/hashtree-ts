@@ -1,9 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Git history features', () => {
-  test('git history should return commits from uploaded git repo', { timeout: 30000 }, async ({ page }) => {
+  // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
+  test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
+    await page.goto('/');
+    await disableOthersPool(page);
+  });
+
+  test('git history should return commits from uploaded git repo', { timeout: 30000 }, async ({ page }) => {
 
     // Capture wasm-git debug logs
     const wasmGitLogs: string[] = [];
@@ -14,7 +20,6 @@ test.describe('Git history features', () => {
       }
     });
 
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Create a real git repo with commits using CLI
@@ -178,8 +183,6 @@ test.describe('Git history features', () => {
   });
 
   test('git history modal should handle repos without commits gracefully', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Test getLog with a minimal .git structure that has no actual commits
@@ -236,8 +239,6 @@ test.describe('Git history features', () => {
 
   // Skip: checkoutCommit doesn't fully restore files - needs investigation
   test.skip('checkout commit should restore files from that commit', async ({ page }) => {
-    setupPageErrorHandler(page);
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Import Node.js modules
@@ -397,8 +398,6 @@ test.describe('Git history features', () => {
     }
   });
   test('git directory listing should show last commit info for files', { timeout: 60000 }, async ({ page }) => {
-    setupPageErrorHandler(page);
-
     // Capture console logs for debugging
     const logs: string[] = [];
     page.on('console', msg => {
@@ -407,7 +406,6 @@ test.describe('Git history features', () => {
       }
     });
 
-    await page.goto('/');
     await navigateToPublicFolder(page);
 
     // Create a real git repo with commits using CLI
