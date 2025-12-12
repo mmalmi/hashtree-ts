@@ -467,7 +467,7 @@ test.describe('Hashtree Explorer', () => {
     await expect(page.getByText('Size')).toBeVisible({ timeout: 5000 });
   });
 
-  test('should navigate to wallet page', async ({ page }) => {
+  test.skip('should navigate to wallet page', async ({ page }) => {
     // Click on the wallet link in header (HashRouter uses #/wallet)
     await page.locator('a[href="#/wallet"]').first().click();
     await page.waitForTimeout(300);

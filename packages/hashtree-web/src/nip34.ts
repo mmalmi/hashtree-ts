@@ -129,7 +129,12 @@ export async function fetchPullRequests(npub: string, repoName: string): Promise
     '#a': [repoAddress],
   };
 
-  const events = await ndk.fetchEvents(filter);
+  // Add timeout to avoid hanging on slow/unresponsive relays
+  const fetchPromise = ndk.fetchEvents(filter);
+  const timeoutPromise = new Promise<Set<NDKEvent>>((resolve) =>
+    setTimeout(() => resolve(new Set()), 5000)
+  );
+  const events = await Promise.race([fetchPromise, timeoutPromise]);
   const prs: PullRequest[] = [];
 
   for (const event of events) {
@@ -160,7 +165,12 @@ export async function fetchIssues(npub: string, repoName: string): Promise<Issue
     '#a': [repoAddress],
   };
 
-  const events = await ndk.fetchEvents(filter);
+  // Add timeout to avoid hanging on slow/unresponsive relays
+  const fetchPromise = ndk.fetchEvents(filter);
+  const timeoutPromise = new Promise<Set<NDKEvent>>((resolve) =>
+    setTimeout(() => resolve(new Set()), 5000)
+  );
+  const events = await Promise.race([fetchPromise, timeoutPromise]);
   const issues: Issue[] = [];
 
   for (const event of events) {
@@ -185,7 +195,12 @@ async function fetchLatestStatus(targetEventId: string, repoOwnerPubkey: string)
     '#e': [targetEventId],
   };
 
-  const events = await ndk.fetchEvents(filter);
+  // Add timeout to avoid hanging on slow/unresponsive relays
+  const fetchPromise = ndk.fetchEvents(filter);
+  const timeoutPromise = new Promise<Set<NDKEvent>>((resolve) =>
+    setTimeout(() => resolve(new Set()), 3000)
+  );
+  const events = await Promise.race([fetchPromise, timeoutPromise]);
 
   // Find the most recent valid status event
   // Valid = from repo maintainer OR the issue/PR author

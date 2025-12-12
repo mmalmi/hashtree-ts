@@ -401,8 +401,12 @@
     }
   }
 
+  // Track if we're using blob URL mode (for live stream reload handling)
+  let usingBlobUrl = $state(false);
+
   // Load file as blob URL with progress
   async function loadWithBlobUrl() {
+    usingBlobUrl = true;
     try {
       const tree = getTree();
       const chunks: Uint8Array[] = [];
@@ -420,13 +424,19 @@
       }
 
       lastCidHash = toHex(cid.hash);
-      isFullyLoaded = true;
+      // For live streams in blob URL mode, don't mark as fully loaded
+      // We'll reload when CID changes
+      isFullyLoaded = !shouldTreatAsLive;
       lastDataReceivedTime = Date.now();
 
       const mimeType = getMimeType(fileName).split(';')[0];
       const blob = new Blob(chunks, { type: mimeType });
 
       if (mediaRef) {
+        // Clean up previous blob URL
+        if (mediaRef.src && mediaRef.src.startsWith('blob:')) {
+          URL.revokeObjectURL(mediaRef.src);
+        }
         mediaRef.src = URL.createObjectURL(blob);
 
         mediaRef.addEventListener('loadedmetadata', () => {
@@ -440,9 +450,75 @@
       }
 
       loading = false;
+
+      // Start polling for live streams to check for CID changes
+      if (shouldTreatAsLive) {
+        startLivePolling();
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load media';
       loading = false;
+    }
+  }
+
+  // Reload blob URL when CID changes (for live streams not using MSE)
+  async function reloadBlobUrl() {
+    if (!usingBlobUrl || !shouldTreatAsLive || !mediaRef) return;
+
+    const currentCidHash = toHex(cid.hash);
+    if (currentCidHash === lastCidHash) return;
+
+    console.log('[MediaPlayer] CID changed, reloading blob URL for live stream');
+
+    // Remember current playback position
+    const currentPlaybackTime = mediaRef.currentTime;
+    const wasPlaying = !mediaRef.paused;
+
+    try {
+      const tree = getTree();
+      const chunks: Uint8Array[] = [];
+      let newBytesLoaded = 0;
+
+      for await (const chunk of tree.readFileStream(cid)) {
+        chunks.push(chunk);
+        newBytesLoaded += chunk.length;
+      }
+
+      if (chunks.length === 0) return;
+
+      // Only update if we got more data
+      if (newBytesLoaded <= bytesLoaded) return;
+
+      bytesLoaded = newBytesLoaded;
+      lastCidHash = currentCidHash;
+      lastDataReceivedTime = Date.now();
+
+      const mimeType = getMimeType(fileName).split(';')[0];
+      const blob = new Blob(chunks, { type: mimeType });
+
+      // Clean up previous blob URL
+      if (mediaRef.src && mediaRef.src.startsWith('blob:')) {
+        URL.revokeObjectURL(mediaRef.src);
+      }
+
+      mediaRef.src = URL.createObjectURL(blob);
+
+      // Restore playback state after loading new data
+      mediaRef.addEventListener('loadedmetadata', () => {
+        duration = mediaRef!.duration;
+
+        // For live streams, jump to near the end to show latest content
+        if (duration > 5) {
+          mediaRef!.currentTime = Math.max(currentPlaybackTime, duration - 3);
+        }
+
+        if (wasPlaying) {
+          mediaRef!.play().catch(() => {});
+        }
+      }, { once: true });
+
+    } catch (e) {
+      console.error('[MediaPlayer] Error reloading blob URL:', e);
     }
   }
 
@@ -490,12 +566,27 @@
     // Avoid overlapping polls
     if (isPolling) return;
 
-    if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
+    // Skip if we're not in live mode or still loading
+    if (!shouldTreatAsLive || loading) {
       return;
     }
 
-    // Skip if we're not in live mode or still loading
-    if (!shouldTreatAsLive || loading) {
+    // For blob URL mode, check if CID changed and reload
+    if (usingBlobUrl) {
+      const currentCidHash = toHex(cid.hash);
+      if (currentCidHash !== lastCidHash) {
+        isPolling = true;
+        try {
+          await reloadBlobUrl();
+        } finally {
+          isPolling = false;
+        }
+      }
+      return;
+    }
+
+    // MSE mode - need source buffer
+    if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
       return;
     }
 
@@ -559,7 +650,13 @@
 
     const currentCidHash = currentCidHashReactive;
     if (currentCidHash && currentCidHash !== lastCidHash) {
-      fetchNewData();
+      // For MSE mode, append new data incrementally
+      // For blob URL mode, reload the entire file
+      if (usingBlobUrl) {
+        reloadBlobUrl();
+      } else {
+        fetchNewData();
+      }
     }
   });
 

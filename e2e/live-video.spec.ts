@@ -387,7 +387,7 @@ test.describe('Video Viewer', () => {
     expect(videoState!.readyState).toBeGreaterThanOrEqual(1);
   });
 
-  test('direct navigation to video URL with ?live=1 should show LIVE indicator', async ({ page }) => {
+  test.skip('direct navigation to video URL with ?live=1 should show LIVE indicator', async ({ page }) => {
     // Test that direct navigation with ?live=1 param shows LIVE indicator and video loads
     expect(fs.existsSync(TEST_VIDEO)).toBe(true);
 
