@@ -235,17 +235,10 @@ function normalizeRelayUrl(url: string): string {
   return url.replace(/\/$/, '');
 }
 
-// Cache previous values to avoid unnecessary store updates
-let prevConnectedCount = -1;
-let prevStatusesJson = '';
-
 function updateConnectedRelayCount() {
   const pool = ndk.pool;
   if (!pool) {
-    if (prevConnectedCount !== 0) {
-      prevConnectedCount = 0;
-      nostrStore.setConnectedRelays(0);
-    }
+    nostrStore.setConnectedRelays(0);
     return;
   }
   // Count relays with connected status (>= CONNECTED) and track individual statuses
@@ -258,40 +251,23 @@ function updateConnectedRelayCount() {
     ? settings.network.relays
     : DEFAULT_NETWORK_SETTINGS.relays;
 
-  // Create a set of normalized configured relay URLs for quick lookup
-  const configuredSet = new Set(configuredRelays.map(normalizeRelayUrl));
-
   // Initialize all configured relays as disconnected
   for (const url of configuredRelays) {
     statuses.set(normalizeRelayUrl(url), 'disconnected');
   }
 
-  // Update with actual statuses from pool (only count configured relays)
+  // Update with actual statuses from pool
   for (const relay of pool.relays.values()) {
-    const normalizedUrl = normalizeRelayUrl(relay.url);
     const status = ndkStatusToRelayStatus(relay.status);
-
-    // Only track configured relays (ignore NDK-discovered relays)
-    if (configuredSet.has(normalizedUrl)) {
-      statuses.set(normalizedUrl, status);
-      if (relay.status >= NDK_RELAY_STATUS_CONNECTED) {
-        connected++;
-      }
+    const normalizedUrl = normalizeRelayUrl(relay.url);
+    statuses.set(normalizedUrl, status);
+    if (relay.status >= NDK_RELAY_STATUS_CONNECTED) {
+      connected++;
     }
   }
 
-  // Only update store if values changed (avoid unnecessary re-renders)
-  if (connected !== prevConnectedCount) {
-    prevConnectedCount = connected;
-    nostrStore.setConnectedRelays(connected);
-  }
-
-  // Compare statuses as JSON to detect changes
-  const statusesJson = JSON.stringify([...statuses.entries()].sort());
-  if (statusesJson !== prevStatusesJson) {
-    prevStatusesJson = statusesJson;
-    nostrStore.setRelayStatuses(statuses);
-  }
+  nostrStore.setConnectedRelays(connected);
+  nostrStore.setRelayStatuses(statuses);
 }
 
 // Listen for relay connect/disconnect events
@@ -306,17 +282,12 @@ setTimeout(updateConnectedRelayCount, 500);
 setTimeout(updateConnectedRelayCount, 1500);
 setTimeout(updateConnectedRelayCount, 3000);
 
-// Update NDK relays when settings are loaded or relays change
-let prevRelays = settingsStore.getState().network?.relays;
-let wasNetworkLoaded = settingsStore.getState().networkLoaded;
+// Update NDK relays when settings are loaded or changed
+let prevNetworkSettings = settingsStore.getState().network;
 settingsStore.subscribe((state) => {
-  // Only update when relays actually change (not blossom servers or other network settings)
-  const relaysChanged = state.network?.relays !== prevRelays;
-  const justLoaded = state.networkLoaded && !wasNetworkLoaded;
-
-  if (relaysChanged || justLoaded) {
-    prevRelays = state.network?.relays;
-    wasNetworkLoaded = state.networkLoaded;
+  // Only update when networkLoaded becomes true or network settings actually change
+  if (state.networkLoaded && state.network !== prevNetworkSettings) {
+    prevNetworkSettings = state.network;
     updateNdkRelays().catch(console.error);
   }
 });
