@@ -1,6 +1,6 @@
 # hashtree-ts
 
-Content-addressed merkle tree storage for the browser.
+Content-addressed filesystem on Nostr.
 
 ## Design
 

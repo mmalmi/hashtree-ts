@@ -592,7 +592,7 @@
         About
       </h3>
       <p class="text-sm text-text-2 mb-3">
-        hashtree - Content-addressed file storage on Nostr
+        hashtree - Content-addressed filesystem on Nostr
       </p>
       <div class="bg-surface-2 rounded p-3 text-sm space-y-3">
         <div class="flex justify-between items-center">
@@ -609,6 +609,13 @@
             })()}
           </span>
         </div>
+        <a
+          href="#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-ts"
+          class="btn-ghost w-full flex items-center justify-center gap-2"
+        >
+          <span class="i-lucide-code text-sm"></span>
+          <span>Source Code</span>
+        </a>
         <button
           onclick={() => window.location.reload()}
           class="btn-ghost w-full flex items-center justify-center gap-2"
