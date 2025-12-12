@@ -9,6 +9,7 @@
   import { useAppStore, formatBytes, updateStorageStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { syncedStorageStore, refreshSyncedStorage, type UserStorageStats } from '../stores/chunkMetadata';
+  import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../stores/settings';
   import { BackButton } from './ui';
   import { UserRow } from './User';
 
@@ -36,6 +37,79 @@
   let relayStatuses = $derived($nostrStore.relayStatuses);
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
   let myPubkey = $derived($nostrStore.pubkey);
+
+  // Network settings
+  let networkSettings = $derived($settingsStore.network);
+  let newRelayUrl = $state('');
+  let newBlossomUrl = $state('');
+  let editingRelays = $state(false);
+  let editingBlossom = $state(false);
+
+  function addRelay() {
+    const url = newRelayUrl.trim();
+    if (!url) return;
+    // Validate URL
+    try {
+      new URL(url);
+      if (!url.startsWith('wss://') && !url.startsWith('ws://')) {
+        return;
+      }
+    } catch {
+      return;
+    }
+    if (!networkSettings.relays.includes(url)) {
+      settingsStore.setNetworkSettings({
+        relays: [...networkSettings.relays, url],
+      });
+    }
+    newRelayUrl = '';
+  }
+
+  function removeRelay(url: string) {
+    settingsStore.setNetworkSettings({
+      relays: networkSettings.relays.filter(r => r !== url),
+    });
+  }
+
+  function resetRelays() {
+    settingsStore.setNetworkSettings({
+      relays: DEFAULT_NETWORK_SETTINGS.relays,
+    });
+    editingRelays = false;
+  }
+
+  function addBlossomServer() {
+    const url = newBlossomUrl.trim();
+    if (!url) return;
+    // Validate URL
+    try {
+      new URL(url);
+      if (!url.startsWith('https://') && !url.startsWith('http://')) {
+        return;
+      }
+    } catch {
+      return;
+    }
+    if (!networkSettings.blossomServers.includes(url)) {
+      settingsStore.setNetworkSettings({
+        blossomServers: [...networkSettings.blossomServers, url],
+      });
+    }
+    newBlossomUrl = '';
+  }
+
+  function removeBlossomServer(url: string) {
+    settingsStore.setNetworkSettings({
+      blossomServers: networkSettings.blossomServers.filter(s => s !== url),
+    });
+  }
+
+  function resetBlossomServers() {
+    settingsStore.setNetworkSettings({
+      blossomServers: DEFAULT_NETWORK_SETTINGS.blossomServers,
+    });
+    editingBlossom = false;
+  }
 
   // Social graph stats
   let isRecrawling = $derived($socialGraphStore.isRecrawling);
@@ -110,12 +184,20 @@
   <div class="flex-1 overflow-y-auto p-4 space-y-6 w-full max-w-md mx-auto">
     <!-- Relays -->
     <div>
-      <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-1">
-        Relays ({relayList.length})
-      </h3>
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-xs font-medium text-muted uppercase tracking-wide">
+          Relays ({networkSettings.relays.length})
+        </h3>
+        <button
+          onclick={() => editingRelays = !editingRelays}
+          class="btn-ghost text-xs text-accent"
+        >
+          {editingRelays ? 'Done' : 'Edit'}
+        </button>
+      </div>
       <p class="text-xs text-text-3 mb-3">Nostr servers used to find peers</p>
       <div class="bg-surface-2 rounded divide-y divide-surface-3">
-        {#each relayList as relay}
+        {#each networkSettings.relays as relay}
           {@const status = getRelayStatus(relay)}
           <div class="flex items-center gap-2 p-3 text-sm">
             <span class="w-2 h-2 rounded-full {getStatusColor(status)} shrink-0"></span>
@@ -128,10 +210,93 @@
                 }
               })()}
             </span>
-            <span class="text-xs text-text-3">{status.charAt(0).toUpperCase() + status.slice(1)}</span>
+            {#if editingRelays}
+              <button
+                onclick={() => removeRelay(relay)}
+                class="btn-ghost p-1 text-danger"
+                title="Remove relay"
+              >
+                <span class="i-lucide-x text-sm"></span>
+              </button>
+            {:else}
+              <span class="text-xs text-text-3">{status.charAt(0).toUpperCase() + status.slice(1)}</span>
+            {/if}
           </div>
         {/each}
       </div>
+      {#if editingRelays}
+        <div class="mt-2 flex gap-2">
+          <input
+            type="text"
+            bind:value={newRelayUrl}
+            placeholder="wss://relay.example.com"
+            class="flex-1 input text-sm"
+            onkeydown={(e) => e.key === 'Enter' && addRelay()}
+          />
+          <button onclick={addRelay} class="btn-primary text-sm">Add</button>
+        </div>
+        <button onclick={resetRelays} class="btn-ghost mt-2 text-xs text-text-3">
+          Reset to defaults
+        </button>
+      {/if}
+    </div>
+
+    <!-- Blossom Servers -->
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-xs font-medium text-muted uppercase tracking-wide">
+          Blossom Servers ({networkSettings.blossomServers.length})
+        </h3>
+        <button
+          onclick={() => editingBlossom = !editingBlossom}
+          class="btn-ghost text-xs text-accent"
+        >
+          {editingBlossom ? 'Done' : 'Edit'}
+        </button>
+      </div>
+      <p class="text-xs text-text-3 mb-3">Fallback servers for file storage</p>
+      <div class="bg-surface-2 rounded divide-y divide-surface-3">
+        {#each networkSettings.blossomServers as server}
+          <div class="flex items-center gap-2 p-3 text-sm">
+            <span class="i-lucide-server text-text-3 shrink-0"></span>
+            <span class="text-text-1 truncate flex-1">
+              {(() => {
+                try {
+                  return new URL(server).hostname;
+                } catch {
+                  return server;
+                }
+              })()}
+            </span>
+            {#if editingBlossom}
+              <button
+                onclick={() => removeBlossomServer(server)}
+                class="btn-ghost p-1 text-danger"
+                title="Remove server"
+              >
+                <span class="i-lucide-x text-sm"></span>
+              </button>
+            {/if}
+          </div>
+        {:else}
+          <div class="p-3 text-sm text-text-3">No servers configured</div>
+        {/each}
+      </div>
+      {#if editingBlossom}
+        <div class="mt-2 flex gap-2">
+          <input
+            type="text"
+            bind:value={newBlossomUrl}
+            placeholder="https://blossom.example.com"
+            class="flex-1 input text-sm"
+            onkeydown={(e) => e.key === 'Enter' && addBlossomServer()}
+          />
+          <button onclick={addBlossomServer} class="btn-primary text-sm">Add</button>
+        </div>
+        <button onclick={resetBlossomServers} class="btn-ghost mt-2 text-xs text-text-3">
+          Reset to defaults
+        </button>
+      {/if}
     </div>
 
     <!-- Peers -->
@@ -224,7 +389,7 @@
           Synced Storage
         </h3>
         <p class="text-xs text-text-3 mb-3">
-          Background-synced trees ({formatBytes(syncedStorageTotal)} total)
+          Autosynced trees ({formatBytes(syncedStorageTotal)} total)
         </p>
         <div class="bg-surface-2 rounded divide-y divide-surface-3" data-testid="synced-storage">
           {#each syncedStorage as userStats}

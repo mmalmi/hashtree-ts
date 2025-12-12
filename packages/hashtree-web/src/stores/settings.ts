@@ -67,6 +67,28 @@ export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
   syncVisitedUnlisted: true,
 };
 
+// Network settings for relays and blossom servers
+export interface NetworkSettings {
+  /** Nostr relay URLs */
+  relays: string[];
+  /** Blossom server URLs for fallback storage */
+  blossomServers: string[];
+}
+
+// Default network settings
+export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
+  relays: [
+    'wss://relay.damus.io',
+    'wss://relay.primal.net',
+    'wss://nos.lol',
+    'wss://relay.nostr.band',
+    'wss://relay.snort.social',
+  ],
+  blossomServers: [
+    'https://hashtree.iris.to',
+  ],
+};
+
 // Dexie database for settings persistence
 class SettingsDB extends Dexie {
   settings!: Table<{ key: string; value: unknown }>;
@@ -106,6 +128,10 @@ export interface SettingsState {
 
   // Sync settings
   sync: SyncSettings;
+
+  // Network settings
+  network: NetworkSettings;
+  networkLoaded: boolean;
 }
 
 function createSettingsStore() {
@@ -134,6 +160,10 @@ function createSettingsStore() {
 
     // Sync settings
     sync: DEFAULT_SYNC_SETTINGS,
+
+    // Network settings
+    network: DEFAULT_NETWORK_SETTINGS,
+    networkLoaded: false,
   });
 
   return {
@@ -186,6 +216,21 @@ function createSettingsStore() {
       });
     },
 
+    setNetworkSettings: (network: Partial<NetworkSettings>) => {
+      update(state => {
+        const updated = { ...state.network, ...network };
+        db.settings.put({ key: 'network', value: updated }).catch(console.error);
+        return { ...state, network: updated };
+      });
+    },
+
+    resetNetworkSettings: () => {
+      update(state => {
+        db.settings.put({ key: 'network', value: DEFAULT_NETWORK_SETTINGS }).catch(console.error);
+        return { ...state, network: DEFAULT_NETWORK_SETTINGS };
+      });
+    },
+
     // Get current state synchronously
     getState: (): SettingsState => get(settingsStore),
 
@@ -204,14 +249,15 @@ export const useSettingsStore = settingsStore;
 // Load settings from Dexie on startup
 async function loadSettings() {
   try {
-    const [poolsRow, uploadRow, editorRow, syncRow] = await Promise.all([
+    const [poolsRow, uploadRow, editorRow, syncRow, networkRow] = await Promise.all([
       db.settings.get('pools'),
       db.settings.get('upload'),
       db.settings.get('editor'),
       db.settings.get('sync'),
+      db.settings.get('network'),
     ]);
 
-    const updates: Partial<SettingsState> = { poolsLoaded: true };
+    const updates: Partial<SettingsState> = { poolsLoaded: true, networkLoaded: true };
 
     if (poolsRow?.value) {
       const pools = poolsRow.value as PoolSettings;
@@ -248,10 +294,18 @@ async function loadSettings() {
       };
     }
 
+    if (networkRow?.value) {
+      const network = networkRow.value as NetworkSettings;
+      updates.network = {
+        relays: network.relays ?? DEFAULT_NETWORK_SETTINGS.relays,
+        blossomServers: network.blossomServers ?? DEFAULT_NETWORK_SETTINGS.blossomServers,
+      };
+    }
+
     settingsStore.setState(updates);
   } catch (err) {
     console.error('[settings] error loading:', err);
-    settingsStore.setState({ poolsLoaded: true });
+    settingsStore.setState({ poolsLoaded: true, networkLoaded: true });
   }
 }
 

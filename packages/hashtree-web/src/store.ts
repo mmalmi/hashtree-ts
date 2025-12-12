@@ -12,7 +12,7 @@ import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClass
 // Re-export LinkType for e2e tests that can't import 'hashtree' directly
 export { LinkType };
 import { getSocialGraph, socialGraphStore } from './utils/socialGraph';
-import { settingsStore, DEFAULT_POOL_SETTINGS } from './stores/settings';
+import { settingsStore, DEFAULT_POOL_SETTINGS, DEFAULT_NETWORK_SETTINGS } from './stores/settings';
 import { DexieStore } from 'hashtree-dexie';
 import { BlossomStore } from 'hashtree';
 
@@ -172,6 +172,15 @@ export function initWebRTC(
     webrtcStore.stop();
   }
 
+  // Get network settings (relays for WebRTC, blossom servers for fallback)
+  const networkSettings = get(settingsStore).network;
+  const relays = networkSettings?.relays?.length > 0
+    ? networkSettings.relays
+    : DEFAULT_NETWORK_SETTINGS.relays;
+  const blossomServers = networkSettings?.blossomServers?.length > 0
+    ? networkSettings.blossomServers
+    : DEFAULT_NETWORK_SETTINGS.blossomServers;
+
   webrtcStore = new WebRTCStore({
     signer,
     pubkey,
@@ -179,11 +188,12 @@ export function initWebRTC(
     decrypt,
     localStore: idbStore,
     debug: true,
+    relays,
     // Pool-based peer management
     peerClassifier: createPeerClassifier(),
     pools: getPoolConfigFromSettings(),
     // Fallback to Blossom HTTP server when WebRTC peers don't have the data
-    fallbackStores: [new BlossomStore({ servers: ['https://hashtree.iris.to'] })],
+    fallbackStores: [new BlossomStore({ servers: blossomServers })],
   });
 
   _tree = new HashTree({ store: webrtcStore, chunkSize: 1024 });

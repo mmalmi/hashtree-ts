@@ -21,12 +21,12 @@ import { initWebRTC, stopWebRTC } from './store';
 import { startBackgroundSync, stopBackgroundSync } from './services/backgroundSync';
 import {
   toHex,
-  DEFAULT_RELAYS,
   type EventSigner,
   type CID,
   type TreeVisibility,
   visibilityHex,
 } from 'hashtree';
+import { settingsStore, DEFAULT_NETWORK_SETTINGS } from './stores/settings';
 import { updateLocalRootCacheHex } from './treeRootCache';
 import {
   accountsStore,
@@ -84,13 +84,14 @@ interface NostrState {
 
 // Create Svelte store for nostr state
 function createNostrStore() {
+  const defaultRelays = DEFAULT_NETWORK_SETTINGS.relays;
   const { subscribe, update } = writable<NostrState>({
     pubkey: null,
     npub: null,
     isLoggedIn: false,
     selectedTree: null,
-    relays: DEFAULT_RELAYS,
-    relayStatuses: new Map(DEFAULT_RELAYS.map(url => [url, 'disconnected' as RelayStatus])),
+    relays: defaultRelays,
+    relayStatuses: new Map(defaultRelays.map(url => [url, 'disconnected' as RelayStatus])),
     connectedRelays: 0,
   });
 
@@ -180,13 +181,42 @@ export function getNsec(): string | null {
 const cacheAdapter = new NDKCacheAdapterDexie({ dbName: 'hashtree-ndk-cache' });
 
 export const ndk = new NDK({
-  explicitRelayUrls: DEFAULT_RELAYS,
+  explicitRelayUrls: DEFAULT_NETWORK_SETTINGS.relays,
   // @ts-expect-error - NDK cache adapter version mismatch
   cacheAdapter,
 });
 
 // Connect on init
 ndk.connect().catch(console.error);
+
+/**
+ * Update NDK relay URLs from settings.
+ * Called when settings are loaded or changed.
+ */
+export async function updateNdkRelays() {
+  const settings = settingsStore.getState();
+  const relays = settings.network?.relays?.length > 0
+    ? settings.network.relays
+    : DEFAULT_NETWORK_SETTINGS.relays;
+
+  // Update nostr store with configured relays
+  nostrStore.setRelays(relays);
+  nostrStore.setRelayStatuses(new Map(relays.map(url => [normalizeRelayUrl(url), 'disconnected' as RelayStatus])));
+
+  // Clear existing relays and add new ones
+  for (const relay of ndk.pool?.relays.values() ?? []) {
+    ndk.pool?.removeRelay(relay.url);
+  }
+
+  // Add configured relays
+  for (const url of relays) {
+    ndk.addExplicitRelay(url);
+  }
+
+  // Reconnect
+  await ndk.connect();
+  updateConnectedRelayCount();
+}
 
 // Track connected relay count and individual statuses
 // NDKRelayStatus: DISCONNECTED=0, DISCONNECTING=1, RECONNECTING=2, FLAPPING=3, CONNECTING=4,
@@ -215,8 +245,14 @@ function updateConnectedRelayCount() {
   let connected = 0;
   const statuses = new Map<string, RelayStatus>();
 
-  // Initialize all default relays as disconnected
-  for (const url of DEFAULT_RELAYS) {
+  // Get configured relays from settings or use defaults
+  const settings = settingsStore.getState();
+  const configuredRelays = settings.network?.relays?.length > 0
+    ? settings.network.relays
+    : DEFAULT_NETWORK_SETTINGS.relays;
+
+  // Initialize all configured relays as disconnected
+  for (const url of configuredRelays) {
     statuses.set(normalizeRelayUrl(url), 'disconnected');
   }
 
@@ -245,6 +281,16 @@ setInterval(updateConnectedRelayCount, 2000);
 setTimeout(updateConnectedRelayCount, 500);
 setTimeout(updateConnectedRelayCount, 1500);
 setTimeout(updateConnectedRelayCount, 3000);
+
+// Update NDK relays when settings are loaded or changed
+let prevNetworkSettings = settingsStore.getState().network;
+settingsStore.subscribe((state) => {
+  // Only update when networkLoaded becomes true or network settings actually change
+  if (state.networkLoaded && state.network !== prevNetworkSettings) {
+    prevNetworkSettings = state.network;
+    updateNdkRelays().catch(console.error);
+  }
+});
 
 // Restore session after module initialization completes
 // Using queueMicrotask to avoid circular import issues with store.ts
