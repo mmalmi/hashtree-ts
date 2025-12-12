@@ -81,6 +81,13 @@ await store.start();
 const data = await store.get(hash);  // Fetches from peers
 ```
 
+**Data channel protocol**: Just 2 message types, MessagePack-encoded with a type prefix byte:
+
+| Type | Byte | Format | Description |
+|------|------|--------|-------------|
+| Request | `0x00` | `{h: hash32, htl?: u8}` | Request data by hash |
+| Response | `0x01` | `{h: hash32, d: bytes}` | Return data |
+
 **Request forwarding**: Peers forward requests they can't fulfill locally. HTL (Hops-To-Live, default 10) limits propagation depth. Uses Freenet-style probabilistic decrement—each peer randomly decides whether to decrement at HTL boundaries, making it harder to infer request origin.
 
 ## Development
