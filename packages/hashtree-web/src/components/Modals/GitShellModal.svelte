@@ -23,6 +23,7 @@
   let commandHistory = $state<CommandResult[]>([]);
   let isRunning = $state(false);
   let outputContainer: HTMLDivElement | undefined = $state();
+  let inputElement: HTMLInputElement | undefined = $state();
 
   // Track current dirCid (may change after write commands)
   let currentDirCid = $state<CID | null>(null);
@@ -138,6 +139,8 @@
       }];
     } finally {
       isRunning = false;
+      // Re-focus the input after command completes
+      inputElement?.focus();
     }
   }
 
@@ -219,6 +222,7 @@
           <input
             type="text"
             bind:value={inputValue}
+            bind:this={inputElement}
             onkeydown={handleInputKeyDown}
             placeholder="status"
             class="flex-1 bg-surface-2 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
