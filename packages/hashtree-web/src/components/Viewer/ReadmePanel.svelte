@@ -23,10 +23,10 @@
       e => e.name.toLowerCase() === 'readme.md' && e.type !== LinkType.Dir
     );
     if (readmeEntry) {
-      // Navigate to edit the README
+      // Navigate to edit the README - use actual filename from entry
       const parts: string[] = [];
       if (route.npub && route.treeName) {
-        parts.push(route.npub, route.treeName, ...route.path, 'README.md');
+        parts.push(route.npub, route.treeName, ...route.path, readmeEntry.name);
       }
       window.location.hash = '/' + parts.map(encodeURIComponent).join('/') + '?edit=1';
     }
