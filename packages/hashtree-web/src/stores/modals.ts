@@ -45,6 +45,14 @@ interface GitHistoryTarget {
   onCheckout?: (commitSha: string) => Promise<void>;
 }
 
+interface GitShellTarget {
+  dirCid: CID;
+  /** Whether write commands are allowed (requires canEdit) */
+  canEdit?: boolean;
+  /** Callback when changes are made to the repo (receives new dirCid) */
+  onChange?: (newDirCid: CID) => void;
+}
+
 interface CollaboratorsTarget {
   /** Current list of collaborator npubs */
   npubs: string[];
@@ -96,6 +104,8 @@ interface ModalState {
   gitignoreTarget: GitignoreTarget | null;
   showGitHistoryModal: boolean;
   gitHistoryTarget: GitHistoryTarget | null;
+  showGitShellModal: boolean;
+  gitShellTarget: GitShellTarget | null;
   showShareModal: boolean;
   shareUrl: string | null;
   showCollaboratorsModal: boolean;
@@ -126,6 +136,8 @@ const initialState: ModalState = {
   gitignoreTarget: null,
   showGitHistoryModal: false,
   gitHistoryTarget: null,
+  showGitShellModal: false,
+  gitShellTarget: null,
   showShareModal: false,
   shareUrl: null,
   showCollaboratorsModal: false,
@@ -201,6 +213,14 @@ export function closeGitHistoryModal() {
   modalsStore.update(s => ({ ...s, showGitHistoryModal: false, gitHistoryTarget: null }));
 }
 
+export function openGitShellModal(dirCid: CID, canEdit?: boolean, onChange?: (newDirCid: CID) => void) {
+  modalsStore.update(s => ({ ...s, showGitShellModal: true, gitShellTarget: { dirCid, canEdit, onChange } }));
+}
+
+export function closeGitShellModal() {
+  modalsStore.update(s => ({ ...s, showGitShellModal: false, gitShellTarget: null }));
+}
+
 export function openShareModal(url: string) {
   modalsStore.update(s => ({ ...s, showShareModal: true, shareUrl: url }));
 }
@@ -253,4 +273,4 @@ export function closeGitCommitModal() {
   modalsStore.update(s => ({ ...s, showGitCommitModal: false, gitCommitTarget: null, modalInput: '' }));
 }
 
-export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget };
+export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, GitShellTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget };

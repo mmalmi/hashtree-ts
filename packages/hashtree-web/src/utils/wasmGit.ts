@@ -920,3 +920,149 @@ export async function checkoutWithWasmGit(
     }
   });
 }
+
+/**
+ * Run an arbitrary git command in the repository
+ * Returns the command output and optionally the updated .git files for write commands
+ */
+export async function runGitCommand(
+  rootCid: CID,
+  command: string,
+  options?: {
+    /** Author name for commits */
+    authorName?: string;
+    /** Author email for commits */
+    authorEmail?: string;
+  }
+): Promise<{ output: string; error?: string; gitFiles?: Array<{ name: string; data: Uint8Array; isDir: boolean }> }> {
+  return withWasmGitLock(async () => {
+    const tree = getTree();
+
+    // Check for .git directory
+    const gitDirResult = await tree.resolvePath(rootCid, '.git');
+    if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+      return { output: '', error: 'Not a git repository' };
+    }
+
+    const module = await loadWasmGit();
+    const repoPath = `/repo_${Date.now()}`;
+    const originalCwd = module.FS.cwd();
+
+    // Detect write commands that modify the repository
+    const args = parseCommandArgs(command);
+    const writeCommands = ['add', 'commit', 'reset', 'checkout', 'merge', 'rebase', 'cherry-pick', 'revert', 'tag', 'branch', 'rm', 'mv'];
+    const isWriteCommand = args.length > 0 && writeCommands.includes(args[0]);
+
+    try {
+      module.FS.mkdir(repoPath);
+
+      // Set up git config with user info
+      const authorName = options?.authorName || 'User';
+      const authorEmail = options?.authorEmail || 'user@example.com';
+      try {
+        module.FS.writeFile('/home/web_user/.gitconfig', `[user]\nname = ${authorName}\nemail = ${authorEmail}\n`);
+      } catch {
+        // May already exist
+      }
+
+      module.FS.chdir(repoPath);
+
+      // Copy full working directory from hashtree (including .git)
+      await copyToWasmFS(module, rootCid, '.');
+
+      if (args.length === 0) {
+        return { output: '', error: 'No command provided' };
+      }
+
+      // Run the git command
+      let output = '';
+      try {
+        output = module.callWithOutput(args) || '';
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        return { output: '', error: errorMsg };
+      }
+
+      // For write commands, read back the updated .git directory
+      if (isWriteCommand) {
+        const gitFiles: Array<{ name: string; data: Uint8Array; isDir: boolean }> = [];
+
+        function readGitDir(path: string, prefix: string): void {
+          const entries = module.FS.readdir(path);
+          for (const entry of entries) {
+            if (entry === '.' || entry === '..') continue;
+
+            const fullPath = `${path}/${entry}`;
+            const relativePath = prefix ? `${prefix}/${entry}` : entry;
+
+            try {
+              const stat = module.FS.stat(fullPath);
+              const isDir = (stat.mode & 0o170000) === 0o040000;
+              if (isDir) {
+                gitFiles.push({ name: relativePath, data: new Uint8Array(0), isDir: true });
+                readGitDir(fullPath, relativePath);
+              } else {
+                const data = module.FS.readFile(fullPath) as Uint8Array;
+                gitFiles.push({ name: relativePath, data, isDir: false });
+              }
+            } catch {
+              // Skip files we can't read
+            }
+          }
+        }
+
+        readGitDir('.git', '.git');
+        return { output, gitFiles };
+      }
+
+      return { output };
+    } catch (err) {
+      console.error('[wasm-git] runGitCommand failed:', err);
+      return { output: '', error: err instanceof Error ? err.message : String(err) };
+    } finally {
+      try {
+        module.FS.chdir(originalCwd);
+      } catch {
+        // Ignore
+      }
+    }
+  });
+}
+
+/**
+ * Parse command string into args, handling quoted strings
+ */
+function parseCommandArgs(command: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let inQuote = false;
+  let quoteChar = '';
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+
+    if (inQuote) {
+      if (char === quoteChar) {
+        inQuote = false;
+      } else {
+        current += char;
+      }
+    } else if (char === '"' || char === "'") {
+      inQuote = true;
+      quoteChar = char;
+    } else if (char === ' ') {
+      if (current) {
+        args.push(current);
+        current = '';
+      }
+    } else {
+      current += char;
+    }
+  }
+
+  if (current) {
+    args.push(current);
+  }
+
+  return args;
+}

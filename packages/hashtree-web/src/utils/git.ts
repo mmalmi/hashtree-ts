@@ -286,3 +286,95 @@ export async function checkoutCommit(
   const { cid: finalCid } = await tree.putDirectory(rootEntries);
   return finalCid;
 }
+
+export interface RunGitCommandOptions {
+  /** Author name for commits */
+  authorName?: string;
+  /** Author email for commits */
+  authorEmail?: string;
+}
+
+export interface RunGitCommandResult {
+  output: string;
+  error?: string;
+  /** Updated .git files for write commands - caller should persist these */
+  gitFiles?: Array<{ name: string; data: Uint8Array; isDir: boolean }>;
+}
+
+/**
+ * Run an arbitrary git command in a repository
+ * Returns the command output and updated .git files for write commands
+ */
+export async function runGitCommand(
+  rootCid: CID,
+  command: string,
+  options?: RunGitCommandOptions
+): Promise<RunGitCommandResult> {
+  const { runGitCommand: runGitCommandWasm } = await import('./wasmGit');
+  return runGitCommandWasm(rootCid, command, options);
+}
+
+/**
+ * Apply updated .git files to a directory, returning the new root CID
+ */
+export async function applyGitChanges(
+  rootCid: CID,
+  gitFiles: Array<{ name: string; data: Uint8Array; isDir: boolean }>
+): Promise<CID> {
+  const tree = getTree();
+
+  // Build the new .git directory from gitFiles
+  // First, organize files into a tree structure
+  const dirMap = new Map<string, Array<{ name: string; cid: CID; size: number; type: LinkType }>>();
+  dirMap.set('.git', []); // Root .git directory
+
+  // Process directories first (sorted by depth to ensure parents exist)
+  const sortedDirs = gitFiles
+    .filter(f => f.isDir)
+    .sort((a, b) => a.name.split('/').length - b.name.split('/').length);
+
+  for (const dir of sortedDirs) {
+    dirMap.set(dir.name, []);
+  }
+
+  // Process files
+  for (const file of gitFiles) {
+    if (file.isDir) continue;
+
+    const { cid, size } = await tree.putFile(file.data);
+    const parentDir = file.name.includes('/') ? file.name.substring(0, file.name.lastIndexOf('/')) : '.git';
+    const fileName = file.name.includes('/') ? file.name.substring(file.name.lastIndexOf('/') + 1) : file.name;
+
+    const entries = dirMap.get(parentDir);
+    if (entries) {
+      entries.push({ name: fileName, cid, size, type: LinkType.Blob });
+    }
+  }
+
+  // Build directories from deepest to root
+  const sortedDirKeys = Array.from(dirMap.keys()).sort((a, b) => b.split('/').length - a.split('/').length);
+
+  for (const dirPath of sortedDirKeys) {
+    if (dirPath === '.git') continue; // Handle root .git last
+
+    const entries = dirMap.get(dirPath) || [];
+    const { cid } = await tree.putDirectory(entries);
+
+    const parentDir = dirPath.includes('/') ? dirPath.substring(0, dirPath.lastIndexOf('/')) : '.git';
+    const dirName = dirPath.includes('/') ? dirPath.substring(dirPath.lastIndexOf('/') + 1) : dirPath;
+
+    const parentEntries = dirMap.get(parentDir);
+    if (parentEntries) {
+      parentEntries.push({ name: dirName, cid, size: 0, type: LinkType.Dir });
+    }
+  }
+
+  // Build root .git directory
+  const gitRootEntries = dirMap.get('.git') || [];
+  const { cid: newGitCid } = await tree.putDirectory(gitRootEntries);
+
+  // Replace .git in the root directory
+  const newRootCid = await tree.setEntry(rootCid, [], '.git', newGitCid, 0, LinkType.Dir);
+
+  return newRootCid;
+}

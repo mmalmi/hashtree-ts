@@ -17,6 +17,7 @@
   import ExtractModal from './components/Modals/ExtractModal.svelte';
   import GitignoreModal from './components/Modals/GitignoreModal.svelte';
   import GitHistoryModal from './components/Modals/GitHistoryModal.svelte';
+  import GitShellModal from './components/Modals/GitShellModal.svelte';
   import GitCommitModal from './components/Modals/GitCommitModal.svelte';
   import ShareModal from './components/Modals/ShareModal.svelte';
   import CollaboratorsModal from './components/Modals/CollaboratorsModal.svelte';
@@ -81,6 +82,7 @@
   <ExtractModal />
   <GitignoreModal />
   <GitHistoryModal />
+  <GitShellModal />
   <GitCommitModal />
   <ShareModal />
   <CollaboratorsModal />

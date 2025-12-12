@@ -5,7 +5,7 @@
    */
   import { LinkType, type CID, type TreeEntry } from 'hashtree';
   import { getTree, decodeAsText, formatBytes } from '../../store';
-  import { routeStore, createGitLogStore, createGitStatusStore, openGitHistoryModal, openGitCommitModal } from '../../stores';
+  import { routeStore, createGitLogStore, createGitStatusStore, openGitHistoryModal, openGitShellModal, openGitCommitModal } from '../../stores';
   import { getFileLastCommits, createBranch } from '../../utils/git';
   import FolderActions from '../FolderActions.svelte';
   import ReadmePanel from '../Viewer/ReadmePanel.svelte';
@@ -282,6 +282,38 @@
     // Save and publish - UI will react automatically via store subscriptions
     autosaveIfOwn(newRootCid);
   }
+
+  // Handle git shell changes (commits, etc.)
+  async function handleGitChange(newDirCid: CID): Promise<void> {
+    const { autosaveIfOwn } = await import('../../nostr');
+    const { getCurrentRootCid } = await import('../../actions/route');
+
+    // Get current tree root
+    const treeRootCid = getCurrentRootCid();
+    if (!treeRootCid) return;
+
+    let newRootCid;
+    if (currentPath.length === 0) {
+      // Git repo is at tree root
+      newRootCid = newDirCid;
+    } else {
+      // Git repo is in a subdirectory - replace it at that path
+      const tree = getTree();
+      const parentPath = currentPath.slice(0, -1);
+      const dirName = currentPath[currentPath.length - 1];
+      newRootCid = await tree.setEntry(
+        treeRootCid,
+        parentPath,
+        dirName,
+        newDirCid,
+        0,
+        LinkType.Dir
+      );
+    }
+
+    // Save and publish
+    autosaveIfOwn(newRootCid);
+  }
 </script>
 
 <div class="flex flex-col gap-4">
@@ -398,8 +430,17 @@
       {/if}
 
       <button
-        onclick={() => openGitHistoryModal(dirCid, canEdit, canEdit ? handleCheckout : undefined)}
+        onclick={() => openGitShellModal(dirCid, canEdit, canEdit ? handleGitChange : undefined)}
         class="ml-auto btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
+        title="Git Shell"
+      >
+        <span class="i-lucide-terminal"></span>
+        Shell
+      </button>
+
+      <button
+        onclick={() => openGitHistoryModal(dirCid, canEdit, canEdit ? handleCheckout : undefined)}
+        class="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
       >
         <span class="i-lucide-history"></span>
         {commits.length > 0 ? `${commits.length} commits` : 'Commits'}
