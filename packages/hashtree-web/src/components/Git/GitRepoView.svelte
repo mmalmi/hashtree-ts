@@ -4,13 +4,14 @@
    * Shows branch info, file list table, then README.md in its own panel
    */
   import { LinkType, type CID, type TreeEntry } from 'hashtree';
-  import { getTree, decodeAsText, formatBytes } from '../../store';
+  import { getTree, decodeAsText } from '../../store';
   import { routeStore, createGitLogStore, createGitStatusStore, openGitHistoryModal, openGitShellModal, openGitCommitModal } from '../../stores';
-  import { getFileLastCommits, createBranch } from '../../utils/git';
+  import { getFileLastCommits } from '../../utils/git';
   import FolderActions from '../FolderActions.svelte';
   import ReadmePanel from '../Viewer/ReadmePanel.svelte';
-  import Dropdown from '../ui/Dropdown.svelte';
   import RepoTabNav from './RepoTabNav.svelte';
+  import BranchDropdown from './BranchDropdown.svelte';
+  import FileTable from './FileTable.svelte';
   import type { GitStatusResult } from '../../utils/wasmGit';
 
   interface Props {
@@ -68,15 +69,6 @@
     return () => { cancelled = true; };
   });
 
-  // Sort entries: directories first, then files, alphabetically
-  let sortedEntries = $derived([...entries].sort((a, b) => {
-    const aIsDir = a.type === LinkType.Dir;
-    const bIsDir = b.type === LinkType.Dir;
-    if (aIsDir && !bIsDir) return -1;
-    if (!aIsDir && bIsDir) return 1;
-    return a.name.localeCompare(b.name);
-  }));
-
   // Find and load README.md
   let readmeContent = $state<string | null>(null);
 
@@ -96,13 +88,6 @@
     });
     return () => { cancelled = true; };
   });
-
-  // Branch dropdown state
-  let isDropdownOpen = $state(false);
-  let showNewBranchInput = $state(false);
-  let newBranchName = $state('');
-  let isCreatingBranch = $state(false);
-  let branchError = $state<string | null>(null);
 
   // Git status store
   let gitStatusStore = $derived(createGitStatusStore(dirCid));
@@ -149,55 +134,9 @@
     return '#/' + parts.map(encodeURIComponent).join('/') + suffix;
   }
 
-  function getFileIcon(filename: string): string {
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
-    const iconMap: Record<string, string> = {
-      js: 'i-lucide-file-code',
-      ts: 'i-lucide-file-code',
-      jsx: 'i-lucide-file-code',
-      tsx: 'i-lucide-file-code',
-      py: 'i-lucide-file-code',
-      md: 'i-lucide-file-text',
-      txt: 'i-lucide-file-text',
-      json: 'i-lucide-file-json',
-      png: 'i-lucide-image',
-      jpg: 'i-lucide-image',
-      gif: 'i-lucide-image',
-      svg: 'i-lucide-image',
-    };
-    return iconMap[ext] || 'i-lucide-file';
-  }
-
   function handleBranchSelect(branch: string) {
     // TODO: Implement branch checkout
     console.log('Switch to branch:', branch);
-    isDropdownOpen = false;
-  }
-
-  // Handle new branch creation
-  async function handleCreateBranch() {
-    if (!newBranchName.trim() || isCreatingBranch) return;
-
-    isCreatingBranch = true;
-    branchError = null;
-
-    try {
-      const result = await createBranch(dirCid, newBranchName.trim(), false);
-      if (!result.success) {
-        branchError = result.error || 'Failed to create branch';
-        return;
-      }
-      // Success - close dropdown and reset
-      showNewBranchInput = false;
-      newBranchName = '';
-      isDropdownOpen = false;
-      // Note: The branch list will refresh when the page is reloaded
-      // TODO: Could implement a refresh mechanism
-    } catch (err) {
-      branchError = err instanceof Error ? err.message : String(err);
-    } finally {
-      isCreatingBranch = false;
-    }
   }
 
   // Handle commit callback - replaces the directory at current path
@@ -230,26 +169,6 @@
 
     // Save and publish - UI will react automatically via store subscriptions
     autosaveIfOwn(newRootCid);
-  }
-
-  // Format relative time like GitHub
-  function formatRelativeTime(timestamp: number): string {
-    const now = Math.floor(Date.now() / 1000);
-    const diff = now - timestamp;
-
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
-    if (diff < 604800) return `${Math.floor(diff / 86400)} days ago`;
-    if (diff < 2592000) return `${Math.floor(diff / 604800)} weeks ago`;
-    if (diff < 31536000) return `${Math.floor(diff / 2592000)} months ago`;
-    return `${Math.floor(diff / 31536000)} years ago`;
-  }
-
-  // Get first line of commit message (truncated)
-  function getCommitTitle(message: string): string {
-    const firstLine = message.split('\n')[0];
-    return firstLine.length > 50 ? firstLine.slice(0, 47) + '...' : firstLine;
   }
 
   // Handle checkout from history modal
@@ -336,79 +255,14 @@
     <!-- Branch info header row -->
     <div class="flex items-center gap-3 px-3 py-2 bg-surface-1 b-b-1 b-b-solid b-b-surface-3 text-sm">
       <!-- Branch dropdown -->
-      <Dropdown bind:open={isDropdownOpen} onClose={() => { isDropdownOpen = false; showNewBranchInput = false; branchError = null; }}>
-        {#snippet trigger()}
-          <button
-            onclick={() => isDropdownOpen = !isDropdownOpen}
-            class="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
-          >
-            <span class="i-lucide-git-branch"></span>
-            <span class={currentBranch ? '' : 'font-mono text-xs'}>{branchDisplay}</span>
-            <span class="i-lucide-chevron-down text-xs"></span>
-          </button>
-        {/snippet}
-        <!-- Branch list -->
-        {#each branches as branch}
-          <button
-            onclick={() => handleBranchSelect(branch)}
-            class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0"
-          >
-            {#if branch === currentBranch}
-              <span class="i-lucide-check text-accent text-xs"></span>
-            {:else}
-              <span class="ml-4"></span>
-            {/if}
-            <span>{branch}</span>
-          </button>
-        {/each}
-        <!-- New branch option (only for editors) -->
-        {#if canEdit}
-          <div class="b-t-1 b-t-solid b-t-surface-3 mt-1 pt-1">
-            {#if showNewBranchInput}
-              <div class="px-3 py-2">
-                {#if branchError}
-                  <div class="text-xs text-error mb-2">{branchError}</div>
-                {/if}
-                <input
-                  type="text"
-                  bind:value={newBranchName}
-                  placeholder="Branch name"
-                  class="w-full px-2 py-1 text-sm bg-surface-0 b-1 b-solid b-surface-3 rounded focus:outline-none focus:b-accent"
-                  onkeydown={(e) => { if (e.key === 'Enter') handleCreateBranch(); if (e.key === 'Escape') { showNewBranchInput = false; branchError = null; } }}
-                />
-                <div class="flex gap-2 mt-2">
-                  <button
-                    onclick={handleCreateBranch}
-                    disabled={isCreatingBranch || !newBranchName.trim()}
-                    class="btn-primary text-xs px-2 py-1 flex items-center gap-1"
-                  >
-                    {#if isCreatingBranch}
-                      <span class="i-lucide-loader-2 animate-spin"></span>
-                    {:else}
-                      <span class="i-lucide-plus"></span>
-                    {/if}
-                    Create
-                  </button>
-                  <button
-                    onclick={() => { showNewBranchInput = false; branchError = null; }}
-                    class="btn-ghost text-xs px-2 py-1"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            {:else}
-              <button
-                onclick={() => { showNewBranchInput = true; newBranchName = ''; }}
-                class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0"
-              >
-                <span class="i-lucide-git-branch-plus text-xs"></span>
-                <span>New branch</span>
-              </button>
-            {/if}
-          </div>
-        {/if}
-      </Dropdown>
+      <BranchDropdown
+        {branches}
+        {currentBranch}
+        {branchDisplay}
+        {canEdit}
+        {dirCid}
+        onBranchSelect={handleBranchSelect}
+      />
 
       <!-- Git status indicator and commit button -->
       {#if canEdit}
@@ -453,38 +307,7 @@
     </div>
 
     <!-- File table -->
-    <table class="w-full text-sm border-collapse">
-      <tbody>
-        {#each sortedEntries as entry}
-          {@const isGitDir = entry.name === '.git'}
-          {@const href = buildEntryHref(entry)}
-          {@const commitInfo = fileCommits.get(entry.name)}
-          <tr
-            onclick={() => window.location.hash = href.slice(1)}
-            class="b-b-1 b-b-solid b-b-surface-3 hover:bg-surface-1 cursor-pointer {isGitDir ? 'opacity-50' : ''}"
-          >
-            <td class="py-2 px-3 w-8">
-              <span class="{entry.type === LinkType.Dir ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}"></span>
-            </td>
-            <td class="py-2 px-3 {isGitDir ? 'text-text-3' : 'text-accent'} whitespace-nowrap">
-              {entry.name}
-            </td>
-            <td class="py-2 px-3 text-muted truncate max-w-xs hidden md:table-cell" title={commitInfo?.message}>
-              {commitInfo ? getCommitTitle(commitInfo.message) : ''}
-            </td>
-            <td class="py-2 px-3 text-right text-muted whitespace-nowrap w-24">
-              {commitInfo ? formatRelativeTime(commitInfo.timestamp) : ''}
-            </td>
-          </tr>
-        {:else}
-          <tr>
-            <td colspan="4" class="py-4 px-3 text-center text-muted">
-              Empty directory
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    <FileTable {entries} {fileCommits} {buildEntryHref} />
   </div>
 
   <!-- README.md panel -->

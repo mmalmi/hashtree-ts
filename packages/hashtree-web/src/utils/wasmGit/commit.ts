@@ -1,0 +1,143 @@
+/**
+ * Git commit and init operations
+ */
+import type { CID } from 'hashtree';
+import { LinkType } from 'hashtree';
+import { getTree } from '../../store';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, readGitDirectory } from './core';
+
+/**
+ * Initialize a git repository in a directory
+ * Copies files to wasm-git, runs git init + add + commit, returns .git directory files
+ */
+export async function initGitRepoWithWasmGit(
+  rootCid: CID,
+  authorName: string,
+  authorEmail: string,
+  commitMessage: string = 'Initial commit'
+): Promise<Array<{ name: string; data: Uint8Array; isDir: boolean }>> {
+  return withWasmGitLock(async () => {
+    const module = await loadWasmGit();
+    const repoPath = `/repo_${Date.now()}`;
+    const originalCwd = module.FS.cwd();
+
+    try {
+      module.FS.mkdir(repoPath);
+
+      // Set up git config with user info
+      try {
+        module.FS.writeFile('/home/web_user/.gitconfig', `[user]\nname = ${authorName}\nemail = ${authorEmail}\n`);
+      } catch {
+        // May already exist
+      }
+
+      module.FS.chdir(repoPath);
+
+      // Copy all files from hashtree to wasm filesystem
+      await copyToWasmFS(module, rootCid, '.');
+
+      // Initialize git repo
+      module.callMain(['init', '.']);
+
+      // Add all files
+      module.callMain(['add', '.']);
+
+      // Create initial commit
+      module.callMain(['commit', '-m', commitMessage]);
+
+      // Read .git directory and return files
+      return readGitDirectory(module);
+    } catch (err) {
+      console.error('[wasm-git] init failed:', err);
+      throw err;
+    } finally {
+      try {
+        module.FS.chdir(originalCwd);
+      } catch {
+        // Ignore
+      }
+    }
+  });
+}
+
+/**
+ * Stage files and create a commit using wasm-git
+ * Returns the updated .git directory files to be saved back to hashtree
+ */
+export async function commitWithWasmGit(
+  rootCid: CID,
+  message: string,
+  authorName: string,
+  authorEmail: string,
+  filesToStage?: string[] // If undefined, stages all changes
+): Promise<{ success: boolean; gitFiles?: Array<{ name: string; data: Uint8Array; isDir: boolean }>; error?: string }> {
+  const tree = getTree();
+
+  // Check for .git directory
+  const gitDirResult = await tree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+    return { success: false, error: 'Not a git repository' };
+  }
+
+  const module = await loadWasmGit();
+  const repoPath = `/repo_${Date.now()}`;
+  const originalCwd = module.FS.cwd();
+
+  try {
+    module.FS.mkdir(repoPath);
+
+    // Set up git config with user info
+    try {
+      module.FS.writeFile('/home/web_user/.gitconfig', `[user]\nname = ${authorName}\nemail = ${authorEmail}\n`);
+    } catch {
+      // May already exist
+    }
+
+    module.FS.chdir(repoPath);
+
+    try {
+      module.callMain(['init', '.']);
+    } catch {
+      // Ignore init errors
+    }
+
+    // Copy entire repo so we have working tree + .git
+    await copyToWasmFS(module, rootCid, '.');
+
+    // Stage files
+    try {
+      if (filesToStage && filesToStage.length > 0) {
+        for (const file of filesToStage) {
+          module.callMain(['add', file]);
+        }
+      } else {
+        // Stage all changes
+        module.callMain(['add', '-A']);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: `Failed to stage files: ${msg}` };
+    }
+
+    // Create commit
+    try {
+      module.callMain(['commit', '-m', message]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: `Failed to commit: ${msg}` };
+    }
+
+    // Read updated .git directory and return files
+    const gitFiles = readGitDirectory(module);
+    return { success: true, gitFiles };
+  } catch (err) {
+    console.error('[wasm-git] commit failed:', err);
+    return { success: false, error: 'Failed to commit' };
+  } finally {
+    try {
+      module.FS.chdir(originalCwd);
+    } catch {
+      // Ignore
+    }
+  }
+}
