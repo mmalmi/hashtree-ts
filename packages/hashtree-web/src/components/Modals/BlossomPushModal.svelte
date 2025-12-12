@@ -7,8 +7,8 @@
   import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../../stores/settings';
   import { getTree } from '../../store';
   import { signEvent } from '../../nostr';
-  import { LinkType, toHex, BlossomStore } from 'hashtree';
-  import type { CID, BlossomSigner } from 'hashtree';
+  import { LinkType, toHex, BlossomStore, tryDecodeTreeNode } from 'hashtree';
+  import type { CID, BlossomSigner, Hash } from 'hashtree';
 
   interface PushResult {
     hash: string;
@@ -76,23 +76,35 @@
     return () => document.removeEventListener('keydown', handleKeyDown);
   });
 
-  // Recursively collect all files from a directory
-  async function collectFiles(
-    cid: CID,
-    basePath: string,
-    files: Array<{ cid: CID; path: string; size: number }>
-  ): Promise<void> {
-    const tree = getTree();
-    const entries = await tree.listDirectory(cid);
+  // Recursively collect all blocks (hashes) in a merkle tree
+  // Returns list of missing hashes if any blocks couldn't be fetched
+  async function collectBlocks(
+    hash: Hash,
+    blocks: Map<string, { hash: Hash; data: Uint8Array }>,
+    missing: string[] = []
+  ): Promise<string[]> {
+    const hex = toHex(hash);
+    if (blocks.has(hex)) return missing; // Already collected
 
-    for (const entry of entries) {
-      const fullPath = basePath ? `${basePath}/${entry.name}` : entry.name;
-      if (entry.type === LinkType.Dir) {
-        await collectFiles(entry.cid, fullPath, files);
-      } else {
-        files.push({ cid: entry.cid, path: fullPath, size: entry.size });
+    const tree = getTree();
+    const store = tree.getStore();
+    // store.get() will try WebRTC peers if not local
+    const data = await store.get(hash);
+    if (!data) {
+      missing.push(hex);
+      return missing; // Can't traverse children if parent missing
+    }
+
+    blocks.set(hex, { hash, data });
+
+    // Check if this is a tree node (has children to traverse)
+    const node = tryDecodeTreeNode(data);
+    if (node) {
+      for (const link of node.links) {
+        await collectBlocks(link.hash, blocks, missing);
       }
     }
+    return missing;
   }
 
   // Create BlossomSigner adapter from nostr signEvent
@@ -120,7 +132,6 @@
     phase = 'pushing';
     cancelled = false;
     results = [];
-    const tree = getTree();
 
     // Create BlossomStore with only the selected servers
     const blossomStore = new BlossomStore({
@@ -128,52 +139,47 @@
       signer: createBlossomSigner(),
     });
 
-    // Collect files
-    const files: Array<{ cid: CID; path: string; size: number }> = [];
+    // Collect all blocks in the merkle tree
+    currentFile = 'Collecting blocks...';
+    const blocks = new Map<string, { hash: Hash; data: Uint8Array }>();
+    const missingBlocks = await collectBlocks(target.cid.hash, blocks);
 
-    if (target.isDirectory) {
-      currentFile = 'Collecting files...';
-      await collectFiles(target.cid, '', files);
-    } else {
-      // Single file
-      files.push({ cid: target.cid, path: target.name, size: 0 });
-    }
+    const blockList = Array.from(blocks.values());
+    progress = { current: 0, total: blockList.length + missingBlocks.length };
 
-    progress = { current: 0, total: files.length };
+    // Initialize results - include missing blocks as errors
+    results = [
+      ...blockList.map(b => ({
+        hash: toHex(b.hash),
+        name: toHex(b.hash).slice(0, 12) + '...', // Short hash as name
+        size: b.data.length,
+        status: 'pending' as const,
+      })),
+      ...missingBlocks.map(hex => ({
+        hash: hex,
+        name: hex.slice(0, 12) + '...',
+        size: 0,
+        status: 'error' as const,
+        error: 'Block not found locally or from peers',
+      })),
+    ];
 
-    // Initialize results
-    results = files.map(f => ({
-      hash: toHex(f.cid.hash),
-      name: f.path,
-      size: f.size,
-      status: 'pending',
-    }));
-
-    // Push each file using BlossomStore
-    for (let i = 0; i < files.length; i++) {
+    // Push each block using BlossomStore
+    for (let i = 0; i < blockList.length; i++) {
       if (cancelled) break;
 
-      const file = files[i];
+      const block = blockList[i];
       const resultIdx = i;
-      currentFile = file.path;
+      currentFile = toHex(block.hash).slice(0, 16) + '...';
 
       results[resultIdx] = { ...results[resultIdx], status: 'uploading' };
 
-      // Read file data
-      const data = await tree.readFile(file.cid);
-      if (!data) {
-        results[resultIdx] = { ...results[resultIdx], status: 'error', error: 'Failed to read file' };
-        progress = { ...progress, current: i + 1 };
-        continue;
-      }
-
       // Use BlossomStore.put() - handles auth, hash verification, parallel uploads
       try {
-        const isNew = await blossomStore.put(file.cid.hash, data);
+        const isNew = await blossomStore.put(block.hash, block.data);
         results[resultIdx] = {
           ...results[resultIdx],
           status: isNew ? 'success' : 'skipped',
-          size: data.length,
         };
       } catch (e) {
         results[resultIdx] = {

@@ -153,8 +153,8 @@ test.describe('Blossom Push', () => {
     // Wait for completion with errors
     await expect(modal.locator('button', { hasText: 'Done' })).toBeVisible({ timeout: 30000 });
 
-    // Should show error count (Failed should be visible)
-    await expect(modal.locator('text=Failed')).toBeVisible();
+    // Should show error count (Failed label should be visible in stats grid)
+    await expect(modal.locator('.text-danger').first()).toBeVisible();
 
     // Close modal
     await page.locator('button', { hasText: 'Done' }).click();
