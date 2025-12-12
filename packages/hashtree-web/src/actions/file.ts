@@ -5,6 +5,7 @@ import { LinkType, type CID } from 'hashtree';
 import { autosaveIfOwn } from '../nostr';
 import { getTree } from '../store';
 import { markFilesChanged } from '../stores/recentlyChanged';
+import { setUploadProgress } from '../stores/upload';
 import { parseRoute } from '../utils/route';
 import { getCurrentRootCid, getCurrentPathFromUrl, updateRoute } from './route';
 import { initVirtualTree } from './tree';
@@ -146,11 +147,23 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
 
   const tree = getTree();
   const currentPath = getCurrentPathFromUrl();
+  const total = files.length;
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+  let bytesProcessed = 0;
 
   let rootCid: CID | null = getCurrentRootCid();
 
   // If extracting to subdirectory, create it first
   if (subdirName) {
+    setUploadProgress({
+      current: 0,
+      total,
+      fileName: `Creating ${subdirName}/`,
+      bytes: 0,
+      totalBytes,
+      status: 'writing',
+    });
+
     const { cid: emptyDirCid } = await tree.putDirectory([]);
 
     if (rootCid) {
@@ -180,9 +193,23 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
   // Files may have paths like "folder/subfolder/file.txt"
   const dirEntries = new Map<string, { name: string; cid: CID; size: number; type?: LinkType }[]>();
 
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+
+    // Update progress
+    setUploadProgress({
+      current: i + 1,
+      total,
+      fileName: file.name,
+      bytes: bytesProcessed,
+      totalBytes,
+      status: 'writing',
+    });
+
     // putFile returns CID (encrypted by default)
     const { cid: fileCid, size } = await tree.putFile(file.data);
+    bytesProcessed += file.size;
+
     const pathParts = file.name.split('/');
     const fileName = pathParts.pop()!;
     const dirPath = pathParts.join('/');
@@ -192,6 +219,16 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
     }
     dirEntries.get(dirPath)!.push({ name: fileName, cid: fileCid, size });
   }
+
+  // Update progress for finalizing
+  setUploadProgress({
+    current: total,
+    total,
+    fileName: 'Finalizing...',
+    bytes: totalBytes,
+    totalBytes,
+    status: 'finalizing',
+  });
 
   // Get sorted directory paths (shortest first to create parent dirs first)
   const sortedDirs = Array.from(dirEntries.keys()).sort((a, b) => a.split('/').length - b.split('/').length);
@@ -219,6 +256,9 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
       }
     }
   }
+
+  // Clear progress
+  setUploadProgress(null);
 
   if (rootCid) {
     // Publish to nostr - resolver will pick up the update
