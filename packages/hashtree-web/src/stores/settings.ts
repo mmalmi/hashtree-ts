@@ -67,12 +67,19 @@ export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
   syncVisitedUnlisted: true,
 };
 
+// Blossom server configuration
+export interface BlossomServerConfig {
+  url: string;
+  read: boolean;
+  write: boolean;
+}
+
 // Network settings for relays and blossom servers
 export interface NetworkSettings {
   /** Nostr relay URLs */
   relays: string[];
-  /** Blossom server URLs for fallback storage */
-  blossomServers: string[];
+  /** Blossom server configurations */
+  blossomServers: BlossomServerConfig[];
 }
 
 // Default network settings
@@ -85,7 +92,8 @@ export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
     'wss://relay.snort.social',
   ],
   blossomServers: [
-    'https://hashtree.iris.to',
+    { url: 'https://hashtree.iris.to', read: true, write: true },
+    { url: 'https://blossom.nostr.build', read: true, write: true },
   ],
 };
 
@@ -109,9 +117,6 @@ export interface SettingsState {
   content: Record<string, unknown>;
   imgproxy: Record<string, unknown>;
   notifications: Record<string, unknown>;
-  network: {
-    negentropyEnabled: boolean;
-  };
   desktop: Record<string, unknown>;
   debug: Record<string, unknown>;
   legal: Record<string, unknown>;
@@ -141,9 +146,6 @@ function createSettingsStore() {
     content: {},
     imgproxy: {},
     notifications: {},
-    network: {
-      negentropyEnabled: false,
-    },
     desktop: {},
     debug: {},
     legal: {},
@@ -296,9 +298,18 @@ async function loadSettings() {
 
     if (networkRow?.value) {
       const network = networkRow.value as NetworkSettings;
+      // Handle backwards compatibility: convert old string[] format to BlossomServerConfig[]
+      let blossomServers = DEFAULT_NETWORK_SETTINGS.blossomServers;
+      if (network.blossomServers) {
+        if (Array.isArray(network.blossomServers)) {
+          blossomServers = network.blossomServers.map(s =>
+            typeof s === 'string' ? { url: s, read: true, write: false } : { ...s, read: s.read ?? true }
+          );
+        }
+      }
       updates.network = {
         relays: network.relays ?? DEFAULT_NETWORK_SETTINGS.relays,
-        blossomServers: network.blossomServers ?? DEFAULT_NETWORK_SETTINGS.blossomServers,
+        blossomServers,
       };
     }
 

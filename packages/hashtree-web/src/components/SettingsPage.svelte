@@ -90,9 +90,9 @@
     } catch {
       return;
     }
-    if (!networkSettings.blossomServers.includes(url)) {
+    if (!networkSettings.blossomServers.some(s => s.url === url)) {
       settingsStore.setNetworkSettings({
-        blossomServers: [...networkSettings.blossomServers, url],
+        blossomServers: [...networkSettings.blossomServers, { url, read: true, write: false }],
       });
     }
     newBlossomUrl = '';
@@ -100,7 +100,23 @@
 
   function removeBlossomServer(url: string) {
     settingsStore.setNetworkSettings({
-      blossomServers: networkSettings.blossomServers.filter(s => s !== url),
+      blossomServers: networkSettings.blossomServers.filter(s => s.url !== url),
+    });
+  }
+
+  function toggleBlossomRead(url: string) {
+    settingsStore.setNetworkSettings({
+      blossomServers: networkSettings.blossomServers.map(s =>
+        s.url === url ? { ...s, read: !s.read } : s
+      ),
+    });
+  }
+
+  function toggleBlossomWrite(url: string) {
+    settingsStore.setNetworkSettings({
+      blossomServers: networkSettings.blossomServers.map(s =>
+        s.url === url ? { ...s, write: !s.write } : s
+      ),
     });
   }
 
@@ -195,7 +211,7 @@
           {editingRelays ? 'Done' : 'Edit'}
         </button>
       </div>
-      <p class="text-xs text-text-3 mb-3">Nostr servers used to find peers</p>
+      <p class="text-xs text-text-3 mb-3">Nostr servers used to find peers and npub/path directories</p>
       <div class="bg-surface-2 rounded divide-y divide-surface-3">
         {#each networkSettings.relays as relay}
           {@const status = getRelayStatus(relay)}
@@ -262,15 +278,33 @@
             <span class="text-text-1 truncate flex-1">
               {(() => {
                 try {
-                  return new URL(server).hostname;
+                  return new URL(server.url).hostname;
                 } catch {
-                  return server;
+                  return server.url;
                 }
               })()}
             </span>
+            <label class="flex items-center gap-1 text-xs text-text-3 cursor-pointer" title="Allow reads from this server">
+              <input
+                type="checkbox"
+                checked={server.read}
+                onchange={() => toggleBlossomRead(server.url)}
+                class="accent-accent"
+              />
+              read
+            </label>
+            <label class="flex items-center gap-1 text-xs text-text-3 cursor-pointer" title="Allow uploads to this server">
+              <input
+                type="checkbox"
+                checked={server.write}
+                onchange={() => toggleBlossomWrite(server.url)}
+                class="accent-accent"
+              />
+              write
+            </label>
             {#if editingBlossom}
               <button
-                onclick={() => removeBlossomServer(server)}
+                onclick={() => removeBlossomServer(server.url)}
                 class="btn-ghost p-1 text-danger"
                 title="Remove server"
               >

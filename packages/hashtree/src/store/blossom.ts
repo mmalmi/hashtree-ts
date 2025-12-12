@@ -94,34 +94,45 @@ export class BlossomStore implements StoreWithMeta {
       throw new Error('Hash does not match data');
     }
 
-    const writeServer = this.servers.find(s => s.write);
-    if (!writeServer) {
+    const writeServers = this.servers.filter(s => s.write);
+    if (writeServers.length === 0) {
       throw new Error('No write-enabled server configured');
     }
 
     const authHeader = await this.createAuthHeader('upload', hash, contentType);
     const hashHex = toHex(hash);
 
-    const response = await fetch(`${writeServer.url}/upload`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': authHeader,
-        'Content-Type': contentType || 'application/octet-stream',
-        'X-SHA-256': hashHex,
-      },
-      body: new Blob([data.buffer as ArrayBuffer]),
-    });
+    // Upload to all write-enabled servers in parallel, succeed if any succeeds
+    const results = await Promise.allSettled(
+      writeServers.map(async (server) => {
+        const response = await fetch(`${server.url}/upload`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': authHeader,
+            'Content-Type': contentType || 'application/octet-stream',
+            'X-SHA-256': hashHex,
+          },
+          body: new Blob([data.buffer as ArrayBuffer]),
+        });
 
-    if (!response.ok) {
-      if (response.status === 409) {
-        // Already exists
-        return false;
-      }
-      const text = await response.text();
-      throw new Error(`Blossom upload failed: ${response.status} ${text}`);
+        if (!response.ok && response.status !== 409) {
+          const text = await response.text();
+          throw new Error(`${server.url}: ${response.status} ${text}`);
+        }
+        return response.status !== 409; // true if new, false if already existed
+      })
+    );
+
+    // Check if any succeeded
+    const successes = results.filter(r => r.status === 'fulfilled');
+    if (successes.length === 0) {
+      // All failed - report first error
+      const firstError = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
+      throw new Error(`Blossom upload failed: ${firstError.reason}`);
     }
 
-    return true;
+    // Return true if any server stored it as new (not already existed)
+    return successes.some(r => (r as PromiseFulfilledResult<boolean>).value);
   }
 
   async get(hash: Hash): Promise<Uint8Array | null> {
