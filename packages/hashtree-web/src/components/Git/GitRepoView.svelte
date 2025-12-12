@@ -40,18 +40,24 @@
     return unsub;
   });
 
-  // Load file last commit info when entries change
+  // Load file last commit info when entries or dirCid change
   $effect(() => {
+    // Access props to track them for reactivity
+    const cid = dirCid;
     const filenames = entries.map(e => e.name);
+
+    if (!cid || filenames.length === 0) {
+      fileCommits = new Map();
+      return;
+    }
+
     let cancelled = false;
-    console.log('[GitRepoView] Loading file commits for:', filenames);
-    getFileLastCommits(dirCid, filenames).then(result => {
+    getFileLastCommits(cid, filenames).then(result => {
       if (!cancelled) {
-        console.log('[GitRepoView] Got file commits:', result.size, 'entries');
         fileCommits = result;
       }
-    }).catch(err => {
-      console.error('[GitRepoView] Failed to load file commits:', err);
+    }).catch(() => {
+      // Silently ignore errors
     });
     return () => { cancelled = true; };
   });

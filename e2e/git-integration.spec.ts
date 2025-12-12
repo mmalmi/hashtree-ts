@@ -857,6 +857,81 @@ test.describe('Git integration features', () => {
       expect(result.readmeCommit?.message).toContain('Add README');
       expect(result.srcCommit?.message).toContain('Add src');
 
+      // Now test the UI - save as a tree and navigate to it
+      await page.evaluate(async ({ files, dirs }) => {
+        const { getTree, LinkType } = await import('/src/store.ts');
+        const { autosaveIfOwn } = await import('/src/nostr.ts');
+        const { getCurrentRootCid } = await import('/src/actions/route.ts');
+        const { getRouteSync } = await import('/src/stores/index.ts');
+
+        const tree = getTree();
+        const route = getRouteSync();
+        const rootCid = getCurrentRootCid();
+        if (!rootCid) return;
+
+        // Create the git repo directory
+        let { cid: repoCid } = await tree.putDirectory([]);
+
+        // Create directories
+        const dirPaths = new Set<string>(dirs);
+        for (const file of files) {
+          const parts = file.path.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            dirPaths.add(parts.slice(0, i).join('/'));
+          }
+        }
+        const sortedDirs = Array.from(dirPaths).sort((a, b) =>
+          a.split('/').length - b.split('/').length
+        );
+
+        for (const dir of sortedDirs) {
+          const parts = dir.split('/');
+          const name = parts.pop()!;
+          const { cid: emptyDir } = await tree.putDirectory([]);
+          repoCid = await tree.setEntry(repoCid, parts, name, emptyDir, 0, LinkType.Dir);
+        }
+
+        // Add files
+        for (const file of files) {
+          const parts = file.path.split('/');
+          const name = parts.pop()!;
+          const data = new Uint8Array(file.content);
+          const { cid: fileCid, size } = await tree.putFile(data);
+          repoCid = await tree.setEntry(repoCid, parts, name, fileCid, size, LinkType.Blob);
+        }
+
+        // Add to current directory as "test-git-repo"
+        const newRootCid = await tree.setEntry(rootCid, route.path, 'test-git-repo', repoCid, 0, LinkType.Dir);
+        autosaveIfOwn(newRootCid);
+      }, { files: allFiles, dirs: allDirs });
+
+      // Wait for the folder to appear
+      await page.waitForTimeout(1000);
+
+      // Click into the git repo folder
+      const repoLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'test-git-repo' }).first();
+      await expect(repoLink).toBeVisible({ timeout: 10000 });
+      await repoLink.click();
+
+      // Wait for navigation
+      await page.waitForURL(/test-git-repo/, { timeout: 10000 });
+
+      // Set larger viewport to see commit message column
+      await page.setViewportSize({ width: 1200, height: 800 });
+      await page.waitForTimeout(2000); // Wait for file commits to load
+
+      // Check that the README row exists
+      const readmeRow = page.locator('tr').filter({ hasText: 'README.md' });
+      await expect(readmeRow).toBeVisible({ timeout: 10000 });
+
+      // Wait for file commits to load
+      await page.waitForTimeout(3000);
+
+      // The commit message or relative time should appear in the table
+      // Look for "Add README" text or time like "just now" or "ago"
+      const commitCell = page.locator('td').filter({ hasText: /Add README|just now|ago/ });
+      await expect(commitCell.first()).toBeVisible({ timeout: 10000 });
+
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
