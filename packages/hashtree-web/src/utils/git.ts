@@ -84,6 +84,19 @@ export async function getBranches(rootCid: CID) {
 }
 
 /**
+ * Get current HEAD commit SHA
+ * Uses wasm-git (libgit2)
+ */
+export async function getHead(rootCid: CID): Promise<string | null> {
+  try {
+    const { getHeadWithWasmGit } = await import('./wasmGit');
+    return await getHeadWithWasmGit(rootCid);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Get git status (staged, unstaged, untracked files)
  * Uses wasm-git (libgit2)
  */
@@ -214,15 +227,15 @@ export async function checkoutCommit(
 ): Promise<CID> {
   const tree = getTree();
 
-  // Get the .git directory to preserve it
+  // Get the .git directory to verify this is a git repo
   const gitDirResult = await tree.resolvePath(rootCid, '.git');
   if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
     throw new Error('Not a git repository');
   }
 
-  // Use wasm-git to checkout and get files
+  // Use wasm-git to checkout and get files + updated .git
   const { checkoutWithWasmGit } = await import('./wasmGit');
-  const files = await checkoutWithWasmGit(rootCid, commitSha, onProgress);
+  const { files, gitFiles } = await checkoutWithWasmGit(rootCid, commitSha, onProgress);
 
   // Build hashtree entries from checkout result
   // First, organize files into a tree structure
@@ -268,20 +281,57 @@ export async function checkoutCommit(
     }
   }
 
-  // Build root directory with .git
+  // Build root directory with updated .git
   const rootEntries = dirMap.get('') || [];
 
-  // Add .git directory from original
-  const currentEntries = await tree.listDirectory(rootCid);
-  const gitEntry = currentEntries.find(e => e.name === '.git');
-  if (gitEntry) {
-    rootEntries.push({
-      name: '.git',
-      cid: gitEntry.cid,
-      size: gitEntry.size,
-      type: LinkType.Dir,
-    });
+  // Build .git directory from checkout result (contains updated HEAD)
+  const gitDirMap = new Map<string, Array<{ name: string; cid: CID; size: number; type: LinkType }>>();
+  gitDirMap.set('.git', []);
+
+  // Create directory entries for subdirectories
+  for (const file of gitFiles) {
+    if (file.isDir && file.name.startsWith('.git/')) {
+      gitDirMap.set(file.name, []);
+    }
   }
+
+  // Process .git files
+  for (const file of gitFiles) {
+    if (!file.isDir && file.name.startsWith('.git/')) {
+      const { cid, size } = await tree.putFile(file.data);
+      const parentDir = file.name.substring(0, file.name.lastIndexOf('/'));
+      const fileName = file.name.substring(file.name.lastIndexOf('/') + 1);
+
+      const parentEntries = gitDirMap.get(parentDir);
+      if (parentEntries) {
+        parentEntries.push({ name: fileName, cid, size, type: LinkType.Blob });
+      }
+    }
+  }
+
+  // Build .git directories from deepest to root
+  const sortedGitDirs = Array.from(gitDirMap.keys())
+    .filter(d => d !== '.git')
+    .sort((a, b) => b.split('/').length - a.split('/').length);
+
+  for (const dirPathName of sortedGitDirs) {
+    const dirEntries = gitDirMap.get(dirPathName) || [];
+    const { cid } = await tree.putDirectory(dirEntries);
+
+    const parentDir = dirPathName.substring(0, dirPathName.lastIndexOf('/'));
+    const dirName = dirPathName.substring(dirPathName.lastIndexOf('/') + 1);
+
+    const parentEntries = gitDirMap.get(parentDir);
+    if (parentEntries) {
+      parentEntries.push({ name: dirName, cid, size: 0, type: LinkType.Dir });
+    }
+  }
+
+  // Build .git directory
+  const gitEntries = gitDirMap.get('.git') || [];
+  const { cid: gitCid } = await tree.putDirectory(gitEntries);
+
+  rootEntries.push({ name: '.git', cid: gitCid, size: 0, type: LinkType.Dir });
 
   const { cid: finalCid } = await tree.putDirectory(rootEntries);
   return finalCid;

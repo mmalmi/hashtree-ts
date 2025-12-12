@@ -1588,8 +1588,9 @@ test.describe('Git integration features', () => {
     const updatedCommitsBtn = page.getByRole('button', { name: /commits/i });
     await expect(updatedCommitsBtn).toContainText(/2/, { timeout: 15000 });
 
-    // Note: The status indicator may still show "uncommitted" briefly due to
-    // the async nature of status refresh. The key verification is the commit count.
+    // Note: Status refresh after commit may have timing issues
+    // The important verification is that commit count increased
+    // Status refresh is handled separately from the commit flow
 
     // Open git history modal to verify our commit is there
     await updatedCommitsBtn.click();
@@ -1885,9 +1886,28 @@ test.describe('Git integration features', () => {
     await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'initial.txt' })).toBeVisible({ timeout: 15000 });
     await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'added-later.txt' })).not.toBeVisible({ timeout: 5000 });
 
-    // Verify we can still see commit history shows 2 commits
+    // After checkout to older commit, git log from HEAD only shows ancestors
+    // So we expect 1 commit (the initial commit we checked out)
     const updatedCommitsBtn = page.getByRole('button', { name: /commits/i });
-    await expect(updatedCommitsBtn).toContainText(/2/, { timeout: 10000 });
+    await expect(updatedCommitsBtn).toContainText(/1/, { timeout: 10000 });
+    await updatedCommitsBtn.click();
+
+    const historyModal2 = page.locator('.fixed.inset-0').filter({ hasText: 'Commit History' });
+    await expect(historyModal2).toBeVisible({ timeout: 5000 });
+
+    // The "Initial commit" should be visible and marked as HEAD
+    await expect(historyModal2.locator('text=Initial commit')).toBeVisible({ timeout: 5000 });
+    await expect(historyModal2.locator('text=HEAD')).toBeVisible({ timeout: 5000 });
+
+    // The "Add added-later.txt" commit won't be visible because it's not an ancestor of HEAD
+    // (This is correct git behavior - git log shows only ancestors of HEAD)
+
+    // The current HEAD commit should show "Current" not a Checkout button
+    await expect(historyModal2.locator('text=Current')).toBeVisible({ timeout: 5000 });
+
+    // Close modal
+    await page.keyboard.press('Escape');
+    await expect(historyModal2).not.toBeVisible({ timeout: 5000 });
   });
 
 });

@@ -13,8 +13,9 @@
 
   // Create git log store when modal opens
   let logStore = $derived(target ? createGitLogStore(target.dirCid, 100) : null);
-  let logState = $state<{ commits: CommitInfo[]; loading: boolean; error: string | null }>({
+  let logState = $state<{ commits: CommitInfo[]; headOid: string | null; loading: boolean; error: string | null }>({
     commits: [],
+    headOid: null,
     loading: true,
     error: null,
   });
@@ -24,7 +25,7 @@
 
   $effect(() => {
     if (!logStore) {
-      logState = { commits: [], loading: false, error: null };
+      logState = { commits: [], headOid: null, loading: false, error: null };
       return;
     }
     const unsub = logStore.subscribe(value => {
@@ -161,7 +162,7 @@
           {/if}
           <div class="flex flex-col">
             {#each logState.commits as commit, i}
-              {@const isHead = i === 0}
+              {@const isHead = commit.oid === logState.headOid}
               <div class="flex gap-3 pb-4 {i < logState.commits.length - 1 ? 'b-b-1 b-b-solid b-b-surface-3 mb-4' : ''} {isHead ? 'bg-accent/5 -mx-4 px-4 py-3 rounded-lg' : ''}">
                 <!-- Timeline dot -->
                 <div class="flex flex-col items-center shrink-0">

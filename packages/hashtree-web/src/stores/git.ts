@@ -3,7 +3,7 @@
  */
 import { writable, type Readable } from 'svelte/store';
 import type { CID } from 'hashtree';
-import { isGitRepo, getBranches, getLog, getStatus } from '../utils/git';
+import { isGitRepo, getBranches, getLog, getStatus, getHead } from '../utils/git';
 import type { GitStatusResult } from '../utils/wasmGit';
 
 export interface GitInfo {
@@ -69,27 +69,35 @@ export function createGitInfoStore(dirCid: CID | null): Readable<GitInfo> {
  */
 export function createGitLogStore(dirCid: CID | null, depth = 20): Readable<{
   commits: CommitInfo[];
+  headOid: string | null;
   loading: boolean;
   error: string | null;
 }> {
   const { subscribe, set } = writable<{
     commits: CommitInfo[];
+    headOid: string | null;
     loading: boolean;
     error: string | null;
   }>({
     commits: [],
+    headOid: null,
     loading: true,
     error: null,
   });
 
   if (!dirCid) {
-    set({ commits: [], loading: false, error: null });
+    set({ commits: [], headOid: null, loading: false, error: null });
   } else {
-    getLog(dirCid, { depth }).then((commits) => {
-      set({ commits, loading: false, error: null });
+    // Fetch both commits and HEAD in parallel
+    Promise.all([
+      getLog(dirCid, { depth }),
+      getHead(dirCid),
+    ]).then(([commits, headOid]) => {
+      set({ commits, headOid, loading: false, error: null });
     }).catch((err) => {
       set({
         commits: [],
+        headOid: null,
         loading: false,
         error: err instanceof Error ? err.message : 'Failed to load git log',
       });
