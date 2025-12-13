@@ -379,6 +379,19 @@ export class Peer {
       this.pendingReassemblies.set(hashKey, pending);
     }
 
+    // Reset request timeout on each fragment received
+    // This way we timeout if no fragment arrives for FRAGMENT_STALL_TIMEOUT
+    const pendingReq = this.ourRequests.get(hashKey);
+    if (pendingReq) {
+      clearTimeout(pendingReq.timeout);
+      pendingReq.timeout = setTimeout(() => {
+        this.ourRequests.delete(hashKey);
+        this.pendingReassemblies.delete(hashKey);
+        this.stats.fragmentTimeouts++;
+        pendingReq.resolve(null);
+      }, FRAGMENT_STALL_TIMEOUT);
+    }
+
     // Store fragment if not duplicate
     if (!pending.fragments.has(res.i!)) {
       pending.fragments.set(res.i!, res.d);

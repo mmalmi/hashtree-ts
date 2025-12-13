@@ -48,7 +48,7 @@ export const DECREMENT_AT_MIN_PROB = 0.25; // 25% chance to decrement at 1
 
 // Fragment constants for WebRTC transport
 export const FRAGMENT_SIZE = 32 * 1024;           // 32KB per WebRTC message (safe limit)
-export const FRAGMENT_STALL_TIMEOUT = 3_000;      // 3s without fragment = stall (fast detection)
+export const FRAGMENT_STALL_TIMEOUT = 5_000;      // 5s without fragment = stall
 export const FRAGMENT_TOTAL_TIMEOUT = 120_000;    // 2min max for full chunk reassembly
 export const MAX_PENDING_REASSEMBLIES = 20;       // Memory cap: max concurrent reassemblies
 export const MAX_PENDING_BYTES = 64 * 1024 * 1024; // 64MB memory cap for reassembly buffers
