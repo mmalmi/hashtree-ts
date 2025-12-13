@@ -98,6 +98,19 @@ export function updateRecentVisibility(path: string, visibility: TreeVisibility)
 }
 
 /**
+ * Remove a recent item by tree name (for when trees are deleted)
+ */
+export function removeRecentByTreeName(npub: string, treeName: string) {
+  recentsStore.update(current => {
+    const filtered = current.filter(item =>
+      !(item.npub === npub && item.treeName === treeName)
+    );
+    saveRecents(filtered);
+    return filtered;
+  });
+}
+
+/**
  * Clear all recents
  */
 export function clearRecents() {

@@ -841,6 +841,16 @@ export async function deleteTree(treeName: string): Promise<boolean> {
   const state = nostrStore.getState();
   if (!state.npub) return false;
 
+  // Cancel any pending throttled publish - this is critical!
+  // Without this, the throttled publish timer could fire after the delete
+  // and republish the tree with hash, effectively "undeleting" it
+  const { cancelPendingPublish } = await import('./treeRootCache');
+  cancelPendingPublish(state.npub, treeName);
+
+  // Remove from recents store
+  const { removeRecentByTreeName } = await import('./stores/recents');
+  removeRecentByTreeName(state.npub, treeName);
+
   const { getRefResolver } = await import('./refResolver');
   const resolver = getRefResolver();
 

@@ -127,6 +127,21 @@ function schedulePublish(npub: string, treeName: string) {
 }
 
 /**
+ * Cancel any pending publish for a tree (call before delete)
+ * This prevents the throttled publish from "undeleting" the tree
+ */
+export function cancelPendingPublish(npub: string, treeName: string): void {
+  const cacheKey = `${npub}/${treeName}`;
+  const timer = publishTimers.get(cacheKey);
+  if (timer) {
+    clearTimeout(timer);
+    publishTimers.delete(cacheKey);
+  }
+  // Also remove from cache to prevent any future publish
+  localRootCache.delete(cacheKey);
+}
+
+/**
  * Actually publish to Nostr (called after throttle delay)
  */
 async function doPublish(npub: string, treeName: string) {

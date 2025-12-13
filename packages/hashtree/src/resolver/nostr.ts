@@ -100,11 +100,14 @@ function parseHashAndKey(event: NostrEvent): { hash: string; key?: string } | nu
   return { hash: result.hash, key: result.key };
 }
 
+/** Event type for publishing (created_at optional - usually auto-set by NDK) */
+export type NostrPublishEvent = Omit<NostrEvent, 'id' | 'pubkey' | 'created_at'> & { created_at?: number };
+
 export interface NostrRefResolverConfig {
   /** Subscribe to nostr events - returns unsubscribe function */
   subscribe: (filter: NostrFilter, onEvent: (event: NostrEvent) => void) => () => void;
-  /** Publish a nostr event - returns true on success */
-  publish: (event: Omit<NostrEvent, 'id' | 'pubkey' | 'created_at'>) => Promise<boolean>;
+  /** Publish a nostr event - returns true on success. created_at is optional (for delete events) */
+  publish: (event: NostrPublishEvent) => Promise<boolean>;
   /** Get current user's pubkey (for ownership checks) */
   getPubkey: () => string | null;
   /** nip19 encode/decode functions from nostr-tools */
@@ -114,6 +117,7 @@ export interface NostrRefResolverConfig {
 /**
  * Create a NostrRefResolver instance
  */
+
 export function createNostrRefResolver(config: NostrRefResolverConfig): RefResolver {
   const { subscribe: nostrSubscribe, publish: nostrPublish, getPubkey, nip19 } = config;
 
@@ -121,13 +125,17 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
   const subscriptions = new Map<string, SubscriptionEntry>();
 
   // Active list subscriptions by npub prefix
+  // Supports multiple callbacks per npub (multiple components can subscribe)
   interface ListSubscriptionEntry {
     npub: string;
     entriesByDTag: Map<string, ParsedTreeVisibility & { created_at: number }>;
-    callback: (entries: RefResolverListEntry[]) => void;
+    callbacks: Set<(entries: RefResolverListEntry[]) => void>;
     unsubscribe: () => void;
   }
   const listSubscriptions = new Map<string, ListSubscriptionEntry>();
+
+  // Unique ID for this resolver instance (for debugging)
+  const resolverId = Math.random().toString(36).slice(2, 8);
 
   // Persistent local cache for list entries (survives subscription lifecycle)
   // Key is npub, value is map of tree name -> entry
@@ -370,29 +378,46 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
       // Update active list subscriptions
       const listSub = listSubscriptions.get(npubStr);
       if (listSub) {
-        listSub.entriesByDTag.set(treeName, {
-          hash: hashHex,
-          visibility: visibilityInfo?.visibility ?? 'public',
-          key: keyHex,
-          encryptedKey: visibilityInfo?.encryptedKey,
-          keyId: visibilityInfo?.keyId,
-          selfEncryptedKey: visibilityInfo?.selfEncryptedKey,
-          created_at: now,
-        });
-        // Emit updated state immediately
-        const result: RefResolverListEntry[] = [];
-        for (const [dTag, entry] of listSub.entriesByDTag) {
-          result.push({
-            key: `${npubStr}/${dTag}`,
-            cid: cid(fromHex(entry.hash), entry.key ? fromHex(entry.key) : undefined),
-            visibility: entry.visibility,
-            encryptedKey: entry.encryptedKey,
-            keyId: entry.keyId,
-            selfEncryptedKey: entry.selfEncryptedKey,
-            createdAt: entry.created_at,
+        const existingEntry = listSub.entriesByDTag.get(treeName);
+        const existingWasDeleted = existingEntry && !existingEntry.hash;
+        const timeDiff = existingEntry ? now - existingEntry.created_at : 0;
+
+        // Skip if this would undelete a recently-deleted entry (within 30 seconds)
+        if (existingWasDeleted && hashHex && timeDiff < 30) {
+          console.log(`[publish:${resolverId}] Blocked undelete of ${treeName}: timeDiff=${timeDiff}s`);
+        } else {
+          listSub.entriesByDTag.set(treeName, {
+            hash: hashHex,
+            visibility: visibilityInfo?.visibility ?? 'public',
+            key: keyHex,
+            encryptedKey: visibilityInfo?.encryptedKey,
+            keyId: visibilityInfo?.keyId,
+            selfEncryptedKey: visibilityInfo?.selfEncryptedKey,
+            created_at: now,
           });
+          // Emit updated state immediately to ALL callbacks
+          const result: RefResolverListEntry[] = [];
+          for (const [dTag, entry] of listSub.entriesByDTag) {
+            if (!entry.hash) continue; // Skip deleted trees
+            result.push({
+              key: `${npubStr}/${dTag}`,
+              cid: cid(fromHex(entry.hash), entry.key ? fromHex(entry.key) : undefined),
+              visibility: entry.visibility,
+              encryptedKey: entry.encryptedKey,
+              keyId: entry.keyId,
+              selfEncryptedKey: entry.selfEncryptedKey,
+              createdAt: entry.created_at,
+            });
+          }
+          console.log(`[publish:${resolverId}] Emitting ${result.length} trees:`, result.map(e => e.key.split('/')[1]));
+          for (const cb of listSub.callbacks) {
+            try {
+              cb(result);
+            } catch (e) {
+              console.error('List callback error:', e);
+            }
+          }
         }
-        listSub.callback(result);
       }
 
       // 2. Fire-and-forget to network (unless skipped)
@@ -422,6 +447,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
      * List all trees for a user.
      * Streams results as they arrive - returns unsubscribe function.
      * Caller decides when to stop listening.
+     * Supports multiple subscribers per npub - all callbacks receive updates.
      */
     list(prefix: string, callback: (entries: RefResolverListEntry[]) => void): () => void {
       const parts = prefix.split('/');
@@ -445,8 +471,49 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
         return () => {};
       }
 
-      // Track entries by d-tag with full visibility info
+      // Check if we already have a subscription for this npub
+      const existingSub = listSubscriptions.get(npubStr);
+
+      if (existingSub) {
+        // Add callback to existing subscription
+        existingSub.callbacks.add(callback);
+        console.log(`[list:${resolverId}] Joining existing subscription, callbacks count now: ${existingSub.callbacks.size}`);
+
+        // Fire immediately with current state
+        const result: RefResolverListEntry[] = [];
+        for (const [dTag, entry] of existingSub.entriesByDTag) {
+          if (!entry.hash) {
+            console.log(`[list join] Skipping entry with empty hash: ${dTag}`);
+            continue;
+          }
+          result.push({
+            key: `${npubStr}/${dTag}`,
+            cid: cid(fromHex(entry.hash), entry.key ? fromHex(entry.key) : undefined),
+            visibility: entry.visibility,
+            encryptedKey: entry.encryptedKey,
+            keyId: entry.keyId,
+            selfEncryptedKey: entry.selfEncryptedKey,
+            createdAt: entry.created_at,
+          });
+        }
+        console.log(`[join:${resolverId}] Emitting ${result.length} trees:`, result.map(e => e.key.split('/')[1]));
+        callback(result);
+
+        // Return unsubscribe that removes this callback
+        return () => {
+          existingSub.callbacks.delete(callback);
+          // If no more callbacks, clean up the subscription
+          if (existingSub.callbacks.size === 0) {
+            existingSub.unsubscribe();
+            listSubscriptions.delete(npubStr);
+          }
+        };
+      }
+
+      // Create new subscription
+      console.log(`[list:${resolverId}] Creating NEW subscription for ${npubStr}`);
       const entriesByDTag = new Map<string, ParsedTreeVisibility & { created_at: number }>();
+      const callbacks = new Set<(entries: RefResolverListEntry[]) => void>([callback]);
 
       // Pre-populate from local cache (for instant display of locally-created trees)
       const cachedEntries = localListCache.get(npubStr);
@@ -471,7 +538,14 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             createdAt: entry.created_at,
           });
         }
-        callback(result);
+        // Notify ALL callbacks
+        for (const cb of callbacks) {
+          try {
+            cb(result);
+          } catch (e) {
+            console.error('List callback error:', e);
+          }
+        }
       };
 
       // Emit cached entries immediately if any
@@ -490,35 +564,71 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           if (!dTag) return;
 
           const parsed = parseHashAndVisibility(event);
-          if (!parsed) return;
-
+          const hasHash = !!parsed?.hash;
           const existing = entriesByDTag.get(dTag);
           const eventTime = event.created_at || 0;
 
-
-          // Only update if this event is strictly newer than existing
-          // If same timestamp, prefer existing (local cache has full visibility info)
-          if (!existing || eventTime > existing.created_at) {
-            entriesByDTag.set(dTag, {
-              ...parsed,
-              created_at: eventTime,
-            });
-            emitCurrentState();
+          // Debug logging for delete-test trees
+          if (dTag.includes('delete-test')) {
+            console.log(`[event] ${dTag}: hasHash=${hasHash}, eventTime=${eventTime}, existing=${existing ? `hash=${!!existing.hash},time=${existing.created_at}` : 'none'}`);
           }
+
+          // Timestamp-based update logic:
+          // 1. Accept if no existing entry
+          // 2. Accept if event is strictly newer
+          // 3. Accept if same timestamp and this is a delete (no hash) overwriting a create (has hash)
+          // 4. Reject if same timestamp and this would "undelete" (create overwriting delete)
+          // 5. Reject if existing is deleted and new event is within 30s (prevent stale event undelete)
+
+          if (existing) {
+            const existingIsDeleted = !existing.hash;
+            const timeDiff = eventTime - existing.created_at;
+
+            // Block stale events from "undeleting" within 30 seconds
+            if (existingIsDeleted && hasHash && timeDiff < 30) {
+              return;
+            }
+
+            // Block same-timestamp undelete (create can't overwrite delete at same time)
+            if (existingIsDeleted && hasHash && timeDiff === 0) {
+              return;
+            }
+
+            // Only update if newer, or if same time and delete wins over create
+            const shouldUpdate = eventTime > existing.created_at ||
+              (eventTime === existing.created_at && !hasHash && existing.hash);
+
+            if (!shouldUpdate) return;
+          }
+
+          // Update the entry
+          entriesByDTag.set(dTag, {
+            hash: parsed?.hash ?? '',
+            visibility: parsed?.visibility ?? 'public',
+            key: parsed?.key,
+            encryptedKey: parsed?.encryptedKey,
+            keyId: parsed?.keyId,
+            selfEncryptedKey: parsed?.selfEncryptedKey,
+            created_at: eventTime,
+          });
+          emitCurrentState();
         }
       );
 
-      // Register this list subscription so publish() can update it immediately
+      // Register this list subscription
       listSubscriptions.set(npubStr, {
         npub: npubStr,
         entriesByDTag,
-        callback,
+        callbacks,
         unsubscribe,
       });
 
       return () => {
-        unsubscribe();
-        listSubscriptions.delete(npubStr);
+        callbacks.delete(callback);
+        if (callbacks.size === 0) {
+          unsubscribe();
+          listSubscriptions.delete(npubStr);
+        }
       };
     },
 
@@ -543,15 +653,12 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
       const { treeName } = parsed;
       const pubkey = getPubkey();
-
       if (!pubkey) return false;
 
       const now = Math.floor(Date.now() / 1000);
       const npubStr = key.split('/')[0];
 
-      // 1. Update local caches - set hash to empty string to mark as deleted
-
-      // Update local list cache
+      // Update local list cache with empty hash (marks as deleted)
       let npubCache = localListCache.get(npubStr);
       if (!npubCache) {
         npubCache = new Map();
@@ -590,10 +697,10 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           key: undefined,
           created_at: now,
         });
-        // Emit - the emitCurrentState filters out empty hashes
+        // Emit - filter out empty hashes (deleted trees)
         const result: RefResolverListEntry[] = [];
         for (const [dTag, entry] of listSub.entriesByDTag) {
-          if (!entry.hash) continue; // Skip deleted
+          if (!entry.hash) continue;
           result.push({
             key: `${npubStr}/${dTag}`,
             cid: cid(fromHex(entry.hash), entry.key ? fromHex(entry.key) : undefined),
@@ -604,10 +711,18 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             createdAt: entry.created_at,
           });
         }
-        listSub.callback(result);
+        for (const cb of listSub.callbacks) {
+          try {
+            cb(result);
+          } catch (e) {
+            console.error('List callback error:', e);
+          }
+        }
       }
 
       // 2. Publish to Nostr - event without hash tag
+      // Use now + 1 to ensure delete timestamp is strictly higher than any create event
+      // This is critical for NIP-33: when timestamps are equal, event ID breaks the tie (random)
       nostrPublish({
         kind: 30078,
         content: '',
@@ -616,6 +731,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           ['l', 'hashtree'],
           // No hash tag = deleted
         ],
+        created_at: now + 1,
       }).catch(e => console.error('Failed to publish delete to nostr:', e));
 
       return true;
@@ -631,6 +747,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
       const [npubStr, treeName] = parts;
 
       const now = Math.floor(Date.now() / 1000);
+      const hasHash = !!toHex(entry.cid.hash);
 
       // Update the local list cache
       let npubCache = localListCache.get(npubStr);
@@ -640,6 +757,15 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
       }
 
       const existing = npubCache.get(treeName);
+      const existingWasDeletedCache = existing && !existing.hash;
+      const timeDiffCache = existing ? now - existing.created_at : 0;
+
+      // Skip if this would undelete a recently-deleted entry (within 30 seconds)
+      if (existingWasDeletedCache && hasHash && timeDiffCache < 30) {
+        console.log(`[inject:${resolverId}] Blocked cache undelete of ${treeName}: timeDiff=${timeDiffCache}s`);
+        return;
+      }
+
       if (!existing || now >= existing.created_at) {
         npubCache.set(treeName, {
           hash: toHex(entry.cid.hash),
@@ -656,7 +782,17 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
       const listSub = listSubscriptions.get(npubStr);
       if (listSub) {
         const existingSub = listSub.entriesByDTag.get(treeName);
+        const existingWasDeleted = existingSub && !existingSub.hash;
+        const timeDiff = existingSub ? now - existingSub.created_at : 0;
+
+        // Skip if this would undelete a recently-deleted entry (within 30 seconds)
+        if (existingWasDeleted && hasHash && timeDiff < 30) {
+          console.log(`[inject:${resolverId}] Blocked undelete of ${treeName}: timeDiff=${timeDiff}s`);
+          return;
+        }
+
         if (!existingSub || now >= existingSub.created_at) {
+          console.log(`[inject:${resolverId}] Updating ${treeName}: hasHash=${hasHash}, existingWasDeleted=${existingWasDeleted}, timeDiff=${timeDiff}`);
           listSub.entriesByDTag.set(treeName, {
             hash: toHex(entry.cid.hash),
             visibility: entry.visibility ?? 'public',
@@ -666,9 +802,10 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             selfEncryptedKey: entry.selfEncryptedKey,
             created_at: now,
           });
-          // Emit updated state
+          // Emit updated state to ALL callbacks
           const result: RefResolverListEntry[] = [];
           for (const [dTag, e] of listSub.entriesByDTag) {
+            if (!e.hash) continue; // Skip deleted trees
             result.push({
               key: `${npubStr}/${dTag}`,
               cid: cid(fromHex(e.hash), e.key ? fromHex(e.key) : undefined),
@@ -679,7 +816,13 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
               createdAt: e.created_at,
             });
           }
-          listSub.callback(result);
+          for (const cb of listSub.callbacks) {
+            try {
+              cb(result);
+            } catch (err) {
+              console.error('List callback error:', err);
+            }
+          }
         }
       }
     },

@@ -9,14 +9,29 @@ import { NDKEvent, type NDKFilter, type NDKSubscriptionOptions } from '@nostr-de
 import { createNostrRefResolver, type RefResolver, type NostrFilter, type NostrEvent } from 'hashtree';
 import { ndk, useNostrStore } from './nostr';
 
-let resolver: RefResolver | null = null;
+// Use window to store the resolver to ensure it's truly a singleton
+// even if the module is reloaded by HMR or there are multiple bundle instances
+declare global {
+  interface Window {
+    __hashtreeResolver?: RefResolver;
+  }
+}
 
 /**
  * Get the ref resolver instance (creates it on first call)
  */
 export function getRefResolver(): RefResolver {
-  if (!resolver) {
-    resolver = createNostrRefResolver({
+  // Check window first to ensure true singleton
+  const hasWindow = typeof window !== 'undefined';
+  const hasResolver = hasWindow && !!window.__hashtreeResolver;
+  console.log(`[getRefResolver] hasWindow=${hasWindow}, hasResolver=${hasResolver}, resolver=${hasWindow ? (window.__hashtreeResolver ? 'exists' : 'null/undefined') : 'N/A'}`);
+
+  if (hasWindow && window.__hashtreeResolver) {
+    return window.__hashtreeResolver;
+  }
+
+  console.log('[getRefResolver] Creating NEW resolver - this should only happen once!');
+  const resolver = createNostrRefResolver({
       subscribe: (filter: NostrFilter, onEvent: (event: NostrEvent) => void) => {
         const ndkFilter: NDKFilter = {
           kinds: filter.kinds,
@@ -44,6 +59,10 @@ export function getRefResolver(): RefResolver {
           ndkEvent.kind = event.kind;
           ndkEvent.content = event.content;
           ndkEvent.tags = event.tags;
+          // Pass through created_at if set (important for delete events to have higher timestamp)
+          if (event.created_at) {
+            ndkEvent.created_at = event.created_at;
+          }
           await ndkEvent.publish();
           return true;
         } catch (e) {
@@ -54,7 +73,12 @@ export function getRefResolver(): RefResolver {
       getPubkey: () => useNostrStore.getState().pubkey,
       nip19,
     });
+
+  // Store on window for true singleton across HMR/bundle reloads
+  if (typeof window !== 'undefined') {
+    window.__hashtreeResolver = resolver;
   }
+
   return resolver;
 }
 
