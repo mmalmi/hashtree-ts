@@ -16,7 +16,7 @@
   import type { CID, TreeEntry } from 'hashtree';
   import { getTree, decodeAsText } from '../../store';
   import { routeStore, createTreesStore, getTreeRootSync } from '../../stores';
-  import { openShareModal, openForkModal, openCollaboratorsModal } from '../../stores/modals';
+  import { openShareModal, openForkModal, openCollaboratorsModal, openBlossomPushModal } from '../../stores/modals';
   import { autosaveIfOwn, useNostrStore } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
   import { getCurrentRootCid, deleteCurrentFolder } from '../../actions';
@@ -597,6 +597,9 @@
       <!-- Share button -->
       <button onclick={handleShare} class="btn-ghost" title="Share document">
         <span class="i-lucide-share"></span>
+      </button>
+      <button onclick={() => openBlossomPushModal(dirCid, dirName, true)} class="btn-ghost" title="Push to Blossom">
+        <span class="i-lucide-upload-cloud"></span>
       </button>
       <!-- Collaborators button -->
       <button onclick={handleCollaborators} class="btn-ghost flex items-center gap-1" title={isOwnTree ? 'Manage editors' : 'View editors'}>
