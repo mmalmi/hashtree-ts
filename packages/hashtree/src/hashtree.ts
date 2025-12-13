@@ -316,6 +316,7 @@ export class HashTree {
   /**
    * Pull (fetch) all chunks for a tree recursively
    * Triggers WebRTC fetches for any missing chunks
+   * Uses parallel fetching within each tree level for better performance
    * @returns { cid, chunks, bytes } - The CID and stats about what was pulled
    */
   async pull(id: CID): Promise<{ cid: CID; chunks: number; bytes: number }> {
@@ -342,19 +343,16 @@ export class HashTree {
       if (key) {
         const decrypted = await getTreeNodeEncrypted(this.store, hash, key);
         if (decrypted) {
-          // It's an encrypted tree node - recursively fetch children
-          for (const link of decrypted.links) {
-            await fetch(link.hash, link.key);
-          }
+          // It's an encrypted tree node - fetch all children in parallel
+          await Promise.all(decrypted.links.map(link => fetch(link.hash, link.key)));
         }
         // If decryption failed or not a tree node, it's a blob (already fetched)
       } else {
         // Unencrypted data - check directly
         const node = tryDecodeTreeNode(data);
         if (node) {
-          for (const link of node.links) {
-            await fetch(link.hash, link.key);
-          }
+          // Fetch all children in parallel
+          await Promise.all(node.links.map(link => fetch(link.hash, link.key)));
         }
         // If not a tree node, it's a blob (already fetched)
       }

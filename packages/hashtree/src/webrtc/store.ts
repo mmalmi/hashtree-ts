@@ -88,6 +88,8 @@ export class WebRTCStore implements Store {
   private pendingReqs = new Map<Hash, PendingReq[]>();
   // Deduplicate concurrent get() calls for the same hash
   private pendingGets = new Map<string, Promise<Uint8Array | null>>();
+  // Store-level stats (not per-peer)
+  private blossomFetches = 0;
 
   constructor(config: WebRTCStoreConfig) {
     this.signer = config.signer;
@@ -666,13 +668,14 @@ export class WebRTCStore implements Store {
       stats: ReturnType<Peer['getStats']>;
     }>;
   } {
-    // Aggregate stats from all peers
+    // Aggregate stats from all peers + store-level stats
     const aggregate: WebRTCStats = {
       requestsSent: 0,
       requestsReceived: 0,
       responsesSent: 0,
       responsesReceived: 0,
       receiveErrors: 0,
+      blossomFetches: this.blossomFetches,
     };
 
     const perPeer = new Map<string, {
@@ -810,6 +813,7 @@ export class WebRTCStore implements Store {
           const data = await store.get(hash);
           if (data) {
             this.log('Got data from fallback store');
+            this.blossomFetches++;
             if (this.config.localStore) {
               await this.config.localStore.put(hash, data);
             }

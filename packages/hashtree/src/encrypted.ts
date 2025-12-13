@@ -57,30 +57,29 @@ export async function putFileEncrypted(
     return { hash, size, key };
   }
 
-  // Multiple chunks - each chunk gets CHK
-  const links: Link[] = [];
+  // Multiple chunks - split data first
+  const chunks: Uint8Array[] = [];
   let offset = 0;
   while (offset < data.length) {
     const end = Math.min(offset + chunkSize, data.length);
-    const chunk = data.slice(offset, end);
-
-    // CHK encrypt this chunk
-    const { ciphertext, key: chunkKey } = await encryptChk(chunk);
-    const hash = await sha256(ciphertext);
-    const encSize = ciphertext.length;
-
-    await store.put(hash, ciphertext);
-
-    // Link stores both hash (location) and key (for decryption)
-    links.push({
-      hash,
-      size: encSize,
-      key: chunkKey,
-      type: LinkType.Blob,
-    });
-
+    chunks.push(data.slice(offset, end));
     offset = end;
   }
+
+  // CHK encrypt and store all chunks in parallel
+  const links = await Promise.all(
+    chunks.map(async (chunk): Promise<Link> => {
+      const { ciphertext, key: chunkKey } = await encryptChk(chunk);
+      const hash = await sha256(ciphertext);
+      await store.put(hash, ciphertext);
+      return {
+        hash,
+        size: ciphertext.length,
+        key: chunkKey,
+        type: LinkType.Blob,
+      };
+    })
+  );
 
   // Build tree - tree nodes also CHK encrypted
   const { hash: rootHash, key: rootKey } = await buildEncryptedTree(config, links, size);
@@ -214,14 +213,14 @@ async function getEncryptedDirectoryNode(
 /**
  * Assemble chunks from an encrypted tree
  * Each link has its own CHK key
+ * Fetches all children in parallel within each tree level
  */
 async function assembleEncryptedChunks(
   store: Store,
   node: TreeNode
 ): Promise<Uint8Array> {
-  const parts: Uint8Array[] = [];
-
-  for (const link of node.links) {
+  // Fetch and decrypt all children in parallel
+  const childPromises = node.links.map(async (link) => {
     const chunkKey = link.key;
     if (!chunkKey) {
       throw new Error(`Missing decryption key for chunk: ${toHex(link.hash)}`);
@@ -235,14 +234,17 @@ async function assembleEncryptedChunks(
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
     if (link.type !== LinkType.Blob) {
-      // Intermediate tree node - decode and recurse
+      // Intermediate tree node - decode and recurse (parallel recursion)
       const childNode = decodeTreeNode(decrypted);
-      parts.push(await assembleEncryptedChunks(store, childNode));
+      return assembleEncryptedChunks(store, childNode);
     } else {
       // Leaf data chunk - raw blob
-      parts.push(decrypted);
+      return decrypted;
     }
-  }
+  });
+
+  // Wait for all children to complete
+  const parts = await Promise.all(childPromises);
 
   const totalLength = parts.reduce((sum, p) => sum + p.length, 0);
   const result = new Uint8Array(totalLength);

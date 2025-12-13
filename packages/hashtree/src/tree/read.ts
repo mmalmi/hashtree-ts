@@ -67,23 +67,25 @@ export async function readFile(store: Store, hash: Hash): Promise<Uint8Array | n
 }
 
 async function assembleChunks(store: Store, node: TreeNode): Promise<Uint8Array> {
-  const parts: Uint8Array[] = [];
-
-  for (const link of node.links) {
+  // Fetch all children in parallel
+  const childPromises = node.links.map(async (link) => {
     const childData = await store.get(link.hash);
     if (!childData) {
       throw new Error(`Missing chunk: ${toHex(link.hash)}`);
     }
 
     if (link.type !== LinkType.Blob) {
-      // Intermediate tree node - decode and recurse
+      // Intermediate tree node - decode and recurse (parallel recursion)
       const childNode = decodeTreeNode(childData);
-      parts.push(await assembleChunks(store, childNode));
+      return assembleChunks(store, childNode);
     } else {
       // Leaf chunk - raw blob
-      parts.push(childData);
+      return childData;
     }
-  }
+  });
+
+  // Wait for all children to complete
+  const parts = await Promise.all(childPromises);
 
   const totalLength = parts.reduce((sum, p) => sum + p.length, 0);
   const result = new Uint8Array(totalLength);

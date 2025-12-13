@@ -474,6 +474,12 @@
               <span class="text-text-3">Res received</span>
               <span class="text-text-1 font-mono">{webrtcStats.responsesReceived}</span>
             </div>
+            {#if webrtcStats.blossomFetches > 0}
+              <div class="flex justify-between col-span-2">
+                <span class="text-text-3">Blossom fetches</span>
+                <span class="text-text-1 font-mono">{webrtcStats.blossomFetches}</span>
+              </div>
+            {/if}
             {#if webrtcStats.receiveErrors > 0}
               <div class="flex justify-between col-span-2">
                 <span class="text-danger">Receive errors</span>

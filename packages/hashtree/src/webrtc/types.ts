@@ -146,6 +146,7 @@ export interface WebRTCStats {
   responsesSent: number;          // Responses we sent to peers
   responsesReceived: number;      // Responses we received from peers
   receiveErrors: number;          // Errors handling incoming messages (parse, hash mismatch, etc)
+  blossomFetches: number;         // Successful fetches from blossom fallback stores
 }
 
 export function generateUuid(): string {
