@@ -8,7 +8,7 @@
   import { getTree, decodeAsText, formatBytes } from '../../store';
   import { nostrStore, npubToPubkey } from '../../nostr';
   import { deleteEntry } from '../../actions';
-  import { openRenameModal, openShareModal } from '../../stores/modals';
+  import { openRenameModal, openShareModal, openBlossomPushModal } from '../../stores/modals';
   import DirectoryActions from './DirectoryActions.svelte';
   import FileEditor from './FileEditor.svelte';
   import HtmlViewer from './HtmlViewer.svelte';
@@ -659,6 +659,16 @@
         <button onclick={handleShare} class="btn-ghost" title="Share" data-testid="viewer-share">
           <span class="i-lucide-share text-base"></span>
         </button>
+        {#if entryFromStore?.cid}
+          <button
+            onclick={() => openBlossomPushModal(entryFromStore.cid, entryFromStore.name, false)}
+            class="btn-ghost"
+            title="Push to Blossom"
+            data-testid="viewer-push"
+          >
+            <span class="i-lucide-upload-cloud text-base"></span>
+          </button>
+        {/if}
         {#if canEdit}
           <button onclick={() => openRenameModal(entryFromStore.name)} class="btn-ghost" data-testid="viewer-rename">Rename</button>
           {#if isTextFile && !isHtml}
