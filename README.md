@@ -55,7 +55,7 @@ const entries = await tree.listDirectory(dirCid.hash);
 
 All data is encrypted by default using **Content Hash Key (CHK)** encryption:
 
-- Data is encrypted with AES-256-GCM using a key derived from the content hash
+- Data is encrypted with AES-256-GCM using a key derived from the content hash (~2-3x overhead vs plain)
 - The encryption key is stored alongside the hash in the CID (`cid.key`)
 - Share the hash alone for public data, or hash+key for private data
 - Deduplication still works: identical content produces identical hashes
