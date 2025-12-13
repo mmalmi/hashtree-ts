@@ -1,16 +1,20 @@
 <script lang="ts">
   /**
    * Simplified connectivity indicator - network icon with count
-   * Red: not connected, Yellow: relays only, Green: peers connected
+   * Red: not connected, Yellow: relays only, Green: peers, Blue: follows peers
    * Shows "offline" text when browser is offline
    * Clicking navigates to settings
    */
   import { appStore } from '../store';
   import { nostrStore } from '../nostr';
 
-  let peers = $derived($appStore.peerCount);
+  let peerCount = $derived($appStore.peerCount);
+  let peersList = $derived($appStore.peers);
   let connectedRelays = $derived($nostrStore.connectedRelays);
   let loggedIn = $derived($nostrStore.isLoggedIn);
+
+  // Count peers in follows pool
+  let followsPeers = $derived(peersList.filter(p => p.pool === 'follows' && p.state === 'connected').length);
 
   // Track browser online/offline status
   let isOnline = $state(typeof navigator !== 'undefined' ? navigator.onLine : true);
@@ -28,24 +32,28 @@
     };
   });
 
-  // Color logic: red = nothing/offline, yellow = relays only, green = peers
+  // Color logic: red = offline, yellow = relays only, green = peers, blue = follows peers
   let color = $derived.by(() => {
     if (!isOnline) return '#f85149'; // red when offline
     if (!loggedIn || connectedRelays === 0) return '#f85149'; // red
-    if (peers === 0) return '#d29922'; // yellow
-    return '#3fb950'; // green
+    if (peerCount === 0) return '#d29922'; // yellow
+    if (followsPeers > 0) return '#58a6ff'; // blue - connected to follows
+    return '#3fb950'; // green - connected to other peers
   });
 
   let title = $derived.by(() => {
     if (!isOnline) return 'Offline';
     if (!loggedIn) return 'Not connected';
     if (connectedRelays === 0) return 'No relays connected';
-    if (peers === 0) return `${connectedRelays} relay${connectedRelays !== 1 ? 's' : ''}, no peers`;
-    return `${peers} peer${peers !== 1 ? 's' : ''}, ${connectedRelays} relay${connectedRelays !== 1 ? 's' : ''}`;
+    if (peerCount === 0) return `${connectedRelays} relay${connectedRelays !== 1 ? 's' : ''}, no peers`;
+    if (followsPeers > 0) {
+      return `${followsPeers} follow${followsPeers !== 1 ? 's' : ''}, ${peerCount - followsPeers} other, ${connectedRelays} relay${connectedRelays !== 1 ? 's' : ''}`;
+    }
+    return `${peerCount} peer${peerCount !== 1 ? 's' : ''}, ${connectedRelays} relay${connectedRelays !== 1 ? 's' : ''}`;
   });
 
   // Total connections = relays + peers
-  let totalConnections = $derived(connectedRelays + peers);
+  let totalConnections = $derived(connectedRelays + peerCount);
 </script>
 
 <a
