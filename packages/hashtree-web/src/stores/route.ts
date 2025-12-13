@@ -29,6 +29,9 @@ export function parseRouteFromHash(hash: string): RouteInfo {
   let linkKey: string | null = null;
   let isStreaming = false;
   let gitRoot: string | null = null;
+  let branch: string | null = null;
+  let compareBranches: { base: string; head: string } | null = null;
+  let isMergeView = false;
 
   const qIdx = hashPath.indexOf('?');
   if (qIdx !== -1) {
@@ -37,6 +40,17 @@ export function parseRouteFromHash(hash: string): RouteInfo {
     linkKey = params.get('k');
     isStreaming = params.get('stream') === '1';
     gitRoot = params.get('g');
+    branch = params.get('branch');
+    isMergeView = params.get('merge') === '1';
+    const compare = params.get('compare');
+    const mergeBase = params.get('base');
+    const mergeHead = params.get('head');
+    if (compare?.includes('...')) {
+      const [base, head] = compare.split('...');
+      if (base && head) compareBranches = { base, head };
+    } else if (isMergeView && mergeBase && mergeHead) {
+      compareBranches = { base: mergeBase, head: mergeHead };
+    }
   }
 
   const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
@@ -54,6 +68,9 @@ export function parseRouteFromHash(hash: string): RouteInfo {
         linkKey,
         isStreaming,
         gitRoot,
+        branch,
+        compareBranches,
+        isMergeView,
       };
     } catch {
       // Invalid nhash, fall through
@@ -74,6 +91,9 @@ export function parseRouteFromHash(hash: string): RouteInfo {
         linkKey,
         isStreaming,
         gitRoot,
+        branch,
+        compareBranches,
+        isMergeView,
       };
     } catch {
       // Invalid npath, fall through
@@ -82,7 +102,7 @@ export function parseRouteFromHash(hash: string): RouteInfo {
 
   // Special routes (no tree context)
   if (['settings', 'wallet', 'users'].includes(parts[0])) {
-    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
+    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null, branch: null, compareBranches: null, isMergeView: false };
   }
 
   // User routes
@@ -91,7 +111,7 @@ export function parseRouteFromHash(hash: string): RouteInfo {
 
     // Special user routes (profile, follows, edit)
     if (['profile', 'follows', 'edit'].includes(parts[1])) {
-      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
+      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null, branch: null, compareBranches: null, isMergeView: false };
     }
 
     // Tree route: /npub/treeName/path...
@@ -105,15 +125,18 @@ export function parseRouteFromHash(hash: string): RouteInfo {
         linkKey,
         isStreaming,
         gitRoot,
+        branch,
+        compareBranches,
+        isMergeView,
       };
     }
 
     // User view: /npub
-    return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
+    return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null, branch: null, compareBranches: null, isMergeView: false };
   }
 
   // Home route
-  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
+  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null, branch: null, compareBranches: null, isMergeView: false };
 }
 
 /**

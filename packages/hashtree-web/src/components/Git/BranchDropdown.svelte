@@ -1,9 +1,14 @@
 <script lang="ts">
   /**
-   * BranchDropdown - Git branch selector with new branch creation
+   * BranchDropdown - Git branch selector with new branch creation and comparison
    */
   import type { CID } from 'hashtree';
-  import { createBranch } from '../../utils/git';
+  import { LinkType } from 'hashtree';
+  import { createBranch, applyGitChanges } from '../../utils/git';
+  import { navigate } from '../../lib/router.svelte';
+  import { routeStore } from '../../stores';
+  import { autosaveIfOwn } from '../../nostr';
+  import { getTree } from '../../store';
   import Dropdown from '../ui/Dropdown.svelte';
 
   interface Props {
@@ -12,14 +17,19 @@
     branchDisplay: string;
     canEdit: boolean;
     dirCid: CID;
+    npub?: string;
+    treeName?: string;
     onBranchSelect?: (branch: string) => void;
   }
 
-  let { branches, currentBranch, branchDisplay, canEdit, dirCid, onBranchSelect }: Props = $props();
+  let { branches, currentBranch, branchDisplay, canEdit, dirCid, npub, treeName, onBranchSelect }: Props = $props();
+
+  let route = $derived($routeStore);
 
   // Branch dropdown state
   let isDropdownOpen = $state(false);
   let showNewBranchInput = $state(false);
+  let showCompareSelect = $state(false);
   let newBranchName = $state('');
   let isCreatingBranch = $state(false);
   let branchError = $state<string | null>(null);
@@ -31,6 +41,15 @@
     isDropdownOpen = false;
   }
 
+  // Navigate to compare view
+  function handleCompareSelect(targetBranch: string) {
+    if (!currentBranch || !npub || !treeName) return;
+    const linkKeySuffix = route.linkKey ? `&k=${route.linkKey}` : '';
+    navigate(`#/${npub}/${treeName}?compare=${currentBranch}...${targetBranch}${linkKeySuffix}`);
+    isDropdownOpen = false;
+    showCompareSelect = false;
+  }
+
   // Handle new branch creation
   async function handleCreateBranch() {
     if (!newBranchName.trim() || isCreatingBranch) return;
@@ -39,11 +58,46 @@
     branchError = null;
 
     try {
-      const result = await createBranch(dirCid, newBranchName.trim(), false);
+      const result = await createBranch(dirCid, newBranchName.trim(), true);
       if (!result.success) {
         branchError = result.error || 'Failed to create branch';
         return;
       }
+
+      // Persist the updated .git files
+      if (result.gitFiles) {
+        const newDirCid = await applyGitChanges(dirCid, result.gitFiles);
+
+        // Get current tree root and update it with the new directory
+        const { getCurrentRootCid } = await import('../../actions/route');
+        const currentPath = route.path;
+        const treeRootCid = getCurrentRootCid();
+
+        if (treeRootCid) {
+          let newRootCid;
+          if (currentPath.length === 0) {
+            // Git repo is at tree root
+            newRootCid = newDirCid;
+          } else {
+            // Git repo is in a subdirectory - replace it at that path
+            const tree = getTree();
+            const parentPath = currentPath.slice(0, -1);
+            const dirName = currentPath[currentPath.length - 1];
+            newRootCid = await tree.setEntry(
+              treeRootCid,
+              parentPath,
+              dirName,
+              newDirCid,
+              0,
+              LinkType.Dir
+            );
+          }
+
+          // Save and publish - UI will react automatically via store subscriptions
+          autosaveIfOwn(newRootCid);
+        }
+      }
+
       // Success - close dropdown and reset
       showNewBranchInput = false;
       newBranchName = '';
@@ -58,6 +112,7 @@
   function handleClose() {
     isDropdownOpen = false;
     showNewBranchInput = false;
+    showCompareSelect = false;
     branchError = null;
   }
 </script>
@@ -77,7 +132,7 @@
   {#each branches as branch}
     <button
       onclick={() => handleBranchSelect(branch)}
-      class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0"
+      class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 cursor-pointer"
     >
       {#if branch === currentBranch}
         <span class="i-lucide-check text-accent text-xs"></span>
@@ -87,11 +142,44 @@
       <span>{branch}</span>
     </button>
   {/each}
+  <!-- Compare branches option (when there are multiple branches and we have navigation info) -->
+  {#if branches.length > 1 && npub && treeName && currentBranch}
+    <div class="b-t-1 b-t-solid b-t-surface-3 mt-1 pt-1 bg-surface-2">
+      {#if showCompareSelect}
+        <div class="px-3 py-2 bg-surface-2">
+          <div class="text-xs text-text-3 mb-2">Compare {currentBranch} with:</div>
+          {#each branches.filter(b => b !== currentBranch) as branch}
+            <button
+              onclick={() => handleCompareSelect(branch)}
+              class="w-full text-left px-2 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 rounded mb-1 cursor-pointer"
+            >
+              <span class="i-lucide-git-branch text-xs text-accent"></span>
+              <span>{branch}</span>
+            </button>
+          {/each}
+          <button
+            onclick={() => { showCompareSelect = false; }}
+            class="btn-ghost text-xs px-2 py-1 mt-1"
+          >
+            Cancel
+          </button>
+        </div>
+      {:else}
+        <button
+          onclick={() => { showCompareSelect = true; }}
+          class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 cursor-pointer"
+        >
+          <span class="i-lucide-git-compare text-xs"></span>
+          <span>Compare branches</span>
+        </button>
+      {/if}
+    </div>
+  {/if}
   <!-- New branch option (only for editors) -->
   {#if canEdit}
-    <div class="b-t-1 b-t-solid b-t-surface-3 mt-1 pt-1">
+    <div class="b-t-1 b-t-solid b-t-surface-3 mt-1 pt-1 bg-surface-2">
       {#if showNewBranchInput}
-        <div class="px-3 py-2">
+        <div class="px-3 py-2 bg-surface-2">
           {#if branchError}
             <div class="text-xs text-error mb-2">{branchError}</div>
           {/if}
@@ -126,7 +214,7 @@
       {:else}
         <button
           onclick={() => { showNewBranchInput = true; newBranchName = ''; }}
-          class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0"
+          class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 cursor-pointer"
         >
           <span class="i-lucide-git-branch-plus text-xs"></span>
           <span>New branch</span>

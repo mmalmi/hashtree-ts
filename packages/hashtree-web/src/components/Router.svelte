@@ -25,6 +25,8 @@
   import PullRequestDetailView from './Git/PullRequestDetailView.svelte';
   import IssueDetailView from './Git/IssueDetailView.svelte';
   import CommitView from './Git/CommitView.svelte';
+  import BranchCompareView from './Git/BranchCompareView.svelte';
+  import MergeView from './Git/MergeView.svelte';
 
   // Route definitions with patterns
   // Note: More specific routes must come before less specific ones
@@ -67,6 +69,28 @@
     return params.get('commit');
   }
 
+  // Check for ?compare=base...head query param (branch comparison view)
+  function parseCompareQuery(fullHash: string): { base: string; head: string } | null {
+    const qIdx = fullHash.indexOf('?');
+    if (qIdx === -1) return null;
+    const params = new URLSearchParams(fullHash.slice(qIdx + 1));
+    const compare = params.get('compare');
+    if (!compare || !compare.includes('...')) return null;
+    const [base, head] = compare.split('...');
+    return base && head ? { base, head } : null;
+  }
+
+  // Check for ?merge=1&base=<base>&head=<head> query param (merge view)
+  function parseMergeQuery(fullHash: string): { base: string; head: string } | null {
+    const qIdx = fullHash.indexOf('?');
+    if (qIdx === -1) return null;
+    const params = new URLSearchParams(fullHash.slice(qIdx + 1));
+    if (params.get('merge') !== '1') return null;
+    const base = params.get('base');
+    const head = params.get('head');
+    return base && head ? { base, head } : null;
+  }
+
   interface Props {
     currentPath: string;
   }
@@ -82,6 +106,12 @@
   // Check for commit query param (?commit=<hash>)
   let commitHash = $derived(parseCommitQuery(fullHash));
 
+  // Check for branch comparison query param (?compare=base...head)
+  let compareQuery = $derived(parseCompareQuery(fullHash));
+
+  // Check for merge query param (?merge=1&base=...&head=...)
+  let mergeQuery = $derived(parseMergeQuery(fullHash));
+
   // Find matching route
   function findRoute(path: string) {
     for (const route of routePatterns) {
@@ -96,10 +126,9 @@
   // Derive route from path prop
   let route = $derived.by(() => findRoute(currentPath));
 
-  // For NIP-34 views, we need npub and treeName from the current route
+  // For NIP-34/compare/merge views, we need npub and treeName from the current route
   // The repo path is treeName + any wild path
-  let nip34RepoPath = $derived.by(() => {
-    if (!nip34Query) return '';
+  let repoPath = $derived.by(() => {
     const { treeName, wild } = route.params;
     if (!treeName) return '';
     return wild ? `${treeName}/${wild}` : treeName;
@@ -107,16 +136,20 @@
 </script>
 
 <div class="flex-1 flex flex-col lg:flex-row min-h-0">
-  {#if commitHash && route.params.npub && route.params.treeName}
-    <CommitView npub={route.params.npub} repoName={nip34RepoPath || route.params.treeName} {commitHash} />
+  {#if mergeQuery && route.params.npub && route.params.treeName}
+    <MergeView npub={route.params.npub} repoName={repoPath || route.params.treeName} baseBranch={mergeQuery.base} headBranch={mergeQuery.head} />
+  {:else if compareQuery && route.params.npub && route.params.treeName}
+    <BranchCompareView npub={route.params.npub} repoName={repoPath || route.params.treeName} baseBranch={compareQuery.base} headBranch={compareQuery.head} />
+  {:else if commitHash && route.params.npub && route.params.treeName}
+    <CommitView npub={route.params.npub} repoName={repoPath || route.params.treeName} {commitHash} />
   {:else if nip34Query?.tab === 'pulls' && nip34Query.id && route.params.npub && route.params.treeName}
-    <PullRequestDetailView npub={route.params.npub} repoName={nip34RepoPath} prId={nip34Query.id} />
+    <PullRequestDetailView npub={route.params.npub} repoName={repoPath} prId={nip34Query.id} />
   {:else if nip34Query?.tab === 'issues' && nip34Query.id && route.params.npub && route.params.treeName}
-    <IssueDetailView npub={route.params.npub} repoName={nip34RepoPath} issueId={nip34Query.id} />
+    <IssueDetailView npub={route.params.npub} repoName={repoPath} issueId={nip34Query.id} />
   {:else if nip34Query?.tab === 'pulls' && route.params.npub && route.params.treeName}
-    <PullRequestsView npub={route.params.npub} repoName={nip34RepoPath} />
+    <PullRequestsView npub={route.params.npub} repoName={repoPath} />
   {:else if nip34Query?.tab === 'issues' && route.params.npub && route.params.treeName}
-    <IssuesView npub={route.params.npub} repoName={nip34RepoPath} />
+    <IssuesView npub={route.params.npub} repoName={repoPath} />
   {:else if route.component === HomeRoute}
     <HomeRoute />
   {:else if route.component === SettingsPage}

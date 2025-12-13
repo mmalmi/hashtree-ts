@@ -112,8 +112,13 @@ export async function getStatus(rootCid: CID) {
 /**
  * Create a new branch
  * Uses wasm-git (libgit2)
+ * Returns the updated .git files that must be persisted to hashtree
  */
-export async function createBranch(rootCid: CID, branchName: string, checkout: boolean = true) {
+export async function createBranch(rootCid: CID, branchName: string, checkout: boolean = true): Promise<{
+  success: boolean;
+  error?: string;
+  gitFiles?: Array<{ name: string; data: Uint8Array; isDir: boolean }>;
+}> {
   const { createBranchWithWasmGit } = await import('./wasmGit');
   return await createBranchWithWasmGit(rootCid, branchName, checkout);
 }
@@ -362,6 +367,39 @@ export async function runGitCommand(
 ): Promise<RunGitCommandResult> {
   const { runGitCommand: runGitCommandWasm } = await import('./wasmGit');
   return runGitCommandWasm(rootCid, command, options);
+}
+
+/**
+ * Get diff between two branches
+ * Returns diff output, stats, and whether fast-forward is possible
+ */
+export async function diffBranches(rootCid: CID, baseBranch: string, headBranch: string) {
+  const { diffBranchesWithWasmGit } = await import('./wasmGit');
+  return await diffBranchesWithWasmGit(rootCid, baseBranch, headBranch);
+}
+
+/**
+ * Check if branches can be merged without conflicts
+ */
+export async function canMerge(rootCid: CID, baseBranch: string, headBranch: string) {
+  const { canMergeWithWasmGit } = await import('./wasmGit');
+  return await canMergeWithWasmGit(rootCid, baseBranch, headBranch);
+}
+
+/**
+ * Merge head branch into base branch
+ * Returns updated .git files to be persisted
+ */
+export async function mergeBranches(
+  rootCid: CID,
+  baseBranch: string,
+  headBranch: string,
+  commitMessage: string,
+  authorName: string = 'User',
+  authorEmail: string = 'user@example.com'
+) {
+  const { mergeWithWasmGit } = await import('./wasmGit');
+  return await mergeWithWasmGit(rootCid, baseBranch, headBranch, commitMessage, authorName, authorEmail);
 }
 
 /**

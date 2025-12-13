@@ -17,3 +17,9 @@ export { initGitRepoWithWasmGit, commitWithWasmGit } from './commit';
 export { checkoutWithWasmGit } from './checkout';
 
 export { runGitCommand } from './command';
+
+export { diffBranchesWithWasmGit, canMergeWithWasmGit } from './diff';
+export type { BranchDiffStats, BranchDiffResult } from './diff';
+
+export { mergeWithWasmGit } from './merge';
+export type { MergeResult } from './merge';

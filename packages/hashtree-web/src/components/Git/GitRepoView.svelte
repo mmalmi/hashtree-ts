@@ -58,6 +58,28 @@
   // Detached HEAD state - show short commit hash instead of branch name
   let branchDisplay = $derived(currentBranch || (headOid ? headOid.slice(0, 7) : 'detached'));
 
+  // Handle ?branch= URL parameter - automatically switch to specified branch
+  let switchingBranch = $state(false);
+  $effect(() => {
+    const targetBranch = route.branch;
+    const current = currentBranch;
+    const availableBranches = branches;
+
+    // Skip if no target branch specified, already on target, or branch doesn't exist
+    if (!targetBranch || targetBranch === current || !availableBranches.includes(targetBranch)) {
+      return;
+    }
+
+    // Skip if already switching
+    if (switchingBranch) return;
+
+    // Auto-switch to the branch from URL
+    switchingBranch = true;
+    handleBranchSelect(targetBranch).finally(() => {
+      switchingBranch = false;
+    });
+  });
+
   // Load file last commit info when entries or gitCid change
   // Use gitCid for git operations, but track entries for file names
   $effect(() => {
@@ -364,6 +386,8 @@
       {branchDisplay}
       {canEdit}
       dirCid={gitCid}
+      npub={route.npub}
+      treeName={route.treeName}
       onBranchSelect={handleBranchSelect}
     />
 

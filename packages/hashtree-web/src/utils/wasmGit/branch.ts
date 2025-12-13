@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, rmRf } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, rmRf, readGitDirectory } from './core';
 
 /**
  * Get list of branches using wasm-git
@@ -93,12 +93,13 @@ export async function getBranchesWithWasmGit(
 
 /**
  * Create a new branch using wasm-git
+ * Returns the updated .git files that must be persisted to hashtree
  */
 export async function createBranchWithWasmGit(
   rootCid: CID,
   branchName: string,
   checkout: boolean = true
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; gitFiles?: Array<{ name: string; data: Uint8Array; isDir: boolean }> }> {
   return withWasmGitLock(async () => {
     const tree = getTree();
 
@@ -129,7 +130,8 @@ export async function createBranchWithWasmGit(
         // Ignore init errors
       }
 
-      await copyToWasmFS(module, gitDirResult.cid, '.git');
+      // Copy full working directory (including .git) for proper checkout
+      await copyToWasmFS(module, rootCid, '.');
 
       // Create the branch
       try {
@@ -138,7 +140,10 @@ export async function createBranchWithWasmGit(
         } else {
           runSilent(module, ['branch', branchName]);
         }
-        return { success: true };
+
+        // Read updated .git files to return for persistence
+        const gitFiles = readGitDirectory(module);
+        return { success: true, gitFiles };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { success: false, error: message };
