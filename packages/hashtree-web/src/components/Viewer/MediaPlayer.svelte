@@ -507,11 +507,6 @@
       mediaRef.addEventListener('loadedmetadata', () => {
         duration = mediaRef!.duration;
 
-        // For live streams, jump to near the end to show latest content
-        if (duration > 5) {
-          mediaRef!.currentTime = Math.max(currentPlaybackTime, duration - 3);
-        }
-
         if (wasPlaying) {
           mediaRef!.play().catch(() => {});
         }
