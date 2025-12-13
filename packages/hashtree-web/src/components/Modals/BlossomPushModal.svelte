@@ -54,10 +54,9 @@
       ? settings.network.blossomServers
       : DEFAULT_NETWORK_SETTINGS.blossomServers;
 
-    // Only show write-enabled servers
+    // Show all servers, pre-select write-enabled ones
     servers = blossomServers
-      .filter(s => s.write)
-      .map(s => ({ url: s.url, selected: true, write: s.write }));
+      .map(s => ({ url: s.url, selected: s.write, write: s.write }));
   });
 
   // Handle Escape key
@@ -193,7 +192,7 @@
             </p>
 
             {#if servers.length === 0}
-              <p class="text-sm text-text-3 italic">No write-enabled Blossom servers configured</p>
+              <p class="text-sm text-text-3 italic">No Blossom servers configured</p>
             {:else}
               <div class="space-y-2">
                 {#each servers as server, i}
