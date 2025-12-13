@@ -92,6 +92,7 @@ export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
     'wss://nos.lol',
     'wss://relay.nostr.band',
     'wss://relay.snort.social',
+    'wss://temp.iris.to',
   ],
   blossomServers: [
     { url: 'https://files.iris.to', read: true, write: false },

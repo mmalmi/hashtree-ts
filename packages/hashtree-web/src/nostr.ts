@@ -80,6 +80,8 @@ interface NostrState {
   relays: string[];
   relayStatuses: Map<string, RelayStatus>;
   connectedRelays: number;
+  /** Relays discovered by NDK (outbox model, etc) that aren't in configured list */
+  discoveredRelays: RelayInfo[];
 }
 
 // Create Svelte store for nostr state
@@ -93,6 +95,7 @@ function createNostrStore() {
     relays: defaultRelays,
     relayStatuses: new Map(defaultRelays.map(url => [url, 'disconnected' as RelayStatus])),
     connectedRelays: 0,
+    discoveredRelays: [],
   });
 
   return {
@@ -132,6 +135,10 @@ function createNostrStore() {
 
     setRelayStatuses: (statuses: Map<string, RelayStatus>) => {
       update(state => ({ ...state, relayStatuses: statuses }));
+    },
+
+    setDiscoveredRelays: (relays: RelayInfo[]) => {
+      update(state => ({ ...state, discoveredRelays: relays }));
     },
 
     // Get current state synchronously
@@ -244,12 +251,16 @@ function updateConnectedRelayCount() {
   // Count relays with connected status (>= CONNECTED) and track individual statuses
   let connected = 0;
   const statuses = new Map<string, RelayStatus>();
+  const discoveredRelays: RelayInfo[] = [];
 
   // Get configured relays from settings or use defaults
   const settings = settingsStore.getState();
   const configuredRelays = settings.network?.relays?.length > 0
     ? settings.network.relays
     : DEFAULT_NETWORK_SETTINGS.relays;
+
+  // Normalize configured relays for comparison
+  const configuredNormalized = new Set(configuredRelays.map(normalizeRelayUrl));
 
   // Initialize all configured relays as disconnected
   for (const url of configuredRelays) {
@@ -260,14 +271,26 @@ function updateConnectedRelayCount() {
   for (const relay of pool.relays.values()) {
     const status = ndkStatusToRelayStatus(relay.status);
     const normalizedUrl = normalizeRelayUrl(relay.url);
-    statuses.set(normalizedUrl, status);
+
+    if (configuredNormalized.has(normalizedUrl)) {
+      // Configured relay - update its status
+      statuses.set(normalizedUrl, status);
+    } else {
+      // Discovered relay - add to discovered list
+      discoveredRelays.push({ url: normalizedUrl, status });
+    }
+
     if (relay.status >= NDK_RELAY_STATUS_CONNECTED) {
       connected++;
     }
   }
 
+  // Sort discovered relays alphabetically
+  discoveredRelays.sort((a, b) => a.url.localeCompare(b.url));
+
   nostrStore.setConnectedRelays(connected);
   nostrStore.setRelayStatuses(statuses);
+  nostrStore.setDiscoveredRelays(discoveredRelays);
 }
 
 // Listen for relay connect/disconnect events

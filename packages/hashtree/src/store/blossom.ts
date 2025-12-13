@@ -188,7 +188,7 @@ export class BlossomStore implements StoreWithMeta {
               'Content-Type': contentType || 'application/octet-stream',
               'X-SHA-256': hashHex,
             },
-            body: new Blob([data]),
+            body: new Blob([data as BlobPart]),
           });
 
           if (!response.ok && response.status !== 409) {

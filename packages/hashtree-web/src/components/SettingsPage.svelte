@@ -36,8 +36,12 @@
 
   let relayList = $derived($nostrStore.relays);
   let relayStatuses = $derived($nostrStore.relayStatuses);
+  let discoveredRelays = $derived($nostrStore.discoveredRelays);
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
   let myPubkey = $derived($nostrStore.pubkey);
+
+  // Collapsible state for discovered relays
+  let showDiscoveredRelays = $state(false);
 
   // Network settings
   let networkSettings = $derived($settingsStore.network);
@@ -267,6 +271,38 @@
         <button onclick={resetRelays} class="btn-ghost mt-2 text-xs text-text-3">
           Reset to defaults
         </button>
+      {/if}
+
+      <!-- Discovered Relays (collapsible) -->
+      {#if discoveredRelays.length > 0}
+        <div class="bg-surface-2 rounded mt-1">
+          <button
+            onclick={() => showDiscoveredRelays = !showDiscoveredRelays}
+            class="btn-ghost b-0 flex items-center gap-1 p-3 text-sm text-text-1 w-full"
+          >
+            <span class="i-lucide-chevron-right text-sm transition-transform {showDiscoveredRelays ? 'rotate-90' : ''}"></span>
+            Discovered relays ({discoveredRelays.length})
+          </button>
+          {#if showDiscoveredRelays}
+            <div class="divide-y divide-surface-3">
+            {#each discoveredRelays as relay}
+              <div class="flex items-center gap-2 p-3 text-sm">
+                <span class="w-2 h-2 rounded-full {getStatusColor(relay.status)} shrink-0"></span>
+                <span class="text-text-1 truncate flex-1">
+                  {(() => {
+                    try {
+                      return new URL(relay.url).hostname;
+                    } catch {
+                      return relay.url;
+                    }
+                  })()}
+                </span>
+                <span class="text-xs text-text-3">{relay.status.charAt(0).toUpperCase() + relay.status.slice(1)}</span>
+              </div>
+            {/each}
+            </div>
+          {/if}
+        </div>
       {/if}
     </div>
 
