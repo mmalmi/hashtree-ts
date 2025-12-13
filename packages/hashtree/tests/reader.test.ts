@@ -189,7 +189,7 @@ describe('HashTree read operations', () => {
       const { cid } = await tree.putFile(data, { public: true });
 
       const chunks: Uint8Array[] = [];
-      for await (const chunk of tree.readFileStream(cid, 200)) {
+      for await (const chunk of tree.readFileStream(cid, { offset: 200 })) {
         chunks.push(chunk);
       }
 
@@ -212,7 +212,7 @@ describe('HashTree read operations', () => {
 
       // Track which chunks are yielded
       const chunks: Uint8Array[] = [];
-      for await (const chunk of tree.readFileStream(cid, 250)) {
+      for await (const chunk of tree.readFileStream(cid, { offset: 250 })) {
         chunks.push(chunk);
       }
 
@@ -227,11 +227,56 @@ describe('HashTree read operations', () => {
       const { cid } = await tree.putFile(data, { public: true });
 
       const chunks: Uint8Array[] = [];
-      for await (const chunk of tree.readFileStream(cid, 100)) {
+      for await (const chunk of tree.readFileStream(cid, { offset: 100 })) {
         chunks.push(chunk);
       }
 
       expect(chunks.length).toBe(0);
+    });
+
+    it('should stream with prefetch option', async () => {
+      // Create a file with multiple chunks
+      const data = new Uint8Array(500);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = i % 256;
+      }
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of tree.readFileStream(cid, { prefetch: 3 })) {
+        chunks.push(chunk);
+      }
+
+      const total = new Uint8Array(chunks.reduce((sum, c) => sum + c.length, 0));
+      let offset = 0;
+      for (const chunk of chunks) {
+        total.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      expect(total).toEqual(data);
+    });
+
+    it('should stream with prefetch and offset', async () => {
+      const data = new Uint8Array(500);
+      for (let i = 0; i < data.length; i++) {
+        data[i] = i % 256;
+      }
+      const { cid } = await tree.putFile(data, { public: true });
+
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of tree.readFileStream(cid, { offset: 200, prefetch: 3 })) {
+        chunks.push(chunk);
+      }
+
+      const total = new Uint8Array(chunks.reduce((sum, c) => sum + c.length, 0));
+      let offset = 0;
+      for (const chunk of chunks) {
+        total.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      expect(total).toEqual(data.slice(200));
     });
   });
 

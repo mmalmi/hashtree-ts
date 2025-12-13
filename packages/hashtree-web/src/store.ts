@@ -14,14 +14,13 @@ export { LinkType };
 import { getSocialGraph, socialGraphStore } from './utils/socialGraph';
 import { settingsStore, DEFAULT_POOL_SETTINGS, DEFAULT_NETWORK_SETTINGS } from './stores/settings';
 import { blossomLogStore } from './stores/blossomLog';
-import { DexieStore } from 'hashtree-dexie';
-import { BlossomStore } from 'hashtree';
+import { BlossomStore, OpfsStore } from 'hashtree';
 
-// Store instances - using Dexie for more robust IndexedDB handling
-export const idbStore = new DexieStore('hashtree-explorer');
+// Store instances - using OPFS for file storage
+export const localStore = new OpfsStore({ dirName: 'hashtree-explorer' });
 
 // HashTree instance - single class for all tree operations
-let _tree = new HashTree({ store: idbStore, chunkSize: 1024 });
+let _tree = new HashTree({ store: localStore });
 
 // Getter for tree - always returns current instance
 export function getTree(): HashTree {
@@ -122,9 +121,9 @@ export const useAppStore = appStore;
 
 // Expose for debugging in tests
 if (typeof window !== 'undefined') {
-  const win = window as Window & { __appStore?: typeof appStore; __idbStore?: typeof idbStore };
+  const win = window as Window & { __appStore?: typeof appStore; __localStore?: typeof localStore };
   win.__appStore = appStore;
-  win.__idbStore = idbStore;
+  win.__localStore = localStore;
 }
 
 // Format bytes
@@ -137,8 +136,8 @@ export function formatBytes(bytes: number): string {
 // Update storage stats from IDB
 export async function updateStorageStats(): Promise<void> {
   try {
-    const items = await idbStore.count();
-    const bytes = await idbStore.totalBytes();
+    const items = await localStore.count();
+    const bytes = await localStore.totalBytes();
     appStore.setStats({ items, bytes });
   } catch {
     // Ignore errors
@@ -213,7 +212,7 @@ export function initWebRTC(
     pubkey,
     encrypt,
     decrypt,
-    localStore: idbStore,
+    localStore: localStore,
     debug: true,
     relays,
     // Pool-based peer management
@@ -228,7 +227,7 @@ export function initWebRTC(
     })],
   });
 
-  _tree = new HashTree({ store: webrtcStore, chunkSize: 1024 });
+  _tree = new HashTree({ store: webrtcStore });
 
   webrtcStore.on((event) => {
     if (event.type === 'update') {
@@ -284,7 +283,7 @@ export function stopWebRTC() {
     appStore.setPeers([]);
     appStore.setMyPeerId(null);
     appStore.setFallbackStoresCount(0);
-    _tree = new HashTree({ store: idbStore, chunkSize: 1024 });
+    _tree = new HashTree({ store: localStore });
   }
 }
 

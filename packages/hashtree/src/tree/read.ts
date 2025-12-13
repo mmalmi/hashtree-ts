@@ -98,10 +98,24 @@ async function assembleChunks(store: Store, node: TreeNode): Promise<Uint8Array>
   return result;
 }
 
+export interface StreamOptions {
+  /** Byte offset to start streaming from (default: 0) */
+  offset?: number;
+  /** Number of chunks to prefetch ahead (default: 1 = no prefetch) */
+  prefetch?: number;
+}
+
 /**
- * Read a file with streaming, optionally starting from an offset
+ * Read a file with streaming
+ * Supports prefetching for better network performance
  */
-export async function* readFileStream(store: Store, hash: Hash, offset: number = 0): AsyncGenerator<Uint8Array> {
+export async function* readFileStream(
+  store: Store,
+  hash: Hash,
+  options: StreamOptions = {}
+): AsyncGenerator<Uint8Array> {
+  const { offset = 0, prefetch = 1 } = options;
+
   const data = await store.get(hash);
   if (!data) return;
 
@@ -112,44 +126,94 @@ export async function* readFileStream(store: Store, hash: Hash, offset: number =
     return;
   }
 
-  yield* streamChunksWithOffset(store, node, offset);
+  yield* streamChunksWithOffset(store, node, offset, prefetch);
 }
 
 /**
- * Stream chunks starting from an offset
+ * Stream chunks starting from an offset with prefetching
  * Uses link.size to efficiently skip chunks before offset
+ * Prefetches N chunks ahead for better network performance
  */
 async function* streamChunksWithOffset(
   store: Store,
   node: TreeNode,
-  offset: number
+  offset: number,
+  prefetch: number = 1
 ): AsyncGenerator<Uint8Array> {
   let position = 0;
 
-  for (const link of node.links) {
-    const linkSize = link.size ?? 0;
-
-    // If we haven't reached offset yet and can skip this entire subtree
+  // Find first link index that we need (skip those before offset)
+  let startIdx = 0;
+  for (let i = 0; i < node.links.length; i++) {
+    const linkSize = node.links[i].size ?? 0;
     if (linkSize > 0 && position + linkSize <= offset) {
       position += linkSize;
-      continue;
+      startIdx = i + 1;
+    } else {
+      break;
+    }
+  }
+
+  // Build list of links to process
+  const linksToProcess = node.links.slice(startIdx);
+  if (linksToProcess.length === 0) return;
+
+  // Prefetch queue: array of { promise, link, position }
+  type PrefetchEntry = {
+    promise: Promise<Uint8Array | null>;
+    link: typeof node.links[0];
+    position: number;
+  };
+  const prefetchQueue: PrefetchEntry[] = [];
+
+  // Start initial prefetch
+  let prefetchPosition = position;
+  for (let i = 0; i < Math.min(prefetch, linksToProcess.length); i++) {
+    const link = linksToProcess[i];
+    prefetchQueue.push({
+      promise: store.get(link.hash),
+      link,
+      position: prefetchPosition,
+    });
+    prefetchPosition += link.size ?? 0;
+  }
+
+  // Process links
+  let nextPrefetchIdx = prefetch;
+  for (const link of linksToProcess) {
+    // Get data from prefetch queue (should be first item)
+    const entry = prefetchQueue.shift();
+    if (!entry) {
+      throw new Error('Prefetch queue empty unexpectedly');
     }
 
-    const childData = await store.get(link.hash);
+    const childData = await entry.promise;
     if (!childData) {
       throw new Error(`Missing chunk: ${toHex(link.hash)}`);
     }
 
+    // Start prefetching next chunk
+    if (nextPrefetchIdx < linksToProcess.length) {
+      const nextLink = linksToProcess[nextPrefetchIdx];
+      prefetchQueue.push({
+        promise: store.get(nextLink.hash),
+        link: nextLink,
+        position: prefetchPosition,
+      });
+      prefetchPosition += nextLink.size ?? 0;
+      nextPrefetchIdx++;
+    }
+
     if (link.type !== LinkType.Blob) {
-      // Intermediate tree node - decode and recurse
+      // Intermediate tree node - decode and recurse with prefetch
       const childNode = decodeTreeNode(childData);
-      const childOffset = Math.max(0, offset - position);
-      yield* streamChunksWithOffset(store, childNode, childOffset);
-      position += linkSize;
+      const childOffset = Math.max(0, offset - entry.position);
+      yield* streamChunksWithOffset(store, childNode, childOffset, prefetch);
+      position = entry.position + (link.size ?? 0);
     } else {
       // Leaf chunk - raw blob
-      const chunkStart = position;
-      const chunkEnd = position + childData.length;
+      const chunkStart = entry.position;
+      const chunkEnd = entry.position + childData.length;
       position = chunkEnd;
 
       if (chunkEnd <= offset) {

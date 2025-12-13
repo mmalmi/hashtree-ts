@@ -321,9 +321,9 @@
 
       const tree = getTree();
 
-      // Collect all chunks first (they come from local storage, so this is fast)
+      // Collect all chunks first (prefetch for network efficiency)
       const chunks: Uint8Array[] = [];
-      for await (const chunk of tree.readFileStream(cid)) {
+      for await (const chunk of tree.readFileStream(cid, { prefetch: 5 })) {
         if (signal.aborted) break;
         chunks.push(chunk);
         bytesLoaded += chunk.length;
@@ -414,7 +414,7 @@
       const chunks: Uint8Array[] = [];
 
       // Stream chunks to show loading progress
-      for await (const chunk of tree.readFileStream(cid)) {
+      for await (const chunk of tree.readFileStream(cid, { prefetch: 5 })) {
         chunks.push(chunk);
         bytesLoaded += chunk.length;
       }
@@ -479,7 +479,7 @@
       const chunks: Uint8Array[] = [];
       let newBytesLoaded = 0;
 
-      for await (const chunk of tree.readFileStream(cid)) {
+      for await (const chunk of tree.readFileStream(cid, { prefetch: 5 })) {
         chunks.push(chunk);
         newBytesLoaded += chunk.length;
       }

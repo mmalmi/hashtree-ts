@@ -32,7 +32,7 @@ The `Store` interface is just `get(hash) → bytes` and `put(hash, bytes)`. Impl
 import { MemoryStore, HashTree, toHex } from 'hashtree';
 
 const store = new MemoryStore();
-const tree = new HashTree({ store, chunkSize: 1024 });
+const tree = new HashTree({ store });
 
 // Store a file
 const data = new TextEncoder().encode('Hello, World!');

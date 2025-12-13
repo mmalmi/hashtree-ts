@@ -83,6 +83,9 @@ export {
   type DirEntry,
 } from './hashtree.js';
 
+// Stream options for readFileStream
+export type { StreamOptions } from './tree/read.js';
+
 // BEP52 chunk size constant
 export { BEP52_CHUNK_SIZE } from './builder.js';
 

@@ -183,13 +183,18 @@ export class HashTree {
   }
 
   /**
-   * Stream a file, optionally starting from an offset
+   * Stream a file
+   * @param id - CID of the file
+   * @param options - { offset?: number, prefetch?: number }
    */
-  async *readFileStream(id: CID, offset: number = 0): AsyncGenerator<Uint8Array> {
+  async *readFileStream(
+    id: CID,
+    options: { offset?: number; prefetch?: number } = {}
+  ): AsyncGenerator<Uint8Array> {
     if (id.key) {
-      yield* readFileEncryptedStream(this.store, id.hash, id.key, offset);
+      yield* readFileEncryptedStream(this.store, id.hash, id.key, options);
     } else {
-      yield* read.readFileStream(this.store, id.hash, offset);
+      yield* read.readFileStream(this.store, id.hash, options);
     }
   }
 

@@ -4,7 +4,7 @@ import { mount } from 'svelte';
 import type { uploadSingleFile as UploadSingleFileType } from './actions/index';
 import type * as HashTreeModule from 'hashtree';
 import type { followPubkey as FollowPubkeyType } from './stores/follows';
-import type { webrtcStore as WebRTCStoreType, idbStore as IdbStoreType } from './store';
+import type { webrtcStore as WebRTCStoreType, localStore as LocalStoreType } from './store';
 import type { getSocialGraph as GetSocialGraphType } from './utils/socialGraph';
 import type { settingsStore as SettingsStoreType, PoolSettings } from './stores/settings';
 
@@ -17,7 +17,7 @@ declare global {
     };
     __hashtree?: typeof HashTreeModule;
     webrtcStore?: typeof WebRTCStoreType;
-    __idbStore?: typeof IdbStoreType;
+    __localStore?: typeof LocalStoreType;
     __getSocialGraph?: typeof GetSocialGraphType;
     __settingsStore?: typeof SettingsStoreType;
     __getWebRTCStore?: () => unknown;
@@ -46,13 +46,13 @@ if (typeof window !== 'undefined') {
   });
 
   // Expose webrtcStore for e2e tests
-  import('./store').then(({ webrtcStore, idbStore, getWebRTCStore }) => {
+  import('./store').then(({ webrtcStore, localStore, getWebRTCStore }) => {
     // Use getter to always get current value
     Object.defineProperty(window, 'webrtcStore', {
       get: () => webrtcStore,
       configurable: true,
     });
-    window.__idbStore = idbStore;
+    window.__localStore = localStore;
     window.__getWebRTCStore = getWebRTCStore;
   });
 

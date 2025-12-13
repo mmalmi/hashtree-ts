@@ -257,19 +257,28 @@ async function assembleEncryptedChunks(
   return result;
 }
 
+export interface StreamOptions {
+  /** Byte offset to start streaming from (default: 0) */
+  offset?: number;
+  /** Number of chunks to prefetch ahead (default: 1 = no prefetch) */
+  prefetch?: number;
+}
+
 /**
- * Stream an encrypted file, optionally starting from an offset
+ * Stream an encrypted file
  * @param store - Storage backend
  * @param hash - Root hash of encrypted file
  * @param key - CHK decryption key (content hash)
- * @param offset - Byte offset to start streaming from
+ * @param options - Streaming options
  */
 export async function* readFileEncryptedStream(
   store: Store,
   hash: Hash,
   key: EncryptionKey,
-  offset: number = 0
+  options: StreamOptions = {}
 ): AsyncGenerator<Uint8Array> {
+  const { offset = 0, prefetch = 1 } = options;
+
   const encryptedData = await store.get(hash);
   if (!encryptedData) return;
 
@@ -278,7 +287,7 @@ export async function* readFileEncryptedStream(
 
   const node = tryDecodeTreeNode(decrypted);
   if (node) {
-    yield* streamEncryptedChunksWithOffset(store, node, offset);
+    yield* streamEncryptedChunksWithOffset(store, node, offset, prefetch);
   } else {
     // Single blob (small file)
     if (offset >= decrypted.length) return;
@@ -287,46 +296,95 @@ export async function* readFileEncryptedStream(
 }
 
 /**
- * Stream encrypted chunks starting from an offset
+ * Stream encrypted chunks starting from an offset with prefetching
  */
 async function* streamEncryptedChunksWithOffset(
   store: Store,
   node: TreeNode,
-  offset: number
+  offset: number,
+  prefetch: number = 1
 ): AsyncGenerator<Uint8Array> {
   let position = 0;
 
-  for (const link of node.links) {
+  // Find first link index that we need (skip those before offset)
+  let startIdx = 0;
+  for (let i = 0; i < node.links.length; i++) {
+    const linkSize = node.links[i].size ?? 0;
+    if (linkSize > 0 && position + linkSize <= offset) {
+      position += linkSize;
+      startIdx = i + 1;
+    } else {
+      break;
+    }
+  }
+
+  // Build list of links to process
+  const linksToProcess = node.links.slice(startIdx);
+  if (linksToProcess.length === 0) return;
+
+  // Prefetch queue: array of { promise, link, position }
+  type PrefetchEntry = {
+    promise: Promise<Uint8Array | null>;
+    link: typeof node.links[0];
+    position: number;
+  };
+  const prefetchQueue: PrefetchEntry[] = [];
+
+  // Start initial prefetch
+  let prefetchPosition = position;
+  for (let i = 0; i < Math.min(prefetch, linksToProcess.length); i++) {
+    const link = linksToProcess[i];
+    prefetchQueue.push({
+      promise: store.get(link.hash),
+      link,
+      position: prefetchPosition,
+    });
+    prefetchPosition += link.size ?? 0;
+  }
+
+  // Process links
+  let nextPrefetchIdx = prefetch;
+  for (const link of linksToProcess) {
     const chunkKey = link.key;
     if (!chunkKey) {
       throw new Error(`Missing decryption key for chunk: ${toHex(link.hash)}`);
     }
 
-    const linkSize = link.size ?? 0;
-
-    // Skip chunks entirely before offset
-    if (linkSize > 0 && position + linkSize <= offset) {
-      position += linkSize;
-      continue;
+    // Get data from prefetch queue (should be first item)
+    const entry = prefetchQueue.shift();
+    if (!entry) {
+      throw new Error('Prefetch queue empty unexpectedly');
     }
 
-    const encryptedChild = await store.get(link.hash);
+    const encryptedChild = await entry.promise;
     if (!encryptedChild) {
       throw new Error(`Missing chunk: ${toHex(link.hash)}`);
+    }
+
+    // Start prefetching next chunk
+    if (nextPrefetchIdx < linksToProcess.length) {
+      const nextLink = linksToProcess[nextPrefetchIdx];
+      prefetchQueue.push({
+        promise: store.get(nextLink.hash),
+        link: nextLink,
+        position: prefetchPosition,
+      });
+      prefetchPosition += nextLink.size ?? 0;
+      nextPrefetchIdx++;
     }
 
     const decrypted = await decryptChk(encryptedChild, chunkKey);
 
     if (link.type !== LinkType.Blob) {
-      // Intermediate tree node - decode and recurse
+      // Intermediate tree node - decode and recurse with prefetch
       const childNode = decodeTreeNode(decrypted);
-      const childOffset = Math.max(0, offset - position);
-      yield* streamEncryptedChunksWithOffset(store, childNode, childOffset);
-      position += linkSize;
+      const childOffset = Math.max(0, offset - entry.position);
+      yield* streamEncryptedChunksWithOffset(store, childNode, childOffset, prefetch);
+      position = entry.position + (link.size ?? 0);
     } else {
       // Leaf chunk - raw blob
-      const chunkStart = position;
-      const chunkEnd = position + decrypted.length;
+      const chunkStart = entry.position;
+      const chunkEnd = entry.position + decrypted.length;
       position = chunkEnd;
 
       if (chunkEnd <= offset) {

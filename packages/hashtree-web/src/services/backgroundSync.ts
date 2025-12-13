@@ -19,7 +19,7 @@ import { createFollowsStore, type Follows } from '../stores/follows';
 import { settingsStore, type SyncSettings, DEFAULT_SYNC_SETTINGS } from '../stores/settings';
 import { accountsStore } from '../accounts';
 import { nostrStore, pubkeyToNpub } from '../nostr';
-import { idbStore, getTree } from '../store';
+import { localStore, getTree } from '../store';
 import {
   updateTreeSyncState,
   getTreeSyncState,
@@ -312,7 +312,7 @@ export class BackgroundSyncService {
     const settings = this.getSyncSettings();
     if (!settings.enabled) return;
 
-    const totalBytes = await idbStore.totalBytes();
+    const totalBytes = await localStore.totalBytes();
     if (totalBytes <= settings.storageCap) {
       // Under quota, nothing to do
       return;
@@ -345,7 +345,7 @@ export class BackgroundSyncService {
         // Delete chunks from IndexedDB
         for (const hashHex of chunksToEvict) {
           try {
-            await idbStore.delete(fromHex(hashHex));
+            await localStore.delete(fromHex(hashHex));
           } catch (error) {
             console.error(`[backgroundSync] Failed to delete chunk ${hashHex}:`, error);
           }

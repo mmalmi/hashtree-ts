@@ -245,7 +245,7 @@
         const tree = getTree();
         const chunks: Uint8Array[] = [];
 
-        for await (const chunk of tree.readFileStream(entry.cid)) {
+        for await (const chunk of tree.readFileStream(entry.cid, { prefetch: 5 })) {
           if (cancelled) break;
           chunks.push(chunk);
           bytesLoaded += chunk.length;
@@ -568,7 +568,7 @@
         const writable = await handle.createWritable();
 
         // Stream from hashtree directly to file
-        for await (const chunk of tree.readFileStream(entryFromStore.cid)) {
+        for await (const chunk of tree.readFileStream(entryFromStore.cid, { prefetch: 5 })) {
           await writable.write(chunk);
         }
         await writable.close();
