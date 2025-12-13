@@ -283,4 +283,11 @@ export interface RefResolver {
    * @param entry The entry to inject with full visibility info
    */
   injectListEntry?(entry: RefResolverListEntry): void;
+
+  /**
+   * Delete a tree (publish event without hash to nullify)
+   * @param key The key to delete (e.g., "npub1.../treename")
+   * @returns true if deleted successfully
+   */
+  delete?(key: string): Promise<boolean>;
 }

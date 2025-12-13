@@ -8,7 +8,7 @@
   import { openCreateModal, openRenameModal, openForkModal, openShareModal, openBlossomPushModal } from '../stores/modals';
   import { uploadFiles, uploadDirectory } from '../stores/upload';
   import { deleteCurrentFolder, buildRouteUrl } from '../actions';
-  import { nostrStore, autosaveIfOwn } from '../nostr';
+  import { nostrStore, autosaveIfOwn, deleteTree } from '../nostr';
   import { getTree } from '../store';
   import { createZipFromDirectory, downloadBlob } from '../utils/compression';
   import { setUploadProgress } from '../stores/upload';
@@ -334,19 +334,27 @@
           <span class="i-lucide-pencil"></span>
           Rename
         </button>
-        <button
-          onclick={() => {
+      {/if}
+
+      <button
+        onclick={async () => {
+          if (isSubdir && currentDirName) {
             if (confirm(`Delete folder "${currentDirName}" and all its contents?`)) {
               deleteCurrentFolder();
             }
-          }}
-          class="btn-ghost text-danger {btnClass}"
-          title="Delete"
-        >
-          <span class="i-lucide-trash-2"></span>
-          Delete
-        </button>
-      {/if}
+          } else if (route.treeName) {
+            if (confirm(`Delete "${route.treeName}"? This will remove it from your tree list.`)) {
+              await deleteTree(route.treeName);
+              window.location.hash = '/';
+            }
+          }
+        }}
+        class="btn-ghost text-danger {btnClass}"
+        title="Delete"
+      >
+        <span class="i-lucide-trash-2"></span>
+        Delete
+      </button>
     {/if}
 
     <!-- Secondary actions: ZIP, Fork -->

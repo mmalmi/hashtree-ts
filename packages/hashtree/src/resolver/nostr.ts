@@ -459,6 +459,8 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
       const emitCurrentState = () => {
         const result: RefResolverListEntry[] = [];
         for (const [dTag, entry] of entriesByDTag) {
+          // Skip entries with empty/null hash (deleted trees)
+          if (!entry.hash) continue;
           result.push({
             key: `${npubStr}/${dTag}`,
             cid: cid(fromHex(entry.hash), entry.key ? fromHex(entry.key) : undefined),
@@ -529,6 +531,94 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
       }
       subscriptions.clear();
       listSubscriptions.clear();
+    },
+
+    /**
+     * Delete a tree by publishing event without hash tag
+     * This nullifies the tree - it will be filtered from list results
+     */
+    async delete(key: string): Promise<boolean> {
+      const parsed = parseKey(key);
+      if (!parsed) return false;
+
+      const { treeName } = parsed;
+      const pubkey = getPubkey();
+
+      if (!pubkey) return false;
+
+      const now = Math.floor(Date.now() / 1000);
+      const npubStr = key.split('/')[0];
+
+      // 1. Update local caches - set hash to empty string to mark as deleted
+
+      // Update local list cache
+      let npubCache = localListCache.get(npubStr);
+      if (!npubCache) {
+        npubCache = new Map();
+        localListCache.set(npubStr, npubCache);
+      }
+      npubCache.set(treeName, {
+        hash: '', // Empty hash marks as deleted
+        visibility: 'public',
+        key: undefined,
+        created_at: now,
+      });
+
+      // Update active subscription state
+      const sub = subscriptions.get(key);
+      if (sub) {
+        sub.currentHash = null;
+        sub.currentKey = null;
+        sub.latestCreatedAt = now;
+        sub.currentVisibility = null;
+        // Notify callbacks with null CID
+        for (const cb of sub.callbacks) {
+          try {
+            cb(null);
+          } catch (e) {
+            console.error('Resolver callback error:', e);
+          }
+        }
+      }
+
+      // Update active list subscriptions - set hash to empty and emit
+      const listSub = listSubscriptions.get(npubStr);
+      if (listSub) {
+        listSub.entriesByDTag.set(treeName, {
+          hash: '', // Empty hash marks as deleted
+          visibility: 'public',
+          key: undefined,
+          created_at: now,
+        });
+        // Emit - the emitCurrentState filters out empty hashes
+        const result: RefResolverListEntry[] = [];
+        for (const [dTag, entry] of listSub.entriesByDTag) {
+          if (!entry.hash) continue; // Skip deleted
+          result.push({
+            key: `${npubStr}/${dTag}`,
+            cid: cid(fromHex(entry.hash), entry.key ? fromHex(entry.key) : undefined),
+            visibility: entry.visibility,
+            encryptedKey: entry.encryptedKey,
+            keyId: entry.keyId,
+            selfEncryptedKey: entry.selfEncryptedKey,
+            createdAt: entry.created_at,
+          });
+        }
+        listSub.callback(result);
+      }
+
+      // 2. Publish to Nostr - event without hash tag
+      nostrPublish({
+        kind: 30078,
+        content: '',
+        tags: [
+          ['d', treeName],
+          ['l', 'hashtree'],
+          // No hash tag = deleted
+        ],
+      }).catch(e => console.error('Failed to publish delete to nostr:', e));
+
+      return true;
     },
 
     /**

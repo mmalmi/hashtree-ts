@@ -832,3 +832,18 @@ export async function publishTreeRoot(treeName: string, rootHash: string, rootKe
 
   return result.success;
 }
+
+/**
+ * Delete a tree (publishes event without hash to nullify)
+ * Tree will disappear from listings but can be re-created with same name
+ */
+export async function deleteTree(treeName: string): Promise<boolean> {
+  const state = nostrStore.getState();
+  if (!state.npub) return false;
+
+  const { getRefResolver } = await import('./refResolver');
+  const resolver = getRefResolver();
+
+  const key = `${state.npub}/${treeName}`;
+  return resolver.delete?.(key) ?? false;
+}
