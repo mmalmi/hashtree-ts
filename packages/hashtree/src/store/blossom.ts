@@ -76,6 +76,7 @@ export class BlossomStore implements StoreWithMeta {
   private signer?: BlossomSigner;
   private logger?: BlossomLogger;
   private serverHealth: Map<string, ServerHealth> = new Map();
+  private writeQueue: Promise<boolean> = Promise.resolve(true);
 
   constructor(config: BlossomStoreConfig) {
     this.servers = config.servers.map(s =>
@@ -146,6 +147,16 @@ export class BlossomStore implements StoreWithMeta {
   }
 
   async put(hash: Hash, data: Uint8Array, contentType?: string): Promise<boolean> {
+    // Queue writes sequentially to avoid overwhelming servers
+    const result = this.writeQueue.then(
+      () => this.doPut(hash, data, contentType),
+      () => this.doPut(hash, data, contentType) // Continue even if previous failed
+    );
+    this.writeQueue = result.then(() => true, () => true); // Keep queue going
+    return result;
+  }
+
+  private async doPut(hash: Hash, data: Uint8Array, contentType?: string): Promise<boolean> {
     // Verify hash matches data
     const computed = await sha256(data);
     if (toHex(computed) !== toHex(hash)) {
