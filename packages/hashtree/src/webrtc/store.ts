@@ -676,6 +676,10 @@ export class WebRTCStore implements Store {
       responsesReceived: 0,
       receiveErrors: 0,
       blossomFetches: this.blossomFetches,
+      fragmentsSent: 0,
+      fragmentsReceived: 0,
+      fragmentTimeouts: 0,
+      reassembliesCompleted: 0,
     };
 
     const perPeer = new Map<string, {
@@ -691,6 +695,10 @@ export class WebRTCStore implements Store {
       aggregate.responsesSent += peerStats.responsesSent;
       aggregate.responsesReceived += peerStats.responsesReceived;
       aggregate.receiveErrors += peerStats.receiveErrors;
+      aggregate.fragmentsSent += peerStats.fragmentsSent;
+      aggregate.fragmentsReceived += peerStats.fragmentsReceived;
+      aggregate.fragmentTimeouts += peerStats.fragmentTimeouts;
+      aggregate.reassembliesCompleted += peerStats.reassembliesCompleted;
       perPeer.set(peerIdStr, {
         pubkey: peer.pubkey,
         pool,

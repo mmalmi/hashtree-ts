@@ -143,6 +143,25 @@ export function createResponse(hash: Uint8Array, data: Uint8Array): DataResponse
 }
 
 /**
+ * Create a fragmented response body
+ */
+export function createFragmentResponse(
+  hash: Uint8Array,
+  data: Uint8Array,
+  index: number,
+  total: number
+): DataResponse {
+  return { h: hash, d: data, i: index, n: total };
+}
+
+/**
+ * Check if a response is fragmented
+ */
+export function isFragmented(res: DataResponse): boolean {
+  return res.i !== undefined && res.n !== undefined;
+}
+
+/**
  * Convert hash to hex string for use as map key
  */
 export function hashToKey(hash: Uint8Array): string {

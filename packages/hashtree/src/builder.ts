@@ -11,9 +11,9 @@ import { sha256 } from './hash.js';
 import { encodeAndHash } from './codec.js';
 
 /**
- * Default chunk size: 256KB
+ * Default chunk size: 2MB (optimized for blossom uploads)
  */
-export const DEFAULT_CHUNK_SIZE = 256 * 1024;
+export const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024;
 
 /**
  * BEP52 chunk size: 16KB

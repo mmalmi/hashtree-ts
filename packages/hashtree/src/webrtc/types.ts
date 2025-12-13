@@ -46,6 +46,13 @@ export const MAX_HTL = 10;
 export const DECREMENT_AT_MAX_PROB = 0.5;  // 50% chance to decrement at max
 export const DECREMENT_AT_MIN_PROB = 0.25; // 25% chance to decrement at 1
 
+// Fragment constants for WebRTC transport
+export const FRAGMENT_SIZE = 32 * 1024;           // 32KB per WebRTC message (safe limit)
+export const FRAGMENT_STALL_TIMEOUT = 3_000;      // 3s without fragment = stall (fast detection)
+export const FRAGMENT_TOTAL_TIMEOUT = 120_000;    // 2min max for full chunk reassembly
+export const MAX_PENDING_REASSEMBLIES = 20;       // Memory cap: max concurrent reassemblies
+export const MAX_PENDING_BYTES = 64 * 1024 * 1024; // 64MB memory cap for reassembly buffers
+
 // Message type bytes (prefix before MessagePack body)
 export const MSG_TYPE_REQUEST = 0x00;
 export const MSG_TYPE_RESPONSE = 0x01;
@@ -53,7 +60,8 @@ export const MSG_TYPE_RESPONSE = 0x01;
 // Data channel protocol messages
 // Wire format: [type byte][msgpack body]
 // Request:  [0x00][msgpack: {h: bytes32, htl?: u8}]
-// Response: [0x01][msgpack: {h: bytes32, d: bytes}]
+// Response: [0x01][msgpack: {h: bytes32, d: bytes, i?: u32, n?: u32}]
+// Fragmented responses include i (index) and n (total), unfragmented omit them
 
 export interface DataRequest {
   h: Uint8Array;   // 32-byte hash
@@ -62,7 +70,9 @@ export interface DataRequest {
 
 export interface DataResponse {
   h: Uint8Array;   // 32-byte hash
-  d: Uint8Array;   // Data
+  d: Uint8Array;   // Data (fragment or full)
+  i?: number;      // Fragment index (0-based), absent = unfragmented
+  n?: number;      // Total fragments, absent = unfragmented
 }
 
 export type DataMessage =
@@ -147,6 +157,20 @@ export interface WebRTCStats {
   responsesReceived: number;      // Responses we received from peers
   receiveErrors: number;          // Errors handling incoming messages (parse, hash mismatch, etc)
   blossomFetches: number;         // Successful fetches from blossom fallback stores
+  fragmentsSent: number;          // Fragment messages sent
+  fragmentsReceived: number;      // Fragment messages received
+  fragmentTimeouts: number;       // Reassemblies that timed out (stall or total)
+  reassembliesCompleted: number;  // Successful reassemblies
+}
+
+// Fragment reassembly tracking
+export interface PendingReassembly {
+  hash: Uint8Array;
+  fragments: Map<number, Uint8Array>;  // index → data
+  totalExpected: number;
+  receivedBytes: number;
+  firstFragmentAt: number;
+  lastFragmentAt: number;
 }
 
 export function generateUuid(): string {

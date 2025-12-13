@@ -5,9 +5,19 @@ import type { Store, Hash } from '../types.js';
 import type {
   SignalingMessage,
   DataRequest,
+  DataResponse,
   PeerId,
+  PendingReassembly,
 } from './types.js';
-import { MAX_HTL, MSG_TYPE_REQUEST, MSG_TYPE_RESPONSE } from './types.js';
+import {
+  MAX_HTL,
+  MSG_TYPE_REQUEST,
+  MSG_TYPE_RESPONSE,
+  FRAGMENT_SIZE,
+  FRAGMENT_STALL_TIMEOUT,
+  FRAGMENT_TOTAL_TIMEOUT,
+  MAX_PENDING_REASSEMBLIES,
+} from './types.js';
 import { LRUCache } from './lruCache.js';
 import {
   PendingRequest,
@@ -17,12 +27,15 @@ import {
   parseMessage,
   createRequest,
   createResponse,
+  createFragmentResponse,
+  isFragmented,
   handleResponse,
   clearPendingRequests,
   generatePeerHTLConfig,
   decrementHTL,
   shouldForward,
   hashToKey,
+  verifyHash,
 } from './protocol.js';
 
 const ICE_SERVERS = [
@@ -79,7 +92,15 @@ export class Peer {
     responsesSent: 0,
     responsesReceived: 0,
     receiveErrors: 0,
+    fragmentsSent: 0,
+    fragmentsReceived: 0,
+    fragmentTimeouts: 0,
+    reassembliesCompleted: 0,
   };
+
+  // Fragment reassembly tracking
+  private pendingReassemblies = new Map<string, PendingReassembly>();
+  private reassemblyCleanupInterval?: ReturnType<typeof setInterval>;
 
   // Per-peer HTL decrement config (Freenet-style probabilistic)
   private htlConfig: PeerHTLConfig;
@@ -111,6 +132,12 @@ export class Peer {
     this.createdAt = Date.now();
     // Generate random HTL config for this peer (Freenet-style)
     this.htlConfig = generatePeerHTLConfig();
+
+    // Start fragment reassembly cleanup interval
+    this.reassemblyCleanupInterval = setInterval(
+      () => this.cleanupStaleReassemblies(),
+      5000
+    );
 
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     this.setupPeerConnection();
@@ -217,19 +244,43 @@ export class Peer {
       if (msg.type === MSG_TYPE_REQUEST) {
         await this.handleRequest(msg.body);
       } else if (msg.type === MSG_TYPE_RESPONSE) {
-        // Track that we received a response (before verification)
-        const hashKey = hashToKey(msg.body.h);
-        const hadPending = this.ourRequests.has(hashKey);
+        const res = msg.body as DataResponse;
 
-        const verified = await handleResponse(msg.body, this.ourRequests);
+        // Handle fragmented vs unfragmented responses
+        let finalData: Uint8Array;
+        let hash: Uint8Array;
 
-        // If we had a pending request and now it's resolved, count it
-        if (hadPending && !this.ourRequests.has(hashKey)) {
-          if (verified) {
-            this.stats.responsesReceived++;
-          } else {
-            this.stats.receiveErrors++;
+        if (isFragmented(res)) {
+          // Fragmented response - reassemble
+          const assembled = this.handleFragmentResponse(res);
+          if (!assembled) {
+            return; // Incomplete, wait for more fragments
           }
+          finalData = assembled;
+          hash = res.h;
+        } else {
+          // Unfragmented response - use directly
+          finalData = res.d;
+          hash = res.h;
+        }
+
+        // Now handle the complete response (verify hash and resolve pending request)
+        const hashKey = hashToKey(hash);
+        const pending = this.ourRequests.get(hashKey);
+        if (!pending) {
+          return; // No pending request for this hash
+        }
+
+        clearTimeout(pending.timeout);
+        this.ourRequests.delete(hashKey);
+
+        const isValid = await verifyHash(finalData, hash);
+        if (isValid) {
+          pending.resolve(finalData);
+          this.stats.responsesReceived++;
+        } else {
+          pending.resolve(null);
+          this.stats.receiveErrors++;
         }
       }
     } catch (err) {
@@ -285,8 +336,107 @@ export class Peer {
 
   private sendResponse(hash: Uint8Array, data: Uint8Array): void {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
-    const res = createResponse(hash, data);
-    this.dataChannel.send(encodeResponse(res));
+
+    if (data.length <= FRAGMENT_SIZE) {
+      // Small enough - send unfragmented (backward compatible)
+      const res = createResponse(hash, data);
+      this.dataChannel.send(encodeResponse(res));
+    } else {
+      // Fragment large responses
+      const totalFragments = Math.ceil(data.length / FRAGMENT_SIZE);
+      for (let i = 0; i < totalFragments; i++) {
+        const start = i * FRAGMENT_SIZE;
+        const end = Math.min(start + FRAGMENT_SIZE, data.length);
+        const fragment = data.slice(start, end);
+
+        const res = createFragmentResponse(hash, fragment, i, totalFragments);
+        this.dataChannel.send(encodeResponse(res));
+        this.stats.fragmentsSent++;
+      }
+    }
+  }
+
+  /**
+   * Handle a fragmented response - buffer and reassemble
+   * Returns assembled data when complete, null when waiting for more fragments
+   */
+  private handleFragmentResponse(res: DataResponse): Uint8Array | null {
+    const hashKey = hashToKey(res.h);
+    const now = Date.now();
+
+    this.stats.fragmentsReceived++;
+
+    let pending = this.pendingReassemblies.get(hashKey);
+    if (!pending) {
+      pending = {
+        hash: res.h,
+        fragments: new Map(),
+        totalExpected: res.n!,
+        receivedBytes: 0,
+        firstFragmentAt: now,
+        lastFragmentAt: now,
+      };
+      this.pendingReassemblies.set(hashKey, pending);
+    }
+
+    // Store fragment if not duplicate
+    if (!pending.fragments.has(res.i!)) {
+      pending.fragments.set(res.i!, res.d);
+      pending.receivedBytes += res.d.length;
+      pending.lastFragmentAt = now;
+    }
+
+    // Check if complete
+    if (pending.fragments.size === pending.totalExpected) {
+      this.pendingReassemblies.delete(hashKey);
+      this.stats.reassembliesCompleted++;
+      return this.assembleFragments(pending);
+    }
+
+    return null; // Not yet complete
+  }
+
+  /**
+   * Assemble fragments in order into a single buffer
+   */
+  private assembleFragments(pending: PendingReassembly): Uint8Array {
+    const result = new Uint8Array(pending.receivedBytes);
+    let offset = 0;
+    for (let i = 0; i < pending.totalExpected; i++) {
+      const fragment = pending.fragments.get(i)!;
+      result.set(fragment, offset);
+      offset += fragment.length;
+    }
+    return result;
+  }
+
+  /**
+   * Clean up stale reassemblies (stalled or timed out)
+   */
+  private cleanupStaleReassemblies(): void {
+    const now = Date.now();
+    for (const [key, pending] of this.pendingReassemblies) {
+      const stallTime = now - pending.lastFragmentAt;
+      const totalTime = now - pending.firstFragmentAt;
+
+      if (stallTime > FRAGMENT_STALL_TIMEOUT || totalTime > FRAGMENT_TOTAL_TIMEOUT) {
+        this.pendingReassemblies.delete(key);
+        this.stats.fragmentTimeouts++;
+        this.log('Fragment reassembly timed out:', key.slice(0, 16),
+          `stall=${stallTime}ms, total=${totalTime}ms, fragments=${pending.fragments.size}/${pending.totalExpected}`);
+      }
+    }
+
+    // Memory cap enforcement - evict oldest if over limit
+    if (this.pendingReassemblies.size > MAX_PENDING_REASSEMBLIES) {
+      const oldest = [...this.pendingReassemblies.entries()]
+        .sort((a, b) => a[1].firstFragmentAt - b[1].firstFragmentAt)[0];
+      if (oldest) {
+        this.pendingReassemblies.delete(oldest[0]);
+        this.stats.fragmentTimeouts++;
+        this.log('Fragment reassembly evicted (memory cap):', oldest[0].slice(0, 16));
+      }
+    }
   }
 
   /**
@@ -340,6 +490,10 @@ export class Peer {
     responsesSent: number;
     responsesReceived: number;
     receiveErrors: number;
+    fragmentsSent: number;
+    fragmentsReceived: number;
+    fragmentTimeouts: number;
+    reassembliesCompleted: number;
   } {
     return { ...this.stats };
   }
@@ -462,6 +616,13 @@ export class Peer {
       clearTimeout(this.candidateBatchTimeout);
       this.candidateBatchTimeout = null;
     }
+
+    // Clean up fragment reassembly
+    if (this.reassemblyCleanupInterval) {
+      clearInterval(this.reassemblyCleanupInterval);
+      this.reassemblyCleanupInterval = undefined;
+    }
+    this.pendingReassemblies.clear();
 
     clearPendingRequests(this.ourRequests);
 

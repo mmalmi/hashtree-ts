@@ -27,8 +27,8 @@ import {
 } from './encrypted.js';
 import * as editEncrypted from './tree/editEncrypted.js';
 
-/** Default chunk size: 16KB (BitTorrent v2 compatible) */
-export const DEFAULT_CHUNK_SIZE = 16 * 1024;
+/** Default chunk size: 2MB (optimized for blossom uploads) */
+export const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024;
 
 /** Default max links per tree node (fanout) */
 export const DEFAULT_MAX_LINKS = 174;
