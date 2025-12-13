@@ -51,6 +51,25 @@ const dirCid = await tree.putDirectory([
 const entries = await tree.listDirectory(dirCid.hash);
 ```
 
+## Encryption (CHK)
+
+All data is encrypted by default using **Content Hash Key (CHK)** encryption:
+
+- Data is encrypted with AES-256-GCM using a key derived from the content hash
+- The encryption key is stored alongside the hash in the CID (`cid.key`)
+- Share the hash alone for public data, or hash+key for private data
+- Deduplication still works: identical content produces identical hashes
+
+```typescript
+// Encrypted by default
+const { cid } = await tree.putFile(data);
+console.log('Hash:', toHex(cid.hash));
+console.log('Key:', toHex(cid.key));  // Share this for decryption
+
+// Reading requires the key
+const content = await tree.readFile(cid);  // cid includes key
+```
+
 ## Tree Nodes
 
 Every stored item is either raw bytes or a tree node. Tree nodes are MessagePack-encoded with a `type` field:
