@@ -198,6 +198,27 @@ export class BlossomStore implements StoreWithMeta {
             this.recordError(server.url);
             throw new Error(`${server.url}: ${error}`);
           }
+
+          // Verify blossom received the correct data by checking returned hash
+          if (response.status !== 409) {
+            try {
+              const result = await response.json();
+              if (result.sha256 && result.sha256 !== hashHex) {
+                const error = `Hash mismatch: sent ${hashHex}, server got ${result.sha256}`;
+                this.log({ operation: 'put', server: server.url, hash: hashHex, success: false, error });
+                this.recordError(server.url);
+                throw new Error(`${server.url}: ${error}`);
+              }
+            } catch (e) {
+              // JSON parse error is fine - some servers may not return JSON
+              if (e instanceof SyntaxError) {
+                // Ignore JSON parse errors
+              } else {
+                throw e;
+              }
+            }
+          }
+
           this.log({ operation: 'put', server: server.url, hash: hashHex, success: true, bytes: data.length });
           this.recordSuccess(server.url);
           return response.status !== 409; // true if new, false if already existed
