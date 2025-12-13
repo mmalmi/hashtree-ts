@@ -256,7 +256,7 @@ export class BlossomStore implements StoreWithMeta {
       }
 
       try {
-        const response = await fetch(`${server.url}/${hashHex}`);
+        const response = await fetch(`${server.url}/${hashHex}.bin`);
         if (response.ok) {
           const data = new Uint8Array(await response.arrayBuffer());
           // Verify hash
@@ -296,7 +296,7 @@ export class BlossomStore implements StoreWithMeta {
       }
 
       try {
-        const response = await fetch(`${server.url}/${hashHex}`, {
+        const response = await fetch(`${server.url}/${hashHex}.bin`, {
           method: 'HEAD',
         });
         if (response.ok) {
@@ -328,7 +328,7 @@ export class BlossomStore implements StoreWithMeta {
     const authHeader = await this.createAuthHeader('delete', hash);
     const hashHex = toHex(hash);
 
-    const response = await fetch(`${writeServer.url}/${hashHex}`, {
+    const response = await fetch(`${writeServer.url}/${hashHex}.bin`, {
       method: 'DELETE',
       headers: {
         'Authorization': authHeader,

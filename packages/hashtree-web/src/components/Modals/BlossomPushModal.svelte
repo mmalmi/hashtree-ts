@@ -231,12 +231,12 @@
           <div class="space-y-4">
             <div class="flex items-center gap-2">
               <span class="i-lucide-loader-2 animate-spin text-accent"></span>
-              <span class="text-sm">Pushing files...</span>
+              <span class="text-sm">Pushing chunks...</span>
             </div>
 
             <div class="bg-surface-2 rounded p-3">
               <div class="text-xs text-text-3 mb-1">
-                {progress.current} / {progress.total} files
+                {progress.current} / {progress.total} chunks
               </div>
               <div class="h-2 bg-surface-3 rounded-full overflow-hidden">
                 <div
