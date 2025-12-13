@@ -101,6 +101,8 @@ await store.start();
 const data = await store.get(hash);  // Fetches from peers
 ```
 
+Falls back to Blossom servers when data isn't found on peers or WebRTC isn't available.
+
 **Data channel protocol**: Just 2 message types, MessagePack-encoded with a type prefix byte:
 
 | Type | Byte | Format | Description |
