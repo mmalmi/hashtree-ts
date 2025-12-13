@@ -16,7 +16,7 @@ const KIND_CONTACTS = 3;
 const DEFAULT_CRAWL_DEPTH = 2; // Crawl follows of follows
 
 // Debug logging
-const DEBUG = true;
+const DEBUG = false;
 const log = (...args: unknown[]) => DEBUG && console.log('[socialGraph]', ...args);
 
 // Dexie database for social graph persistence
@@ -100,6 +100,22 @@ async function loadFromDexie(publicKey: string): Promise<SocialGraph | null> {
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 const SAVE_THROTTLE_MS = 15000;
 
+// Debounced recalculation - avoid recalculating on every event
+let recalcTimeout: ReturnType<typeof setTimeout> | null = null;
+const RECALC_DEBOUNCE_MS = 5000;
+
+function scheduleRecalc() {
+  if (recalcTimeout) clearTimeout(recalcTimeout);
+  recalcTimeout = setTimeout(async () => {
+    recalcTimeout = null;
+    if (!isInitialized || !instance) return;
+    log('recalculateFollowDistances: start');
+    await instance.recalculateFollowDistances();
+    log('recalculateFollowDistances: done');
+    notifyGraphChange();
+  }, RECALC_DEBOUNCE_MS);
+}
+
 function scheduleSave() {
   if (saveTimeout) return;
   saveTimeout = setTimeout(async () => {
@@ -170,10 +186,8 @@ export function handleSocialGraphEvent(evs: NostrEvent | NostrEvent[]) {
   const hasFollowListUpdate = events.some((e) => e.kind === KIND_CONTACTS);
 
   if (hasFollowListUpdate) {
-    // Recalculate follow distances so getFollowersByUser works correctly
-    instance.recalculateFollowDistances().then(() => {
-      notifyGraphChange();
-    });
+    // Debounced recalc - avoids heavy computation on every event
+    scheduleRecalc();
   }
 }
 
@@ -271,6 +285,8 @@ async function fetchFollowListsBatch(pubkeys: string[]): Promise<void> {
   if (pubkeys.length === 0) return;
 
   const batchSize = 100;
+  const batchDelayMs = 500; // Delay between batches to avoid relay overload
+
   for (let i = 0; i < pubkeys.length; i += batchSize) {
     const batch = pubkeys.slice(i, i + batchSize);
     log('fetching batch', i / batchSize + 1, 'of', Math.ceil(pubkeys.length / batchSize));
@@ -288,7 +304,12 @@ async function fetchFollowListsBatch(pubkeys: string[]): Promise<void> {
 
       if (eventsArray.length > 0) {
         instance.handleEvent(eventsArray);
-        notifyGraphChange();
+        // Don't notify on each batch - will recalc once at end
+      }
+
+      // Delay between batches
+      if (i + batchSize < pubkeys.length) {
+        await new Promise(r => setTimeout(r, batchDelayMs));
       }
     } catch (err) {
       console.error('[socialGraph] error fetching batch:', err);
@@ -329,9 +350,8 @@ async function setupSubscription(publicKey: string) {
     latestTime = ev.created_at;
     handleSocialGraphEvent(ev.rawEvent() as NostrEvent);
 
-    // Re-crawl when our follow list updates
+    // Re-crawl when our follow list updates (debounced recalc happens via handleSocialGraphEvent)
     queueMicrotask(() => crawlFollowLists(publicKey, 1));
-    instance.recalculateFollowDistances().then(() => notifyGraphChange());
   });
 }
 
