@@ -96,7 +96,6 @@ export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
   blossomServers: [
     { url: 'https://files.iris.to', read: true, write: false },
     { url: 'https://blossom.iris.to', read: false, write: true },
-    { url: 'https://blossom.nostr.build', read: true, write: true },
   ],
   negentropyEnabled: false,
 };

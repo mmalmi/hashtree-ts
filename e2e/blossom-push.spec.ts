@@ -27,7 +27,7 @@ test.describe('Blossom Push', () => {
 
     // Should show server selection with write-enabled servers from defaults
     await expect(modal.locator('text=Push to Blossom')).toBeVisible();
-    // Should show at least one server checkbox (blossom.iris.to or blossom.nostr.build)
+    // Should show at least one server checkbox (blossom.iris.to)
     await expect(modal.locator('input[type="checkbox"]').first()).toBeVisible();
 
     // Should show the Push button
@@ -53,11 +53,10 @@ test.describe('Blossom Push', () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     // Should show write-enabled servers from default config
-    // blossom.iris.to (write: true) and blossom.nostr.build (write: true)
+    // Only blossom.iris.to has write: true
     await expect(modal.locator('text=blossom.iris.to')).toBeVisible();
-    await expect(modal.locator('text=blossom.nostr.build')).toBeVisible();
 
-    // files.iris.to should NOT appear (it's read-only)
+    // Read-only servers should NOT appear
     await expect(modal.locator('text=files.iris.to')).not.toBeVisible();
 
     // Close modal
