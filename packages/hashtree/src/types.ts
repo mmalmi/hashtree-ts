@@ -100,7 +100,7 @@ export interface PutResult {
 export interface TreeOptions {
   /** Max links per tree node before splitting (default: 256) */
   fanout?: number;
-  /** Max blob size before chunking (default: 256KB) */
+  /** Max blob size before chunking (default: 2MB) */
   chunkSize?: number;
 }
 
