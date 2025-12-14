@@ -21,6 +21,8 @@ export interface RouteInfo {
   linkKey: string | null;
   /** True when in streaming mode (from ?stream=1 param) */
   isStreaming: boolean;
+  /** Git root path when inside a git repo subdirectory (from ?g= param) */
+  gitRoot: string | null;
 }
 
 /**
@@ -40,10 +42,12 @@ export function parseRoute(): RouteInfo {
   // Parse query params
   let linkKey: string | null = null;
   let isStreaming = false;
+  let gitRoot: string | null = null;
   if (queryString) {
     const params = new URLSearchParams(queryString);
     linkKey = params.get('k');
     isStreaming = params.get('stream') === '1';
+    gitRoot = params.get('g');
   }
 
   // nhash route: #/nhash1.../path...
@@ -60,6 +64,7 @@ export function parseRoute(): RouteInfo {
         isPermalink: true,
         linkKey,
         isStreaming,
+        gitRoot,
       };
     } catch {
       // Fall through if decode fails
@@ -68,7 +73,7 @@ export function parseRoute(): RouteInfo {
 
   // Special routes (no tree context)
   if (['settings', 'wallet'].includes(parts[0])) {
-    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
+    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
   }
 
   // User routes
@@ -77,7 +82,7 @@ export function parseRoute(): RouteInfo {
 
     // Special user routes (profile, follows, followers, edit)
     if (['profile', 'follows', 'followers', 'edit'].includes(parts[1])) {
-      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
+      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
     }
 
     // Tree route: #/npub/treeName/path...
@@ -90,13 +95,14 @@ export function parseRoute(): RouteInfo {
         isPermalink: false,
         linkKey,
         isStreaming,
+        gitRoot,
       };
     }
 
     // User view: #/npub
-    return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
+    return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
   }
 
   // Home route
-  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
+  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
 }

@@ -47,8 +47,50 @@
   // This allows us to show tabs immediately without waiting for async git info
   let hasGitDir = $derived(entries.some((e: HashTreeEntry) => e.name === '.git' && e.type === LinkType.Dir));
 
-  // Full git info (branches, etc) - loaded async
-  let gitInfoStore = $derived(createGitInfoStore(currentDirCid));
+  // Check if we're inside a git repo subdirectory (gitRoot propagated via URL)
+  let gitRootFromUrl = $derived(route.gitRoot);
+  let isInGitRepo = $derived(hasGitDir || gitRootFromUrl !== null);
+
+  // Resolve git root CID when we're in a subdirectory
+  // If at git root (hasGitDir), use currentDirCid
+  // If in subdirectory (gitRootFromUrl), resolve the path to get git root CID
+  let gitRootCid = $state<typeof currentDirCid>(null);
+
+  $effect(() => {
+    if (hasGitDir) {
+      // We're at the git root - use current directory CID
+      gitRootCid = currentDirCid;
+    } else if (gitRootFromUrl !== null && rootCid) {
+      // We're in a subdirectory - resolve gitRoot path to get CID
+      const tree = getTree();
+      const pathParts = gitRootFromUrl === '' ? [] : gitRootFromUrl.split('/');
+
+      let cancelled = false;
+      (async () => {
+        try {
+          if (pathParts.length === 0) {
+            // Git root is at tree root
+            if (!cancelled) gitRootCid = rootCid;
+          } else {
+            // Resolve path to get git root CID
+            const result = await tree.resolvePath(rootCid, pathParts.join('/'));
+            if (!cancelled && result) {
+              gitRootCid = result.cid;
+            }
+          }
+        } catch {
+          // Failed to resolve - fall back to null
+          if (!cancelled) gitRootCid = null;
+        }
+      })();
+      return () => { cancelled = true; };
+    } else {
+      gitRootCid = null;
+    }
+  });
+
+  // Full git info (branches, etc) - loaded async using git root CID
+  let gitInfoStore = $derived(createGitInfoStore(gitRootCid));
   let gitInfo = $state<{ isRepo: boolean; currentBranch: string | null; branches: string[]; loading: boolean }>({
     isRepo: false,
     currentBranch: null,
@@ -167,8 +209,8 @@
   });
 </script>
 
-<!-- If this is a git repo (quick check via .git dir), show GitHub-style directory listing -->
-{#if hasGitDir && currentDirCid}
+<!-- If this is a git repo or inside one (via gitRoot URL param), show GitHub-style directory listing -->
+{#if isInGitRepo && currentDirCid}
   <div class="flex flex-col h-full">
     <!-- Header with back button, avatar, visibility, folder name -->
     <ViewerHeader
@@ -183,6 +225,7 @@
     <div class="flex-1 overflow-auto">
       <GitRepoView
         dirCid={currentDirCid}
+        {gitRootCid}
         {entries}
         {canEdit}
         currentBranch={gitInfo.currentBranch}

@@ -28,6 +28,7 @@ export function parseRouteFromHash(hash: string): RouteInfo {
   let path = hashPath;
   let linkKey: string | null = null;
   let isStreaming = false;
+  let gitRoot: string | null = null;
 
   const qIdx = hashPath.indexOf('?');
   if (qIdx !== -1) {
@@ -35,6 +36,7 @@ export function parseRouteFromHash(hash: string): RouteInfo {
     const params = new URLSearchParams(hashPath.slice(qIdx + 1));
     linkKey = params.get('k');
     isStreaming = params.get('stream') === '1';
+    gitRoot = params.get('g');
   }
 
   const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
@@ -51,6 +53,7 @@ export function parseRouteFromHash(hash: string): RouteInfo {
         isPermalink: true,
         linkKey,
         isStreaming,
+        gitRoot,
       };
     } catch {
       // Invalid nhash, fall through
@@ -70,6 +73,7 @@ export function parseRouteFromHash(hash: string): RouteInfo {
         isPermalink: false,
         linkKey,
         isStreaming,
+        gitRoot,
       };
     } catch {
       // Invalid npath, fall through
@@ -78,7 +82,7 @@ export function parseRouteFromHash(hash: string): RouteInfo {
 
   // Special routes (no tree context)
   if (['settings', 'wallet', 'users'].includes(parts[0])) {
-    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
+    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
   }
 
   // User routes
@@ -87,7 +91,7 @@ export function parseRouteFromHash(hash: string): RouteInfo {
 
     // Special user routes (profile, follows, edit)
     if (['profile', 'follows', 'edit'].includes(parts[1])) {
-      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
+      return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
     }
 
     // Tree route: /npub/treeName/path...
@@ -100,15 +104,16 @@ export function parseRouteFromHash(hash: string): RouteInfo {
         isPermalink: false,
         linkKey,
         isStreaming,
+        gitRoot,
       };
     }
 
     // User view: /npub
-    return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
+    return { npub, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
   }
 
   // Home route
-  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false };
+  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, linkKey: null, isStreaming: false, gitRoot: null };
 }
 
 /**

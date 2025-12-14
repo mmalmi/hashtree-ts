@@ -20,6 +20,14 @@
   import { getFileIcon } from '../utils/fileIcon';
   import { BREAKPOINTS } from '../utils/breakpoints';
 
+  // Build query string from params
+  function buildQueryString(params: { k?: string | null; g?: string | null }): string {
+    const parts: string[] = [];
+    if (params.k) parts.push(`k=${params.k}`);
+    if (params.g) parts.push(`g=${encodeURIComponent(params.g)}`);
+    return parts.length > 0 ? '?' + parts.join('&') : '';
+  }
+
   // Build href for an entry
   function buildEntryHref(
     entry: { name: string; type: LinkType },
@@ -27,10 +35,11 @@
     currentTreeName: string | null,
     currentPath: string[],
     rootCidForHref: { hash: Uint8Array; key?: Uint8Array } | null,
-    linkKey: string | null
+    linkKey: string | null,
+    gitRootPath: string | null
   ): string {
     const parts: string[] = [];
-    const suffix = linkKey ? `?k=${linkKey}` : '';
+    const suffix = buildQueryString({ k: linkKey, g: gitRootPath });
 
     if (currentNpub && currentTreeName) {
       parts.push(currentNpub, currentTreeName);
@@ -84,6 +93,9 @@
   let viewedNpub = $derived(currentNpub);
   let isOwnTrees = $derived(!viewedNpub || viewedNpub === userNpub);
   let canEdit = $derived(isOwnTrees || !isLoggedIn);
+
+  // Git root tracking - from URL or detected from .git directory
+  let gitRootFromUrl = $derived(route.gitRoot);
 
   // Check if we have a tree hash but no decryption key (protected tree without access)
   let hasHashButNoKey = $derived(rootCid?.hash && !rootCid?.key);
@@ -150,6 +162,21 @@
   let loadingEntries = $derived(dirEntries.loading);
   let resolvingPath = $derived($resolvingPathStore);
 
+  // Check if current directory has .git folder (making it a git root)
+  let hasGitDir = $derived(entries.some((e: HashTreeEntry) => e.name === '.git' && e.type === LinkType.Dir));
+
+  // Calculate effective git root path to propagate to subdirectories
+  // If current dir has .git, this becomes the git root (use current path)
+  // Otherwise, keep propagating the existing gitRoot from URL
+  let effectiveGitRoot = $derived.by(() => {
+    if (hasGitDir) {
+      // Current directory is a git root - use current path as git root
+      // Empty path means tree root, so use empty string
+      return currentPath.length > 0 ? currentPath.join('/') : '';
+    }
+    // Not a git root - keep existing gitRoot from URL (or null)
+    return gitRootFromUrl;
+  });
   let isDraggingOver = $state(false);
   let fileListRef: HTMLDivElement | undefined = $state();
 
@@ -305,7 +332,7 @@
         const entryIndex = focusedIndex - specialItemCount;
         const entry = entries[entryIndex];
         if (entry) {
-          const href = buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootCid, linkKey);
+          const href = buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootCid, linkKey, effectiveGitRoot);
           window.location.hash = href.slice(1);
           focusedIndex = -1;
         }
@@ -353,7 +380,7 @@
         } else {
           // File on desktop with side-by-side layout: navigate to show in viewer
           focusedIndex = -1;
-          const href = buildEntryHref(newEntry, currentNpub, currentTreeName, currentPath, rootCid, linkKey);
+          const href = buildEntryHref(newEntry, currentNpub, currentTreeName, currentPath, rootCid, linkKey, effectiveGitRoot);
           window.location.hash = href.slice(1);
         }
       }
@@ -606,7 +633,7 @@
         {:else}
           {#each entries as entry, idx}
             <a
-              href={buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootCid, linkKey)}
+              href={buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootCid, linkKey, effectiveGitRoot)}
               class="p-3 pl-9 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {selectedEntry?.name === entry.name && focusedIndex < 0 ? 'bg-surface-2' : ''} {focusedIndex === idx + specialItemCount ? 'ring-2 ring-inset ring-accent' : ''} {recentlyChanged.has(entry.name) && selectedEntry?.name !== entry.name ? 'animate-pulse-live' : ''}"
             >
               <span class="shrink-0 {entry.type === LinkType.Dir ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}"></span>
