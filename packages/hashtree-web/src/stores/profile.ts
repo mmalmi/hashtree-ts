@@ -49,22 +49,18 @@ function notifyListeners(pubkey: string, profile: Profile) {
 async function fetchProfile(pubkey: string): Promise<void> {
   // Skip if fetch already in progress
   if (pendingFetches.has(pubkey)) {
-    console.log('[profile] fetch already in progress for', pubkey);
     return;
   }
 
-  console.log('[profile] fetching profile for', pubkey);
   pendingFetches.add(pubkey);
 
   try {
     const events = await ndk.fetchEvents({ kinds: [0], authors: [pubkey], limit: 1 });
-    console.log('[profile] got', events.size, 'events for', pubkey);
 
     if (events.size > 0) {
       // Get the most recent profile
       const eventsArray = Array.from(events);
       const event = eventsArray.sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0];
-      console.log('[profile] profile content:', event.content.slice(0, 100));
       try {
         const profile = JSON.parse(event.content) as Profile;
         profile.pubkey = event.pubkey;
