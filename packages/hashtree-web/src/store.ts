@@ -7,7 +7,7 @@ import {
   WebRTCStore,
   LinkType,
 } from 'hashtree';
-import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, PeerClassifier, BlossomSigner, WebRTCStats, PeerPool } from 'hashtree';
+import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, GiftWrapper, GiftUnwrapper, PeerClassifier, BlossomSigner, WebRTCStats, PeerPool } from 'hashtree';
 
 // Re-export LinkType for e2e tests that can't import 'hashtree' directly
 export { LinkType };
@@ -193,6 +193,8 @@ export function initWebRTC(
   pubkey: string,
   encrypt: EventEncrypter,
   decrypt: EventDecrypter,
+  giftWrap: GiftWrapper,
+  giftUnwrap: GiftUnwrapper,
 ) {
   if (webrtcStore) {
     webrtcStore.stop();
@@ -212,6 +214,8 @@ export function initWebRTC(
     pubkey,
     encrypt,
     decrypt,
+    giftWrap,
+    giftUnwrap,
     localStore: localStore,
     debug: true,
     relays,

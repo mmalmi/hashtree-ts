@@ -9,6 +9,7 @@ import {
   getPublicKey,
   nip19,
   nip44,
+  finalizeEvent,
 } from 'nostr-tools';
 import NDK, {
   NDKEvent,
@@ -22,6 +23,9 @@ import { startBackgroundSync, stopBackgroundSync } from './services/backgroundSy
 import {
   toHex,
   type EventSigner,
+  type GiftWrapper,
+  type GiftUnwrapper,
+  type SignedEvent,
   type CID,
   type TreeVisibility,
   visibilityHex,
@@ -346,6 +350,75 @@ export async function signEvent(event: NostrEvent): Promise<NostrEvent> {
 }
 
 /**
+ * Create gift wrap and unwrap functions for NIP-17 style ephemeral message wrapping.
+ * Used for private WebRTC signaling.
+ *
+ * Gift wrap creates a kind 25050 event signed by an ephemeral key, with the inner
+ * event encrypted for the recipient. The inner event includes the actual sender's pubkey.
+ *
+ * @param myPubkey - The sender's actual pubkey (included inside the encrypted content)
+ * @param encryptFn - Function to encrypt content for a recipient (NIP-44)
+ * @param decryptFn - Function to decrypt content from a sender (NIP-44)
+ */
+function createGiftWrapFunctions(
+  myPubkey: string,
+  encryptFn: (pubkey: string, plaintext: string) => Promise<string>,
+  decryptFn: (pubkey: string, ciphertext: string) => Promise<string>,
+): { giftWrap: GiftWrapper; giftUnwrap: GiftUnwrapper } {
+  const giftWrap: GiftWrapper = async (innerEvent, recipientPubkey) => {
+    // Create seal with sender's actual pubkey (this is the "rumor")
+    const seal = {
+      pubkey: myPubkey,
+      kind: innerEvent.kind,
+      content: innerEvent.content,
+      tags: innerEvent.tags,
+    };
+
+    // Generate ephemeral keypair for the wrapper
+    const ephemeralSk = generateSecretKey();
+    const ephemeralPk = getPublicKey(ephemeralSk);
+
+    // Encrypt the seal for the recipient using ephemeral key (NIP-44)
+    const conversationKey = nip44.v2.utils.getConversationKey(ephemeralSk, recipientPubkey);
+    const encryptedContent = nip44.v2.encrypt(JSON.stringify(seal), conversationKey);
+
+    // Create and sign wrapper event with ephemeral key
+    const createdAt = Math.floor(Date.now() / 1000);
+    const expiration = createdAt + 5 * 60; // 5 minutes
+
+    // Use nostr-tools finalizeEvent to compute id and sign with ephemeral key
+    return finalizeEvent({
+      kind: 25050,
+      created_at: createdAt,
+      tags: [
+        ['p', recipientPubkey],
+        ['expiration', expiration.toString()],
+      ],
+      content: encryptedContent,
+    }, ephemeralSk);
+  };
+
+  const giftUnwrap: GiftUnwrapper = async (event) => {
+    try {
+      // Decrypt using our key and the ephemeral sender's pubkey
+      const decrypted = await decryptFn(event.pubkey, event.content);
+      const seal = JSON.parse(decrypted) as {
+        pubkey: string;
+        kind: number;
+        content: string;
+        tags: string[][];
+      };
+      return seal;
+    } catch {
+      // Can't decrypt - not for us or invalid
+      return null;
+    }
+  };
+
+  return { giftWrap, giftUnwrap };
+}
+
+/**
  * Try to restore session from localStorage, or generate a new key if none exists
  */
 export async function restoreSession(): Promise<boolean> {
@@ -465,8 +538,11 @@ export async function loginWithExtension(): Promise<boolean> {
       return window.nostr!.nip04!.decrypt(pubkey, ciphertext);
     };
 
+    // Create gift wrap functions for private WebRTC signaling
+    const { giftWrap, giftUnwrap } = createGiftWrapFunctions(pk, encrypt, decrypt);
+
     // Initialize WebRTC with signer
-    initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt);
+    initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt, giftWrap, giftUnwrap);
 
     // Start background sync for followed users' trees
     startBackgroundSync();
@@ -527,8 +603,11 @@ export function loginWithNsec(nsec: string, save = true): boolean {
       return nip44.v2.decrypt(ciphertext, conversationKey);
     };
 
+    // Create gift wrap functions for private WebRTC signaling
+    const { giftWrap, giftUnwrap } = createGiftWrapFunctions(pk, encrypt, decrypt);
+
     // Initialize WebRTC with signer
-    initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt);
+    initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt, giftWrap, giftUnwrap);
 
     // Start background sync for followed users' trees
     startBackgroundSync();
@@ -580,8 +659,11 @@ export function generateNewKey(): { nsec: string; npub: string } {
     return nip44.v2.decrypt(ciphertext, conversationKey);
   };
 
+  // Create gift wrap functions for private WebRTC signaling
+  const { giftWrap, giftUnwrap } = createGiftWrapFunctions(pk, encrypt, decrypt);
+
   // Initialize WebRTC with signer
-  initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt);
+  initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt, giftWrap, giftUnwrap);
 
   // Create default folders for new user (public, link, private)
   // Do this BEFORE starting background sync so folders exist

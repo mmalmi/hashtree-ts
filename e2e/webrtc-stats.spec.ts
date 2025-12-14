@@ -43,7 +43,7 @@ test.describe('WebRTC Stats', () => {
   async function waitForWebRTC(page: Page): Promise<void> {
     await page.waitForFunction(
       () => {
-        return (window as any).webrtcStore && (window as any).__idbStore;
+        return (window as any).webrtcStore && (window as any).__localStore;
       },
       { timeout: 15000 }
     );
@@ -78,9 +78,9 @@ test.describe('WebRTC Stats', () => {
       const hashBuffer = await crypto.subtle.digest('SHA-256', data);
       const hash = new Uint8Array(hashBuffer);
 
-      const idbStore = (window as any).__idbStore;
-      if (idbStore) {
-        await idbStore.put(hash, data);
+      const localStore = (window as any).__localStore;
+      if (localStore) {
+        await localStore.put(hash, data);
       }
 
       return Array.from(hash).map(b => b.toString(16).padStart(2, '0')).join('');

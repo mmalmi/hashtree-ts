@@ -4,9 +4,10 @@
  * Implements the Store interface, fetching data from P2P network.
  * Uses Nostr relays for WebRTC signaling.
  *
- * Security: Directed signaling messages (offer, answer, candidate, candidates)
- * are encrypted with NIP-04 for privacy. Hello messages remain unencrypted
- * for peer discovery.
+ * Signaling protocol (all use ephemeral kind 25050):
+ * - Hello messages: #l: "hello" tag, broadcast for peer discovery (unencrypted)
+ * - Directed signaling (offer, answer, candidate, candidates): #p tag with
+ *   recipient pubkey, NIP-17 style gift wrap for privacy
  *
  * Pool-based peer management:
  * - 'follows' pool: Users in your social graph (followed or followers)
@@ -28,6 +29,9 @@ import {
   type EventSigner,
   type EventEncrypter,
   type EventDecrypter,
+  type GiftWrapper,
+  type GiftUnwrapper,
+  type SignedEvent,
   type PeerPool,
   type PeerClassifier,
   type PoolConfig,
@@ -44,8 +48,11 @@ export const DEFAULT_RELAYS = [
   'wss://relay.snort.social',
 ];
 
-const WEBRTC_KIND = 30078; // KIND_APP_DATA - same as iris-client
-const WEBRTC_TAG = 'webrtc';
+// All WebRTC signaling uses ephemeral kind 25050
+// Hello messages use #l tag for broadcast discovery
+// Directed messages use #p tag with gift wrap
+const SIGNALING_KIND = 25050;
+const HELLO_TAG = 'hello';
 
 
 // Pending request with callbacks
@@ -77,9 +84,11 @@ export class WebRTCStore implements Store {
   private signer: EventSigner;
   private encrypt: EventEncrypter;
   private decrypt: EventDecrypter;
+  private giftWrap: GiftWrapper;
+  private giftUnwrap: GiftUnwrapper;
   private myPeerId: PeerId;
   private pool: SimplePool;
-  private subscription: ReturnType<SimplePool['subscribe']> | null = null;
+  private subscriptions: ReturnType<SimplePool['subscribe']>[] = [];
   private peers = new Map<string, PeerInfo>();
   private helloInterval: ReturnType<typeof setInterval> | null = null;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
@@ -95,6 +104,8 @@ export class WebRTCStore implements Store {
     this.signer = config.signer;
     this.encrypt = config.encrypt;
     this.decrypt = config.decrypt;
+    this.giftWrap = config.giftWrap;
+    this.giftUnwrap = config.giftUnwrap;
     this.myPeerId = new PeerId(config.pubkey, generateUuid());
 
     // Default classifier: everyone is 'other' unless classifier provided
@@ -214,10 +225,10 @@ export class WebRTCStore implements Store {
       this.cleanupInterval = null;
     }
 
-    if (this.subscription) {
-      this.subscription.close();
-      this.subscription = null;
+    for (const sub of this.subscriptions) {
+      sub.close();
     }
+    this.subscriptions = [];
 
     // Close all peer connections
     for (const { peer } of this.peers.values()) {
@@ -243,21 +254,39 @@ export class WebRTCStore implements Store {
   private startSubscription(): void {
     const since = Math.floor((Date.now() - this.config.messageTimeout) / 1000);
 
-    this.subscription = this.pool.subscribe(
-      this.config.relays,
-      {
-        kinds: [WEBRTC_KIND],
-        '#l': [WEBRTC_TAG],
-        since,
+    const subHandler = {
+      onevent: (event: Event) => {
+        this.handleSignalingEvent(event);
       },
-      {
-        onevent: (event: Event) => {
-          this.handleSignalingEvent(event);
+      oneose: () => {
+        this.log('Subscription EOSE received');
+      },
+    };
+
+    // 1. Subscribe to hello messages (kind 25050 with #l: hello) for peer discovery
+    this.subscriptions.push(
+      this.pool.subscribe(
+        this.config.relays,
+        {
+          kinds: [SIGNALING_KIND],
+          '#l': [HELLO_TAG],
+          since,
         },
-        oneose: () => {
-          this.log('Subscription EOSE received');
+        subHandler
+      )
+    );
+
+    // 2. Subscribe to directed signaling (kind 25050 with #p tag) for offers/answers/candidates
+    this.subscriptions.push(
+      this.pool.subscribe(
+        this.config.relays,
+        {
+          kinds: [SIGNALING_KIND],
+          '#p': [this.myPeerId.pubkey],
+          since,
         },
-      }
+        subHandler
+      )
     );
   }
 
@@ -277,9 +306,9 @@ export class WebRTCStore implements Store {
       }
     }
 
-    // Check if this is a hello message (d-tag = "hello", peerId in tag)
-    const dTag = event.tags.find(t => t[0] === 'd')?.[1];
-    if (dTag === 'hello') {
+    // Check if this is a hello message (#l: hello tag)
+    const lTag = event.tags.find(t => t[0] === 'l')?.[1];
+    if (lTag === HELLO_TAG) {
       const peerIdTag = event.tags.find(t => t[0] === 'peerId')?.[1];
       if (peerIdTag) {
         await this.handleHello(peerIdTag, event.pubkey);
@@ -287,17 +316,21 @@ export class WebRTCStore implements Store {
       return;
     }
 
-    // Directed message - must be encrypted
-    if (!event.content) {
-      return;
-    }
+    // Check if this is a directed message (#p tag pointing to us)
+    const pTag = event.tags.find(t => t[0] === 'p')?.[1];
+    if (pTag === this.myPeerId.pubkey) {
+      // Gift-wrapped signaling message - try to unwrap
+      try {
+        const inner = await this.giftUnwrap(event as SignedEvent);
+        if (!inner) {
+          return; // Can't decrypt - not for us
+        }
 
-    try {
-      const content = await this.decrypt(event.pubkey, event.content);
-      const msg = JSON.parse(content) as DirectedMessage;
-      await this.handleSignalingMessage(msg, event.pubkey);
-    } catch {
-      // Not for us or invalid - ignore silently
+        const msg = JSON.parse(inner.content) as DirectedMessage;
+        await this.handleSignalingMessage(msg, inner.pubkey);
+      } catch {
+        // Not for us or invalid - ignore silently
+      }
     }
   }
 
@@ -503,42 +536,36 @@ export class WebRTCStore implements Store {
       msg.peerId = this.myPeerId.uuid;
     }
 
-    // Encrypt if we have a recipient (offer, answer, candidate, candidates)
-    // Hello messages use tags only, no content needed
-    let content: string;
-    let tags: string[][];
-    let expiration: number;
-
     if (recipientPubkey) {
-      const plaintext = JSON.stringify(msg);
-      content = await this.encrypt(recipientPubkey, plaintext);
-      tags = [
-        ['l', WEBRTC_TAG],
-        ['d', generateUuid()], // Unique d-tag for directed messages
-      ];
-      expiration = Math.floor((Date.now() + this.config.messageTimeout) / 1000);
+      // Directed message (offer, answer, candidate, candidates)
+      // Use NIP-17 style gift wrap with kind 25050
+      const innerEvent = {
+        kind: SIGNALING_KIND,
+        content: JSON.stringify(msg),
+        tags: [] as string[][],
+      };
+
+      const wrappedEvent = await this.giftWrap(innerEvent, recipientPubkey);
+      await this.pool.publish(this.config.relays, wrappedEvent as Event);
     } else {
-      // Hello message - peerId in tag, no content needed
-      content = '';
-      tags = [
-        ['l', WEBRTC_TAG],
-        ['d', 'hello'], // Static d-tag for hello - each new hello replaces previous (NIP-33)
+      // Hello message - broadcast for peer discovery (kind 25050 with #l: hello)
+      const expiration = Math.floor((Date.now() + 5 * 60 * 1000) / 1000); // 5 minutes
+      const tags = [
+        ['l', HELLO_TAG],
         ['peerId', msg.peerId],
+        ['expiration', expiration.toString()],
       ];
-      expiration = Math.floor((Date.now() + 5 * 60 * 1000) / 1000); // 5 minutes for hello
+
+      const eventTemplate = {
+        kind: SIGNALING_KIND,
+        created_at: Math.floor(Date.now() / 1000),
+        tags,
+        content: '',
+      };
+
+      const event = await this.signer(eventTemplate) as Event;
+      await this.pool.publish(this.config.relays, event);
     }
-
-    tags.push(['expiration', expiration.toString()]);
-
-    const eventTemplate = {
-      kind: WEBRTC_KIND,
-      created_at: Math.floor(Date.now() / 1000),
-      tags,
-      content,
-    };
-
-    const event = await this.signer(eventTemplate) as Event;
-    await this.pool.publish(this.config.relays, event);
   }
 
   private maybeSendHello(): void {

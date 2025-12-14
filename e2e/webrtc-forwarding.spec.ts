@@ -57,7 +57,7 @@ test.describe('WebRTC Request Forwarding', () => {
         return (
           (window as any).__testHelpers?.followPubkey &&
           (window as any).webrtcStore &&
-          (window as any).__idbStore &&
+          (window as any).__localStore &&
           (window as any).__settingsStore
         );
       },
@@ -115,9 +115,9 @@ test.describe('WebRTC Request Forwarding', () => {
       const hash = new Uint8Array(hashBuffer);
 
       // Store in IDB via the app's store
-      const idbStore = (window as any).__idbStore;
-      if (idbStore) {
-        await idbStore.put(hash, data);
+      const localStore = (window as any).__localStore;
+      if (localStore) {
+        await localStore.put(hash, data);
       }
 
       // Return hash as hex
@@ -223,6 +223,13 @@ test.describe('WebRTC Request Forwarding', () => {
         waitForHelpers(pageA),
         waitForHelpers(pageB),
         waitForHelpers(pageC),
+      ]);
+
+      // Immediately disable others pool on all pages to prevent cross-talk from parallel tests
+      await Promise.all([
+        setPoolConfig(pageA, poolConfig),
+        setPoolConfig(pageB, poolConfig),
+        setPoolConfig(pageC, poolConfig),
       ]);
 
       console.log('\n=== Setting up Peer C (content provider) ===');

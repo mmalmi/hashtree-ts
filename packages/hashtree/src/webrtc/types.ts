@@ -93,6 +93,30 @@ export type EventEncrypter = (pubkey: string, plaintext: string) => Promise<stri
 // Decrypter function type (compatible with window.nostr.nip04.decrypt)
 export type EventDecrypter = (pubkey: string, ciphertext: string) => Promise<string>;
 
+// Signed event type (Nostr event with signature)
+export interface SignedEvent {
+  id: string;
+  pubkey: string;
+  sig: string;
+  kind: number;
+  created_at: number;
+  tags: string[][];
+  content: string;
+}
+
+// Gift wrap function - wraps an inner event for a recipient
+// Returns a kind 25050 ephemeral gift-wrapped event
+export type GiftWrapper = (
+  innerEvent: { kind: number; content: string; tags: string[][] },
+  recipientPubkey: string,
+) => Promise<SignedEvent>;
+
+// Gift unwrap function - unwraps a received gift-wrapped event
+// Returns the inner rumor event or null if can't decrypt
+export type GiftUnwrapper = (
+  event: SignedEvent,
+) => Promise<{ pubkey: string; kind: number; content: string; tags: string[][] } | null>;
+
 // Peer pool types for prioritized connections
 export type PeerPool = 'follows' | 'other';
 
@@ -109,8 +133,10 @@ export interface PoolConfig {
 export interface WebRTCStoreConfig {
   signer: EventSigner;            // NIP-07 compatible signer
   pubkey: string;                 // signer's pubkey
-  encrypt: EventEncrypter;        // NIP-04 compatible encrypter
-  decrypt: EventDecrypter;        // NIP-04 compatible decrypter
+  encrypt: EventEncrypter;        // NIP-44 compatible encrypter
+  decrypt: EventDecrypter;        // NIP-44 compatible decrypter
+  giftWrap: GiftWrapper;          // NIP-17 style gift wrap (kind 25050)
+  giftUnwrap: GiftUnwrapper;      // NIP-17 style gift unwrap
   satisfiedConnections?: number;  // default 3 (legacy, used if no pools)
   maxConnections?: number;        // default 6 (legacy, used if no pools)
   helloInterval?: number;         // default 10000ms
