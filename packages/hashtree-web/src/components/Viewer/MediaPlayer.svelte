@@ -286,9 +286,9 @@
 
     const mimeType = getMimeType(fileName);
 
-    // For live streams with MSE-compatible formats (WebM), use MSE
-    // For everything else, use blob URL - browser handles buffering natively
-    if (shouldTreatAsLive && canUseMseForFormat(fileName) && isMseSupported(mimeType)) {
+    // Use MSE for supported formats - allows progressive playback and smooth CID updates
+    // Fall back to blob URL for unsupported formats
+    if (canUseMseForFormat(fileName) && isMseSupported(mimeType)) {
       await loadWithMse();
     } else {
       await loadWithBlobUrl();
@@ -375,8 +375,8 @@
       }
 
       loading = false;
-      // For live streams, don't mark as fully loaded - we'll poll for more data
-      isFullyLoaded = !shouldTreatAsLive;
+      // Don't mark as fully loaded - CID may change and we'll need to append more
+      isFullyLoaded = false;
       lastCidHash = toHex(cid.hash);
       lastDataReceivedTime = Date.now();
 
@@ -384,19 +384,13 @@
         duration = mediaRef.duration;
       }
 
+      // For live streams, seek near end and start polling
       if (shouldTreatAsLive && mediaRef && duration > 5) {
         mediaRef.currentTime = Math.max(0, duration - 5);
         isLive = true;
-      }
-
-      if (!shouldTreatAsLive && mediaSource.readyState === 'open') {
-        mediaSource.endOfStream();
-      }
-
-      // Start polling for live streams
-      if (shouldTreatAsLive) {
         startLivePolling();
       }
+      // Don't call endOfStream() - keep MediaSource open for potential CID updates
     } catch (e) {
       console.error('MSE error:', e);
       await loadWithBlobUrl();
@@ -641,12 +635,12 @@
     }
   }
 
-  // Watch for CID changes in live mode
+  // Watch for CID changes - handles both live streams and file updates
   // Access cid.hash directly to ensure reactivity
   let currentCidHashReactive = $derived(cid?.hash ? toHex(cid.hash) : null);
 
   $effect(() => {
-    if (!shouldTreatAsLive || loading) return;
+    if (loading) return;
 
     const currentCidHash = currentCidHashReactive;
     if (currentCidHash && currentCidHash !== lastCidHash) {
