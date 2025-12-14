@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, type WasmGitModule } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, rmRf, type WasmGitModule } from './core';
 
 /**
  * Checkout a specific commit using wasm-git
@@ -123,6 +123,7 @@ export async function checkoutWithWasmGit(
     } finally {
       try {
         module.FS.chdir(originalCwd);
+        rmRf(module, repoPath);
       } catch {
         // Ignore
       }

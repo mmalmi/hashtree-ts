@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, rmRf } from './core';
 
 /**
  * Get current HEAD commit SHA
@@ -62,6 +62,7 @@ export async function getHeadWithWasmGit(
     } finally {
       try {
         module.FS.chdir(originalCwd);
+        rmRf(module, repoPath);
       } catch {
         // Ignore
       }
@@ -204,6 +205,7 @@ export async function getLogWithWasmGit(
       // Restore original working directory
       try {
         module.FS.chdir(originalCwd);
+        rmRf(module, repoPath);
       } catch {
         // Ignore errors
       }
@@ -309,6 +311,7 @@ export async function getFileLastCommitsWithWasmGit(
     } finally {
       try {
         module.FS.chdir(originalCwd);
+        rmRf(module, repoPath);
       } catch {
         // Ignore
       }

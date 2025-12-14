@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, rmRf } from './core';
 
 /**
  * Get list of branches using wasm-git
@@ -83,6 +83,7 @@ export async function getBranchesWithWasmGit(
     } finally {
       try {
         module.FS.chdir(originalCwd);
+        rmRf(module, repoPath);
       } catch {
         // Ignore
       }
@@ -98,57 +99,60 @@ export async function createBranchWithWasmGit(
   branchName: string,
   checkout: boolean = true
 ): Promise<{ success: boolean; error?: string }> {
-  const tree = getTree();
+  return withWasmGitLock(async () => {
+    const tree = getTree();
 
-  // Check for .git directory
-  const gitDirResult = await tree.resolvePath(rootCid, '.git');
-  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
-    return { success: false, error: 'Not a git repository' };
-  }
-
-  const module = await loadWasmGit();
-  const repoPath = `/repo_${Date.now()}`;
-  const originalCwd = module.FS.cwd();
-
-  try {
-    module.FS.mkdir(repoPath);
-
-    try {
-      module.FS.writeFile('/home/web_user/.gitconfig', '[user]\nname = User\nemail = user@example.com\n');
-    } catch {
-      // May already exist
+    // Check for .git directory
+    const gitDirResult = await tree.resolvePath(rootCid, '.git');
+    if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+      return { success: false, error: 'Not a git repository' };
     }
 
-    module.FS.chdir(repoPath);
+    const module = await loadWasmGit();
+    const repoPath = `/repo_${Date.now()}`;
+    const originalCwd = module.FS.cwd();
 
     try {
-      runSilent(module, ['init', '.']);
-    } catch {
-      // Ignore init errors
-    }
+      module.FS.mkdir(repoPath);
 
-    await copyToWasmFS(module, gitDirResult.cid, '.git');
-
-    // Create the branch
-    try {
-      if (checkout) {
-        runSilent(module, ['checkout', '-b', branchName]);
-      } else {
-        runSilent(module, ['branch', branchName]);
+      try {
+        module.FS.writeFile('/home/web_user/.gitconfig', '[user]\nname = User\nemail = user@example.com\n');
+      } catch {
+        // May already exist
       }
-      return { success: true };
+
+      module.FS.chdir(repoPath);
+
+      try {
+        runSilent(module, ['init', '.']);
+      } catch {
+        // Ignore init errors
+      }
+
+      await copyToWasmFS(module, gitDirResult.cid, '.git');
+
+      // Create the branch
+      try {
+        if (checkout) {
+          runSilent(module, ['checkout', '-b', branchName]);
+        } else {
+          runSilent(module, ['branch', branchName]);
+        }
+        return { success: true };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { success: false, error: message };
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return { success: false, error: message };
+      console.error('[wasm-git] createBranch failed:', err);
+      return { success: false, error: 'Failed to create branch' };
+    } finally {
+      try {
+        module.FS.chdir(originalCwd);
+        rmRf(module, repoPath);
+      } catch {
+        // Ignore
+      }
     }
-  } catch (err) {
-    console.error('[wasm-git] createBranch failed:', err);
-    return { success: false, error: 'Failed to create branch' };
-  } finally {
-    try {
-      module.FS.chdir(originalCwd);
-    } catch {
-      // Ignore
-    }
-  }
+  });
 }

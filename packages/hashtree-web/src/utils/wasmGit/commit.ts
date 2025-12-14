@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, readGitDirectory, runSilent } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, readGitDirectory, runSilent, rmRf } from './core';
 
 /**
  * Initialize a git repository in a directory
@@ -53,6 +53,7 @@ export async function initGitRepoWithWasmGit(
     } finally {
       try {
         module.FS.chdir(originalCwd);
+        rmRf(module, repoPath);
       } catch {
         // Ignore
       }
@@ -71,73 +72,76 @@ export async function commitWithWasmGit(
   authorEmail: string,
   filesToStage?: string[] // If undefined, stages all changes
 ): Promise<{ success: boolean; gitFiles?: Array<{ name: string; data: Uint8Array; isDir: boolean }>; error?: string }> {
-  const tree = getTree();
+  return withWasmGitLock(async () => {
+    const tree = getTree();
 
-  // Check for .git directory
-  const gitDirResult = await tree.resolvePath(rootCid, '.git');
-  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
-    return { success: false, error: 'Not a git repository' };
-  }
-
-  const module = await loadWasmGit();
-  const repoPath = `/repo_${Date.now()}`;
-  const originalCwd = module.FS.cwd();
-
-  try {
-    module.FS.mkdir(repoPath);
-
-    // Set up git config with user info
-    try {
-      module.FS.writeFile('/home/web_user/.gitconfig', `[user]\nname = ${authorName}\nemail = ${authorEmail}\n`);
-    } catch {
-      // May already exist
+    // Check for .git directory
+    const gitDirResult = await tree.resolvePath(rootCid, '.git');
+    if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+      return { success: false, error: 'Not a git repository' };
     }
 
-    module.FS.chdir(repoPath);
+    const module = await loadWasmGit();
+    const repoPath = `/repo_${Date.now()}`;
+    const originalCwd = module.FS.cwd();
 
     try {
-      runSilent(module, ['init', '.']);
-    } catch {
-      // Ignore init errors
-    }
+      module.FS.mkdir(repoPath);
 
-    // Copy entire repo so we have working tree + .git
-    await copyToWasmFS(module, rootCid, '.');
-
-    // Stage files
-    try {
-      if (filesToStage && filesToStage.length > 0) {
-        for (const file of filesToStage) {
-          runSilent(module, ['add', file]);
-        }
-      } else {
-        // Stage all changes
-        runSilent(module, ['add', '-A']);
+      // Set up git config with user info
+      try {
+        module.FS.writeFile('/home/web_user/.gitconfig', `[user]\nname = ${authorName}\nemail = ${authorEmail}\n`);
+      } catch {
+        // May already exist
       }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { success: false, error: `Failed to stage files: ${msg}` };
-    }
 
-    // Create commit
-    try {
-      runSilent(module, ['commit', '-m', message]);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return { success: false, error: `Failed to commit: ${msg}` };
-    }
+      module.FS.chdir(repoPath);
 
-    // Read updated .git directory and return files
-    const gitFiles = readGitDirectory(module);
-    return { success: true, gitFiles };
-  } catch (err) {
-    console.error('[wasm-git] commit failed:', err);
-    return { success: false, error: 'Failed to commit' };
-  } finally {
-    try {
-      module.FS.chdir(originalCwd);
-    } catch {
-      // Ignore
+      try {
+        runSilent(module, ['init', '.']);
+      } catch {
+        // Ignore init errors
+      }
+
+      // Copy entire repo so we have working tree + .git
+      await copyToWasmFS(module, rootCid, '.');
+
+      // Stage files
+      try {
+        if (filesToStage && filesToStage.length > 0) {
+          for (const file of filesToStage) {
+            runSilent(module, ['add', file]);
+          }
+        } else {
+          // Stage all changes
+          runSilent(module, ['add', '-A']);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: `Failed to stage files: ${msg}` };
+      }
+
+      // Create commit
+      try {
+        runSilent(module, ['commit', '-m', message]);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, error: `Failed to commit: ${msg}` };
+      }
+
+      // Read updated .git directory and return files
+      const gitFiles = readGitDirectory(module);
+      return { success: true, gitFiles };
+    } catch (err) {
+      console.error('[wasm-git] commit failed:', err);
+      return { success: false, error: 'Failed to commit' };
+    } finally {
+      try {
+        module.FS.chdir(originalCwd);
+        rmRf(module, repoPath);
+      } catch {
+        // Ignore
+      }
     }
-  }
+  });
 }

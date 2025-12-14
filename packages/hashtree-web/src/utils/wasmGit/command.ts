@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, readGitDirectory, parseCommandArgs } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, readGitDirectory, parseCommandArgs, rmRf } from './core';
 
 /**
  * Run an arbitrary git command in the repository
@@ -81,6 +81,7 @@ export async function runGitCommand(
     } finally {
       try {
         module.FS.chdir(originalCwd);
+        rmRf(module, repoPath);
       } catch {
         // Ignore
       }

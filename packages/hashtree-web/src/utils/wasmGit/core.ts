@@ -46,6 +46,33 @@ export async function withWasmGitLock<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * Recursively remove a directory from the wasm filesystem
+ */
+export function rmRf(module: WasmGitModule, path: string): void {
+  try {
+    const entries = module.FS.readdir(path);
+    for (const entry of entries) {
+      if (entry === '.' || entry === '..') continue;
+      const fullPath = `${path}/${entry}`;
+      try {
+        const stat = module.FS.stat(fullPath);
+        const isDir = (stat.mode & 0o170000) === 0o040000;
+        if (isDir) {
+          rmRf(module, fullPath);
+        } else {
+          (module.FS as unknown as { unlink(path: string): void }).unlink(fullPath);
+        }
+      } catch {
+        // Skip files we can't remove
+      }
+    }
+    (module.FS as unknown as { rmdir(path: string): void }).rmdir(path);
+  } catch {
+    // Directory may not exist or already be removed
+  }
+}
+
+/**
  * Load the wasm-git module (lazy, singleton)
  */
 export async function loadWasmGit(): Promise<WasmGitModule> {
