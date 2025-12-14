@@ -4,7 +4,7 @@
    * Svelte port of the React component
    */
   import { toHex, nhashEncode, LinkType, type TreeEntry as HashTreeEntry } from 'hashtree';
-  import { formatBytes, getTree } from '../store';
+  import { formatBytes } from '../store';
   import { deleteEntry, moveEntry, moveToParent } from '../actions';
   import { openCreateModal, openShareModal } from '../stores/modals';
   import { uploadFiles, uploadDirectory } from '../stores/upload';
@@ -14,7 +14,7 @@
   import FolderActions from './FolderActions.svelte';
   import VisibilityIcon from './VisibilityIcon.svelte';
   import { TreeRow } from './ui';
-  import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore, isViewingFileStore, resolvingPathStore } from '../stores';
+  import { treeRootStore, routeStore, createTreesStore, type TreeEntry, currentDirCidStore, isViewingFileStore, resolvingPathStore, directoryEntriesStore } from '../stores';
   import { readFilesFromDataTransfer, hasDirectoryItems } from '../utils/directory';
 
   import { getFileIcon } from '../utils/fileIcon';
@@ -143,66 +143,12 @@
       : trees
   );
 
-  // Directory entries - fetch from tree
-  let entries = $state<HashTreeEntry[]>([]);
-  let isDirectory = $state(true);
-  let loadingEntries = $state(false);
+  // Directory entries - use global store (shared with Viewer)
+  let dirEntries = $derived($directoryEntriesStore);
+  let entries = $derived(dirEntries.entries);
+  let isDirectory = $derived(dirEntries.isDirectory);
+  let loadingEntries = $derived(dirEntries.loading);
   let resolvingPath = $derived($resolvingPathStore);
-
-  // Fetch directory entries when currentDirCid changes
-  $effect(() => {
-    const cid = currentDirCid;
-    if (!cid) {
-      entries = [];
-      isDirectory = true;
-      loadingEntries = false;
-      return;
-    }
-
-    loadingEntries = true;
-    const tree = getTree();
-
-    // Sort entries: directories first, then alphabetically
-    function sortEntries(list: HashTreeEntry[]): HashTreeEntry[] {
-      return [...list].sort((a, b) => {
-        const aIsDir = a.type === LinkType.Dir;
-        const bIsDir = b.type === LinkType.Dir;
-        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
-    }
-
-    if (cid.key) {
-      // Encrypted - try to list directory with key
-      tree.listDirectory(cid).then(list => {
-        entries = sortEntries(list);
-        isDirectory = true;
-        loadingEntries = false;
-      }).catch(() => {
-        entries = [];
-        isDirectory = false;
-        loadingEntries = false;
-      });
-    } else {
-      // Public - first check if it's a directory
-      tree.isDirectory(cid).then(isDir => {
-        isDirectory = isDir;
-        if (isDir) {
-          return tree.listDirectory(cid).then(list => {
-            entries = sortEntries(list);
-            loadingEntries = false;
-          });
-        } else {
-          entries = [];
-          loadingEntries = false;
-        }
-      }).catch(() => {
-        entries = [];
-        isDirectory = true;
-        loadingEntries = false;
-      });
-    }
-  });
 
   let isDraggingOver = $state(false);
   let fileListRef: HTMLDivElement | undefined = $state();
