@@ -6,6 +6,7 @@
   import { modalsStore, closeCreateModal, setModalInput, setCreateTreeVisibility } from '../../stores/modals';
   import { createFile, createFolder, createTree, createDocument } from '../../actions';
   import { routeStore } from '../../stores';
+  import { navigate } from '../../lib/router.svelte';
   import VisibilityPicker from './VisibilityPicker.svelte';
 
   let show = $derived($modalsStore.showCreateModal);
@@ -46,15 +47,25 @@
       isCreating = false;
       closeCreateModal();
     } else if (isDocument) {
-      // Create a document folder with .yjs config file inside
-      await createDocument(name);
-      closeCreateModal();
-      // Navigate into the new document folder
+      isCreating = true;
       if (route.npub && route.treeName) {
+        // Add document to existing tree
+        await createDocument(name);
+        closeCreateModal();
         const newPath = [...route.path, name].map(encodeURIComponent).join('/');
         const linkKeyParam = route.linkKey ? `?k=${route.linkKey}` : '';
         window.location.hash = `/${route.npub}/${route.treeName}/${newPath}${linkKeyParam}`;
+      } else {
+        // Create new tree as a document (from docs home)
+        const { createDocumentTree } = await import('../../actions/tree');
+        const result = await createDocumentTree(name, createTreeVisibility);
+        closeCreateModal();
+        if (result.npub && result.treeName) {
+          const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
+          navigate(`/${result.npub}/${result.treeName}${linkKeyParam}`);
+        }
       }
+      isCreating = false;
     } else if (isFolder) {
       createFolder(name);
       closeCreateModal();
@@ -93,8 +104,8 @@
           class="input w-full mb-4"
         />
 
-        <!-- Visibility picker for trees -->
-        {#if isTree}
+        <!-- Visibility picker for trees and new documents -->
+        {#if isTree || (isDocument && !route.treeName)}
           <div class="mt-4 mb-4">
             <VisibilityPicker value={createTreeVisibility} onchange={setCreateTreeVisibility} />
           </div>

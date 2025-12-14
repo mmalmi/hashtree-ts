@@ -132,16 +132,15 @@ export function createTreesStore(npub: string | null): Readable<TreeEntry[]> {
   let unsubscribe: (() => void) | undefined;
 
   // Wait for link keys cache before subscribing
-  console.log(`[createTreesStore] Waiting for link keys cache for ${npub}`);
   waitForLinkKeysCache().then(() => {
-    console.log(`[createTreesStore] Link keys cache ready, calling resolver.list for ${npub}`);
     unsubscribe = resolver.list!(npub, (entries) => {
-      console.log(`[createTreesStore] resolver.list callback received ${entries.length} entries`);
       // Read link keys fresh on each callback
       const storedLinkKeys = isOwnTrees ? getStoredLinkKeys() : {};
 
       const mapped = entries.map(e => {
-        const name = e.key.split('/')[1] || '';
+        // Get tree name - everything after the first '/' (handles names with slashes like docs/docname)
+        const slashIdx = e.key.indexOf('/');
+        const name = slashIdx >= 0 ? e.key.slice(slashIdx + 1) : '';
         // Don't default visibility - let it be undefined if not resolved from Nostr
         const visibility = e.visibility;
         // Include stored link key for unlisted trees (own trees only)
@@ -163,7 +162,6 @@ export function createTreesStore(npub: string | null): Readable<TreeEntry[]> {
           createdAt: e.createdAt,
         };
       });
-      console.log(`[treesStore] Setting ${mapped.length} trees:`, mapped.map(t => t.name));
       store.set(mapped);
     });
   });

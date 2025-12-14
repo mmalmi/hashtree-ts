@@ -15,6 +15,7 @@
     "build:hashtree": "pnpm --filter hashtree build",
     "build:web": "pnpm --filter hashtree-web build",
     "dev": "pnpm --filter hashtree-web dev",
+    "dev:docs": "pnpm --filter hashtree-web dev:docs",
     "test": "pnpm --filter hashtree test",
     "test:watch": "pnpm --filter hashtree test:watch",
     "test:e2e": "playwright test",

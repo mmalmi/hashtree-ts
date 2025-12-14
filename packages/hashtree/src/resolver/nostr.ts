@@ -143,12 +143,16 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
   /**
    * Parse a pointer key into pubkey and tree name
+   * Key format: "npub1.../treename" or "npub1.../path/to/treename"
    */
   function parseKey(key: string): { pubkey: string; treeName: string } | null {
-    const parts = key.split('/');
-    if (parts.length !== 2) return null;
+    const slashIdx = key.indexOf('/');
+    if (slashIdx === -1) return null;
 
-    const [npubStr, treeName] = parts;
+    const npubStr = key.slice(0, slashIdx);
+    const treeName = key.slice(slashIdx + 1);
+    if (!treeName) return null;
+
     try {
       const decoded = nip19.decode(npubStr);
       if (decoded.type !== 'npub') return null;

@@ -28,13 +28,23 @@ const subscriptionCache = new Map<string, {
  * Update the subscription cache directly (called from treeRootCache on local writes)
  */
 export function updateSubscriptionCache(key: string, hash: Hash, encryptionKey?: Hash): void {
-  const cached = subscriptionCache.get(key);
-  if (cached) {
-    cached.hash = hash;
-    cached.encryptionKey = encryptionKey;
-    cached.decryptedKey = encryptionKey;
-    cached.listeners.forEach(listener => listener(hash, encryptionKey, cached.visibilityInfo));
+  let cached = subscriptionCache.get(key);
+  if (!cached) {
+    // Create entry if it doesn't exist (for newly created trees)
+    cached = {
+      hash: null,
+      encryptionKey: undefined,
+      visibilityInfo: undefined,
+      decryptedKey: undefined,
+      listeners: new Set(),
+      unsubscribe: null,
+    };
+    subscriptionCache.set(key, cached);
   }
+  cached.hash = hash;
+  cached.encryptionKey = encryptionKey;
+  cached.decryptedKey = encryptionKey;
+  cached.listeners.forEach(listener => listener(hash, encryptionKey, cached!.visibilityInfo));
 }
 
 function subscribeToResolver(

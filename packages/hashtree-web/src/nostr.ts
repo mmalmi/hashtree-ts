@@ -740,6 +740,8 @@ export interface SaveHashtreeOptions {
   visibility?: TreeVisibility;
   /** Link key for unlisted trees - if not provided, one will be generated */
   linkKey?: string;
+  /** Additional l-tags to add (e.g., ['docs'] for document trees) */
+  labels?: string[];
 }
 
 /**
@@ -775,6 +777,13 @@ export async function saveHashtree(
     ['hash', rootHash],
   ];
 
+  // Add extra labels if provided
+  if (options.labels) {
+    for (const label of options.labels) {
+      event.tags.push(['l', label]);
+    }
+  }
+
   let linkKey: string | undefined;
 
   if (rootKey) {
@@ -797,6 +806,15 @@ export async function saveHashtree(
           const conversationKey = nip44.v2.utils.getConversationKey(secretKey!, state.pubkey!);
           const selfEncryptedUnlisted = nip44.v2.encrypt(rootKey, conversationKey);
           event.tags.push(['selfEncryptedKey', selfEncryptedUnlisted]);
+          // Sign first, then cache locally for offline-first
+          try {
+            await event.sign();
+            if (ndk.cacheAdapter?.setEvent) {
+              await ndk.cacheAdapter.setEvent(event, [{ kinds: [30078], authors: [state.pubkey!], '#d': [name] }]);
+            }
+          } catch (e) {
+            console.error('Failed to sign/cache hashtree:', e);
+          }
           event.publish().catch(e => console.error('Failed to publish hashtree:', e));
         })();
         break;
@@ -807,6 +825,15 @@ export async function saveHashtree(
           const conversationKey = nip44.v2.utils.getConversationKey(secretKey!, state.pubkey!);
           const selfEncrypted = nip44.v2.encrypt(rootKey, conversationKey);
           event.tags.push(['selfEncryptedKey', selfEncrypted]);
+          // Sign first, then cache locally for offline-first
+          try {
+            await event.sign();
+            if (ndk.cacheAdapter?.setEvent) {
+              await ndk.cacheAdapter.setEvent(event, [{ kinds: [30078], authors: [state.pubkey!], '#d': [name] }]);
+            }
+          } catch (e) {
+            console.error('Failed to sign/cache hashtree:', e);
+          }
           event.publish().catch(e => console.error('Failed to publish hashtree:', e));
         })();
         break;
@@ -815,7 +842,19 @@ export async function saveHashtree(
 
   // For public visibility, publish immediately (no encryption needed)
   if (!rootKey || visibility === 'public') {
-    event.publish().catch(e => console.error('Failed to publish hashtree:', e));
+    // Sign first, then cache locally for offline-first behavior
+    (async () => {
+      try {
+        await event.sign();
+        // Cache locally FIRST for offline-first behavior (survives page refresh)
+        if (ndk.cacheAdapter?.setEvent) {
+          await ndk.cacheAdapter.setEvent(event, [{ kinds: [30078], authors: [state.pubkey], '#d': [name] }]);
+        }
+        event.publish().catch(e => console.error('Failed to publish hashtree:', e));
+      } catch (e) {
+        console.error('Failed to sign/cache hashtree:', e);
+      }
+    })();
   }
 
   // Update selectedTree if it matches

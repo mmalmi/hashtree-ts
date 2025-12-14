@@ -244,6 +244,65 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
   return { success: false };
 }
 
+// Create a new tree as a document (with .yjs config file)
+// Used by docs app to create standalone documents
+// Documents use d-tag prefix "docs/" to separate from regular hashtrees
+export async function createDocumentTree(
+  name: string,
+  visibility: import('hashtree').TreeVisibility = 'public'
+): Promise<{ success: boolean; npub?: string; treeName?: string; linkKey?: string }> {
+  if (!name) return { success: false };
+
+  const { saveHashtree } = await import('../nostr');
+  const { storeLinkKey } = await import('../stores/trees');
+
+  const tree = getTree();
+  const nostrState = useNostrStore.getState();
+
+  if (!nostrState.isLoggedIn || !nostrState.npub || !nostrState.pubkey) {
+    return { success: false };
+  }
+
+  // Use docs/ prefix for document trees
+  const treeName = `docs/${name}`;
+
+  // Create .yjs config file with owner's npub as first editor
+  const yjsContent = new TextEncoder().encode(nostrState.npub + '\n');
+  const { cid: yjsFileCid, size: yjsFileSize } = await tree.putFile(yjsContent);
+
+  // Create root directory with .yjs file inside
+  const { cid: rootCid } = await tree.putDirectory([
+    { name: '.yjs', cid: yjsFileCid, size: yjsFileSize, type: LinkType.Blob }
+  ]);
+
+  const rootHex = toHex(rootCid.hash);
+  const keyHex = rootCid.key ? toHex(rootCid.key) : undefined;
+
+  // Set selectedTree for updates
+  useNostrStore.setSelectedTree({
+    id: '',
+    name: treeName,
+    pubkey: nostrState.pubkey,
+    rootHash: rootHex,
+    rootKey: visibility === 'public' ? keyHex : undefined,
+    visibility,
+    created_at: Math.floor(Date.now() / 1000),
+  });
+
+  // Update local cache
+  updateLocalRootCache(nostrState.npub, treeName, rootCid.hash, rootCid.key, visibility);
+
+  // Publish to nostr with docs label
+  const result = await saveHashtree(treeName, rootHex, keyHex, { visibility, labels: ['docs'] });
+
+  // Store link key for unlisted documents
+  if (result.linkKey) {
+    storeLinkKey(nostrState.npub, treeName, result.linkKey);
+  }
+
+  return { success: true, npub: nostrState.npub, treeName, linkKey: result.linkKey };
+}
+
 // Verify tree
 export async function verifyCurrentTree(): Promise<{ valid: boolean; missing: number }> {
   const rootCid = getCurrentRootCid();

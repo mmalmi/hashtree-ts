@@ -5,7 +5,7 @@
  * to merkle root hashes (refs), with subscription support for live updates.
  */
 import { nip19 } from 'nostr-tools';
-import { NDKEvent, type NDKFilter, type NDKSubscriptionOptions } from '@nostr-dev-kit/ndk';
+import { NDKEvent, type NDKFilter, type NDKSubscriptionOptions, NDKSubscriptionCacheUsage } from '@nostr-dev-kit/ndk';
 import { createNostrRefResolver, type RefResolver, type NostrFilter, type NostrEvent } from 'hashtree';
 import { ndk, useNostrStore } from './nostr';
 
@@ -22,15 +22,9 @@ declare global {
  */
 export function getRefResolver(): RefResolver {
   // Check window first to ensure true singleton
-  const hasWindow = typeof window !== 'undefined';
-  const hasResolver = hasWindow && !!window.__hashtreeResolver;
-  console.log(`[getRefResolver] hasWindow=${hasWindow}, hasResolver=${hasResolver}, resolver=${hasWindow ? (window.__hashtreeResolver ? 'exists' : 'null/undefined') : 'N/A'}`);
-
-  if (hasWindow && window.__hashtreeResolver) {
+  if (typeof window !== 'undefined' && window.__hashtreeResolver) {
     return window.__hashtreeResolver;
   }
-
-  console.log('[getRefResolver] Creating NEW resolver - this should only happen once!');
   const resolver = createNostrRefResolver({
       subscribe: (filter: NostrFilter, onEvent: (event: NostrEvent) => void) => {
         const ndkFilter: NDKFilter = {
@@ -39,7 +33,10 @@ export function getRefResolver(): RefResolver {
           '#d': filter['#d'],
           '#l': filter['#l'],
         };
-        const opts: NDKSubscriptionOptions = { closeOnEose: false };
+        const opts: NDKSubscriptionOptions = {
+          closeOnEose: false,
+          cacheUsage: NDKSubscriptionCacheUsage.CACHE_FIRST,
+        };
         const sub = ndk.subscribe(ndkFilter, opts);
         sub.on('event', (e: NDKEvent) => {
           onEvent({

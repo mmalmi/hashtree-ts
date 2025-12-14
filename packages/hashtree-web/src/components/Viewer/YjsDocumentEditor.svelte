@@ -532,7 +532,7 @@
 
     // Listen for updates and save (full state snapshot, not incremental delta)
     ydoc.on('update', (_update: Uint8Array, origin: unknown) => {
-      if (origin !== 'remote' && canEdit) {
+      if (origin !== 'remote') {
         scheduleSave();
       }
     });
@@ -568,6 +568,9 @@
   <!-- Status bar -->
   <div class="shrink-0 px-4 py-2 border-b border-surface-3 flex flex-wrap items-center justify-between gap-2 bg-surface-1 text-sm">
     <div class="flex items-center gap-2 min-w-0">
+      <a href="#/" class="btn-ghost p-1" title="Back to home">
+        <span class="i-lucide-chevron-left text-lg"></span>
+      </a>
       {#if ownerPubkey}
         <Avatar pubkey={ownerPubkey} size={20} />
       {/if}
@@ -624,35 +627,35 @@
 
   <!-- Formatting Toolbar -->
   {#if canEdit && editor && !loading}
-    <div class="flex items-center gap-1 px-4 py-2 border-b border-surface-3 bg-surface-1 shrink-0 flex-wrap">
+    <div class="flex items-center justify-center gap-1 px-4 py-2 border-b border-surface-3 bg-surface-1 shrink-0 flex-wrap">
       <!-- Text formatting -->
       <button
         onclick={toggleBold}
-        class="btn-ghost p-1.5 {editor.isActive('bold') ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('bold') ? 'active' : ''}"
         title="Bold (Ctrl+B)"
       >
-        <span class="i-lucide-bold text-sm"></span>
+        <span class="i-lucide-bold"></span>
       </button>
       <button
         onclick={toggleItalic}
-        class="btn-ghost p-1.5 {editor.isActive('italic') ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('italic') ? 'active' : ''}"
         title="Italic (Ctrl+I)"
       >
-        <span class="i-lucide-italic text-sm"></span>
+        <span class="i-lucide-italic"></span>
       </button>
       <button
         onclick={toggleStrike}
-        class="btn-ghost p-1.5 {editor.isActive('strike') ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('strike') ? 'active' : ''}"
         title="Strikethrough"
       >
-        <span class="i-lucide-strikethrough text-sm"></span>
+        <span class="i-lucide-strikethrough"></span>
       </button>
       <button
         onclick={toggleCode}
-        class="btn-ghost p-1.5 {editor.isActive('code') ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('code') ? 'active' : ''}"
         title="Inline Code"
       >
-        <span class="i-lucide-code text-sm"></span>
+        <span class="i-lucide-code"></span>
       </button>
 
       <div class="w-px h-5 bg-surface-3 mx-1"></div>
@@ -660,24 +663,24 @@
       <!-- Headings -->
       <button
         onclick={toggleHeading1}
-        class="btn-ghost p-1.5 {editor.isActive('heading', { level: 1 }) ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('heading', { level: 1 }) ? 'active' : ''}"
         title="Heading 1"
       >
-        <span class="i-lucide-heading-1 text-sm"></span>
+        <span class="i-lucide-heading-1"></span>
       </button>
       <button
         onclick={toggleHeading2}
-        class="btn-ghost p-1.5 {editor.isActive('heading', { level: 2 }) ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('heading', { level: 2 }) ? 'active' : ''}"
         title="Heading 2"
       >
-        <span class="i-lucide-heading-2 text-sm"></span>
+        <span class="i-lucide-heading-2"></span>
       </button>
       <button
         onclick={toggleHeading3}
-        class="btn-ghost p-1.5 {editor.isActive('heading', { level: 3 }) ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('heading', { level: 3 }) ? 'active' : ''}"
         title="Heading 3"
       >
-        <span class="i-lucide-heading-3 text-sm"></span>
+        <span class="i-lucide-heading-3"></span>
       </button>
 
       <div class="w-px h-5 bg-surface-3 mx-1"></div>
@@ -685,17 +688,17 @@
       <!-- Lists -->
       <button
         onclick={toggleBulletList}
-        class="btn-ghost p-1.5 {editor.isActive('bulletList') ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('bulletList') ? 'active' : ''}"
         title="Bullet List"
       >
-        <span class="i-lucide-list text-sm"></span>
+        <span class="i-lucide-list"></span>
       </button>
       <button
         onclick={toggleOrderedList}
-        class="btn-ghost p-1.5 {editor.isActive('orderedList') ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('orderedList') ? 'active' : ''}"
         title="Numbered List"
       >
-        <span class="i-lucide-list-ordered text-sm"></span>
+        <span class="i-lucide-list-ordered"></span>
       </button>
 
       <div class="w-px h-5 bg-surface-3 mx-1"></div>
@@ -703,24 +706,24 @@
       <!-- Block elements -->
       <button
         onclick={toggleBlockquote}
-        class="btn-ghost p-1.5 {editor.isActive('blockquote') ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('blockquote') ? 'active' : ''}"
         title="Quote"
       >
-        <span class="i-lucide-quote text-sm"></span>
+        <span class="i-lucide-quote"></span>
       </button>
       <button
         onclick={toggleCodeBlock}
-        class="btn-ghost p-1.5 {editor.isActive('codeBlock') ? 'bg-surface-3 text-text-1' : 'text-text-3'}"
+        class="toolbar-btn {editor.isActive('codeBlock') ? 'active' : ''}"
         title="Code Block"
       >
-        <span class="i-lucide-file-code text-sm"></span>
+        <span class="i-lucide-file-code"></span>
       </button>
       <button
         onclick={insertHorizontalRule}
-        class="btn-ghost p-1.5 text-text-3"
+        class="toolbar-btn"
         title="Horizontal Rule"
       >
-        <span class="i-lucide-minus text-sm"></span>
+        <span class="i-lucide-minus"></span>
       </button>
 
       <div class="w-px h-5 bg-surface-3 mx-1"></div>
@@ -729,25 +732,27 @@
       <button
         onclick={undo}
         disabled={!editor.can().undo()}
-        class="btn-ghost p-1.5 text-text-3 disabled:opacity-30"
+        class="toolbar-btn disabled:opacity-30"
         title="Undo (Ctrl+Z)"
       >
-        <span class="i-lucide-undo text-sm"></span>
+        <span class="i-lucide-undo"></span>
       </button>
       <button
         onclick={redo}
         disabled={!editor.can().redo()}
-        class="btn-ghost p-1.5 text-text-3 disabled:opacity-30"
+        class="toolbar-btn disabled:opacity-30"
         title="Redo (Ctrl+Shift+Z)"
       >
-        <span class="i-lucide-redo text-sm"></span>
+        <span class="i-lucide-redo"></span>
       </button>
     </div>
   {/if}
 
-  <!-- Editor area - always render the container, just hide content while loading -->
-  <div class="flex-1 overflow-auto {loading ? 'hidden' : ''}">
-    <div bind:this={editorElement} class="ProseMirror-container prose prose-sm max-w-none min-h-full"></div>
+  <!-- Editor area - A4 paper style on large screens -->
+  <div class="flex-1 overflow-auto bg-[#0d0d14] {loading ? 'hidden' : ''}">
+    <div class="a4-page bg-[#1a1a24]">
+      <div bind:this={editorElement} class="ProseMirror-container prose prose-sm max-w-none min-h-full"></div>
+    </div>
   </div>
 
   <!-- Loading state -->
@@ -760,9 +765,62 @@
 </div>
 
 <style>
+  /* A4 paper styling for large screens */
+  .a4-page {
+    min-height: 100%;
+  }
+
+  @media (min-width: 900px) {
+    .a4-page {
+      max-width: 816px;
+      margin: 2rem auto;
+      min-height: calc(100% - 4rem);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      border-radius: 4px;
+    }
+  }
+
+  /* Toolbar button styles */
+  .toolbar-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    border-radius: 0.25rem;
+    background: transparent;
+    border: none;
+    color: var(--color-text-1);
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+  }
+
+  .toolbar-btn:hover {
+    background: var(--color-surface-2);
+  }
+
+  .toolbar-btn.active {
+    background: var(--color-surface-3);
+    color: var(--color-accent);
+  }
+
+  .toolbar-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .toolbar-btn span {
+    font-size: 1rem;
+  }
+
   :global(.ProseMirror-container .ProseMirror) {
     min-height: 200px;
     padding: 1rem;
+  }
+
+  @media (min-width: 900px) {
+    :global(.ProseMirror-container .ProseMirror) {
+      padding: 2rem 3rem;
+    }
   }
   :global(.ProseMirror-container .ProseMirror:focus) {
     outline: none;
