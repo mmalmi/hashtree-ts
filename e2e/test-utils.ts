@@ -60,11 +60,12 @@ export async function goToTreeList(page: any) {
 export async function disableOthersPool(page: any) {
   await page.evaluate(async () => {
     // Import the settings store and set othersMax to 0
-    const { settingsStore } = await import('/src/stores/settings.ts');
+    // Note: Omit .ts extension for more robust Vite resolution
+    const { settingsStore } = await import('/src/stores/settings');
     settingsStore.setPoolSettings({ otherMax: 0, otherSatisfied: 0 });
 
     // Also update the WebRTC store if it exists
-    const { webRTCStore } = await import('/src/store.ts');
+    const { webRTCStore } = await import('/src/store');
     if (webRTCStore) {
       webRTCStore.setPoolConfig({
         follows: { maxConnections: 20, satisfiedConnections: 10 },
