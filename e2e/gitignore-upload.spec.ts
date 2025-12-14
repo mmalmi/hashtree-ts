@@ -5,9 +5,16 @@ import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { setupPageErrorHandler, disableOthersPool } from './test-utils.js';
 
 test.describe('Gitignore Directory Upload', () => {
   let testDir: string;
+
+  test.beforeEach(async ({ page }) => {
+    setupPageErrorHandler(page);
+    await page.goto('/');
+    await disableOthersPool(page);
+  });
 
   test.beforeAll(async () => {
     // Create a test directory with .gitignore
@@ -45,7 +52,6 @@ dist/
   });
 
   test('shows gitignore modal when uploading directory with .gitignore', async ({ page }) => {
-    await page.goto('http://localhost:5173');
     await page.waitForLoadState('networkidle');
 
     // We can't easily simulate a directory upload in Playwright without complex workarounds
@@ -104,7 +110,6 @@ dist/
   });
 
   test('gitignore patterns work correctly with filterByGitignore', async ({ page }) => {
-    await page.goto('http://localhost:5173');
     await page.waitForLoadState('networkidle');
 
     const result = await page.evaluate(async () => {

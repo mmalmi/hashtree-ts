@@ -247,10 +247,9 @@ export function invalidateTreeRoot(npub: string | null | undefined, treeName: st
 const HMR_KEY = '__treeRootStoreInitialized';
 const globalObj = typeof globalThis !== 'undefined' ? globalThis : window;
 
-// Use queueMicrotask to defer until after module initialization completes
-// This avoids circular dependency issues with nostr.ts -> store.ts
-queueMicrotask(() => {
-  if ((globalObj as Record<string, unknown>)[HMR_KEY]) return;
+// Initialize immediately - queueMicrotask caused race conditions with direct URL loading
+// where treeRootStore wasn't ready when other stores subscribed to it
+if (!(globalObj as Record<string, unknown>)[HMR_KEY]) {
   (globalObj as Record<string, unknown>)[HMR_KEY] = true;
   createTreeRootStore();
-});
+}

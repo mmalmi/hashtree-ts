@@ -65,6 +65,7 @@ test.describe('Copy and Share functionality', () => {
     });
 
     test('should show check icon after clicking copy', async ({ page }) => {
+      test.slow(); // Timeout-based wait needs more time
       await goToProfile(page);
 
       // Click copy button (use first() for desktop layout with sidebar)

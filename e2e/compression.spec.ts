@@ -276,6 +276,9 @@ test.describe('Compression features', () => {
     await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 3000 });
     await page.getByRole('button', { name: 'Done' }).click();
 
+    // Wait for any modal backdrop to close
+    await expect(page.locator('[data-modal-backdrop]')).not.toBeVisible({ timeout: 5000 });
+
     // Navigate back to folder
     const folderLink = page.locator('a:has-text("zip-progress-test")').first();
     await expect(folderLink).toBeVisible({ timeout: 5000 });

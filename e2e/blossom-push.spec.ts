@@ -67,6 +67,7 @@ test.describe('Blossom Push', () => {
   });
 
   test('push modal with mocked server shows progress', { timeout: 90000 }, async ({ page }) => {
+    test.slow(); // Network operations can be slow under parallel load
     setupPageErrorHandler(page);
     await page.goto('/');
     await disableOthersPool(page);

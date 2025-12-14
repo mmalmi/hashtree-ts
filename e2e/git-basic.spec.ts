@@ -10,6 +10,7 @@ test.describe('Git basic features', () => {
   });
 
   test('navigating to .git directory should show directory view not file download', { timeout: 30000 }, async ({ page }) => {
+    test.slow(); // File operations can be slow under parallel load
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder

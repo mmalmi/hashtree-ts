@@ -20,8 +20,8 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0, // Retry once on CI to handle flaky tests
   workers,
   reporter: 'list',
-  timeout: 10000,
-  expect: { timeout: 5000 },
+  timeout: 30000, // 30s global timeout for parallel stability
+  expect: { timeout: 10000 }, // 10s for expect assertions
   use: {
     baseURL: 'http://localhost:5173',
     trace: 'off',

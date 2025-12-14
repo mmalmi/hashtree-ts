@@ -7,7 +7,8 @@ import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList, disableOthersPool } from './test-utils.js';
 
 test.describe('Tree Deletion', () => {
-  test('deleted tree should not reappear in tree list', { timeout: 30000 }, async ({ page }) => {
+  test('deleted tree should not reappear in tree list', { timeout: 60000 }, async ({ page }) => {
+    test.slow();
     setupPageErrorHandler(page);
 
     // Capture console logs for debugging

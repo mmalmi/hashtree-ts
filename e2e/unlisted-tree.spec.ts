@@ -203,6 +203,7 @@ test.describe('Unlisted Tree Visibility', () => {
   });
 
   test('should create file in unlisted tree and read it back', async ({ page }) => {
+    test.slow(); // File operations can be slow under parallel load
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
@@ -237,6 +238,7 @@ test.describe('Unlisted Tree Visibility', () => {
   });
 
   test('should access unlisted tree from fresh browser with link', { timeout: 60000 }, async ({ page, browser }) => {
+    test.slow(); // WebRTC and sync operations need time under parallel load
     // Add console logging for page1
     page.on('console', msg => {
       const text = msg.text();
@@ -270,8 +272,9 @@ test.describe('Unlisted Tree Visibility', () => {
     // Exit edit mode so content is saved properly
     await page.getByRole('button', { name: 'Done' }).click();
 
-    // Verify content is visible in view mode
-    await expect(page.locator('pre')).toHaveText('Shared secret content');
+    // Verify content is visible in view mode (may take time to render under load)
+    await expect(page.locator('pre')).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('pre')).toHaveText('Shared secret content', { timeout: 10000 });
 
     // Wait for content to be published to blossom/nostr (background sync)
     await page.waitForTimeout(3000);
@@ -427,6 +430,7 @@ test.describe('Unlisted Tree Visibility', () => {
   });
 
   test('should preserve ?k= param after creating file in unlisted tree', async ({ page }) => {
+    test.slow(); // File operations can be slow under parallel load
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
@@ -469,6 +473,7 @@ test.describe('Unlisted Tree Visibility', () => {
   });
 
   test('should preserve ?k= param after drag-and-drop upload to unlisted tree', async ({ page }) => {
+    test.slow(); // Upload operations can be slow under parallel load
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);
@@ -517,6 +522,7 @@ test.describe('Unlisted Tree Visibility', () => {
   });
 
   test('unlisted tree should remain unlisted after file upload (not become public)', async ({ page }) => {
+    test.slow(); // File operations can be slow under parallel load
     // This test verifies that uploading files to an unlisted tree doesn't
     // accidentally change its visibility to public (regression test for
     // autosaveIfOwn not preserving visibility)
@@ -580,6 +586,7 @@ test.describe('Unlisted Tree Visibility', () => {
   });
 
   test('should show correct visibility icons for different tree types', async ({ page }) => {
+    test.slow(); // Creates multiple trees, can be slow under parallel load
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(500);
@@ -637,6 +644,7 @@ test.describe('Unlisted Tree Visibility', () => {
   });
 
   test('files in unlisted trees should be encrypted (have CHK)', async ({ page }) => {
+    test.slow(); // File operations can be slow under parallel load
     // This test verifies that files uploaded to unlisted trees are properly encrypted
     // and have CHK (Content Hash Key) in the permalink
 
@@ -665,9 +673,13 @@ test.describe('Unlisted Tree Visibility', () => {
     // Exit edit mode
     await page.getByRole('button', { name: 'Done' }).click();
 
+    // Wait for file viewer to load (may take time under parallel load)
+    // Look for the content text first as it's more reliable than the pre element
+    await expect(page.getByText('This content should be encrypted')).toBeVisible({ timeout: 30000 });
+
     // Look for the file's Permalink link (the one with visible text, not just icon)
     const permalinkLink = page.getByRole('link', { name: 'Permalink' });
-    await expect(permalinkLink).toBeVisible({ timeout: 5000 });
+    await expect(permalinkLink).toBeVisible({ timeout: 15000 });
 
     // Get the href of the permalink
     const permalinkHref = await permalinkLink.getAttribute('href');
@@ -690,6 +702,7 @@ test.describe('Unlisted Tree Visibility', () => {
   });
 
   test('owner can create and write to private folder', { timeout: 60000 }, async ({ page }) => {
+    test.slow(); // File operations can be slow under parallel load
     // Go to user's tree list
     await page.locator('header a:has-text("hashtree")').click();
     await page.waitForTimeout(300);

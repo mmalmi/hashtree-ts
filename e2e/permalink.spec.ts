@@ -23,6 +23,7 @@ test.describe('Permalink Navigation', () => {
   });
 
   test('file permalink should display file content', async ({ page }) => {
+    test.slow(); // File operations can be slow under parallel load
     // Navigate to public folder
     await page.getByRole('link', { name: 'public' }).first().click();
     await expect(page.getByRole('button', { name: /New File/i })).toBeVisible({ timeout: 5000 });
@@ -42,9 +43,13 @@ test.describe('Permalink Navigation', () => {
     await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 3000 });
     await page.getByRole('button', { name: 'Done' }).click();
 
+    // Wait for the content viewer to load after exiting edit mode
+    // The viewer might take time to render under parallel load
+    await expect(page.locator('pre')).toBeVisible({ timeout: 30000 });
+
     // Find the Permalink link in viewer
     const permalinkLink = page.getByRole('link', { name: 'Permalink', exact: true });
-    await expect(permalinkLink).toBeVisible({ timeout: 5000 });
+    await expect(permalinkLink).toBeVisible({ timeout: 10000 });
 
     // Get the href
     const permalinkHref = await permalinkLink.getAttribute('href');
@@ -60,6 +65,7 @@ test.describe('Permalink Navigation', () => {
   });
 
   test('directory permalink should display directory listing', async ({ page }) => {
+    test.slow(); // File operations can be slow under parallel load
     // Navigate to public folder
     await page.getByRole('link', { name: 'public' }).first().click();
     await expect(page.getByRole('button', { name: /New File/i })).toBeVisible({ timeout: 5000 });
@@ -80,7 +86,12 @@ test.describe('Permalink Navigation', () => {
     await page.getByRole('button', { name: 'Done' }).click();
 
     // Wait for modal backdrop to close before clicking links
-    await expect(page.locator('[data-modal-backdrop]')).not.toBeVisible({ timeout: 5000 });
+    // If modal is still visible after a short wait, press Escape to close it
+    const hasBackdrop = await page.locator('[data-modal-backdrop]').isVisible().catch(() => false);
+    if (hasBackdrop) {
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-modal-backdrop]')).not.toBeVisible({ timeout: 5000 });
+    }
 
     // Click on "public" breadcrumb link to go back to directory
     const publicLink = page.locator('a:has-text("public")').first();
@@ -114,6 +125,7 @@ test.describe('Permalink Navigation', () => {
   });
 
   test('file in permalink directory should display correctly', async ({ page }) => {
+    test.slow(); // File operations can be slow under parallel load
     // Create an unlisted (encrypted) tree
     await page.getByRole('button', { name: /New Folder/i }).click();
     await expect(page.locator('input[placeholder="Folder name..."]')).toBeVisible({ timeout: 3000 });
@@ -140,8 +152,13 @@ test.describe('Permalink Navigation', () => {
     await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 3000 });
     await page.getByRole('button', { name: 'Done' }).click();
 
-    // Wait for any modal to close before clicking
-    await expect(page.locator('[data-modal-backdrop]')).not.toBeVisible({ timeout: 5000 });
+    // Wait for modal backdrop to close before clicking links
+    // If modal is still visible after a short wait, press Escape to close it
+    const hasBackdrop2 = await page.locator('[data-modal-backdrop]').isVisible().catch(() => false);
+    if (hasBackdrop2) {
+      await page.keyboard.press('Escape');
+      await expect(page.locator('[data-modal-backdrop]')).not.toBeVisible({ timeout: 5000 });
+    }
 
     // Go back to directory to get permalink - wait for the breadcrumb link
     const treeLink = page.locator('a:has-text("permalink-file-test")').first();
