@@ -53,41 +53,39 @@ export async function loadWasmGit(): Promise<WasmGitModule> {
   if (moduleLoadPromise) return moduleLoadPromise;
 
   moduleLoadPromise = (async () => {
-    // Configure wasm-git to load wasm from public directory
+    // Set up silent print functions BEFORE module creation
+    // This prevents wasm-git from setting up its own print functions that log to console
+    const capturedOutput = { current: null as string[] | null };
+    const capturedError = { current: null as string[] | null };
+    let quitStatus: number | null = null;
+
+    // Configure wasm-git with silent print functions
     (globalThis as Record<string, unknown>).wasmGitModuleOverrides = {
       locateFile: (path: string) => {
-        // Return path to wasm file in public directory
         if (path.endsWith('.wasm')) {
           return '/lg2_async.wasm';
         }
         return path;
       },
+      // Provide print/printErr to prevent wasm-git from creating its own console-logging versions
+      print: (msg: string) => {
+        if (capturedOutput.current !== null) {
+          capturedOutput.current.push(msg);
+        }
+      },
+      printErr: (msg: string) => {
+        if (capturedError.current !== null) {
+          capturedError.current.push(msg);
+        }
+      },
     };
 
     // Import from node_modules (Vite will handle bundling the JS)
-    // The wasm file is served from public directory
     const { default: createModule } = await import('wasm-git');
     wasmGitModule = await createModule();
 
-    // Patch print/printErr to suppress console output while keeping capture working
-    // The default implementation both captures AND logs - we only want capture
+    // Add callWithOutput since wasm-git won't create it when we provide print/printErr
     const moduleAny = wasmGitModule as Record<string, unknown>;
-    const capturedOutput = { current: null as string[] | null };
-    const capturedError = { current: null as string[] | null };
-    let quitStatus: number | null = null;
-
-    moduleAny.print = (msg: string) => {
-      if (capturedOutput.current !== null) {
-        capturedOutput.current.push(msg);
-      }
-      // Don't log to console
-    };
-    moduleAny.printErr = (msg: string) => {
-      if (capturedError.current !== null) {
-        capturedError.current.push(msg);
-      }
-      // Don't log to console
-    };
     moduleAny.quit = (status: number) => {
       quitStatus = status;
     };

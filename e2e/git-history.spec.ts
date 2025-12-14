@@ -602,4 +602,122 @@ test.describe('Git history features', () => {
     }
   });
 
+  test('wasm-git should not spam console with git output', { timeout: 30000 }, async ({ page }) => {
+    // Capture ALL console messages to check for git output spam
+    const consoleLogs: string[] = [];
+    page.on('console', msg => {
+      consoleLogs.push(msg.text());
+    });
+
+    await navigateToPublicFolder(page);
+
+    // Create a real git repo with commits
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { execSync } = await import('child_process');
+    const os = await import('os');
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-spam-test-'));
+
+    try {
+      // Initialize git repo and create commits
+      execSync('git init', { cwd: tmpDir });
+      execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+      execSync('git config user.name "Test User"', { cwd: tmpDir });
+
+      await fs.writeFile(path.join(tmpDir, 'README.md'), '# Test\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Initial commit"', { cwd: tmpDir });
+
+      // Read git repo files
+      interface FileEntry { type: 'file'; path: string; content: number[]; }
+      interface DirEntry { type: 'dir'; path: string; }
+      type Entry = FileEntry | DirEntry;
+
+      const getAllEntries = async (dir: string, base = ''): Promise<Entry[]> => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const result: Entry[] = [];
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          const relativePath = base ? `${base}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            result.push({ type: 'dir', path: relativePath });
+            result.push(...await getAllEntries(fullPath, relativePath));
+          } else {
+            const content = await fs.readFile(fullPath);
+            result.push({ type: 'file', path: relativePath, content: Array.from(content) });
+          }
+        }
+        return result;
+      };
+
+      const allEntries = await getAllEntries(tmpDir);
+      const allFiles = allEntries.filter((e): e is FileEntry => e.type === 'file');
+      const allDirs = allEntries.filter((e): e is DirEntry => e.type === 'dir').map(d => d.path);
+
+      // Call git operations that would previously spam the console
+      await page.evaluate(async ({ files, dirs }) => {
+        const { getTree, LinkType } = await import('/src/store.ts');
+        const tree = getTree();
+
+        let { cid: rootCid } = await tree.putDirectory([]);
+
+        const dirPaths = new Set<string>(dirs);
+        for (const file of files) {
+          const parts = file.path.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            dirPaths.add(parts.slice(0, i).join('/'));
+          }
+        }
+        const sortedDirs = Array.from(dirPaths).sort((a, b) =>
+          a.split('/').length - b.split('/').length
+        );
+
+        for (const dir of sortedDirs) {
+          const parts = dir.split('/');
+          const name = parts.pop()!;
+          const parentPath = parts;
+          const { cid: emptyCid } = await tree.putDirectory([]);
+          rootCid = await tree.setEntry(rootCid, parentPath, name, emptyCid, 0, LinkType.Dir);
+        }
+
+        for (const file of files) {
+          const parts = file.path.split('/');
+          const name = parts.pop()!;
+          const parentPath = parts;
+          const content = new Uint8Array(file.content);
+          const { cid: fileCid } = await tree.putFile(content);
+          rootCid = await tree.setEntry(rootCid, parentPath, name, fileCid, content.length, LinkType.Blob);
+        }
+
+        // Call getLog which uses wasm-git
+        const { getLog, getHead } = await import('/src/utils/git.ts');
+        const head = await getHead(rootCid);
+        const commits = await getLog(rootCid, { depth: 10 });
+
+        return { head, commitCount: commits.length };
+      }, { files: allFiles, dirs: allDirs });
+
+      // Check console logs for git command output spam
+      // Git output typically contains "commit", "Author:", "Date:" lines
+      const gitOutputSpam = consoleLogs.filter(log =>
+        // Match typical git log/status output patterns that shouldn't appear
+        (log.includes('Author:') && log.includes('<') && log.includes('>')) ||
+        (log.match(/^commit [a-f0-9]{40}$/)) ||
+        (log.startsWith('Date:') && log.includes('20')) ||
+        (log.includes('Initialized empty Git repository')) ||
+        (log.match(/^\s+\w.*commit/i) && !log.includes('['))  // Commit message lines (indented)
+      );
+
+      // Should not have any git output spam
+      if (gitOutputSpam.length > 0) {
+        console.log('Found git output spam:', gitOutputSpam);
+      }
+      expect(gitOutputSpam.length).toBe(0);
+
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
 });
