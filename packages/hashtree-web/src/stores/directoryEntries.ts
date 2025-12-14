@@ -94,14 +94,25 @@ export function createDirectoryEntriesStore(locationStore: Readable<CID | null>,
       }
 
       // Update prev entry CIDs for next comparison
-      prevEntryCids = new Map();
+      const newEntryCids = new Map<string, string>();
       for (const entry of newEntries) {
         if (entry.cid?.hash) {
-          prevEntryCids.set(entry.name, toHex(entry.cid.hash));
+          newEntryCids.set(entry.name, toHex(entry.cid.hash));
         }
       }
 
-      state.set({ entries: sortEntries(newEntries), loading: false, isDirectory: true });
+      // Only update state if entries actually changed (avoids unnecessary re-renders)
+      const entriesChanged = newEntryCids.size !== prevEntryCids.size ||
+        [...newEntryCids].some(([name, cid]) => prevEntryCids.get(name) !== cid);
+
+      prevEntryCids = newEntryCids;
+
+      if (entriesChanged) {
+        state.set({ entries: sortEntries(newEntries), loading: false, isDirectory: true });
+      } else {
+        // Just clear loading state without changing entries
+        state.update(s => s.loading ? { ...s, loading: false } : s);
+      }
     } catch {
       state.set({ entries: [], loading: false, isDirectory: false });
       prevEntryCids.clear();
