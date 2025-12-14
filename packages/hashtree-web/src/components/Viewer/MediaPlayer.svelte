@@ -476,11 +476,9 @@
   }
 
   // Reload blob URL when CID changes (for live streams not using MSE)
+  // Called by the CID change effect - lastCidHash is already updated by the caller
   async function reloadBlobUrl() {
     if (!usingBlobUrl || !shouldTreatAsLive || !mediaRef) return;
-
-    const currentCidHash = toHex(cid.hash);
-    if (currentCidHash === lastCidHash) return;
 
     // Remember current playback position
     const currentPlaybackTime = mediaRef.currentTime;
@@ -502,7 +500,6 @@
       if (newBytesLoaded <= bytesLoaded) return;
 
       bytesLoaded = newBytesLoaded;
-      lastCidHash = currentCidHash;
       lastDataReceivedTime = Date.now();
 
       const mimeType = getMimeType(fileName).split(';')[0];
@@ -535,14 +532,10 @@
   }
 
   // Fetch and append only new data when CID changes
+  // Called by the CID change effect - lastCidHash is already updated by the caller
   async function fetchNewData() {
     if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
       return;
-    }
-
-    const currentCidHash = toHex(cid.hash);
-    if (currentCidHash === lastCidHash) {
-      return; // No change
     }
 
     try {
@@ -554,16 +547,15 @@
       if (newData && newData.length > 0) {
         await appendToSourceBuffer(newData);
         bytesLoaded += newData.length;
+        lastDataReceivedTime = Date.now();
 
         // Update duration
-        if (mediaRef && !isNaN(mediaRef.duration)) {
+        if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
           duration = mediaRef.duration;
         }
       }
-
-      lastCidHash = currentCidHash;
     } catch (e) {
-      console.error('Error fetching new data:', e);
+      console.error('[MediaPlayer] fetchNewData error:', e);
     }
   }
 
@@ -663,7 +655,6 @@
     const currentCidHash = currentCidHashReactive;
     if (currentCidHash && currentCidHash !== lastCidHash) {
       // Update lastCidHash immediately to prevent effect from re-triggering
-      const prevHash = lastCidHash;
       lastCidHash = currentCidHash;
 
       // For MSE mode, append new data incrementally
