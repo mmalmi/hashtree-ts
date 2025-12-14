@@ -507,6 +507,11 @@
       mediaRef.addEventListener('loadedmetadata', () => {
         duration = mediaRef!.duration;
 
+        // Restore exact position (clamped to new duration)
+        if (currentPlaybackTime > 0) {
+          mediaRef!.currentTime = Math.min(currentPlaybackTime, mediaRef!.duration);
+        }
+
         if (wasPlaying) {
           mediaRef!.play().catch(() => {});
         }
