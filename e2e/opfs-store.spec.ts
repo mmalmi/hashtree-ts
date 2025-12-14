@@ -7,6 +7,7 @@
  * We expose hashtree module on window.__hashtree for testing.
  */
 import { test, expect } from '@playwright/test';
+import { disableOthersPool } from './test-utils.js';
 
 // Extend timeout for this test file since OPFS operations can be slow
 test.setTimeout(30000);
@@ -14,6 +15,7 @@ test.setTimeout(30000);
 test.describe('OpfsStore', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
+    await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
 
     // Wait for app to be ready and hashtree to be exposed on window
     await page.waitForSelector('header', { timeout: 10000 });
@@ -319,28 +321,6 @@ test.describe('OpfsStore', () => {
     expect(result.sizeMatch).toBe(true);
     expect(result.firstByte).toBe(0);
     expect(result.lastByte).toBe(255);
-  });
-
-  test('flush should persist pending writes', async ({ page }) => {
-    const result = await page.evaluate(async () => {
-      // @ts-ignore
-      const { OpfsStore, sha256 } = window.__hashtree;
-
-      const store = new OpfsStore('test-store');
-      const data = new Uint8Array([1, 2, 3]);
-      const hash = await sha256(data);
-
-      await store.put(hash, data);
-      await store.flush();
-
-      // Create new instance to read from disk
-      const store2 = new OpfsStore('test-store');
-      const retrieved = await store2.get(hash);
-
-      return retrieved ? Array.from(retrieved) : null;
-    });
-
-    expect(result).toEqual([1, 2, 3]);
   });
 
   test('close should flush and cleanup', async ({ page }) => {

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList, disableOthersPool } from './test-utils.js';
 
 // Helper to create tree and navigate into it
 async function createAndEnterTree(page: any, name: string) {
@@ -38,6 +38,7 @@ test.describe('Keyboard Navigation', () => {
   test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
 
     // Clear storage for fresh state
     await page.evaluate(async () => {
@@ -50,6 +51,7 @@ test.describe('Keyboard Navigation', () => {
     });
 
     await page.reload();
+    await disableOthersPool(page); // Re-apply after reload
     await page.waitForTimeout(500);
     await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
     await navigateToPublicFolder(page);

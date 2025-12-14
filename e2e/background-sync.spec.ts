@@ -8,13 +8,14 @@
  * 4. User B can access A's tree content offline
  */
 import { test, expect, Page } from '@playwright/test';
-import { setupPageErrorHandler } from './test-utils.js';
+import { setupPageErrorHandler, disableOthersPool } from './test-utils.js';
 
 // Helper to set up a fresh user session
 async function setupFreshUser(page: Page) {
   setupPageErrorHandler(page);
 
   await page.goto('http://localhost:5173');
+  await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
 
   // Clear storage for fresh state
   await page.evaluate(async () => {
@@ -27,6 +28,7 @@ async function setupFreshUser(page: Page) {
   });
 
   await page.reload();
+  await disableOthersPool(page); // Re-apply after reload
   await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
 
   // Wait for the public folder link to appear
@@ -86,7 +88,7 @@ async function uploadFile(page: Page, fileName: string, content: string) {
 // Helper to get storage stats from a page
 async function getStorageStats(page: Page): Promise<{ items: number; bytes: number }> {
   return await page.evaluate(async () => {
-    const store = (window as any).__idbStore;
+    const store = (window as any).__localStore;
     if (!store) return { items: 0, bytes: 0 };
     const items = await store.count();
     const bytes = await store.totalBytes();

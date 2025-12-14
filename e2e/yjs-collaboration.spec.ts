@@ -15,13 +15,14 @@
  * - If waiting for content sync, use waitForEditorContent() helper
  */
 import { test, expect, Page } from '@playwright/test';
-import { setupPageErrorHandler } from './test-utils.js';
+import { setupPageErrorHandler, disableOthersPool } from './test-utils.js';
 
 // Helper to set up a fresh user session
 async function setupFreshUser(page: Page) {
   setupPageErrorHandler(page);
 
   await page.goto('http://localhost:5173');
+  await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
 
   // Clear storage for fresh state
   await page.evaluate(async () => {
@@ -34,6 +35,7 @@ async function setupFreshUser(page: Page) {
   });
 
   await page.reload();
+  await disableOthersPool(page); // Re-apply after reload
   await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
 
   // Wait for the public folder link to appear

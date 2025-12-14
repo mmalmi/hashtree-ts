@@ -1,7 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // Workers: use PW_WORKERS env var, or default to 100% of CPU cores
-const workers = process.env.PW_WORKERS ?? '100%';
+// PW_WORKERS can be a number (4) or percentage (100%)
+const workersEnv = process.env.PW_WORKERS;
+const workers = workersEnv
+  ? /^\d+$/.test(workersEnv) ? parseInt(workersEnv, 10) : workersEnv
+  : '100%';
 
 /**
  * Playwright E2E test configuration.

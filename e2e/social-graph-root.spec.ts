@@ -1,32 +1,47 @@
 import { test, expect } from '@playwright/test';
+import { disableOthersPool } from './test-utils.js';
 
 /**
  * Test that social graph root is set correctly on login and account switch
  */
 test.describe('Social graph root', () => {
   test('should set root when app loads with logged in user', async ({ page }) => {
-    const logs: string[] = [];
-    page.on('console', (msg) => {
-      const text = msg.text();
-      if (text.includes('[socialGraph]')) {
-        logs.push(text);
-      }
-    });
-
     await page.goto('/');
+    await disableOthersPool(page);
 
     // Login with new account
     await page.getByRole('button', { name: /New/i }).click();
-    await page.waitForTimeout(3000);
 
-    console.log('=== Logs ===');
-    logs.forEach(log => console.log(log));
+    // Wait for login to complete - the social graph should have the user's pubkey as root
+    await page.waitForFunction(
+      () => {
+        const nostrStore = (window as any).__nostrStore;
+        const getSocialGraph = (window as any).__getSocialGraph;
+        if (!nostrStore || !getSocialGraph) return false;
 
-    // Check that setRoot was called (either on init or after login)
-    const hasSetRoot = logs.some(log => log.includes('setting root to'));
-    console.log('setRoot called:', hasSetRoot);
+        const pubkey = nostrStore.getState()?.pubkey;
+        if (!pubkey) return false;
 
-    expect(hasSetRoot).toBe(true);
+        const graph = getSocialGraph();
+        const root = graph?.getRoot?.();
+        return root === pubkey;
+      },
+      { timeout: 10000 }
+    );
+
+    // Verify the root matches the logged in user's pubkey
+    const { pubkey, root } = await page.evaluate(() => {
+      const nostrStore = (window as any).__nostrStore;
+      const getSocialGraph = (window as any).__getSocialGraph;
+      return {
+        pubkey: nostrStore?.getState()?.pubkey,
+        root: getSocialGraph?.()?.getRoot?.(),
+      };
+    });
+
+    console.log('User pubkey:', pubkey);
+    console.log('Social graph root:', root);
+    expect(root).toBe(pubkey);
   });
 
   test('should show me as known follower when I follow someone', async ({ page }) => {

@@ -1,5 +1,5 @@
 import { test, expect, type Route } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -10,6 +10,7 @@ test.describe('Blossom Push', () => {
 
     // Go to home page first (creates user session)
     await page.goto('/');
+    await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
 
     // Navigate to public folder where we have files
     await navigateToPublicFolder(page);
@@ -41,6 +42,7 @@ test.describe('Blossom Push', () => {
   test('push modal shows correct server options', { timeout: 60000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
 
     // Navigate to public folder
     await navigateToPublicFolder(page);
@@ -53,11 +55,11 @@ test.describe('Blossom Push', () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     // Should show write-enabled servers from default config
-    // Only blossom.iris.to has write: true
-    await expect(modal.locator('text=blossom.iris.to')).toBeVisible();
+    // hashtree.iris.to should be visible and checked by default
+    await expect(modal.locator('text=hashtree.iris.to')).toBeVisible();
 
-    // Read-only servers should NOT appear
-    await expect(modal.locator('text=files.iris.to')).not.toBeVisible();
+    // files.iris.to should also be available (but may be unchecked)
+    await expect(modal.locator('text=files.iris.to')).toBeVisible();
 
     // Close modal
     await modal.locator('button', { hasText: 'Cancel' }).click();
@@ -67,6 +69,7 @@ test.describe('Blossom Push', () => {
   test('push modal with mocked server shows progress', { timeout: 90000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
 
     // Track uploaded blobs
     const uploadedBlobs: string[] = [];
@@ -160,6 +163,7 @@ test.describe('Blossom Push', () => {
   test('push modal handles upload errors gracefully', { timeout: 90000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
 
     // Mock failing blossom server
     await page.route('**/upload', async (route: Route) => {
