@@ -14,6 +14,7 @@
     "build": "pnpm --filter hashtree --filter hashtree-dexie build && pnpm --filter hashtree-web build",
     "build:hashtree": "pnpm --filter hashtree build",
     "build:web": "pnpm --filter hashtree-web build",
+    "build:docs": "pnpm --filter hashtree-web build:docs",
     "dev": "pnpm --filter hashtree-web dev",
     "dev:docs": "pnpm --filter hashtree-web dev:docs",
     "test": "pnpm --filter hashtree test",
