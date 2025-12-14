@@ -721,10 +721,19 @@
         </div>
         <a
           href="#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-ts"
-          class="btn-ghost w-full flex items-center justify-center gap-2"
+          class="btn-ghost w-full flex items-center justify-center gap-2 no-underline"
         >
           <span class="i-lucide-code text-sm"></span>
-          <span>Source Code</span>
+          <span>hashtree-ts</span>
+          <span class="text-text-3 text-xs no-underline">(TypeScript library & this app)</span>
+        </a>
+        <a
+          href="#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-rs"
+          class="btn-ghost w-full flex items-center justify-center gap-2 no-underline"
+        >
+          <span class="i-lucide-terminal text-sm"></span>
+          <span>hashtree-rs</span>
+          <span class="text-text-3 text-xs no-underline">(Rust CLI & P2P daemon)</span>
         </a>
         <button
           onclick={() => window.location.reload()}
