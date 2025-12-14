@@ -4,6 +4,7 @@ import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from
 test.describe('NIP-34 Pull Requests', () => {
   // PR/Issues views are hidden on small screens (lg:flex), need wider viewport
   test.use({ viewport: { width: 1280, height: 720 } });
+  test.setTimeout(30000); // 30s timeout for all tests in this describe
 
   // Disable "others pool" to prevent WebRTC cross-talk from parallel tests
   test.beforeEach(async ({ page }) => {
