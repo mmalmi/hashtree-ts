@@ -1382,6 +1382,7 @@ test.describe('Livestream Viewer Updates', () => {
         return {
           video: {
             duration: video.duration,
+            currentTime: video.currentTime,
             readyState: video.readyState,
             src: video.src ? 'has-src' : 'no-src',
           },
@@ -1395,12 +1396,27 @@ test.describe('Livestream Viewer Updates', () => {
 
     // Check duration display multiple times as stream continues
     const displayStates: Awaited<ReturnType<typeof getDurationDisplay>>[] = [];
+    let playbackPositionPreserved = true;
+    let lastCurrentTime = 0;
 
     // Monitor for 10 more seconds while stream continues
     for (let i = 0; i < 5; i++) {
       const state = await getDurationDisplay();
       displayStates.push(state);
       console.log(`Duration check ${i + 1}:`, JSON.stringify(state, null, 2));
+
+      // Check that playback position doesn't jump to 0 (except on first check)
+      if (i > 0 && state.video && lastCurrentTime > 2) {
+        // Allow some tolerance - position might advance or be slightly earlier due to seeking
+        // But it should NOT be 0 unless the video just started
+        if (state.video.currentTime < 1 && lastCurrentTime > 3) {
+          console.log(`WARNING: Playback jumped from ${lastCurrentTime} to ${state.video.currentTime}`);
+          playbackPositionPreserved = false;
+        }
+      }
+      if (state.video) {
+        lastCurrentTime = state.video.currentTime;
+      }
 
       if (state.showsTimeFormat && state.video && state.video.duration >= 10) {
         console.log('SUCCESS: Duration display shows time format with 10+ seconds!');
@@ -1429,11 +1445,14 @@ test.describe('Livestream Viewer Updates', () => {
     console.log(`Any check showed bytes format: ${anyBytesFormat}`);
     console.log(`Final duration display: "${finalState?.durationDisplayText}"`);
     console.log(`Max video duration seen: ${maxDuration}s`);
+    console.log(`Playback position preserved: ${playbackPositionPreserved}`);
     console.log(`Saw duration log in viewer: ${sawDurationLog}`);
 
     // The test passes if we saw proper time format AND duration >= 10 seconds
     // This verifies that duration patching works correctly over a longer stream
     expect(anyTimeFormat).toBe(true);
     expect(maxDuration).toBeGreaterThanOrEqual(10);
+    // Playback position should not jump back to 0 during stream updates
+    expect(playbackPositionPreserved).toBe(true);
   });
 });

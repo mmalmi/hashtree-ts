@@ -480,9 +480,13 @@
   async function reloadBlobUrl() {
     if (!usingBlobUrl || !shouldTreatAsLive || !mediaRef) return;
 
-    // Remember current playback position
-    const currentPlaybackTime = mediaRef.currentTime;
+    // Remember current playback position and state BEFORE any async work
+    const savedTime = mediaRef.currentTime;
+    const savedDuration = mediaRef.duration;
     const wasPlaying = !mediaRef.paused;
+    // Check if user was near live edge (within 10 seconds)
+    const wasNearLiveEdge = isFinite(savedDuration) && savedDuration > 0 &&
+      (savedDuration - savedTime) < 10;
 
     try {
       const tree = getTree();
@@ -504,27 +508,39 @@
 
       const mimeType = getMimeType(fileName).split(';')[0];
       const blob = new Blob(chunks, { type: mimeType });
+      const newBlobUrl = URL.createObjectURL(blob);
 
-      // Clean up previous blob URL
-      if (mediaRef.src && mediaRef.src.startsWith('blob:')) {
-        URL.revokeObjectURL(mediaRef.src);
-      }
+      // Store old URL to revoke after switch
+      const oldUrl = mediaRef.src;
 
-      mediaRef.src = URL.createObjectURL(blob);
+      // Set up the restore handler BEFORE changing src
+      const restorePosition = () => {
+        if (!mediaRef) return;
+        duration = mediaRef.duration;
 
-      // Restore playback state after loading new data
-      mediaRef.addEventListener('loadedmetadata', () => {
-        duration = mediaRef!.duration;
-
-        // Restore exact position (clamped to new duration)
-        if (currentPlaybackTime > 0 && isFinite(mediaRef!.duration)) {
-          mediaRef!.currentTime = Math.min(currentPlaybackTime, mediaRef!.duration);
+        // For live streams: if user was near live edge, stay at live edge
+        // Otherwise restore their exact position
+        if (wasNearLiveEdge && isFinite(mediaRef.duration) && mediaRef.duration > 5) {
+          mediaRef.currentTime = Math.max(0, mediaRef.duration - 3);
+        } else if (savedTime > 0 && isFinite(mediaRef.duration)) {
+          mediaRef.currentTime = Math.min(savedTime, mediaRef.duration);
         }
 
         if (wasPlaying) {
-          mediaRef!.play().catch(() => {});
+          mediaRef.play().catch(() => {});
         }
-      }, { once: true });
+      };
+
+      // Use loadedmetadata for restore
+      mediaRef.addEventListener('loadedmetadata', restorePosition, { once: true });
+
+      // Switch to new source
+      mediaRef.src = newBlobUrl;
+
+      // Revoke old URL after a delay to avoid issues
+      if (oldUrl && oldUrl.startsWith('blob:')) {
+        setTimeout(() => URL.revokeObjectURL(oldUrl), 1000);
+      }
 
     } catch (e) {
       console.error('[MediaPlayer] Error reloading blob URL:', e);
