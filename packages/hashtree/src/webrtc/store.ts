@@ -815,12 +815,10 @@ export class WebRTCStore implements Store {
 
     // All WebRTC peers failed - try fallback stores in order
     if (this.config.fallbackStores.length > 0) {
-      this.log('All peers failed, trying', this.config.fallbackStores.length, 'fallback stores');
       for (const store of this.config.fallbackStores) {
         try {
           const data = await store.get(hash);
           if (data) {
-            this.log('Got data from fallback store');
             this.blossomFetches++;
             if (this.config.localStore) {
               await this.config.localStore.put(hash, data);
