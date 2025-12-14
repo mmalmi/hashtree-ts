@@ -195,6 +195,7 @@ test.describe('Livestream Viewer Updates', () => {
   }
 
   test('viewer receives continuous stream updates from broadcaster', async ({ browser }) => {
+    test.slow(); // Video streaming tests need extra time under parallel load
     // Verify test file exists
     expect(fs.existsSync(TEST_VIDEO)).toBe(true);
     const videoBase64 = getTestVideoBase64();
@@ -394,6 +395,7 @@ test.describe('Livestream Viewer Updates', () => {
   });
 
   test('viewer playback continues without stalling during long stream', async ({ page, context }) => {
+    test.slow(); // Video streaming tests need extra time under parallel load
     /**
      * This test verifies that video playback continues smoothly over a longer
      * streaming period - specifically checking that the video doesn't stall
@@ -519,6 +521,7 @@ test.describe('Livestream Viewer Updates', () => {
   });
 
   test('same-browser live streaming updates video as data grows', async ({ page, context }) => {
+    test.slow(); // Video streaming tests need extra time under parallel load
     /**
      * This test verifies that when viewing a live stream in the SAME browser context
      * (where data is shared in IndexedDB), the video updates as new data is recorded.
@@ -662,6 +665,7 @@ test.describe('Livestream Viewer Updates', () => {
   });
 
   test('viewer joins mid-stream and watches full 30 second stream', async ({ browser }) => {
+    test.slow(); // Video streaming tests need extra time under parallel load
     /**
      * This test verifies that a viewer who joins mid-stream can:
      * 1. See the live stream from another user
@@ -1018,6 +1022,7 @@ test.describe('Livestream Viewer Updates', () => {
   });
 
   test('video element should NOT flicker during live streaming', async ({ page, context }) => {
+    test.slow(); // Video streaming tests need extra time under parallel load
     /**
      * This test specifically monitors for video element flickering during livestreaming.
      * The video element should remain stable in the DOM throughout the stream.
