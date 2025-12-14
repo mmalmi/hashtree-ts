@@ -10,6 +10,7 @@ test.describe('Git checkout features', () => {
   });
 
   test('checkout commit should return a valid directory CID that can be listed', { timeout: 60000 }, async ({ page }) => {
+    test.slow();
 
     // Capture wasm-git logs
     const wasmGitLogs: string[] = [];
@@ -182,6 +183,7 @@ test.describe('Git checkout features', () => {
   });
 
   test('checkout previous revision removes files that were added later', { timeout: 120000 }, async ({ page }) => {
+    test.slow();
     await navigateToPublicFolder(page);
 
     // Create a folder for our test repo

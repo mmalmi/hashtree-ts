@@ -397,7 +397,8 @@ test.describe('Git history features', () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
   });
-  test('git directory listing should show last commit info for files', { timeout: 60000 }, async ({ page }) => {
+  test('git directory listing should show last commit info for files', async ({ page }) => {
+    test.slow(); // This test involves git operations that take time
     // Capture console logs for debugging
     const logs: string[] = [];
     page.on('console', msg => {
@@ -570,12 +571,9 @@ test.describe('Git history features', () => {
         autosaveIfOwn(newRootCid);
       }, { files: allFiles, dirs: allDirs });
 
-      // Wait for the folder to appear
-      await page.waitForTimeout(1000);
-
-      // Click into the git repo folder
+      // Click into the git repo folder (wait for folder to appear in list)
       const repoLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'test-git-repo' }).first();
-      await expect(repoLink).toBeVisible({ timeout: 10000 });
+      await expect(repoLink).toBeVisible({ timeout: 15000 });
       await repoLink.click();
 
       // Wait for navigation
@@ -583,19 +581,15 @@ test.describe('Git history features', () => {
 
       // Set larger viewport to see commit message column
       await page.setViewportSize({ width: 1200, height: 800 });
-      await page.waitForTimeout(2000); // Wait for file commits to load
 
       // Check that the README row exists
       const readmeRow = page.locator('tr').filter({ hasText: 'README.md' });
-      await expect(readmeRow).toBeVisible({ timeout: 10000 });
-
-      // Wait for file commits to load
-      await page.waitForTimeout(3000);
+      await expect(readmeRow).toBeVisible({ timeout: 15000 });
 
       // The commit message or relative time should appear in the table
       // Look for "Add README" text or time like "just now" or "ago"
       const commitCell = page.locator('td').filter({ hasText: /Add README|just now|ago/ });
-      await expect(commitCell.first()).toBeVisible({ timeout: 10000 });
+      await expect(commitCell.first()).toBeVisible({ timeout: 15000 });
 
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });

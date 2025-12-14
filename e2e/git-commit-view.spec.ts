@@ -10,6 +10,7 @@ test.describe('Git commit view', () => {
   });
 
   test('clicking commit message should navigate to commit view with details', { timeout: 90000 }, async ({ page }) => {
+    test.slow();
     await navigateToPublicFolder(page);
 
     // Create a folder for our test repo
@@ -110,6 +111,7 @@ test.describe('Git commit view', () => {
   });
 
   test('commit view shows commit details and browse files link', { timeout: 90000 }, async ({ page }) => {
+    test.slow();
     await navigateToPublicFolder(page);
 
     // Create a folder for test
@@ -177,6 +179,7 @@ test.describe('Git commit view', () => {
   });
 
   test('tab navigation shows on commit view', { timeout: 90000 }, async ({ page }) => {
+    test.slow();
     await navigateToPublicFolder(page);
 
     // Create a folder

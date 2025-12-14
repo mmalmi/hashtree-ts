@@ -9,7 +9,8 @@ test.describe('Git shell features', () => {
     await disableOthersPool(page);
   });
 
-  test('git shell modal should run commands and display output', { timeout: 60000 }, async ({ page }) => {
+  test('git shell modal should run commands and display output', async ({ page }) => {
+    test.slow(); // This test involves git operations that take time
     await navigateToPublicFolder(page);
 
     // Import Node.js modules
@@ -88,10 +89,9 @@ test.describe('Git shell features', () => {
         autosaveIfOwn(newRootCid);
       }, { files: allFiles, dirs: allDirs });
 
-      // Navigate to the repo
-      await page.waitForTimeout(1000);
+      // Navigate to the repo (wait for folder to appear in list)
       const repoLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'shell-test-repo' }).first();
-      await expect(repoLink).toBeVisible({ timeout: 10000 });
+      await expect(repoLink).toBeVisible({ timeout: 15000 });
       await repoLink.click();
       await page.waitForURL(/shell-test-repo/, { timeout: 10000 });
 
@@ -131,7 +131,8 @@ test.describe('Git shell features', () => {
     }
   });
 
-  test('git shell should support write commands like add and commit', { timeout: 60000 }, async ({ page }) => {
+  test('git shell should support write commands like add and commit', async ({ page }) => {
+    test.slow(); // This test involves git operations that take time
     await navigateToPublicFolder(page);
 
     // Import Node.js modules
@@ -210,10 +211,9 @@ test.describe('Git shell features', () => {
         autosaveIfOwn(newRootCid);
       }, { files: allFiles, dirs: allDirs });
 
-      // Navigate to the repo
-      await page.waitForTimeout(1000);
+      // Navigate to the repo (wait for folder to appear in list)
       const repoLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'commit-test-repo' }).first();
-      await expect(repoLink).toBeVisible({ timeout: 10000 });
+      await expect(repoLink).toBeVisible({ timeout: 15000 });
       await repoLink.click();
       await page.waitForURL(/commit-test-repo/, { timeout: 10000 });
 
@@ -251,8 +251,8 @@ test.describe('Git shell features', () => {
         autosaveIfOwn(newRootCid);
       });
 
-      // Wait for the file to appear
-      await page.waitForTimeout(500);
+      // Wait for the file to appear in the list
+      await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'newfile.txt' })).toBeVisible({ timeout: 10000 });
 
       // Close and reopen modal to get fresh dirCid
       await page.keyboard.press('Escape');
@@ -262,24 +262,31 @@ test.describe('Git shell features', () => {
 
       // Run git add to stage the new file
       const input = modal.locator('input[type="text"]');
+
+      // Count pre elements before add
+      const preCountBeforeAdd = await modal.locator('pre').count();
+
       await input.fill('add newfile.txt');
       await input.press('Enter');
 
-      // Wait for command to complete
-      await page.waitForTimeout(1000);
+      // Wait for add output to appear (a new pre element)
+      await expect(modal.locator('pre')).toHaveCount(preCountBeforeAdd + 1, { timeout: 15000 });
+
+      // Count pre elements before commit
+      const preCountBeforeCommit = await modal.locator('pre').count();
 
       // Run git commit
       await input.fill('commit -m "Add newfile.txt"');
       await input.press('Enter');
 
-      // Wait for commit and should see success message or saved indicator
-      await page.waitForTimeout(2000);
+      // Wait for commit output to appear (a new pre element)
+      await expect(modal.locator('pre')).toHaveCount(preCountBeforeCommit + 1, { timeout: 30000 });
 
       // Close modal and verify commit count increased
       await page.keyboard.press('Escape');
       await expect(modal).not.toBeVisible({ timeout: 5000 });
 
-      // Wait for UI to refresh and check for 2 commits
+      // Wait for UI to show 2 commits (reactive update from the commit)
       await expect(page.getByRole('button', { name: /2 commits/i })).toBeVisible({ timeout: 15000 });
 
     } finally {

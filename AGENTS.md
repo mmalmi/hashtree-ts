@@ -42,13 +42,14 @@ npm run test:e2e # E2E tests
 - For collaborative tests: users follow each other, then only one user needs to set editors
 
 ### Test Parallelism
-- Tests run with 100% of CPU cores by default, which can cause WebRTC interference and resource contention
-- When tests fail in parallel but pass with `--workers=1`, the issue is likely WebRTC cross-talk or resource contention
+- **Tests MUST pass with 100% workers** (full parallelism) for fast execution and iteration
+- Use `--workers=1` only when debugging specific test failures
 - The "others pool" (non-followed peers) fills up with connections from parallel test instances
-- **Solutions**:
-  - Use `disableOthersPool(page)` helper in test-utils.ts after `page.goto('/')` to prevent WebRTC connections to non-followed peers
-  - Run with `--workers=4` for reliable test execution on most machines
-  - Multi-user tests should have users follow each other before any WebRTC-dependent operations
+- **Required for all tests**:
+  - Use `disableOthersPool(page)` helper in test-utils.ts after `page.goto('/')` to prevent WebRTC cross-talk
+  - Use `setupPageErrorHandler(page)` to filter expected relay errors
+  - Wait for specific conditions, never use arbitrary delays
+- Multi-user tests should have users follow each other before any WebRTC-dependent operations
 - Nostr relay errors (rate-limiting, pow requirements) are expected and filtered by `setupPageErrorHandler`
 - temp.iris.to relay is generally tolerant and reliable for tests
 - git-push-htree test requires cargo/rust installed - skip if not available

@@ -5,7 +5,7 @@
  * A Yjs document directory is identified by having a .yjs config file inside.
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Yjs Document Viewer', () => {
   test.setTimeout(60000);
@@ -14,6 +14,7 @@ test.describe('Yjs Document Viewer', () => {
     setupPageErrorHandler(page);
 
     await page.goto('/');
+    await disableOthersPool(page);
 
     // Clear storage for fresh state
     await page.evaluate(async () => {

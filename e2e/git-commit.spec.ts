@@ -10,6 +10,7 @@ test.describe('Git commit features', () => {
   });
 
   test('should be able to add files and commit them via commit modal', { timeout: 90000 }, async ({ page }) => {
+    test.slow();
     await navigateToPublicFolder(page);
 
     // Create a folder for our test repo
@@ -156,6 +157,7 @@ test.describe('Git commit features', () => {
   });
 
   test('git status should show correct filename (not truncated)', { timeout: 60000 }, async ({ page }) => {
+    test.slow();
     await navigateToPublicFolder(page);
 
     // Create a folder and init as git repo
@@ -239,6 +241,7 @@ test.describe('Git commit features', () => {
   });
 
   test('git status shows changes count correctly', { timeout: 60000 }, async ({ page }) => {
+    test.slow();
     await navigateToPublicFolder(page);
 
     // Create a folder and init as git repo

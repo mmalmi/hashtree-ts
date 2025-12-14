@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList, disableOthersPool } from './test-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -42,6 +42,7 @@ test.describe('Hashtree Explorer', () => {
 
     // Go to page first to be able to clear storage
     await page.goto('/');
+    await disableOthersPool(page);
 
     // Clear IndexedDB and localStorage before each test
     await page.evaluate(async () => {

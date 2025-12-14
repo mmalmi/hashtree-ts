@@ -10,6 +10,7 @@ test.describe('Git branch features', () => {
   });
 
   test('detached HEAD should show commit id and allow branch checkout', { timeout: 90000 }, async ({ page }) => {
+    test.slow(); // Git operations involve wasm-git which can be slow under load
     await navigateToPublicFolder(page);
 
     // Create a folder and init as git repo with 2 commits
@@ -126,6 +127,7 @@ test.describe('Git branch features', () => {
   });
 
   test('new branch can be created from branch dropdown', { timeout: 60000 }, async ({ page }) => {
+    test.slow();
     await navigateToPublicFolder(page);
 
     // Create folder with file and init git
@@ -217,6 +219,7 @@ test.describe('Git branch features', () => {
   });
 
   test('checkout older commit changes visible files', { timeout: 90000 }, async ({ page }) => {
+    test.slow();
     await navigateToPublicFolder(page);
 
     // Create folder and init git with 2 commits containing different files

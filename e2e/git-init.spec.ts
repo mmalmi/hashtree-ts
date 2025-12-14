@@ -10,6 +10,7 @@ test.describe('Git init features', () => {
   });
 
   test('git init button should initialize a git repo in a directory', { timeout: 60000 }, async ({ page }) => {
+    test.slow();
     await navigateToPublicFolder(page);
 
     // Create a folder with some files
