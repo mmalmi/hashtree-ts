@@ -9,3 +9,4 @@ e2e/screenshots/
 .claude
 .pnpm-store/
 e2e/screenshots/
+packages/hashtree-web/dist-docs/

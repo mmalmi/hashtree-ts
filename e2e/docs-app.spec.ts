@@ -176,4 +176,83 @@ test.describe('Iris Docs App', () => {
     await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('.ProseMirror')).toContainText('Content for navigation test', { timeout: 10000 });
   });
+
+  test('another browser can view document via shared link', async ({ browser }, testInfo) => {
+    testInfo.setTimeout(60000);
+
+    // Create two separate browser contexts (like two different browsers/incognito)
+    const context1 = await browser.newContext();
+    const context2 = await browser.newContext();
+    const page1 = await context1.newPage();
+    const page2 = await context2.newPage();
+
+    setupPageErrorHandler(page1);
+    setupPageErrorHandler(page2);
+
+    try {
+      // Browser 1: Login first
+      await page1.goto('/docs.html#/');
+      await disableOthersPool(page1);
+      await page1.getByRole('button', { name: /New/i }).click();
+      await expect(page1.locator('button:has-text("New Document")')).toBeVisible({ timeout: 15000 });
+
+      // Browser 2: Login
+      await page2.goto('/docs.html#/');
+      await disableOthersPool(page2);
+      await page2.getByRole('button', { name: /New/i }).click();
+      await expect(page2.locator('button:has-text("New Document")')).toBeVisible({ timeout: 15000 });
+
+      // Get npubs from both browsers
+      const npub1 = await page1.evaluate(() => (window as any).__nostrStore?.getState()?.npub);
+      const npub2 = await page2.evaluate(() => (window as any).__nostrStore?.getState()?.npub);
+      console.log('Browser 1 npub:', npub1);
+      console.log('Browser 2 npub:', npub2);
+
+      // Have them follow each other for WebRTC connection
+      await page1.evaluate((npub) => {
+        (window as any).__nostrStore?.getState()?.follow?.(npub);
+      }, npub2);
+      await page2.evaluate((npub) => {
+        (window as any).__nostrStore?.getState()?.follow?.(npub);
+      }, npub1);
+
+      // Wait for WebRTC connection
+      await page1.waitForTimeout(2000);
+
+      // Browser 1: Create a document
+      await page1.keyboard.press('Escape');
+      await page1.waitForTimeout(200);
+      await page1.locator('button:has-text("New Document")').click();
+
+      const docName = `Shared Doc ${Date.now()}`;
+      await page1.locator('input[placeholder="Document name..."]').fill(docName);
+      await page1.getByRole('button', { name: 'Create' }).click();
+
+      // Wait for editor and type content
+      await expect(page1.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+      const editor1 = page1.locator('.ProseMirror');
+      await editor1.click();
+      await editor1.type('Hello from browser 1!');
+
+      // Wait for autosave
+      await page1.waitForTimeout(3000);
+
+      // Get the document hash path
+      const docUrl = page1.url();
+      const hashPath = new URL(docUrl).hash; // e.g., #/npub.../docs/docname
+      console.log('Document URL:', docUrl);
+      console.log('Hash path:', hashPath);
+
+      // Browser 2: Navigate to the document using hash (keeps session)
+      await page2.keyboard.press('Escape'); // Close any modals
+      await page2.waitForTimeout(200);
+      await page2.evaluate((hash) => window.location.hash = hash.slice(1), hashPath);
+
+      // Verify the content is visible in browser 2 (may be read-only mode without edit toolbar)
+      await expect(page2.locator('.ProseMirror')).toContainText('Hello from browser 1!', { timeout: 10000 });
+    } finally {
+      await context1.close();
+      await context2.close();
+    }
+  });
 });
