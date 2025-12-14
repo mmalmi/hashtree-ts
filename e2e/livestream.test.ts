@@ -77,71 +77,103 @@ test.describe('Livestream Video Stability', () => {
     const videoFileName = path.basename(videoPath);
     const fileInput = page.locator('input[type="file"]').first();
     await fileInput.setInputFiles(videoPath);
-    await page.waitForTimeout(1000);
 
-    // Check video file is in the list
+    // Wait for video file to appear in the list
     const fileList = page.getByTestId('file-list');
-    await expect(fileList.locator(`span:text-is("${videoFileName}")`)).toBeVisible({ timeout: 5000 });
+    await expect(fileList.locator(`span:text-is("${videoFileName}")`)).toBeVisible({ timeout: 10000 });
 
     // Click on video to view it
     await fileList.locator(`span:text-is("${videoFileName}")`).click();
-    await page.waitForTimeout(500);
+
+    // Wait for video element to appear
+    const videoElement = page.locator('video');
+    await expect(videoElement).toBeVisible({ timeout: 10000 });
 
     // Set a marker on the video element to detect remounting
+    // Also track if video ever becomes null/invisible during the test
     await page.evaluate(() => {
       const video = document.querySelector('video');
       if (video) {
         (video as any).__testMarker = 'original-video-element';
+        (video as any).__mountCount = 1;
       }
+      // Set up a MutationObserver to detect if video is removed/re-added
+      (window as any).__videoRemovalDetected = false;
+      const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          for (const node of mutation.removedNodes) {
+            if (node.nodeName === 'VIDEO') {
+              (window as any).__videoRemovalDetected = true;
+              console.log('[TEST] Video element was removed from DOM!');
+            }
+          }
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+      (window as any).__testObserver = observer;
     });
 
     const getVideoState = async () => {
       return await page.evaluate(() => {
         const video = document.querySelector('video');
-        if (!video) return null;
         return {
-          exists: true,
-          src: video.src,
-          marker: (video as any).__testMarker || null,
+          exists: !!video,
+          marker: video ? (video as any).__testMarker || null : null,
+          removalDetected: (window as any).__videoRemovalDetected,
         };
       });
     };
 
     const stateBefore = await getVideoState();
     console.log('Video state before update:', stateBefore);
-    expect(stateBefore?.marker).toBe('original-video-element');
+    expect(stateBefore.exists).toBe(true);
+    expect(stateBefore.marker).toBe('original-video-element');
 
-    // Upload another file to trigger merkle root update
-    const textPath = path.join(os.tmpdir(), 'update.txt');
-    fs.writeFileSync(textPath, 'This triggers merkle root update');
-    await fileInput.setInputFiles(textPath);
-    await page.waitForTimeout(2000);
+    // Upload TWO files to trigger merkle root update without auto-navigating
+    // (single file upload auto-navigates to it, but multi-file upload doesn't)
+    const textPath1 = path.join(os.tmpdir(), 'update1.txt');
+    const textPath2 = path.join(os.tmpdir(), 'update2.txt');
+    fs.writeFileSync(textPath1, 'This triggers merkle root update 1');
+    fs.writeFileSync(textPath2, 'This triggers merkle root update 2');
+    await fileInput.setInputFiles([textPath1, textPath2]);
 
-    // Verify the new file appeared
-    await expect(fileList.locator('span:text-is("update.txt")')).toBeVisible({ timeout: 5000 });
+    // Check video state during the update process
+    const stateDuring1 = await getVideoState();
+    console.log('Video state during update (1):', stateDuring1);
+
+    // Wait for the new files to appear (confirms merkle root updated)
+    await expect(fileList.locator('span:text-is("update1.txt")')).toBeVisible({ timeout: 10000 });
+    await expect(fileList.locator('span:text-is("update2.txt")')).toBeVisible({ timeout: 10000 });
+
+    const stateDuring2 = await getVideoState();
+    console.log('Video state during update (2):', stateDuring2);
+
+    // Wait a bit more for any async updates to settle
+    await page.waitForTimeout(500);
 
     // Check video element - should still have the marker (wasn't remounted)
-    // Note: Video stays visible because we're still viewing the video file
     const stateAfter = await getVideoState();
     console.log('Video state after update:', stateAfter);
 
-    // If video is null, we might have navigated away or selection was lost
-    if (!stateAfter) {
-      // Click video file again to re-select
-      await fileList.locator(`span:text-is("${videoFileName}")`).click();
-      await page.waitForTimeout(500);
-      const stateReselect = await getVideoState();
-      console.log('Video state after reselect:', stateReselect);
-      // After file list update, video may have lost focus - this is OK for this test
-      // The key point is it shouldn't remount while viewing
-      expect(stateReselect?.exists).toBe(true);
-    } else {
-      expect(stateAfter?.marker).toBe('original-video-element');
-    }
+    // Also check what's visible on screen
+    const visibleContent = await page.evaluate(() => {
+      return {
+        hasVideo: !!document.querySelector('video'),
+        hasMediaPlayer: !!document.querySelector('[class*="MediaPlayer"]'),
+        viewerContent: document.querySelector('[data-testid="viewer-header"]')?.textContent || 'no header',
+      };
+    });
+    console.log('Visible content:', visibleContent);
+
+    // STRICT CHECKS - video must not have been removed at any point
+    expect(stateAfter.removalDetected).toBe(false);
+    expect(stateAfter.exists).toBe(true);
+    expect(stateAfter.marker).toBe('original-video-element');
 
     // Cleanup
     fs.unlinkSync(videoPath);
-    fs.unlinkSync(textPath);
+    fs.unlinkSync(textPath1);
+    fs.unlinkSync(textPath2);
   });
 
   test('video should not remount during multiple file updates', async ({ page }) => {
