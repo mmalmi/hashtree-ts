@@ -15,7 +15,7 @@
 
   // Get user's trees (which include yjs docs)
   let treesStore = $derived(createTreesStore(userNpub));
-  let trees = $state<Array<{ name: string; visibility?: string; rootHash?: string }>>([]);
+  let trees = $state<Array<{ name: string; visibility?: string; rootHash?: string; linkKey?: string }>>([]);
 
   $effect(() => {
     const store = treesStore;
@@ -59,8 +59,9 @@
 
         <!-- Recent documents -->
         {#each recentDocs as doc}
+          {@const linkKeySuffix = doc.linkKey ? `?k=${doc.linkKey}` : ''}
           <a
-            href="#/{userNpub}/{doc.name}"
+            href="#/{userNpub}/{doc.name}{linkKeySuffix}"
             class="aspect-[1/1.414] bg-surface-1 rounded-lg border border-surface-3 hover:border-accent transition-colors no-underline flex flex-col"
           >
             <div class="flex-1 flex items-center justify-center">
