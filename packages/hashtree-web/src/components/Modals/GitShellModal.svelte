@@ -67,6 +67,26 @@
     return writeCommands.includes(firstArg);
   }
 
+  // Help text for the git shell
+  // Only list commands that are verified to work in our wasm-git integration
+  const helpText = `Available commands:
+
+Read-only:
+  status      Show working tree status
+  log         Show commit logs
+  branch      List branches
+  rev-parse   Parse revision strings
+
+Write (when editing is enabled):
+  add <file>  Add file contents to the index
+  add -A      Add all changes
+  commit -m   Record changes to the repository
+  checkout    Switch branches or restore files
+
+Not supported:
+  clone, push, pull, fetch (network commands)
+  diff, show, tag, reset, rm, mv (not yet tested)`;
+
   async function runCommand() {
     if (!target || !currentDirCid || !inputValue.trim() || isRunning) return;
 
@@ -77,6 +97,16 @@
     // Restore focus immediately after submit (not after command completes)
     // Use setTimeout to ensure the input is re-rendered after isRunning changes
     setTimeout(() => inputElement?.focus(), 0);
+
+    // Handle help command locally
+    if (command === 'help' || command === '--help' || command === '-h') {
+      commandHistory = [...commandHistory, {
+        command,
+        output: helpText,
+      }];
+      isRunning = false;
+      return;
+    }
 
     const isWrite = isWriteCommand(command);
 
@@ -257,7 +287,7 @@
       >
         {#if commandHistory.length === 0}
           <div class="text-text-3">
-            Type a git command below (e.g., status, log, branch)
+            Type a git command below (e.g., status, log, branch). Type <span class="text-accent">help</span> for available commands.
           </div>
         {:else}
           {#each commandHistory as result}
