@@ -61,7 +61,10 @@ test.describe('Livestream Video Stability', () => {
   }
 
   test('video element should not remount when merkle root updates', async ({ page }) => {
-    // Single page test: create folder, upload video, view it, add more files, verify video doesn't remount
+    // Test that video doesn't flicker/remount during merkle root updates
+    // Simulates what happens when viewing a livestream - merkle root changes but
+    // the video element should remain stable
+
     setupPageErrorHandler(page);
     await page.goto('http://localhost:5173/');
     await clearStorage(page);
@@ -69,7 +72,7 @@ test.describe('Livestream Video Stability', () => {
     await waitForAutoLogin(page);
     await navigateToPublicFolder(page);
 
-    // Create folder via tree list
+    // Create folder for streaming
     await createTree(page, 'stream-test');
 
     // Upload a video file
@@ -78,7 +81,7 @@ test.describe('Livestream Video Stability', () => {
     const fileInput = page.locator('input[type="file"]').first();
     await fileInput.setInputFiles(videoPath);
 
-    // Wait for video file to appear in the list
+    // Wait for video to appear
     const fileList = page.getByTestId('file-list');
     await expect(fileList.locator(`span:text-is("${videoFileName}")`)).toBeVisible({ timeout: 10000 });
 
@@ -89,91 +92,129 @@ test.describe('Livestream Video Stability', () => {
     const videoElement = page.locator('video');
     await expect(videoElement).toBeVisible({ timeout: 10000 });
 
-    // Set a marker on the video element to detect remounting
-    // Also track if video ever becomes null/invisible during the test
+    // Set up monitoring for video element removal/flickering
     await page.evaluate(() => {
       const video = document.querySelector('video');
       if (video) {
         (video as any).__testMarker = 'original-video-element';
-        (video as any).__mountCount = 1;
       }
-      // Set up a MutationObserver to detect if video is removed/re-added
-      (window as any).__videoRemovalDetected = false;
+
+      // Track every time video is removed from DOM
+      (window as any).__videoRemovals = [];
+      (window as any).__videoRemovalCount = 0;
+
       const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
           for (const node of mutation.removedNodes) {
             if (node.nodeName === 'VIDEO') {
-              (window as any).__videoRemovalDetected = true;
-              console.log('[TEST] Video element was removed from DOM!');
+              (window as any).__videoRemovalCount++;
+              (window as any).__videoRemovals.push({
+                time: Date.now(),
+                count: (window as any).__videoRemovalCount
+              });
+              console.log('[TEST] Video element REMOVED from DOM! Count:', (window as any).__videoRemovalCount);
+            }
+          }
+          for (const node of mutation.addedNodes) {
+            if (node.nodeName === 'VIDEO') {
+              console.log('[TEST] Video element ADDED to DOM');
             }
           }
         }
       });
       observer.observe(document.body, { childList: true, subtree: true });
-      (window as any).__testObserver = observer;
     });
 
     const getVideoState = async () => {
-      return await page.evaluate(() => {
+      return await page.evaluate(async () => {
         const video = document.querySelector('video');
+
+        // Also check resolvingPath state
+        let resolvingPath = false;
+        try {
+          const stores = await import('/src/stores/index.ts');
+          const unsub = stores.resolvingPathStore.subscribe((v: boolean) => { resolvingPath = v; });
+          unsub();
+        } catch {}
+
         return {
           exists: !!video,
           marker: video ? (video as any).__testMarker || null : null,
-          removalDetected: (window as any).__videoRemovalDetected,
+          removalCount: (window as any).__videoRemovalCount || 0,
+          removals: (window as any).__videoRemovals || [],
+          resolvingPath,
         };
       });
     };
 
     const stateBefore = await getVideoState();
-    console.log('Video state before update:', stateBefore);
+    console.log('Video state before updates:', stateBefore);
     expect(stateBefore.exists).toBe(true);
     expect(stateBefore.marker).toBe('original-video-element');
 
-    // Upload TWO files to trigger merkle root update without auto-navigating
-    // (single file upload auto-navigates to it, but multi-file upload doesn't)
-    const textPath1 = path.join(os.tmpdir(), 'update1.txt');
-    const textPath2 = path.join(os.tmpdir(), 'update2.txt');
-    fs.writeFileSync(textPath1, 'This triggers merkle root update 1');
-    fs.writeFileSync(textPath2, 'This triggers merkle root update 2');
-    await fileInput.setInputFiles([textPath1, textPath2]);
+    // Simulate what happens on VIEWER side when watching someone's livestream:
+    // The treeRootStore gets updated with new merkle roots as the streamer publishes
+    // The video file's CID changes (new data appended), but the video should NOT remount
+    // Run for ~15 seconds to catch flicker across multiple merkle root update cycles
+    const NUM_UPDATES = 10;
+    const EMPTY_STATE_DURATION_MS = 300; // Time entries are empty during "refetch"
+    const BETWEEN_UPDATES_MS = 1200; // Time between update cycles
 
-    // Check video state during the update process
-    const stateDuring1 = await getVideoState();
-    console.log('Video state during update (1):', stateDuring1);
+    console.log(`Starting ${NUM_UPDATES} simulated merkle root updates (viewer side)...`);
 
-    // Wait for the new files to appear (confirms merkle root updated)
-    await expect(fileList.locator('span:text-is("update1.txt")')).toBeVisible({ timeout: 10000 });
-    await expect(fileList.locator('span:text-is("update2.txt")')).toBeVisible({ timeout: 10000 });
+    for (let i = 0; i < NUM_UPDATES; i++) {
+      console.log(`\n--- Update ${i + 1}/${NUM_UPDATES} ---`);
 
-    const stateDuring2 = await getVideoState();
-    console.log('Video state during update (2):', stateDuring2);
+      // Trigger through the actual store chain like real Nostr events do:
+      // treeRootStore -> currentDirCidStore -> directoryEntriesStore
+      await page.evaluate(async (updateIndex) => {
+        const stores = await import('/src/stores/index.ts');
 
-    // Wait a bit more for any async updates to settle
-    await page.waitForTimeout(500);
+        // Get current tree root
+        let currentRoot: any = null;
+        const unsub = stores.treeRootStore.subscribe((v: any) => { currentRoot = v; });
+        unsub();
 
-    // Check video element - should still have the marker (wasn't remounted)
+        if (currentRoot?.hash) {
+          // Create new root with modified hash (simulates new merkle root from Nostr)
+          const newHash = new Uint8Array(currentRoot.hash);
+          newHash[0] = (newHash[0] + 1 + updateIndex) % 256;
+
+          console.log(`[TEST] Update ${updateIndex}: setting treeRootStore with new hash`);
+
+          stores.treeRootStore.set({
+            hash: newHash,
+            key: currentRoot.key,
+          });
+        }
+      }, i);
+
+      // Wait for the reactive chain to propagate
+      await page.waitForTimeout(BETWEEN_UPDATES_MS);
+
+      // Check video state
+      const state = await getVideoState();
+      console.log(`After update:`, state);
+
+      if (state.removalCount > 0) {
+        console.error('VIDEO WAS REMOVED! Flicker detected.');
+      }
+      if (!state.exists) {
+        console.error('VIDEO DOES NOT EXIST!');
+      }
+    }
+
+    // Final check
     const stateAfter = await getVideoState();
-    console.log('Video state after update:', stateAfter);
+    console.log('Final video state:', stateAfter);
 
-    // Also check what's visible on screen
-    const visibleContent = await page.evaluate(() => {
-      return {
-        hasVideo: !!document.querySelector('video'),
-        hasMediaPlayer: !!document.querySelector('[class*="MediaPlayer"]'),
-        viewerContent: document.querySelector('[data-testid="viewer-header"]')?.textContent || 'no header',
-      };
-    });
-    console.log('Visible content:', visibleContent);
-
-    // STRICT CHECKS - video must not have been removed at any point
-    expect(stateAfter.removalDetected).toBe(false);
+    // STRICT CHECKS
+    expect(stateAfter.removalCount).toBe(0);
     expect(stateAfter.exists).toBe(true);
     expect(stateAfter.marker).toBe('original-video-element');
 
     // Cleanup
     fs.unlinkSync(videoPath);
-    fs.unlinkSync(textPath1);
-    fs.unlinkSync(textPath2);
   });
 
   test('video should not remount during multiple file updates', async ({ page }) => {

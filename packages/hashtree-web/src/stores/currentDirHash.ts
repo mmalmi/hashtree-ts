@@ -41,6 +41,10 @@ async function updateCurrentDirCid() {
   if (rootHash === prevRootHash && rootKey === prevRootKey && pathKey === prevPathKey) {
     return;
   }
+
+  // Check if only root changed (not path) - this is a merkle root update, don't show loading
+  const isRootOnlyChange = pathKey === prevPathKey && prevRootHash !== null;
+
   prevRootHash = rootHash;
   prevRootKey = rootKey;
   prevPathKey = pathKey;
@@ -49,8 +53,10 @@ async function updateCurrentDirCid() {
   if (!rootCid || !rootHash) {
     currentDirCidStore.set(null);
     isViewingFileStore.set(false);
-    // Set resolving=true if we have path segments (might be navigating to a file)
-    resolvingPathStore.set(urlPath.length > 0);
+    // Set resolving=true if we have path segments AND this is a path change (not just root update)
+    if (!isRootOnlyChange) {
+      resolvingPathStore.set(urlPath.length > 0);
+    }
     return;
   }
 
@@ -59,7 +65,10 @@ async function updateCurrentDirCid() {
     // Check if it's a directory before assuming
     const route = get(routeStore);
     if (route.isPermalink) {
-      resolvingPathStore.set(true);
+      // Only show resolving state on initial load, not on root updates
+      if (!isRootOnlyChange) {
+        resolvingPathStore.set(true);
+      }
       const tree = getTree();
       try {
         const isDir = await tree.isDirectory(rootCid);
@@ -86,8 +95,11 @@ async function updateCurrentDirCid() {
     return;
   }
 
-  // Mark as resolving before async work
-  resolvingPathStore.set(true);
+  // Mark as resolving before async work - but only on path changes, not root updates
+  // This prevents flicker when viewing a livestream and merkle root updates
+  if (!isRootOnlyChange) {
+    resolvingPathStore.set(true);
+  }
 
   const tree = getTree();
 

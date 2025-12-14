@@ -1016,4 +1016,242 @@ test.describe('Livestream Viewer Updates', () => {
       await contextB.close();
     }
   });
+
+  test('video element should NOT flicker during live streaming', async ({ page, context }) => {
+    /**
+     * This test specifically monitors for video element flickering during livestreaming.
+     * The video element should remain stable in the DOM throughout the stream.
+     *
+     * Monitors for:
+     * - Video element removal from DOM
+     * - Video element visibility changes
+     * - Video container changes that would cause visual flicker
+     */
+    expect(fs.existsSync(TEST_VIDEO)).toBe(true);
+    const videoBase64 = getTestVideoBase64();
+
+    setupPageErrorHandler(page);
+
+    await page.goto('http://localhost:5173');
+
+    // Clear storage for fresh state
+    await page.evaluate(async () => {
+      const dbs = await indexedDB.databases();
+      for (const db of dbs) {
+        if (db.name) indexedDB.deleteDatabase(db.name);
+      }
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+
+    await page.reload();
+    await page.waitForTimeout(500);
+    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+
+    // Get the user's npub
+    const publicLink = page.getByRole('link', { name: 'public' }).first();
+    await expect(publicLink).toBeVisible({ timeout: 15000 });
+    await publicLink.click();
+    await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
+
+    const url = page.url();
+    const npubMatch = url.match(/npub1[a-z0-9]+/);
+    expect(npubMatch).not.toBeNull();
+    const npub = npubMatch![0];
+    console.log(`User npub: ${npub.slice(0, 20)}...`);
+
+    // Inject mock MediaRecorder
+    await injectMockMediaRecorder(page, videoBase64);
+
+    // Start streaming
+    const streamLink = page.getByRole('link', { name: 'Stream' });
+    await expect(streamLink).toBeVisible({ timeout: 5000 });
+    await streamLink.click();
+    await page.waitForTimeout(500);
+
+    // Start camera preview
+    const startCameraBtn = page.getByRole('button', { name: 'Start Camera' });
+    await expect(startCameraBtn).toBeVisible({ timeout: 5000 });
+    await startCameraBtn.click();
+    await page.waitForTimeout(1000);
+
+    // Set filename
+    const testFilename = `flicker_test_${Date.now()}`;
+    const filenameInput = page.locator('input[placeholder="filename"]');
+    await expect(filenameInput).toBeVisible({ timeout: 5000 });
+    await filenameInput.fill(testFilename);
+
+    // Start recording
+    console.log('Starting recording...');
+    await page.getByRole('button', { name: /Start Recording/ }).click();
+
+    // Wait for some chunks to be recorded
+    await page.waitForTimeout(3000);
+
+    // Open viewer in new tab (same context = shared storage)
+    console.log('Opening viewer in new tab...');
+    const viewerPage = await context.newPage();
+    setupPageErrorHandler(viewerPage);
+
+    // Track flicker events on viewer
+    let flickerEvents: Array<{ type: string; time: number; details?: string }> = [];
+
+    viewerPage.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('[FLICKER]')) {
+        console.log(`[Viewer] ${text}`);
+      }
+    });
+
+    await viewerPage.goto(`http://localhost:5173/#/${npub}/public/${testFilename}.webm?live=1`);
+
+    // Wait for video to appear
+    const videoElement = viewerPage.locator('video');
+    await expect(videoElement).toBeVisible({ timeout: 15000 });
+
+    // Set up comprehensive flicker monitoring
+    await viewerPage.evaluate(() => {
+      const events: Array<{ type: string; time: number; details?: string }> = [];
+      (window as any).__flickerEvents = events;
+
+      // Track video element removal/addition
+      const videoObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          for (const node of mutation.removedNodes) {
+            if (node.nodeName === 'VIDEO') {
+              events.push({ type: 'VIDEO_REMOVED', time: Date.now() });
+              console.log('[FLICKER] VIDEO element REMOVED from DOM!');
+            }
+          }
+          for (const node of mutation.addedNodes) {
+            if (node.nodeName === 'VIDEO') {
+              events.push({ type: 'VIDEO_ADDED', time: Date.now() });
+              console.log('[FLICKER] VIDEO element ADDED to DOM');
+            }
+          }
+        }
+      });
+      videoObserver.observe(document.body, { childList: true, subtree: true });
+
+      // Track video visibility changes
+      const video = document.querySelector('video');
+      if (video) {
+        // Mark the video element for identification
+        (video as any).__flickerTestId = 'original';
+
+        // Watch for class/style changes that might cause visual flicker
+        const attrObserver = new MutationObserver((mutations) => {
+          for (const mutation of mutations) {
+            if (mutation.type === 'attributes') {
+              const target = mutation.target as HTMLElement;
+              if (target.nodeName === 'VIDEO') {
+                // Check if video became invisible
+                const isInvisible = target.classList.contains('invisible') ||
+                                   target.style.visibility === 'hidden' ||
+                                   target.style.display === 'none' ||
+                                   target.style.opacity === '0';
+                if (isInvisible) {
+                  events.push({
+                    type: 'VIDEO_INVISIBLE',
+                    time: Date.now(),
+                    details: `class="${target.className}" style="${target.style.cssText}"`
+                  });
+                  console.log('[FLICKER] VIDEO became invisible!');
+                }
+              }
+            }
+          }
+        });
+        attrObserver.observe(video, { attributes: true, attributeFilter: ['class', 'style'] });
+
+        // Also monitor parent elements for visibility changes
+        let parent = video.parentElement;
+        while (parent && parent !== document.body) {
+          attrObserver.observe(parent, { attributes: true, attributeFilter: ['class', 'style'] });
+          parent = parent.parentElement;
+        }
+      }
+
+      // Track if resolvingPath causes the video container to disappear
+      // by monitoring the main content area
+      const contentArea = document.querySelector('[class*="flex-1"]');
+      if (contentArea) {
+        const contentObserver = new MutationObserver(() => {
+          const videoExists = document.querySelector('video');
+          if (!videoExists) {
+            events.push({ type: 'VIDEO_CONTAINER_GONE', time: Date.now() });
+            console.log('[FLICKER] Video container gone - no video in DOM!');
+          }
+        });
+        contentObserver.observe(contentArea, { childList: true, subtree: true });
+      }
+    });
+
+    // Start playback
+    await viewerPage.evaluate(() => {
+      const video = document.querySelector('video') as HTMLVideoElement;
+      if (video) video.play().catch(() => {});
+    });
+
+    // Monitor for 15 seconds while stream continues
+    console.log('Monitoring for flicker over 15 seconds...');
+    const startTime = Date.now();
+    const checkInterval = 500; // Check every 500ms
+    const duration = 15000;
+
+    while (Date.now() - startTime < duration) {
+      await viewerPage.waitForTimeout(checkInterval);
+
+      // Check if video still exists and is visible
+      const videoState = await viewerPage.evaluate(() => {
+        const video = document.querySelector('video');
+        const events = (window as any).__flickerEvents || [];
+        return {
+          exists: !!video,
+          isOriginal: video ? (video as any).__flickerTestId === 'original' : false,
+          isVisible: video ? !video.classList.contains('invisible') : false,
+          flickerCount: events.length,
+          events: events.slice(-5), // Last 5 events
+        };
+      });
+
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      if (!videoState.exists) {
+        console.error(`[${elapsed}s] VIDEO DOES NOT EXIST!`);
+      }
+      if (!videoState.isOriginal && videoState.exists) {
+        console.error(`[${elapsed}s] VIDEO WAS REMOUNTED!`);
+      }
+      if (videoState.flickerCount > 0) {
+        console.error(`[${elapsed}s] Flicker events: ${videoState.flickerCount}`);
+        console.error(`Recent events: ${JSON.stringify(videoState.events)}`);
+      }
+    }
+
+    // Stop recording
+    const stopBtn = page.getByRole('button', { name: /Stop Recording/ });
+    if (await stopBtn.isVisible()) {
+      await stopBtn.click();
+    }
+
+    // Get final flicker report
+    const finalReport = await viewerPage.evaluate(() => {
+      return (window as any).__flickerEvents || [];
+    });
+
+    console.log(`\n=== Flicker Test Results ===`);
+    console.log(`Total flicker events detected: ${finalReport.length}`);
+    if (finalReport.length > 0) {
+      console.log('Events:');
+      for (const event of finalReport) {
+        console.log(`  - ${event.type} at ${new Date(event.time).toISOString()}${event.details ? ` (${event.details})` : ''}`);
+      }
+    }
+
+    await viewerPage.close();
+
+    // FAIL if any flicker was detected
+    expect(finalReport.length).toBe(0);
+  });
 });

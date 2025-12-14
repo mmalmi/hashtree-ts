@@ -187,11 +187,12 @@
       sourceBuffer.appendBuffer(data);
 
       // Wait for append to complete
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         if (!sourceBuffer!.updating) {
           resolve();
         } else {
           sourceBuffer!.addEventListener('updateend', () => resolve(), { once: true });
+          sourceBuffer!.addEventListener('error', (e) => reject(e), { once: true });
         }
       });
 
@@ -199,8 +200,9 @@
       if (sourceBuffer.buffered.length > 0) {
         bufferedEnd = sourceBuffer.buffered.end(sourceBuffer.buffered.length - 1);
       }
-    } catch {
-      // Ignore errors - will fall back to blob URL if needed
+    } catch (e) {
+      console.error('[MediaPlayer] MSE append error:', e);
+      // Will fall back to blob URL if needed
     }
   }
 
@@ -318,31 +320,30 @@
       if (signal.aborted) return;
 
       sourceBuffer = mediaSource.addSourceBuffer(mimeType);
+      console.log('[MediaPlayer] MSE source buffer created for', mimeType);
+
+      // For MSE streaming, hide loading immediately - let video controls show buffering state
+      // This allows the video element to be visible right away
+      loading = false;
 
       const tree = getTree();
 
-      // Collect all chunks first (prefetch for network efficiency)
-      const chunks: Uint8Array[] = [];
-      for await (const chunk of tree.readFileStream(cid, { prefetch: 5 })) {
-        if (signal.aborted) break;
-        chunks.push(chunk);
-        bytesLoaded += chunk.length;
-      }
-
-      if (signal.aborted) return;
-
-      // Now append all chunks to MSE
-      // We batch them to avoid too many small appends
-      const BATCH_SIZE = 512 * 1024; // 512KB batches
+      // Stream chunks and append immediately as they arrive
+      // Small batches (32KB) for fast initial playback while avoiding too many appendBuffer calls
+      const BATCH_SIZE = 32 * 1024;
       let currentBatch: Uint8Array[] = [];
       let currentBatchSize = 0;
+      let hasTriggeredPlay = false;
 
-      for (const chunk of chunks) {
+      for await (const chunk of tree.readFileStream(cid, { prefetch: 3 })) {
+        if (signal.aborted) break;
+
         currentBatch.push(chunk);
         currentBatchSize += chunk.length;
+        bytesLoaded += chunk.length;
 
+        // Append batch when it reaches threshold
         if (currentBatchSize >= BATCH_SIZE) {
-          // Merge batch into single buffer
           const merged = new Uint8Array(currentBatchSize);
           let offset = 0;
           for (const c of currentBatch) {
@@ -352,10 +353,15 @@
 
           if (mediaSource?.readyState !== 'open') break;
           await appendToSourceBuffer(merged);
+          console.log('[MediaPlayer] Appended', merged.length, 'bytes, total:', bytesLoaded, 'buffered:', bufferedEnd.toFixed(2) + 's');
 
-          // Hide loading after first batch is appended
-          if (loading) {
-            loading = false;
+          // Try to start playback after first chunk is appended
+          if (!hasTriggeredPlay && mediaRef) {
+            hasTriggeredPlay = true;
+            console.log('[MediaPlayer] Triggering play(), buffered:', sourceBuffer?.buffered.length, 'ranges');
+            mediaRef.play().catch((e) => {
+              console.log('[MediaPlayer] Autoplay blocked:', e.message);
+            });
           }
 
           currentBatch = [];
@@ -363,7 +369,9 @@
         }
       }
 
-      // Append remaining data
+      if (signal.aborted) return;
+
+      // Append any remaining data
       if (currentBatch.length > 0 && mediaSource?.readyState === 'open') {
         const merged = new Uint8Array(currentBatchSize);
         let offset = 0;
@@ -385,7 +393,7 @@
       }
 
       // For live streams, seek near end and start polling
-      if (shouldTreatAsLive && mediaRef && duration > 5) {
+      if (shouldTreatAsLive && mediaRef && isFinite(duration) && duration > 5) {
         mediaRef.currentTime = Math.max(0, duration - 5);
         isLive = true;
         startLivePolling();
@@ -438,7 +446,7 @@
         mediaRef.addEventListener('loadedmetadata', () => {
           duration = mediaRef!.duration;
 
-          if (shouldTreatAsLive && duration > 5) {
+          if (shouldTreatAsLive && isFinite(duration) && duration > 5) {
             mediaRef!.currentTime = Math.max(0, duration - 5);
             isLive = true;
           }
@@ -502,7 +510,7 @@
         duration = mediaRef!.duration;
 
         // Restore exact position (clamped to new duration)
-        if (currentPlaybackTime > 0) {
+        if (currentPlaybackTime > 0 && isFinite(mediaRef!.duration)) {
           mediaRef!.currentTime = Math.min(currentPlaybackTime, mediaRef!.duration);
         }
 
@@ -644,6 +652,10 @@
 
     const currentCidHash = currentCidHashReactive;
     if (currentCidHash && currentCidHash !== lastCidHash) {
+      // Update lastCidHash immediately to prevent effect from re-triggering
+      const prevHash = lastCidHash;
+      lastCidHash = currentCidHash;
+
       // For MSE mode, append new data incrementally
       // For blob URL mode, reload the entire file
       if (usingBlobUrl) {

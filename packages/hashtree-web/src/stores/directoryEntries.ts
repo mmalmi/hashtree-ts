@@ -136,7 +136,111 @@ export function directoryEntries(location: CID | null): DirectoryEntriesState {
 import { currentDirCidStore } from './currentDirHash';
 
 /**
+ * Create the global directory entries store with test helper
+ */
+function createGlobalDirectoryEntriesStore() {
+  const state = writable<DirectoryEntriesState>({
+    entries: [],
+    loading: false,
+    isDirectory: true,
+  });
+
+  let prevHashKey: string | null = null;
+  let prevEncKey: string | null = null;
+  let prevEntryCids: Map<string, string> = new Map();
+
+  // Subscribe to location changes
+  currentDirCidStore.subscribe(async (location) => {
+    const hashKey = location?.hash ? toHex(location.hash) : null;
+    const encKey = location?.key ? toHex(location.key) : null;
+
+    if (hashKey === prevHashKey && encKey === prevEncKey) return;
+    prevHashKey = hashKey;
+    prevEncKey = encKey;
+
+    if (!location || !hashKey) {
+      state.set({ entries: [], loading: false, isDirectory: true });
+      prevEntryCids.clear();
+      return;
+    }
+
+    state.update(s => ({ ...s, loading: true }));
+    const tree = getTree();
+
+    try {
+      let newEntries: TreeEntry[] = [];
+
+      if (location.key) {
+        newEntries = await tree.listDirectory(location);
+      } else {
+        const isDir = await tree.isDirectory(location);
+        if (isDir) {
+          newEntries = await tree.listDirectory(location);
+        } else {
+          state.set({ entries: [], loading: false, isDirectory: false });
+          prevEntryCids.clear();
+          return;
+        }
+      }
+
+      // Detect changed files
+      if (prevEntryCids.size > 0) {
+        const changedFiles = new Set<string>();
+        for (const entry of newEntries) {
+          const prevCid = prevEntryCids.get(entry.name);
+          const newCid = entry.cid?.hash ? toHex(entry.cid.hash) : null;
+          if (prevCid && newCid && prevCid !== newCid) {
+            changedFiles.add(entry.name);
+          }
+        }
+        if (changedFiles.size > 0) {
+          markFilesChanged(changedFiles);
+        }
+      }
+
+      const newEntryCids = new Map<string, string>();
+      for (const entry of newEntries) {
+        if (entry.cid?.hash) {
+          newEntryCids.set(entry.name, toHex(entry.cid.hash));
+        }
+      }
+
+      const entriesChanged = newEntryCids.size !== prevEntryCids.size ||
+        [...newEntryCids].some(([name, cid]) => prevEntryCids.get(name) !== cid);
+
+      prevEntryCids = newEntryCids;
+
+      if (entriesChanged) {
+        state.set({ entries: sortEntries(newEntries), loading: false, isDirectory: true });
+      } else {
+        state.update(s => s.loading ? { ...s, loading: false } : s);
+      }
+    } catch {
+      state.set({ entries: [], loading: false, isDirectory: false });
+      prevEntryCids.clear();
+    }
+  });
+
+  return {
+    subscribe: state.subscribe,
+    // Expose setter for testing only
+    __testSet: (value: DirectoryEntriesState) => state.set(value),
+  };
+}
+
+/**
  * Global directory entries store based on current directory CID
  * trackChanges=true to detect when files change (for LIVE indicator)
  */
-export const directoryEntriesStore = createDirectoryEntriesStore(currentDirCidStore, true);
+export const directoryEntriesStore = createGlobalDirectoryEntriesStore();
+
+// Expose test helper on window for E2E tests
+if (typeof window !== 'undefined') {
+  (window as any).__testSetDirectoryEntries = (entries: TreeEntry[]) => {
+    (directoryEntriesStore as any).__testSet({
+      entries: sortEntries(entries),
+      loading: false,
+      isDirectory: true,
+    });
+  };
+}

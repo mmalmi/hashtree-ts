@@ -56,39 +56,48 @@
   let isEditing = $derived(searchParams.get('edit') === '1');
 
   // Find entry in current entries list, or create synthetic entry for file permalinks
-  // Track previous entry to avoid flickering during store updates
-  let prevEntry: typeof entries[0] | null = null;
-  let entryFromStore = $derived.by(() => {
-    if (!urlFileName) {
-      prevEntry = null;
-      return null;
-    }
+  // Use $state for caching previous entry to avoid flicker during store updates
+  let cachedEntry = $state<typeof entries[0] | null>(null);
+
+  // Pure derived that finds entry from current state
+  let currentEntry = $derived.by(() => {
+    if (!urlFileName) return null;
 
     // First try to find the file in entries (works for files within directories)
     const fromEntries = entries.find(e => e.name === urlFileName && e.type !== LinkType.Dir);
-    if (fromEntries) {
-      prevEntry = fromEntries;
-      return fromEntries;
-    }
+    if (fromEntries) return fromEntries;
 
     // For direct file permalinks (no directory listing), the rootCid IS the file's CID
     // Create a synthetic entry since there's no directory listing
     if (route.isPermalink && rootCid && entries.length === 0) {
-      const syntheticEntry = {
+      return {
         name: urlFileName,
         cid: rootCid,
         size: 0,
         type: LinkType.Blob,
       };
-      prevEntry = syntheticEntry;
-      return syntheticEntry;
     }
 
-    // Keep previous entry during loading/transitions to avoid flicker
-    if (prevEntry && prevEntry.name === urlFileName) {
-      return prevEntry;
-    }
+    return null;
+  });
 
+  // Update cache when we have a valid entry, clear when filename changes
+  $effect(() => {
+    if (currentEntry) {
+      cachedEntry = currentEntry;
+    } else if (cachedEntry && urlFileName !== cachedEntry.name) {
+      // Clear cache when navigating to different file
+      cachedEntry = null;
+    }
+  });
+
+  // Use current entry, or fall back to cached entry during transitions
+  let entryFromStore = $derived.by(() => {
+    if (currentEntry) return currentEntry;
+    // Keep cached entry if filename matches (prevents flicker during loading)
+    if (cachedEntry && urlFileName && cachedEntry.name === urlFileName) {
+      return cachedEntry;
+    }
     return null;
   });
 
