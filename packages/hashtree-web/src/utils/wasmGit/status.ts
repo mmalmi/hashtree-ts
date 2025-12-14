@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent } from './core';
 
 /**
  * Git status entry from porcelain format
@@ -64,7 +64,7 @@ export async function getStatusWithWasmGit(
       module.FS.chdir(repoPath);
 
       try {
-        module.callMain(['init', '.']);
+        runSilent(module, ['init', '.']);
       } catch {
         // Ignore init errors
       }

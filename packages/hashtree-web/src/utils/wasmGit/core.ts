@@ -62,9 +62,6 @@ export async function loadWasmGit(): Promise<WasmGitModule> {
         }
         return path;
       },
-      // Suppress stdout/stderr logging (git output goes to console.log by default)
-      print: () => {},
-      printErr: () => {},
     };
 
     // Import from node_modules (Vite will handle bundling the JS)
@@ -143,6 +140,15 @@ export function readGitDirectory(
 
   readDir(path, prefix);
   return gitFiles;
+}
+
+/**
+ * Run a git command silently (captures and discards output)
+ * Use this for commands like init, add, commit that don't need output
+ */
+export function runSilent(module: WasmGitModule, args: string[]): void {
+  // Use callWithOutput to capture output instead of logging it
+  module.callWithOutput(args);
 }
 
 /**

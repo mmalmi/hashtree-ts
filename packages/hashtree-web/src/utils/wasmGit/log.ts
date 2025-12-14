@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent } from './core';
 
 /**
  * Get current HEAD commit SHA
@@ -38,7 +38,7 @@ export async function getHeadWithWasmGit(
       module.FS.chdir(repoPath);
 
       try {
-        module.callMain(['init', '.']);
+        runSilent(module, ['init', '.']);
       } catch {
         // Ignore init errors
       }
@@ -92,7 +92,6 @@ export async function getLogWithWasmGit(
     // Check for .git directory
     const gitDirResult = await tree.resolvePath(rootCid, '.git');
     if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
-      console.log('[wasm-git] No .git directory found');
       return [];
     }
 
@@ -118,7 +117,7 @@ export async function getLogWithWasmGit(
 
       // Initialize a git repo first so it has proper structure
       try {
-        module.callMain(['init', '.']);
+        runSilent(module, ['init', '.']);
       } catch {
         // Ignore init errors
       }
@@ -248,7 +247,7 @@ export async function getFileLastCommitsWithWasmGit(
       module.FS.chdir(repoPath);
 
       try {
-        module.callMain(['init', '.']);
+        runSilent(module, ['init', '.']);
       } catch {
         // Ignore init errors
       }

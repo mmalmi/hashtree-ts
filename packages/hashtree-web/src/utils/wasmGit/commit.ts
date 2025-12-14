@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, readGitDirectory } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, readGitDirectory, runSilent } from './core';
 
 /**
  * Initialize a git repository in a directory
@@ -37,13 +37,13 @@ export async function initGitRepoWithWasmGit(
       await copyToWasmFS(module, rootCid, '.');
 
       // Initialize git repo
-      module.callMain(['init', '.']);
+      runSilent(module, ['init', '.']);
 
       // Add all files
-      module.callMain(['add', '.']);
+      runSilent(module, ['add', '.']);
 
       // Create initial commit
-      module.callMain(['commit', '-m', commitMessage]);
+      runSilent(module, ['commit', '-m', commitMessage]);
 
       // Read .git directory and return files
       return readGitDirectory(module);
@@ -96,7 +96,7 @@ export async function commitWithWasmGit(
     module.FS.chdir(repoPath);
 
     try {
-      module.callMain(['init', '.']);
+      runSilent(module, ['init', '.']);
     } catch {
       // Ignore init errors
     }
@@ -108,11 +108,11 @@ export async function commitWithWasmGit(
     try {
       if (filesToStage && filesToStage.length > 0) {
         for (const file of filesToStage) {
-          module.callMain(['add', file]);
+          runSilent(module, ['add', file]);
         }
       } else {
         // Stage all changes
-        module.callMain(['add', '-A']);
+        runSilent(module, ['add', '-A']);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -121,7 +121,7 @@ export async function commitWithWasmGit(
 
     // Create commit
     try {
-      module.callMain(['commit', '-m', message]);
+      runSilent(module, ['commit', '-m', message]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return { success: false, error: `Failed to commit: ${msg}` };

@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, type WasmGitModule } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, type WasmGitModule } from './core';
 
 /**
  * Checkout a specific commit using wasm-git
@@ -40,7 +40,7 @@ export async function checkoutWithWasmGit(
       module.FS.chdir(repoPath);
 
       try {
-        module.callMain(['init', '.']);
+        runSilent(module, ['init', '.']);
       } catch {
         // Ignore init errors
       }
@@ -49,7 +49,7 @@ export async function checkoutWithWasmGit(
 
       // Checkout the commit
       try {
-        module.callMain(['checkout', '--force', commitSha]);
+        runSilent(module, ['checkout', '--force', commitSha]);
       } catch (err) {
         console.error('[wasm-git] checkout error:', err);
         throw new Error(`Failed to checkout ${commitSha}: ${err}`);

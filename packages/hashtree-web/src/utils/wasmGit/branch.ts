@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent } from './core';
 
 /**
  * Get list of branches using wasm-git
@@ -37,7 +37,7 @@ export async function getBranchesWithWasmGit(
       module.FS.chdir(repoPath);
 
       try {
-        module.callMain(['init', '.']);
+        runSilent(module, ['init', '.']);
       } catch {
         // Ignore init errors
       }
@@ -72,9 +72,8 @@ export async function getBranchesWithWasmGit(
             branches.push(file);
           }
         }
-      } catch (e) {
+      } catch {
         // refs/heads may not exist
-        console.log('[wasm-git] reading refs/heads failed:', e);
       }
 
       return { branches, currentBranch };
@@ -123,7 +122,7 @@ export async function createBranchWithWasmGit(
     module.FS.chdir(repoPath);
 
     try {
-      module.callMain(['init', '.']);
+      runSilent(module, ['init', '.']);
     } catch {
       // Ignore init errors
     }
@@ -133,9 +132,9 @@ export async function createBranchWithWasmGit(
     // Create the branch
     try {
       if (checkout) {
-        module.callMain(['checkout', '-b', branchName]);
+        runSilent(module, ['checkout', '-b', branchName]);
       } else {
-        module.callMain(['branch', branchName]);
+        runSilent(module, ['branch', branchName]);
       }
       return { success: true };
     } catch (err) {
