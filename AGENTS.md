@@ -49,7 +49,14 @@ npm run test:e2e # E2E tests
   - Use `disableOthersPool(page)` helper in test-utils.ts after `page.goto('/')` to prevent WebRTC cross-talk
   - Use `setupPageErrorHandler(page)` to filter expected relay errors
   - Wait for specific conditions, never use arbitrary delays
+  - Use `test.slow()` for tests with complex async operations (video streaming, multi-user WebRTC)
 - Multi-user tests should have users follow each other before any WebRTC-dependent operations
 - Nostr relay errors (rate-limiting, pow requirements) are expected and filtered by `setupPageErrorHandler`
 - temp.iris.to relay is generally tolerant and reliable for tests
 - git-push-htree test requires cargo/rust installed - skip if not available
+
+### Flaky Tests
+- CI runs with `retries: 1` to handle intermittent failures
+- Some tests involving WebRTC sync (background-sync, yjs-collaboration) may fail under extreme parallelism (96+ workers) but pass on retry
+- Global timeout is 30s, with `test.slow()` tripling it to 90s
+- If a test passes with `--workers=1` but fails with 100% workers, it's likely a timing issue - add `test.slow()` or increase specific timeouts
