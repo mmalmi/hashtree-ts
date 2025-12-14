@@ -62,6 +62,8 @@ export async function loadWasmGit(): Promise<WasmGitModule> {
         }
         return path;
       },
+      // Suppress stdout logging (git log output goes to console.log by default)
+      print: () => {},
     };
 
     // Import from node_modules (Vite will handle bundling the JS)
