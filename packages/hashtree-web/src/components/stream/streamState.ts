@@ -7,6 +7,7 @@ import { parseRoute } from '../../utils/route';
 import { getCurrentPathFromUrl } from '../../actions/route';
 import { getTreeRootSync } from '../../stores/treeRoot';
 import { markFilesChanged } from '../../stores/recentlyChanged';
+import { patchWebmDuration } from '../../utils/webmDuration';
 
 // Generate default stream filename
 export function getDefaultFilename(): string {
@@ -186,6 +187,7 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
     const route = parseRoute();
     const rootCid = getTreeRootSync(route.npub, route.treeName);
     const filename = `${currentState.streamFilename}.webm`;
+    const durationMs = currentState.recordingTime * 1000; // Current duration in ms
 
     const tree = getTree();
     let fileCid: CID | undefined, fileSize: number | undefined;
@@ -202,6 +204,11 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       fileSize = result.size;
     } else {
       return;
+    }
+
+    // Patch WebM duration so viewers can see current duration
+    if (fileCid && durationMs > 0) {
+      fileCid = await patchWebmDuration(tree, fileCid, durationMs);
     }
 
     if (rootCid) {
@@ -246,6 +253,7 @@ export async function stopRecording(): Promise<void> {
 
   const currentState = getStreamState();
   const filename = `${currentState.streamFilename}.webm`;
+  const durationMs = currentState.recordingTime * 1000; // Convert seconds to ms
 
   const tree = getTree();
   let fileCid: CID | undefined, fileSize: number | undefined;
@@ -260,6 +268,12 @@ export async function stopRecording(): Promise<void> {
     const result = await tree.putFile(combined);
     fileCid = result.cid;
     fileSize = result.size;
+  }
+
+  // Patch WebM duration in the file header
+  if (fileCid && durationMs > 0) {
+    console.log(`[Stream] Patching WebM duration: ${durationMs}ms`);
+    fileCid = await patchWebmDuration(tree, fileCid, durationMs);
   }
 
   if (fileCid && fileSize) {
