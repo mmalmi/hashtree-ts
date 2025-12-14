@@ -12,9 +12,11 @@
     buildCommitHref: (commitOid: string) => string;
     latestCommit?: CommitInfo | null;
     commitsLoading?: boolean;
+    /** Optional href for parent directory (..) navigation */
+    parentHref?: string | null;
   }
 
-  let { entries, fileCommits, buildEntryHref, buildCommitHref, latestCommit = null, commitsLoading = false }: Props = $props();
+  let { entries, fileCommits, buildEntryHref, buildCommitHref, latestCommit = null, commitsLoading = false, parentHref = null }: Props = $props();
 
   // Sort entries: directories first, then files, alphabetically
   let sortedEntries = $derived([...entries].sort((a, b) => {
@@ -109,6 +111,19 @@
     </tr>
   </thead>
   <tbody>
+    {#if parentHref}
+      <tr
+        onclick={() => window.location.hash = parentHref.slice(1)}
+        class="b-b-1 b-b-solid b-b-surface-3 hover:bg-surface-1 cursor-pointer"
+      >
+        <td class="py-2 px-3 w-8">
+          <span class="i-lucide-folder text-warning"></span>
+        </td>
+        <td class="py-2 px-3 text-accent whitespace-nowrap" colspan="3">
+          ..
+        </td>
+      </tr>
+    {/if}
     {#each sortedEntries as entry}
       {@const isGitDir = entry.name === '.git'}
       {@const href = buildEntryHref(entry)}

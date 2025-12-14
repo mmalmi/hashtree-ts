@@ -166,6 +166,22 @@
     return `${basePath}?commit=${commitOid}`;
   }
 
+  // Build parent directory href (for ".." navigation)
+  let parentHref = $derived.by(() => {
+    if (currentPath.length === 0) return null; // At root, no parent
+    const parts: string[] = [];
+    const parentPath = currentPath.slice(0, -1);
+    const suffix = buildQueryString();
+
+    if (route.npub && route.treeName) {
+      parts.push(route.npub, route.treeName, ...parentPath);
+      return '#/' + parts.map(encodeURIComponent).join('/') + suffix;
+    }
+
+    parts.push(...parentPath);
+    return '#/' + parts.map(encodeURIComponent).join('/') + suffix;
+  });
+
   // Get git root path from route (for subdirectory operations)
   let gitRootPath = $derived(route.gitRoot);
 
@@ -407,7 +423,7 @@
   <!-- Directory listing table - GitHub style -->
   <div class="b-1 b-surface-3 b-solid rounded-lg overflow-hidden bg-surface-0">
     <!-- File table with commit info header -->
-    <FileTable {entries} {fileCommits} {buildEntryHref} {buildCommitHref} {latestCommit} {commitsLoading} />
+    <FileTable {entries} {fileCommits} {buildEntryHref} {buildCommitHref} {latestCommit} {commitsLoading} {parentHref} />
   </div>
 
   <!-- README.md panel -->
