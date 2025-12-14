@@ -72,8 +72,15 @@ export async function diffBranchesWithWasmGit(
       module.FS.mkdir(repoPath);
       module.FS.chdir(repoPath);
 
-      // Copy full working directory from hashtree (including .git)
-      await copyToWasmFS(module, rootCid, '.');
+      // Initialize git first (required for wasm-git to work properly)
+      try {
+        module.callMain(['init', '.']);
+      } catch {
+        // Ignore init errors
+      }
+
+      // Only copy .git directory - we don't need the working tree for branch diff
+      await copyToWasmFS(module, gitDirResult.cid, '.git');
 
       // Get diff between branches using git diff base head
       // wasm-git doesn't support the ... syntax, so we use two-dot diff
@@ -143,6 +150,13 @@ export async function canMergeWithWasmGit(
     try {
       module.FS.mkdir(repoPath);
       module.FS.chdir(repoPath);
+
+      // Initialize git first (required for wasm-git to work properly)
+      try {
+        module.callMain(['init', '.']);
+      } catch {
+        // Ignore init errors
+      }
 
       // Copy full working directory from hashtree (including .git)
       await copyToWasmFS(module, rootCid, '.');

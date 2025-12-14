@@ -51,6 +51,13 @@ export async function mergeWithWasmGit(
 
       module.FS.chdir(repoPath);
 
+      // Initialize git first (required for wasm-git to work properly)
+      try {
+        module.callMain(['init', '.']);
+      } catch {
+        // Ignore init errors
+      }
+
       // Copy full working directory from hashtree (including .git)
       await copyToWasmFS(module, rootCid, '.');
 

@@ -9,6 +9,55 @@ test.describe('Git branch comparison and merge', () => {
     await disableOthersPool(page);
   });
 
+  test('compare URL with invalid branch shows error', { timeout: 60000 }, async ({ page }) => {
+    await navigateToPublicFolder(page);
+
+    // Create a folder and init as git repo
+    await page.getByRole('button', { name: 'New Folder' }).click();
+    const folderInput = page.locator('input[placeholder="Folder name..."]');
+    await folderInput.waitFor({ timeout: 5000 });
+    await folderInput.fill('invalid-branch-test');
+    await page.click('button:has-text("Create")');
+    await expect(page.locator('.fixed.inset-0.bg-black')).not.toBeVisible({ timeout: 10000 });
+
+    const folderLink = page.locator('[data-testid="file-list"] a').filter({ hasText: 'invalid-branch-test' }).first();
+    await expect(folderLink).toBeVisible({ timeout: 15000 });
+    await folderLink.click();
+    await page.waitForURL(/invalid-branch-test/, { timeout: 10000 });
+
+    // Create initial file
+    await page.evaluate(async () => {
+      const { getTree, LinkType } = await import('/src/store.ts');
+      const { autosaveIfOwn } = await import('/src/nostr.ts');
+      const { getCurrentRootCid } = await import('/src/actions/route.ts');
+      const { getRouteSync } = await import('/src/stores/index.ts');
+      const route = getRouteSync();
+      const tree = getTree();
+      let rootCid = getCurrentRootCid();
+      if (!rootCid) return;
+      const content = new TextEncoder().encode('test');
+      const { cid, size } = await tree.putFile(content);
+      rootCid = await tree.setEntry(rootCid, route.path, 'test.txt', cid, size, LinkType.Blob);
+      autosaveIfOwn(rootCid);
+    });
+
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'test.txt' })).toBeVisible({ timeout: 15000 });
+
+    // Git init
+    const gitInitBtn = page.getByRole('button', { name: 'Git Init' });
+    await expect(gitInitBtn).toBeVisible({ timeout: 15000 });
+    await gitInitBtn.click();
+    await expect(gitInitBtn).not.toBeVisible({ timeout: 30000 });
+
+    // Navigate to compare URL with non-existent branch
+    const currentUrl = page.url();
+    const baseUrl = currentUrl.split('?')[0];
+    await page.goto(`${baseUrl}?compare=master...nonexistent-branch`);
+
+    // Should show error (not hang forever)
+    await expect(page.locator('text=/Failed to diff|error|not found/i')).toBeVisible({ timeout: 15000 });
+  });
+
   test('compare URL navigates to comparison view', { timeout: 60000 }, async ({ page }) => {
     await navigateToPublicFolder(page);
 
@@ -216,9 +265,8 @@ test.describe('Git branch comparison and merge', () => {
     await expect(page.locator('span.font-mono.text-sm:has-text("master")')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('span.font-mono.text-sm.text-accent:has-text("feature")')).toBeVisible({ timeout: 10000 });
 
-    // Should show file change stats or loading
-    const statsVisible = await page.locator('text=/\\d+ file.*changed|Comparing branches/').isVisible();
-    expect(statsVisible).toBeTruthy();
+    // Should show file change stats (wait for actual diff to complete, not just loading state)
+    await expect(page.locator('text=/\\d+ file.*changed/')).toBeVisible({ timeout: 30000 });
   });
 
   test('branch dropdown shows compare option', async ({ page }) => {

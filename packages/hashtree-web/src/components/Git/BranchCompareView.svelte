@@ -64,9 +64,19 @@
     canFastForward: boolean;
   } | null>(null);
 
+  // Track if we're waiting for dirCid
+  let waitingForDir = $state(true);
+
   // Load diff data
   $effect(() => {
-    if (!dirCid || !baseBranch || !headBranch) return;
+    // If we have branch params but no dirCid, we're still waiting
+    if (!dirCid) {
+      waitingForDir = true;
+      return;
+    }
+    waitingForDir = false;
+
+    if (!baseBranch || !headBranch) return;
 
     loading = true;
     error = null;
@@ -156,7 +166,12 @@
 
   <!-- Content -->
   <div class="flex-1 overflow-auto p-4">
-    {#if loading}
+    {#if waitingForDir}
+      <div class="flex items-center justify-center py-12 text-text-3">
+        <span class="i-lucide-loader-2 animate-spin mr-2"></span>
+        Loading repository...
+      </div>
+    {:else if loading}
       <div class="flex items-center justify-center py-12 text-text-3">
         <span class="i-lucide-loader-2 animate-spin mr-2"></span>
         Comparing branches...
