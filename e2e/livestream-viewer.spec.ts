@@ -1259,4 +1259,181 @@ test.describe('Livestream Viewer Updates', () => {
     // FAIL if any flicker was detected
     expect(finalReport.length).toBe(0);
   });
+
+  test('viewer should see video duration (not just bytes) during livestream', async ({ page, context }) => {
+    /**
+     * This test verifies that the WebM duration patching works correctly.
+     * The viewer should see a proper duration display (e.g., "0:05 / 0:10")
+     * rather than just bytes loaded (e.g., "123KB").
+     *
+     * The broadcaster patches the WebM duration header every 3 seconds,
+     * so the viewer should receive duration metadata.
+     */
+    expect(fs.existsSync(TEST_VIDEO)).toBe(true);
+    const videoBase64 = getTestVideoBase64();
+
+    setupPageErrorHandler(page);
+
+    // Track duration-related console messages
+    page.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('[WebM]') || text.includes('[Stream]') || text.includes('Duration')) {
+        console.log(`[Broadcaster] ${text}`);
+      }
+    });
+
+    await page.goto('http://localhost:5173');
+
+    // Clear storage for fresh state
+    await page.evaluate(async () => {
+      const dbs = await indexedDB.databases();
+      for (const db of dbs) {
+        if (db.name) indexedDB.deleteDatabase(db.name);
+      }
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+
+    await page.reload();
+    await page.waitForTimeout(500);
+    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+
+    // Get the user's npub
+    const publicLink = page.getByRole('link', { name: 'public' }).first();
+    await expect(publicLink).toBeVisible({ timeout: 15000 });
+    await publicLink.click();
+    await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
+
+    const url = page.url();
+    const npubMatch = url.match(/npub1[a-z0-9]+/);
+    expect(npubMatch).not.toBeNull();
+    const npub = npubMatch![0];
+    console.log(`User npub: ${npub.slice(0, 20)}...`);
+
+    // Inject mock MediaRecorder
+    await injectMockMediaRecorder(page, videoBase64);
+
+    // Start streaming
+    const streamLink = page.getByRole('link', { name: 'Stream' });
+    await expect(streamLink).toBeVisible({ timeout: 5000 });
+    await streamLink.click();
+    await page.waitForTimeout(500);
+
+    // Start camera preview
+    const startCameraBtn = page.getByRole('button', { name: 'Start Camera' });
+    await expect(startCameraBtn).toBeVisible({ timeout: 5000 });
+    await startCameraBtn.click();
+    await page.waitForTimeout(1000);
+
+    // Set filename
+    const testFilename = `duration_test_${Date.now()}`;
+    const filenameInput = page.locator('input[placeholder="filename"]');
+    await expect(filenameInput).toBeVisible({ timeout: 5000 });
+    await filenameInput.fill(testFilename);
+
+    // Start recording
+    console.log('Starting recording...');
+    await page.getByRole('button', { name: /Start Recording/ }).click();
+
+    // Wait for stream to build up (15 seconds) - multiple duration patch cycles
+    // The patchWebmDuration is called every 3 seconds during recording
+    console.log('Waiting for 15 second stream...');
+    await page.waitForTimeout(15000);
+
+    // Open viewer in new tab (same context = shared storage)
+    console.log('Opening viewer in new tab...');
+    const viewerPage = await context.newPage();
+    setupPageErrorHandler(viewerPage);
+
+    // Track duration updates on viewer
+    let sawDurationLog = false;
+    viewerPage.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('Duration') || text.includes('duration')) {
+        console.log(`[Viewer] ${text}`);
+        sawDurationLog = true;
+      }
+    });
+
+    const streamUrl = `http://localhost:5173/#/${npub}/public/${testFilename}.webm?live=1`;
+    console.log(`Stream URL: ${streamUrl}`);
+    await viewerPage.goto(streamUrl);
+
+    // Wait for video to load
+    const videoElement = viewerPage.locator('video');
+    await expect(videoElement).toBeVisible({ timeout: 15000 });
+
+    // Wait for video to have some data
+    await viewerPage.waitForTimeout(3000);
+
+    // Check the duration display
+    // The MediaPlayer shows duration in format "X:XX / X:XX" or "X:XX / XXkB" (if no duration)
+    // We want to verify it shows actual duration, not just bytes
+    const getDurationDisplay = async () => {
+      return await viewerPage.evaluate(() => {
+        const video = document.querySelector('video') as HTMLVideoElement;
+        if (!video) return { video: null };
+
+        // Find the duration display element (contains "X:XX / X:XX" or similar)
+        // It's in a div with class containing "bottom-16 right-3"
+        const durationDiv = document.querySelector('.bottom-16.right-3');
+        const durationText = durationDiv?.textContent?.trim() || '';
+
+        return {
+          video: {
+            duration: video.duration,
+            readyState: video.readyState,
+            src: video.src ? 'has-src' : 'no-src',
+          },
+          durationDisplayText: durationText,
+          // Check if duration shows time format (X:XX) vs bytes (XkB or XMB)
+          showsTimeFormat: /\d+:\d+\s*\/\s*\d+:\d+/.test(durationText),
+          showsBytesFormat: /\d+[kKmM]B/.test(durationText),
+        };
+      });
+    };
+
+    // Check duration display multiple times as stream continues
+    const displayStates: Awaited<ReturnType<typeof getDurationDisplay>>[] = [];
+
+    // Monitor for 10 more seconds while stream continues
+    for (let i = 0; i < 5; i++) {
+      const state = await getDurationDisplay();
+      displayStates.push(state);
+      console.log(`Duration check ${i + 1}:`, JSON.stringify(state, null, 2));
+
+      if (state.showsTimeFormat && state.video && state.video.duration >= 10) {
+        console.log('SUCCESS: Duration display shows time format with 10+ seconds!');
+        break;
+      }
+
+      await viewerPage.waitForTimeout(2000);
+    }
+
+    // Stop recording
+    const stopBtn = page.getByRole('button', { name: /Stop Recording/ });
+    if (await stopBtn.isVisible()) {
+      await stopBtn.click();
+    }
+
+    await viewerPage.close();
+
+    // Analyze results
+    console.log('\n=== Duration Display Test Results ===');
+    const anyTimeFormat = displayStates.some(s => s.showsTimeFormat);
+    const anyBytesFormat = displayStates.some(s => s.showsBytesFormat);
+    const finalState = displayStates[displayStates.length - 1];
+    const maxDuration = Math.max(...displayStates.map(s => s.video?.duration || 0));
+
+    console.log(`Any check showed time format: ${anyTimeFormat}`);
+    console.log(`Any check showed bytes format: ${anyBytesFormat}`);
+    console.log(`Final duration display: "${finalState?.durationDisplayText}"`);
+    console.log(`Max video duration seen: ${maxDuration}s`);
+    console.log(`Saw duration log in viewer: ${sawDurationLog}`);
+
+    // The test passes if we saw proper time format AND duration >= 10 seconds
+    // This verifies that duration patching works correctly over a longer stream
+    expect(anyTimeFormat).toBe(true);
+    expect(maxDuration).toBeGreaterThanOrEqual(10);
+  });
 });
