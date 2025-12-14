@@ -68,6 +68,45 @@ export async function loadWasmGit(): Promise<WasmGitModule> {
     // The wasm file is served from public directory
     const { default: createModule } = await import('wasm-git');
     wasmGitModule = await createModule();
+
+    // Patch print/printErr to suppress console output while keeping capture working
+    // The default implementation both captures AND logs - we only want capture
+    const moduleAny = wasmGitModule as Record<string, unknown>;
+    const capturedOutput = { current: null as string[] | null };
+    const capturedError = { current: null as string[] | null };
+    let quitStatus: number | null = null;
+
+    moduleAny.print = (msg: string) => {
+      if (capturedOutput.current !== null) {
+        capturedOutput.current.push(msg);
+      }
+      // Don't log to console
+    };
+    moduleAny.printErr = (msg: string) => {
+      if (capturedError.current !== null) {
+        capturedError.current.push(msg);
+      }
+      // Don't log to console
+    };
+    moduleAny.quit = (status: number) => {
+      quitStatus = status;
+    };
+    moduleAny.callWithOutput = (args: string[]) => {
+      capturedOutput.current = [];
+      capturedError.current = [];
+      quitStatus = null;
+      wasmGitModule!.callMain(args);
+      const ret = capturedOutput.current.join('\n');
+      const err = capturedError.current.join('\n');
+      capturedOutput.current = null;
+      capturedError.current = null;
+      if (!quitStatus) {
+        return ret;
+      } else {
+        throw quitStatus + ': ' + err;
+      }
+    };
+
     return wasmGitModule!;
   })();
 
