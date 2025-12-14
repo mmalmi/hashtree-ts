@@ -177,6 +177,70 @@ test.describe('Iris Docs App', () => {
     await expect(page.locator('.ProseMirror')).toContainText('Content for navigation test', { timeout: 10000 });
   });
 
+  test('edits to existing document persist after navigation and refresh', async ({ page }, testInfo) => {
+    testInfo.setTimeout(45000);
+
+    await page.goto('/docs.html#/');
+    await disableOthersPool(page);
+
+    // Login
+    await page.getByRole('button', { name: /New/i }).click();
+    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 15000 });
+
+    // Create a document
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await page.locator('button:has-text("New Document")').click();
+
+    const docName = `Edit Persist Test ${Date.now()}`;
+    await page.locator('input[placeholder="Document name..."]').fill(docName);
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    // Wait for editor and type initial content
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    await editor.type('Initial content.');
+
+    // Wait for autosave
+    await page.waitForTimeout(3000);
+
+    // Navigate to home
+    await page.evaluate(() => window.location.hash = '#/');
+    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 10000 });
+
+    // Refresh the page
+    await page.reload();
+    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 10000 });
+
+    // Navigate back to the document
+    const docCard = page.locator(`text=${docName}`);
+    await expect(docCard).toBeVisible({ timeout: 10000 });
+    await docCard.click();
+
+    // Verify initial content is there
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.ProseMirror')).toContainText('Initial content.', { timeout: 10000 });
+
+    // Add more content
+    const editor2 = page.locator('.ProseMirror');
+    await editor2.click();
+    await editor2.press('End');
+    await editor2.type(' Added more content.');
+
+    // Wait for autosave
+    await page.waitForTimeout(4000);
+
+    // Refresh to verify edits persist
+    await page.reload();
+
+    // Wait for editor to load
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+
+    // Verify all content is there
+    await expect(page.locator('.ProseMirror')).toContainText('Initial content. Added more content.', { timeout: 10000 });
+  });
+
   test('another browser can view document via shared link', async ({ browser }, testInfo) => {
     testInfo.setTimeout(60000);
 

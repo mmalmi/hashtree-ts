@@ -7,9 +7,49 @@
   import { getTree } from '../../store';
   import { LinkType, type CID, type TreeEntry } from 'hashtree';
   import YjsDocumentEditor from '../Viewer/YjsDocumentEditor.svelte';
+  import { nostrStore } from '../../nostr';
+  import { nip19 } from 'nostr-tools';
 
   let route = $derived($routeStore);
   let treeRoot = $derived($treeRootStore);
+
+  // Set selectedTree when viewing own document (required for autosave to work)
+  function setSelectedTreeIfOwn(npubStr: string, treeNameVal: string) {
+    let pubkey: string | null = null;
+    try {
+      const decoded = nip19.decode(npubStr);
+      if (decoded.type === 'npub') {
+        pubkey = decoded.data as string;
+      }
+    } catch {
+      return;
+    }
+
+    const state = nostrStore.getState();
+    if (pubkey && state.isLoggedIn && state.pubkey === pubkey) {
+      const currentSelected = state.selectedTree;
+      if (!currentSelected || currentSelected.name !== treeNameVal) {
+        nostrStore.setSelectedTree({
+          id: '',
+          name: treeNameVal,
+          pubkey,
+          rootHash: currentSelected?.rootHash || '',
+          rootKey: currentSelected?.rootKey,
+          visibility: currentSelected?.visibility ?? 'public',
+          created_at: Math.floor(Date.now() / 1000),
+        });
+      }
+    }
+  }
+
+  // Set selectedTree when route changes
+  $effect(() => {
+    const npub = route.npub;
+    const treeName = route.treeName;
+    if (npub && treeName) {
+      setSelectedTreeIfOwn(npub, treeName);
+    }
+  });
 
   // Resolved directory state
   let dirCid = $state<CID | null>(null);

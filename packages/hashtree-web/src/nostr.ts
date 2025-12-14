@@ -924,7 +924,9 @@ export function isOwnTree(): boolean {
  */
 export function autosaveIfOwn(rootCid: CID): void {
   const state = nostrStore.getState();
-  if (!isOwnTree() || !state.selectedTree || !state.npub) return;
+  if (!isOwnTree() || !state.selectedTree || !state.npub) {
+    return;
+  }
 
   const rootHash = toHex(rootCid.hash);
   const rootKey = rootCid.key ? toHex(rootCid.key) : undefined;
