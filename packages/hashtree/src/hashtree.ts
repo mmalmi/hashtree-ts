@@ -26,6 +26,7 @@ import {
   type EncryptedDirEntry,
 } from './encrypted.js';
 import * as editEncrypted from './tree/editEncrypted.js';
+import * as writeAtOps from './tree/writeAt.js';
 
 /** Default chunk size: 2MB (optimized for blossom uploads) */
 export const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024;
@@ -539,6 +540,31 @@ export class HashTree {
     }
     const hash = await edit.moveEntry(this.config, root.hash, sourcePath, name, targetPath);
     return { hash };
+  }
+
+  /**
+   * Write data at a specific offset in a file
+   * Only affected chunks are rewritten - efficient for small patches to large files.
+   * Useful for updating file headers (e.g., WebM duration) without rewriting entire file.
+   *
+   * @param fileCid - CID of the file to modify
+   * @param offset - Byte offset to write at
+   * @param data - Data to write
+   * @returns New file CID
+   */
+  async writeAt(fileCid: CID, offset: number, data: Uint8Array): Promise<CID> {
+    if (fileCid.key) {
+      const result = await writeAtOps.writeAtEncrypted(
+        this.config,
+        fileCid.hash,
+        fileCid.key,
+        offset,
+        data
+      );
+      return cid(result.hash, result.key);
+    }
+    const result = await writeAtOps.writeAt(this.config, fileCid.hash, offset, data);
+    return { hash: result.hash };
   }
 
   // Utility

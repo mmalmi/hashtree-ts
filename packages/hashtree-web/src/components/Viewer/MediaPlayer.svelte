@@ -326,6 +326,16 @@
       // This allows the video element to be visible right away
       loading = false;
 
+      // Listen for duration to become available (once header is parsed)
+      if (mediaRef) {
+        mediaRef.addEventListener('loadedmetadata', () => {
+          if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
+            duration = mediaRef.duration;
+            console.log('[MediaPlayer] Duration from metadata:', duration);
+          }
+        }, { once: true });
+      }
+
       const tree = getTree();
 
       // Stream chunks and append immediately as they arrive
@@ -854,9 +864,9 @@
       <!-- Duration/time info (video only) -->
       {#if !loading && !error}
         <div class="absolute bottom-16 right-3 z-10 px-2 py-1 bg-black/70 text-white text-sm rounded">
-          {formatTime(currentTime)} / {formatTime(duration)}
+          {formatTime(currentTime)} / {#if isFinite(duration) && duration > 0}{formatTime(duration)}{:else}<span class="text-gray-400">{bytesLoaded < 1024 * 1024 ? `${Math.round(bytesLoaded / 1024)}KB` : `${(bytesLoaded / (1024 * 1024)).toFixed(1)}MB`}</span>{/if}
           {#if shouldTreatAsLive}
-            <span class="ml-2 text-xs text-gray-400">({Math.round(bytesLoaded / 1024)}KB)</span>
+            <span class="ml-2 text-xs text-gray-400">streaming</span>
           {/if}
         </div>
       {/if}
