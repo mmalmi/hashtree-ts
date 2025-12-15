@@ -5,6 +5,7 @@
    * - / : Home (recent docs, followed users' docs)
    * - /settings : Settings page
    * - /users : User list (switch user)
+   * - /:npub/edit : Edit profile page
    * - /:npub/profile : Profile page
    * - /:npub/:treeName/... : Document view
    */
@@ -13,12 +14,14 @@
   import DocView from './DocView.svelte';
   import SettingsPage from '../SettingsPage.svelte';
   import ProfileView from '../ProfileView.svelte';
+  import EditProfilePage from '../EditProfilePage.svelte';
   import UsersPage from '../UsersPage.svelte';
 
   const routePatterns = [
     { pattern: '/', component: DocsHome },
     { pattern: '/settings', component: SettingsPage },
     { pattern: '/users', component: UsersPage },
+    { pattern: '/:npub/edit', component: EditProfilePage },
     { pattern: '/:npub/profile', component: ProfileView },
     { pattern: '/:npub/:treeName/*', component: DocView },
     { pattern: '/:npub/:treeName', component: DocView },
