@@ -56,7 +56,11 @@ npm run test:e2e # E2E tests
 - git-push-htree test requires cargo/rust installed - skip if not available
 
 ### Flaky Tests
-- CI runs with `retries: 1` to handle intermittent failures
-- Some tests involving WebRTC sync (background-sync, yjs-collaboration) may fail under extreme parallelism (96+ workers) but pass on retry
+- **Tests MUST pass under full parallelism** - do not rely on retries
+- If a test fails under parallelism, investigate the root cause with console logs and screenshots
+- Common causes of flaky multi-user tests:
+  - Resolver not receiving tree data before navigation - verify tree visibility before navigating
+  - OPFS stale data - clear OPFS alongside IndexedDB in test setup
+  - WebRTC connection not established - wait for specific connection indicators
 - Global timeout is 30s, with `test.slow()` tripling it to 90s
-- If a test passes with `--workers=1` but fails with 100% workers, it's likely a timing issue - add `test.slow()` or increase specific timeouts
+- Blossom servers require whitelisting for write access - tests cannot use Blossom for sync

@@ -166,6 +166,7 @@ export interface PeerStatus {
   connectedAt?: number;
   isSelf?: boolean;
   pool?: PeerPool;
+  isConnected?: boolean; // True when peer connection AND data channel are ready
 }
 
 export type WebRTCStoreEvent =

@@ -8,10 +8,10 @@
  * 4. User B can access A's tree content offline
  */
 import { test, expect, Page } from '@playwright/test';
-import { setupPageErrorHandler, disableOthersPool, configureBlossomServers } from './test-utils.js';
+import { setupPageErrorHandler, disableOthersPool, enableOthersPool, presetOthersPoolInDB, configureBlossomServers } from './test-utils.js';
 
 // Helper to set up a fresh user session
-async function setupFreshUser(page: Page) {
+async function setupFreshUser(page: Page, options?: { enableOthersPool?: boolean }) {
   setupPageErrorHandler(page);
 
   await page.goto('http://localhost:5173');
@@ -38,8 +38,18 @@ async function setupFreshUser(page: Page) {
     }
   });
 
+  // Pre-set pool settings BEFORE reload if others pool is needed
+  // This ensures WebRTC initializes with correct limits
+  if (options?.enableOthersPool) {
+    await presetOthersPoolInDB(page);
+  }
+
   await page.reload();
-  await disableOthersPool(page); // Re-apply after reload
+  if (options?.enableOthersPool) {
+    await enableOthersPool(page); // Also update running WebRTC store
+  } else {
+    await disableOthersPool(page); // Re-apply after reload
+  }
   await configureBlossomServers(page);
   await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
 
@@ -220,28 +230,91 @@ test.describe('Background Sync', () => {
       const statsBBefore = await getStorageStats(pageB);
       console.log(`User B storage before follow: ${statsBBefore.items} items, ${statsBBefore.bytes} bytes`);
 
-      // === User A: Follow User B (mutual follow for WebRTC connection) ===
-      console.log('User A: Following User B for WebRTC...');
+      // === Mutual follows for WebRTC connection ===
+      console.log('User A: Following User B...');
       await followUser(pageA, npubB);
       console.log('User A: Now following User B');
 
-      // === User B: Follow User A ===
       console.log('User B: Following User A...');
       await followUser(pageB, npubA);
       console.log('User B: Now following User A');
 
-      // Wait a moment for WebRTC connection to establish via follows pool
-      await pageB.waitForTimeout(2000);
+      // Wait for WebRTC connection to establish
+      console.log('Waiting for WebRTC connection...');
+      let webrtcConnected = false;
+      for (let i = 0; i < 30; i++) {
+        await pageB.waitForTimeout(500);
+        const peers = await pageB.evaluate(() => {
+          const store = (window as any).webrtcStore;
+          if (!store?.getPeers) return [];
+          return store.getPeers().map((p: any) => ({
+            pubkey: p.pubkey?.slice(0, 8),
+            state: p.state,
+            pool: p.pool,
+            isConnected: p.isConnected // This now checks data channel too
+          }));
+        });
+        if (i % 5 === 0) {
+          console.log(`WebRTC peers (attempt ${i + 1}):`, JSON.stringify(peers));
+        }
+        // Check isConnected which includes data channel state
+        const connected = peers.filter((p: any) => p.isConnected);
+        if (connected.length > 0) {
+          console.log(`WebRTC fully connected (data channel open) to ${connected.length} peers at ${(i + 1) * 0.5}s`);
+          webrtcConnected = true;
+          break;
+        }
+      }
+      if (!webrtcConnected) {
+        console.log('WARNING: No WebRTC peers connected after 15s');
+      }
+
+      // Navigate User B to User A's tree list to trigger resolver to fetch tree metadata
+      // This ensures background sync has the tree hashes to sync
+      console.log('User B: Visiting User A to trigger resolver...');
+      await pageB.goto(`http://localhost:5173/#/${npubA}`);
+      await expect(pageB.getByRole('link', { name: 'public' }).first()).toBeVisible({ timeout: 30000 });
+      console.log('User B: Can see User A\'s public tree');
+
+      // Check if User B's resolver has User A's tree info
+      const resolverCheck = await pageB.evaluate(async (targetNpub) => {
+        const resolver = (window as any).__hashtreeResolver;
+        if (!resolver) return { hasResolver: false };
+
+        // Try to use resolver's resolve method to get tree hash
+        let treeHash = null;
+        try {
+          // Create a promise that races between resolve and a timeout
+          const resolvePromise = resolver.resolve(`${targetNpub}/public`);
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('timeout')), 2000)
+          );
+          const cid = await Promise.race([resolvePromise, timeoutPromise]);
+          treeHash = cid ? 'has cid' : null;
+        } catch (e: any) {
+          treeHash = e.message === 'timeout' ? 'timeout' : `error: ${e.message}`;
+        }
+        return { hasResolver: true, treeHash };
+      }, npubA);
+      console.log(`Resolver check for User A's tree:`, JSON.stringify(resolverCheck));
 
       // === Wait for background sync by polling storage stats ===
+      // Background sync has retries with delays, so we need to wait long enough:
+      // - First attempt times out at 3s
+      // - Each retry has 2s delay + 3s timeout = 5s cycle
+      // - With 5 retries, max wait is ~28s
       console.log('Waiting for background sync...');
       let statsBAfter = statsBBefore;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 60; i++) {
         await pageB.waitForTimeout(500);
         statsBAfter = await getStorageStats(pageB);
         if (statsBAfter.items > statsBBefore.items) {
-          console.log(`Background sync started at ${(i + 1) * 0.5}s: ${statsBAfter.items} items`);
+          console.log(`Background sync completed at ${(i + 1) * 0.5}s: ${statsBAfter.items} items`);
           break;
+        }
+        // Log progress periodically
+        if (i % 10 === 9) {
+          console.log(`Still waiting for background sync at ${(i + 1) * 0.5}s...`);
         }
       }
       console.log(`User B storage after sync: ${statsBAfter.items} items, ${statsBAfter.bytes} bytes`);
@@ -379,8 +452,10 @@ test.describe('Background Sync', () => {
 
     try {
       // === Setup user on first device ===
+      // Enable others pool so same-user devices can connect via WebRTC
       console.log('Setting up user on Device 1...');
-      await setupFreshUser(page1);
+      await setupFreshUser(page1, { enableOthersPool: true });
+
       const npub = await getNpub(page1);
       console.log(`User npub: ${npub.slice(0, 20)}...`);
 
@@ -448,36 +523,58 @@ test.describe('Background Sync', () => {
         localStorage.setItem('hashtree:loginType', 'nsec');
       }, nsec);
 
-      // Reload - app should auto-login with our nsec
+      // Pre-set pool settings in IndexedDB so WebRTC initializes with correct limits
+      await presetOthersPoolInDB(page2);
+
+      // Reload - app should auto-login with our nsec and have correct pool settings
       console.log('Device 2: Reloading with nsec...');
       await page2.reload();
       await page2.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
 
-      // Wait for WebRTC connection between Device 1 and Device 2 (same user)
-      // They should connect via the "own devices" pool
-      console.log('Waiting for WebRTC connection between devices...');
-      await page2.waitForTimeout(3000);
+      // Enable others pool (belt and suspenders - also updates the running WebRTC store)
+      await enableOthersPool(page2);
 
-      // Trigger a manual sync by navigating - the background sync should kick in
-      await page2.waitForTimeout(5000); // Give more time for sync to complete
+      // Wait for WebRTC connection with data channel open (isConnected=true)
+      console.log('Waiting for WebRTC connection...');
+      let webrtcConnected = false;
+      for (let i = 0; i < 30; i++) {
+        await page2.waitForTimeout(500);
+        const peers = await page2.evaluate(() => {
+          const store = (window as unknown as { webrtcStore?: { getPeers: () => { isConnected?: boolean }[] } }).webrtcStore;
+          if (!store?.getPeers) return [];
+          return store.getPeers();
+        });
+        const connected = peers.filter((p: { isConnected?: boolean }) => p.isConnected);
+        if (connected.length > 0) {
+          console.log(`WebRTC fully connected after ${(i + 1) * 0.5}s`);
+          webrtcConnected = true;
+          break;
+        }
+        if (i % 5 === 4) {
+          console.log(`Still waiting for WebRTC connection... (${peers.length} peers, none connected)`);
+        }
+      }
+      if (!webrtcConnected) {
+        console.log('WARNING: No WebRTC peers fully connected after 15s');
+      }
 
       // === Navigate to public folder and wait for file to sync ===
-      console.log('Device 2: Waiting for file to sync...');
+      console.log('Device 2: Navigating to public folder...');
       await page2.goto(`http://localhost:5173/#/${npub}/public`);
 
-      // Wait a bit for the folder view to render
-      await page2.waitForTimeout(2000);
-
-      // Wait for the file to appear (synced from Nostr via background sync)
-      // The page may need a reload if content was synced after initial load
+      // Wait for the file to appear - poll with retries since sync may take time
       const file = page2.getByRole('link', { name: 'cross-device.txt' });
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const visible = await file.isVisible().catch(() => false);
+        if (visible) break;
 
-      // First check - might already be visible
-      let visible = await file.isVisible().catch(() => false);
-      if (!visible) {
-        console.log('Device 2: File not visible yet, reloading page...');
-        await page2.reload();
-        await page2.waitForTimeout(2000);
+        if (attempt < 2) {
+          console.log(`Device 2: File not visible (attempt ${attempt + 1}), waiting...`);
+          await page2.waitForTimeout(3000);
+          // Reload to refresh the view
+          await page2.reload();
+          await page2.waitForTimeout(2000);
+        }
       }
 
       await expect(file).toBeVisible({ timeout: 20000 });

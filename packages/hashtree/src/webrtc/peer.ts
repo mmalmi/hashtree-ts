@@ -154,7 +154,8 @@ export class Peer {
   }
 
   get isConnected(): boolean {
-    return this.pc.connectionState === 'connected';
+    return this.pc.connectionState === 'connected' &&
+           this.dataChannel?.readyState === 'open';
   }
 
   get pendingTheirRequestsCount(): number {

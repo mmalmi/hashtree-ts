@@ -36,6 +36,7 @@ interface SyncTask {
   cid: CID;
   isOwn: boolean;
   priority: number;   // Lower = higher priority (own=0, visited=1, followed=2)
+  retryCount?: number; // Number of retry attempts
 }
 
 /**
@@ -213,8 +214,12 @@ export class BackgroundSyncService {
     const resolver = getRefResolver();
     if (!resolver.list) return;
 
+    console.log(`[backgroundSync] Subscribing to trees for followed user: ${npub.slice(0, 20)}...`);
+
     const unsub = resolver.list(npub, (entries) => {
+      console.log(`[backgroundSync] Resolver callback for ${npub.slice(0, 20)}...: ${entries.length} entries`);
       for (const entry of entries) {
+        console.log(`[backgroundSync] Entry: ${entry.key}, visibility: ${entry.visibility}`);
         // Only sync public trees from followed users
         if (entry.visibility === 'public') {
           this.queueTreeSync(entry.key, entry.cid, false, 2);
@@ -242,10 +247,29 @@ export class BackgroundSyncService {
     this.processing = true;
 
     try {
-      // Process one task at a time to avoid overloading
-      const task = this.syncQueue.shift();
+      // Peek at the next task (don't remove yet)
+      const task = this.syncQueue[0];
       if (!task) return;
 
+      // Check if data is available locally (no need to wait for peers)
+      const hasLocalData = await this.hasLocalData(task.cid);
+
+      // If data isn't local, wait for WebRTC peers before trying to sync
+      if (!hasLocalData) {
+        const hasConnectedPeer = await this.hasConnectedPeer();
+        if (!hasConnectedPeer) {
+          // No peers connected yet, reschedule with delay
+          console.log('[backgroundSync] No WebRTC peers ready, waiting...');
+          this.processing = false;
+          setTimeout(() => {
+            if (this.running) this.scheduleProcessQueue();
+          }, 1000);
+          return;
+        }
+      }
+
+      // Now remove from queue and process
+      this.syncQueue.shift();
       await this.syncTree(task);
 
       // Check quotas after each sync
@@ -262,8 +286,24 @@ export class BackgroundSyncService {
     }
   }
 
+  private async hasConnectedPeer(): Promise<boolean> {
+    const { webrtcStore } = await import('../store');
+    if (!webrtcStore) return false;
+    const peers = webrtcStore.getPeers();
+    return peers.some(p => p.isConnected);
+  }
+
+  private async hasLocalData(cid: CID): Promise<boolean> {
+    // Check if the root hash exists in local store
+    const data = await localStore.get(cid.hash);
+    return data !== null;
+  }
+
   private async syncTree(task: SyncTask): Promise<void> {
-    const { key, cid, isOwn } = task;
+    const { key, cid, isOwn, retryCount = 0 } = task;
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY_MS = 2000; // 2 seconds between retries
+    const PULL_TIMEOUT_MS = 3000; // 3 second timeout for pull operation
 
     // Check if already synced with same root
     const existingState = await getTreeSyncState(key);
@@ -274,12 +314,29 @@ export class BackgroundSyncService {
       return;
     }
 
-    console.log(`[backgroundSync] Syncing tree: ${key}`);
+    console.log(`[backgroundSync] Syncing tree: ${key}${retryCount > 0 ? ` (retry ${retryCount})` : ''}`);
 
     try {
       // Use tree.pull() to recursively fetch all chunks
       const tree = getTree();
-      const { chunks, bytes } = await tree.pull(cid);
+      console.log(`[backgroundSync] Calling tree.pull for ${key}`);
+
+      // Add timeout to prevent hanging when peers aren't available
+      const pullWithTimeout = async () => {
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Pull timeout - peers may not be available')), PULL_TIMEOUT_MS);
+        });
+        return Promise.race([tree.pull(cid), timeoutPromise]);
+      };
+
+      const { chunks, bytes } = await pullWithTimeout();
+      console.log(`[backgroundSync] tree.pull returned: chunks=${chunks}, bytes=${bytes}`);
+
+      // Check if pull actually fetched any data
+      // tree.pull returns 0 chunks if data couldn't be fetched (e.g., no WebRTC peers)
+      if (chunks === 0) {
+        throw new Error('No chunks fetched - peers may not be available');
+      }
 
       // Extract npub from key
       const ownerNpub = key.split('/')[0];
@@ -301,6 +358,17 @@ export class BackgroundSyncService {
       console.log(`[backgroundSync] Synced ${key}: ${chunks} chunks, ${bytes} bytes`);
     } catch (error) {
       console.error(`[backgroundSync] Failed to sync ${key}:`, error);
+
+      // Re-queue for retry if under max retries
+      if (retryCount < MAX_RETRIES && this.running) {
+        console.log(`[backgroundSync] Scheduling retry ${retryCount + 1}/${MAX_RETRIES} for ${key} in ${RETRY_DELAY_MS}ms`);
+        setTimeout(() => {
+          if (this.running) {
+            this.syncQueue.push({ ...task, retryCount: retryCount + 1 });
+            this.scheduleProcessQueue();
+          }
+        }, RETRY_DELAY_MS);
+      }
     }
   }
 

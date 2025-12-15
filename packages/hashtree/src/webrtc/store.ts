@@ -648,6 +648,7 @@ export class WebRTCStore implements Store {
       connectedAt: peer.connectedAt,
       isSelf: peer.pubkey === this.myPeerId.pubkey,
       pool,
+      isConnected: peer.isConnected, // Includes data channel state
     }));
   }
 

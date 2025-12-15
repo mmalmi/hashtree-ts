@@ -65,13 +65,83 @@ export async function disableOthersPool(page: any) {
     settingsStore.setPoolSettings({ otherMax: 0, otherSatisfied: 0 });
 
     // Also update the WebRTC store if it exists
-    const { webRTCStore } = await import('/src/store');
-    if (webRTCStore) {
-      webRTCStore.setPoolConfig({
+    // Use window global which is always in sync with the app
+    const store = (window as unknown as { webrtcStore?: { setPoolConfig: (config: unknown) => void } }).webrtcStore;
+    if (store) {
+      store.setPoolConfig({
         follows: { maxConnections: 20, satisfiedConnections: 10 },
         other: { maxConnections: 0, satisfiedConnections: 0 },
       });
     }
+  });
+}
+
+/**
+ * Enable the "others pool" for WebRTC connections.
+ * Use this for tests that need same-user cross-device sync (same account on two browsers).
+ * In test mode, the others pool is disabled by default to prevent interference.
+ *
+ * Sets a high limit (100) to avoid being blocked by parallel test connections.
+ *
+ * IMPORTANT: Call this AFTER login but BEFORE operations that need WebRTC.
+ */
+export async function enableOthersPool(page: any) {
+  await page.evaluate(async () => {
+    const { settingsStore } = await import('/src/stores/settings');
+    // Use high limits to avoid parallel test interference
+    settingsStore.setPoolSettings({ otherMax: 100, otherSatisfied: 1 });
+
+    // Also update the WebRTC store if it exists
+    // Use window global which is always in sync with the app
+    const store = (window as unknown as { webrtcStore?: { setPoolConfig: (config: unknown) => void } }).webrtcStore;
+    if (store) {
+      store.setPoolConfig({
+        follows: { maxConnections: 20, satisfiedConnections: 10 },
+        other: { maxConnections: 100, satisfiedConnections: 1 },
+      });
+    }
+  });
+}
+
+/**
+ * Pre-set pool settings in IndexedDB before page load/reload.
+ * This ensures WebRTC initializes with correct pool limits since it starts
+ * before enableOthersPool can be called.
+ *
+ * IMPORTANT: Call this BEFORE reload when you need others pool enabled on init.
+ */
+export async function presetOthersPoolInDB(page: any) {
+  await page.evaluate(async () => {
+    const request = indexedDB.open('hashtree-settings', 1);
+    await new Promise<void>((resolve, reject) => {
+      request.onerror = () => reject(request.error);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('settings')) {
+          db.createObjectStore('settings', { keyPath: 'key' });
+        }
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction('settings', 'readwrite');
+        const store = tx.objectStore('settings');
+        // Set high pool limits for cross-device sync
+        store.put({
+          key: 'pools',
+          value: {
+            followsMax: 20,
+            followsSatisfied: 10,
+            otherMax: 100,
+            otherSatisfied: 1
+          }
+        });
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+    });
   });
 }
 
