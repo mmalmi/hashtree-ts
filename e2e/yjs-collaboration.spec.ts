@@ -15,7 +15,7 @@
  * - If waiting for content sync, use waitForEditorContent() helper
  */
 import { test, expect, Page } from '@playwright/test';
-import { setupPageErrorHandler, disableOthersPool, configureBlossomServers } from './test-utils.js';
+import { setupPageErrorHandler, disableOthersPool, configureBlossomServers, waitForWebRTCConnection } from './test-utils.js';
 
 // Helper to set up a fresh user session
 async function setupFreshUser(page: Page) {
@@ -504,7 +504,10 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await followUser(pageB, npubA);
 
       // Wait for WebRTC connection to establish via follows pool
-      await pageA.waitForTimeout(3000);
+      console.log('Waiting for WebRTC connection...');
+      await waitForWebRTCConnection(pageA, 15000);
+      await waitForWebRTCConnection(pageB, 15000);
+      console.log('WebRTC connected');
 
       // Navigate back to public folders after following
       await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
@@ -624,7 +627,10 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await followUser(pageB, npubA);
 
       // Wait for WebRTC connection to establish via follows pool
-      await pageA.waitForTimeout(3000);
+      console.log('Waiting for WebRTC connection...');
+      await waitForWebRTCConnection(pageA, 15000);
+      await waitForWebRTCConnection(pageB, 15000);
+      console.log('WebRTC connected');
 
       // Navigate back to public folders after following
       await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
@@ -987,6 +993,24 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await setupFreshUser(pageB);
       const npubB = await getNpub(pageB);
       console.log(`User B npub: ${npubB.slice(0, 20)}...`);
+
+      // === Mutual follows for reliable WebRTC connection ===
+      console.log('User A: Following User B...');
+      await followUser(pageA, npubB);
+      console.log('User B: Following User A...');
+      await followUser(pageB, npubA);
+
+      // Wait for WebRTC connection to establish via follows pool
+      console.log('Waiting for WebRTC connection...');
+      await waitForWebRTCConnection(pageA, 15000);
+      await waitForWebRTCConnection(pageB, 15000);
+      console.log('WebRTC connected');
+
+      // Navigate back to public folders after following
+      await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
+      await expect(pageA.getByRole('button', { name: 'New Document' })).toBeVisible({ timeout: 30000 });
+      await pageB.goto(`http://localhost:5173/#/${npubB}/public`);
+      await expect(pageB.getByRole('button', { name: 'New Document' })).toBeVisible({ timeout: 30000 });
 
       // User A creates a document with initial structure
       console.log('User A: Creating document...');

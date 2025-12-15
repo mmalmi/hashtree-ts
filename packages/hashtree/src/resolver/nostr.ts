@@ -606,7 +606,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           }
 
           // Update the entry
-          entriesByDTag.set(dTag, {
+          const entryData = {
             hash: parsed?.hash ?? '',
             visibility: parsed?.visibility ?? 'public',
             key: parsed?.key,
@@ -614,7 +614,18 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             keyId: parsed?.keyId,
             selfEncryptedKey: parsed?.selfEncryptedKey,
             created_at: eventTime,
-          });
+          };
+          entriesByDTag.set(dTag, entryData);
+
+          // Also update localListCache so subscribe() can find this data
+          // This enables cross-function caching: list() receives data, subscribe() can use it
+          let npubCache = localListCache.get(npubStr);
+          if (!npubCache) {
+            npubCache = new Map();
+            localListCache.set(npubStr, npubCache);
+          }
+          npubCache.set(dTag, entryData);
+
           emitCurrentState();
         }
       );
