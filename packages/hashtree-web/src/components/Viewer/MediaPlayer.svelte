@@ -46,6 +46,9 @@
   let bytesLoaded = $state(0);
   let lastCidHash = $state<string | null>(null);
 
+  // Track if file has been updated (for blob URL mode - shows "Updated" button instead of auto-reload)
+  let hasUpdate = $state(false);
+
   // Abort controller for cancelling streaming on unmount
   let abortController: AbortController | null = null;
 
@@ -103,7 +106,9 @@
       streamEndCheckInterval = setInterval(() => {
         const timeSinceLastData = Date.now() - lastDataReceivedTime;
         if (timeSinceLastData > STREAM_TIMEOUT) {
-          // Stream has ended - no new data for STREAM_TIMEOUT
+          // Stream appears to have ended - no new data for STREAM_TIMEOUT
+          console.log('[MediaPlayer] Stream timeout - no new data for', STREAM_TIMEOUT, 'ms');
+
           if (streamEndCheckInterval) {
             clearInterval(streamEndCheckInterval);
             streamEndCheckInterval = null;
@@ -117,15 +122,10 @@
           // Stop polling
           stopLivePolling();
 
-          // Mark as fully loaded and close the MediaSource
+          // Mark as fully loaded but DON'T close MediaSource
+          // Keep it open so we can append more data if CID changes later
           isFullyLoaded = true;
-          if (mediaSource && mediaSource.readyState === 'open') {
-            try {
-              mediaSource.endOfStream();
-            } catch {
-              // Ignore errors
-            }
-          }
+          isLive = false;
         }
       }, 2000); // Check every 2 seconds
     }
@@ -143,8 +143,8 @@
   function getMimeType(filename: string): string {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
     const mimeTypes: Record<string, string> = {
-      // Video - don't specify codecs, let MSE auto-detect from container
-      'webm': 'video/webm',
+      // WebM needs codec string for MSE - MediaRecorder uses vp8+opus
+      'webm': 'video/webm;codecs=vp8,opus',
       'mp4': 'video/mp4',
       'ogg': 'video/ogg',
       'ogv': 'video/ogg',
@@ -240,11 +240,8 @@
       const data = await tree.readFileRange(cid, bytesLoaded, bytesLoaded + BUFFER_AHEAD_SIZE);
 
       if (!data || data.length === 0) {
-        // No more data - we've loaded everything
+        // No more data currently - but CID might update later, so don't close MediaSource
         isFullyLoaded = true;
-        if (mediaSource.readyState === 'open' && !shouldTreatAsLive) {
-          mediaSource.endOfStream();
-        }
       } else {
         await appendToSourceBuffer(data);
         bytesLoaded += data.length;
@@ -254,12 +251,10 @@
           duration = mediaRef.duration;
         }
 
-        // Check if we got less than requested - means we're at the end
+        // Check if we got less than requested - means we're at the end for now
         if (data.length < BUFFER_AHEAD_SIZE) {
           isFullyLoaded = true;
-          if (mediaSource.readyState === 'open' && !shouldTreatAsLive) {
-            mediaSource.endOfStream();
-          }
+          // Don't close MediaSource - CID might update with new data later
         }
       }
     } catch (e) {
@@ -300,6 +295,7 @@
   // MSE-based streaming - allows playback to start before full load
   async function loadWithMse() {
     const mimeType = getMimeType(fileName);
+    usingBlobUrl = false; // Explicitly mark as MSE mode
 
     try {
       mediaSource = new MediaSource();
@@ -322,9 +318,9 @@
       sourceBuffer = mediaSource.addSourceBuffer(mimeType);
       console.log('[MediaPlayer] MSE source buffer created for', mimeType);
 
-      // For MSE streaming, hide loading immediately - let video controls show buffering state
-      // This allows the video element to be visible right away
+      // For MSE streaming, hide loading spinner immediately - video will show its own buffering state
       loading = false;
+      console.log('[MediaPlayer] Loading spinner hidden, starting to stream chunks');
 
       // Listen for duration to become available (once header is parsed)
       if (mediaRef) {
@@ -409,8 +405,9 @@
         startLivePolling();
       }
       // Don't call endOfStream() - keep MediaSource open for potential CID updates
+      console.log('[MediaPlayer] MSE initial load complete, live:', shouldTreatAsLive, 'duration:', duration);
     } catch (e) {
-      console.error('MSE error:', e);
+      console.error('[MediaPlayer] MSE failed, falling back to blob URL:', e);
       await loadWithBlobUrl();
     }
   }
@@ -475,35 +472,36 @@
     }
   }
 
-  // Reload blob URL when CID changes (for live streams not using MSE)
-  // Called by the CID change effect - lastCidHash is already updated by the caller
-  async function reloadBlobUrl() {
-    if (!usingBlobUrl || !shouldTreatAsLive || !mediaRef) return;
+  // Mark that an update is available (for blob URL mode)
+  // Instead of auto-reloading (which causes visual glitches), we show an "Updated" button
+  function markUpdateAvailable() {
+    if (!usingBlobUrl) return;
+    hasUpdate = true;
+    lastDataReceivedTime = Date.now();
+    console.log('[MediaPlayer] Update available for blob URL mode');
+  }
 
-    // Remember current playback position and state BEFORE any async work
-    const savedTime = mediaRef.currentTime;
-    const savedDuration = mediaRef.duration;
-    const wasPlaying = !mediaRef.paused;
-    // Check if user was near live edge (within 10 seconds)
-    const wasNearLiveEdge = isFinite(savedDuration) && savedDuration > 0 &&
-      (savedDuration - savedTime) < 10;
+  // Reload blob URL when user clicks "Updated" button
+  async function reloadBlobUrl() {
+    if (!usingBlobUrl || !mediaRef) return;
+
+    hasUpdate = false;
+    loading = true;
 
     try {
       const tree = getTree();
       const chunks: Uint8Array[] = [];
-      let newBytesLoaded = 0;
 
       for await (const chunk of tree.readFileStream(cid, { prefetch: 5 })) {
         chunks.push(chunk);
-        newBytesLoaded += chunk.length;
       }
 
-      if (chunks.length === 0) return;
+      if (chunks.length === 0) {
+        loading = false;
+        return;
+      }
 
-      // Only update if we got more data
-      if (newBytesLoaded <= bytesLoaded) return;
-
-      bytesLoaded = newBytesLoaded;
+      bytesLoaded = chunks.reduce((sum, c) => sum + c.length, 0);
       lastDataReceivedTime = Date.now();
 
       const mimeType = getMimeType(fileName).split(';')[0];
@@ -513,44 +511,39 @@
       // Store old URL to revoke after switch
       const oldUrl = mediaRef.src;
 
-      // Set up the restore handler BEFORE changing src
-      const restorePosition = () => {
-        if (!mediaRef) return;
-        duration = mediaRef.duration;
-
-        // For live streams: if user was near live edge, stay at live edge
-        // Otherwise restore their exact position
-        if (wasNearLiveEdge && isFinite(mediaRef.duration) && mediaRef.duration > 5) {
-          mediaRef.currentTime = Math.max(0, mediaRef.duration - 3);
-        } else if (savedTime > 0 && isFinite(mediaRef.duration)) {
-          mediaRef.currentTime = Math.min(savedTime, mediaRef.duration);
-        }
-
-        if (wasPlaying) {
+      mediaRef.addEventListener('loadedmetadata', () => {
+        if (mediaRef) {
+          duration = mediaRef.duration;
+          // Seek near end for live streams
+          if (shouldTreatAsLive && isFinite(duration) && duration > 5) {
+            mediaRef.currentTime = Math.max(0, duration - 3);
+          }
           mediaRef.play().catch(() => {});
         }
-      };
+        loading = false;
+      }, { once: true });
 
-      // Use loadedmetadata for restore
-      mediaRef.addEventListener('loadedmetadata', restorePosition, { once: true });
-
-      // Switch to new source
       mediaRef.src = newBlobUrl;
 
-      // Revoke old URL after a delay to avoid issues
+      // Revoke old URL after a delay
       if (oldUrl && oldUrl.startsWith('blob:')) {
         setTimeout(() => URL.revokeObjectURL(oldUrl), 1000);
       }
 
     } catch (e) {
       console.error('[MediaPlayer] Error reloading blob URL:', e);
+      loading = false;
     }
   }
 
-  // Fetch and append only new data when CID changes
+  // Fetch and append only new data when CID changes (MSE mode)
   // Called by the CID change effect - lastCidHash is already updated by the caller
   async function fetchNewData() {
+    // Always update lastDataReceivedTime when CID changes - we know new data exists
+    lastDataReceivedTime = Date.now();
+
     if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
+      console.log('[MediaPlayer] fetchNewData: MSE not ready, state:', mediaSource?.readyState, 'sourceBuffer:', !!sourceBuffer);
       return;
     }
 
@@ -563,7 +556,14 @@
       if (newData && newData.length > 0) {
         await appendToSourceBuffer(newData);
         bytesLoaded += newData.length;
-        lastDataReceivedTime = Date.now();
+        console.log('[MediaPlayer] MSE appended', newData.length, 'bytes, total:', bytesLoaded);
+
+        // Auto-detect live stream: if CID updates with new data, treat as live
+        if (!isLive) {
+          console.log('[MediaPlayer] Auto-detected live stream from CID update');
+          isLive = true;
+          startLivePolling();
+        }
 
         // Update duration
         if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
@@ -591,22 +591,19 @@
       return;
     }
 
-    // For blob URL mode, check if CID changed and reload
+    // For blob URL mode, check if CID changed and mark update available
     if (usingBlobUrl) {
       const currentCidHash = toHex(cid.hash);
       if (currentCidHash !== lastCidHash) {
-        isPolling = true;
-        try {
-          await reloadBlobUrl();
-        } finally {
-          isPolling = false;
-        }
+        lastCidHash = currentCidHash;
+        markUpdateAvailable();
       }
       return;
     }
 
-    // MSE mode - need source buffer
+    // MSE mode - try to fetch new data
     if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
+      // MSE not ready yet, but don't give up - keep polling
       return;
     }
 
@@ -623,6 +620,7 @@
         await appendToSourceBuffer(newData);
         bytesLoaded += newData.length;
         lastDataReceivedTime = Date.now();
+        console.log('[MediaPlayer] Poll: appended', newData.length, 'bytes, total:', bytesLoaded);
 
         // Update duration
         if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
@@ -630,6 +628,10 @@
         }
 
         // Update last CID hash to track that we've processed this version
+        lastCidHash = currentCidHash;
+      } else if (currentCidHash !== lastCidHash) {
+        // CID changed but no new data yet - still consider stream active
+        lastDataReceivedTime = Date.now();
         lastCidHash = currentCidHash;
       }
     } catch (e) {
@@ -673,10 +675,10 @@
       // Update lastCidHash immediately to prevent effect from re-triggering
       lastCidHash = currentCidHash;
 
-      // For MSE mode, append new data incrementally
-      // For blob URL mode, reload the entire file
+      // For MSE mode (WebM), append new data incrementally - smooth live streaming
+      // For blob URL mode, show "Updated" button instead of auto-reloading
       if (usingBlobUrl) {
-        reloadBlobUrl();
+        markUpdateAvailable();
       } else {
         fetchNewData();
       }
@@ -809,6 +811,18 @@
         <span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>
         LIVE
       </div>
+    {/if}
+
+    <!-- Updated button (blob URL mode only) - shown when file has been updated -->
+    {#if hasUpdate && !loading && !error}
+      <button
+        type="button"
+        onclick={reloadBlobUrl}
+        class="absolute top-3 right-3 z-10 flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded shadow-lg transition-colors"
+      >
+        <span class="i-lucide-refresh-cw w-4 h-4"></span>
+        Updated
+      </button>
     {/if}
 
     {#if isAudio}
