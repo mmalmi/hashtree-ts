@@ -319,4 +319,51 @@ test.describe('Iris Docs App', () => {
       await context2.close();
     }
   });
+
+  test('editor maintains focus after auto-save in docs app', async ({ page }) => {
+    // This test verifies the DocView fix - editor shouldn't unmount on tree root update
+    await page.goto('/docs.html#/');
+    await disableOthersPool(page);
+
+    // Login with new account
+    await page.getByRole('button', { name: /New/i }).click();
+
+    // Wait for New Document card
+    const newDocCard = page.locator('button:has-text("New Document")');
+    await expect(newDocCard).toBeVisible({ timeout: 15000 });
+
+    // Create a document
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await newDocCard.click();
+
+    const docName = `Focus Test ${Date.now()}`;
+    await page.locator('input[placeholder="Document name..."]').fill(docName);
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    // Wait for editor to load
+    const editor = page.locator('.ProseMirror');
+    await expect(editor).toBeVisible({ timeout: 10000 });
+    await editor.click();
+
+    // Type initial content
+    await page.keyboard.type('First sentence.');
+
+    // Wait for auto-save to complete (1s debounce + save time + store update cascade)
+    await page.waitForTimeout(3000);
+
+    // Verify editor still has focus
+    const hasFocus = await page.evaluate(() => {
+      const active = document.activeElement;
+      const editor = document.querySelector('.ProseMirror');
+      return editor?.contains(active) || active === editor;
+    });
+    expect(hasFocus).toBe(true);
+
+    // Type more content WITHOUT clicking the editor again
+    await page.keyboard.type(' Second sentence.');
+
+    // Verify both sentences are in the editor
+    await expect(editor).toContainText('First sentence. Second sentence.', { timeout: 5000 });
+  });
 });
