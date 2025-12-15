@@ -20,12 +20,23 @@ export interface UploadSettings {
   gitignoreBehavior: GitignoreBehavior;
 }
 
+/**
+ * Test mode configuration
+ * When VITE_TEST_MODE is set, the app uses test-specific settings:
+ * - Local relay only (from VITE_TEST_RELAY)
+ * - No Blossom HTTP fallback
+ * - Others pool disabled (prevents WebRTC cross-talk between parallel tests)
+ */
+const isTestMode = !!import.meta.env.VITE_TEST_MODE;
+const testRelay = import.meta.env.VITE_TEST_RELAY as string | undefined;
+
 // Default pool settings
 export const DEFAULT_POOL_SETTINGS: PoolSettings = {
   followsMax: 20,
   followsSatisfied: 10,
-  otherMax: 10,
-  otherSatisfied: 5,
+  // Disable others pool in test mode to prevent WebRTC interference between parallel tests
+  otherMax: isTestMode ? 0 : 10,
+  otherSatisfied: isTestMode ? 0 : 5,
 };
 
 // Default upload settings
@@ -84,20 +95,24 @@ export interface NetworkSettings {
   negentropyEnabled: boolean;
 }
 
-// Default network settings
+// Default network settings - test mode uses local relay only and no Blossom
 export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
-  relays: [
-    'wss://relay.damus.io',
-    'wss://relay.primal.net',
-    'wss://nos.lol',
-    'wss://relay.nostr.band',
-    'wss://relay.snort.social',
-    'wss://temp.iris.to',
-  ],
-  blossomServers: [
-    { url: 'https://files.iris.to', read: true, write: false },
-    { url: 'https://hashtree.iris.to', read: false, write: true },
-  ],
+  relays: isTestMode && testRelay
+    ? [testRelay]
+    : [
+        'wss://relay.damus.io',
+        'wss://relay.primal.net',
+        'wss://nos.lol',
+        'wss://relay.nostr.band',
+        'wss://relay.snort.social',
+        'wss://temp.iris.to',
+      ],
+  blossomServers: isTestMode
+    ? []
+    : [
+        { url: 'https://files.iris.to', read: true, write: false },
+        { url: 'https://hashtree.iris.to', read: false, write: true },
+      ],
   negentropyEnabled: false,
 };
 
@@ -302,20 +317,24 @@ async function loadSettings() {
 
     if (networkRow?.value) {
       const network = networkRow.value as NetworkSettings;
-      // Handle backwards compatibility: convert old string[] format to BlossomServerConfig[]
-      let blossomServers = DEFAULT_NETWORK_SETTINGS.blossomServers;
-      if (network.blossomServers) {
-        if (Array.isArray(network.blossomServers)) {
+
+      // In test mode, always use test settings (ignore persisted)
+      if (isTestMode) {
+        updates.network = DEFAULT_NETWORK_SETTINGS;
+      } else {
+        // Handle backwards compatibility: convert old string[] format to BlossomServerConfig[]
+        let blossomServers = DEFAULT_NETWORK_SETTINGS.blossomServers;
+        if (network.blossomServers && Array.isArray(network.blossomServers)) {
           blossomServers = network.blossomServers.map(s =>
             typeof s === 'string' ? { url: s, read: true, write: false } : { ...s, read: s.read ?? true }
           );
         }
+        updates.network = {
+          relays: network.relays ?? DEFAULT_NETWORK_SETTINGS.relays,
+          blossomServers,
+          negentropyEnabled: network.negentropyEnabled ?? DEFAULT_NETWORK_SETTINGS.negentropyEnabled,
+        };
       }
-      updates.network = {
-        relays: network.relays ?? DEFAULT_NETWORK_SETTINGS.relays,
-        blossomServers,
-        negentropyEnabled: network.negentropyEnabled ?? DEFAULT_NETWORK_SETTINGS.negentropyEnabled,
-      };
     }
 
     settingsStore.setState(updates);
@@ -327,3 +346,26 @@ async function loadSettings() {
 
 // Initialize on module load
 loadSettings();
+
+// Expose for e2e tests to configure settings without module duplication issues
+// Track all store instances to handle Vite module duplication
+if (typeof window !== 'undefined') {
+  type SettingsStoreInstance = { setNetworkSettings: (settings: Partial<NetworkSettings>) => void };
+  const win = window as unknown as {
+    __settingsStoreInstances?: SettingsStoreInstance[];
+    __configureBlossomServers?: (servers: BlossomServerConfig[]) => void;
+  };
+
+  // Register this store instance
+  if (!win.__settingsStoreInstances) {
+    win.__settingsStoreInstances = [];
+  }
+  win.__settingsStoreInstances.push(settingsStore);
+
+  // Update all instances when called
+  win.__configureBlossomServers = (servers: BlossomServerConfig[]) => {
+    for (const store of win.__settingsStoreInstances || []) {
+      store.setNetworkSettings({ blossomServers: servers });
+    }
+  };
+}

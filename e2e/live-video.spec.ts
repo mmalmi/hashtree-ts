@@ -8,7 +8,7 @@ import { test, expect, Page } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +19,7 @@ async function setupFreshUser(page: Page) {
   setupPageErrorHandler(page);
 
   await page.goto('/');
+  await disableOthersPool(page);
 
   // Clear storage for fresh state
   await page.evaluate(async () => {

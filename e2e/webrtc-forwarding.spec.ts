@@ -198,12 +198,10 @@ test.describe('WebRTC Request Forwarding', () => {
     const pageB = await contextB.newPage();
     const pageC = await contextC.newPage();
 
-    // Log relevant console messages for debugging
+    // Log relevant console messages for debugging (only errors)
     const logFilter = (label: string) => (msg: any) => {
-      const text = msg.text();
-      if (text.includes('WebRTC') || text.includes('peer') || text.includes('forward') ||
-          text.includes('hello') || text.includes('Pool')) {
-        console.log(`[${label}] ${text.slice(0, 200)}`);
+      if (msg.type() === 'error') {
+        console.log(`[${label}] ERROR: ${msg.text().slice(0, 200)}`);
       }
     };
     pageA.on('console', logFilter('A'));
@@ -256,76 +254,24 @@ test.describe('WebRTC Request Forwarding', () => {
       console.log(`Peer A pubkey: ${pubkeyA.slice(0, 16)}...`);
 
       console.log('\n=== Setting up follow relationships ===');
-      // B follows C (will publish kind 3 event)
-      console.log('B follows C...');
+      // B <-> C mutual follows
       await followUser(pageB, pubkeyC);
-
-      // C follows B (mutual follow for B-C connection)
-      console.log('C follows B...');
       await followUser(pageC, pubkeyB);
 
-      // A follows B (will publish kind 3 event)
-      console.log('A follows B...');
+      // A <-> B mutual follows
       await followUser(pageA, pubkeyB);
-
-      // B follows A (mutual follow for A-B connection)
-      console.log('B follows A...');
       await followUser(pageB, pubkeyA);
 
-      // Force recalculate follow distances and update peer classifiers
-      // This is needed because kind 3 events trigger async recalculation
-      console.log('Forcing peer classifier updates...');
+      // Force all peers to send hellos now that follows are set up
+      // This avoids waiting for the 10-second hello interval
       await Promise.all([
-        pageA.evaluate(async () => {
-          const getSocialGraph = (window as any).__getSocialGraph;
-          const graph = getSocialGraph?.();
-          if (graph?.recalculateFollowDistances) {
-            await graph.recalculateFollowDistances();
-          }
-          // Force peer classifier update
-          const webrtcStore = (window as any).webrtcStore;
-          if (webrtcStore?.setPeerClassifier) {
-            webrtcStore.setPeerClassifier((pubkey: string) => {
-              const g = getSocialGraph();
-              if (!g) return 'other';
-              const distance = g.getFollowDistance(pubkey);
-              return distance <= 1 ? 'follows' : 'other';
-            });
-          }
-        }),
-        pageB.evaluate(async () => {
-          const getSocialGraph = (window as any).__getSocialGraph;
-          const graph = getSocialGraph?.();
-          if (graph?.recalculateFollowDistances) {
-            await graph.recalculateFollowDistances();
-          }
-          const webrtcStore = (window as any).webrtcStore;
-          if (webrtcStore?.setPeerClassifier) {
-            webrtcStore.setPeerClassifier((pubkey: string) => {
-              const g = getSocialGraph();
-              if (!g) return 'other';
-              const distance = g.getFollowDistance(pubkey);
-              return distance <= 1 ? 'follows' : 'other';
-            });
-          }
-        }),
-        pageC.evaluate(async () => {
-          const getSocialGraph = (window as any).__getSocialGraph;
-          const graph = getSocialGraph?.();
-          if (graph?.recalculateFollowDistances) {
-            await graph.recalculateFollowDistances();
-          }
-          const webrtcStore = (window as any).webrtcStore;
-          if (webrtcStore?.setPeerClassifier) {
-            webrtcStore.setPeerClassifier((pubkey: string) => {
-              const g = getSocialGraph();
-              if (!g) return 'other';
-              const distance = g.getFollowDistance(pubkey);
-              return distance <= 1 ? 'follows' : 'other';
-            });
-          }
-        }),
+        pageA.evaluate(() => (window as any).webrtcStore?.sendHello?.()),
+        pageB.evaluate(() => (window as any).webrtcStore?.sendHello?.()),
+        pageC.evaluate(() => (window as any).webrtcStore?.sendHello?.()),
       ]);
+
+      // Brief pause to let hellos propagate
+      await pageA.waitForTimeout(500);
 
       console.log('\n=== Waiting for connections to establish ===');
 

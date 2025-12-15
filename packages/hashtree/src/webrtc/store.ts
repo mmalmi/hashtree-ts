@@ -188,6 +188,7 @@ export class WebRTCStore implements Store {
 
     this.log('Starting with peerId:', this.myPeerId.short());
     this.log('Pool config:', this.pools);
+    this.log('Relays:', this.config.relays);
 
     // Subscribe to signaling messages
     this.startSubscription();
@@ -291,9 +292,11 @@ export class WebRTCStore implements Store {
   }
 
   private async handleSignalingEvent(event: Event): Promise<void> {
+    this.log('Received signaling event kind:', event.kind, 'from:', event.pubkey?.slice(0,8));
     // Filter out old events (created more than messageTimeout ago)
     const eventAge = Date.now() / 1000 - (event.created_at ?? 0);
     if (eventAge > this.config.messageTimeout / 1000) {
+      this.log('Ignoring old event, age:', eventAge);
       return;
     }
 
@@ -356,19 +359,29 @@ export class WebRTCStore implements Store {
 
   private async handleHello(peerUuid: string, senderPubkey: string): Promise<void> {
     const peerId = new PeerId(senderPubkey, peerUuid);
+    this.log('handleHello from', peerId.short());
 
     // Skip self (exact same peerId = same session)
     if (peerId.toString() === this.myPeerId.toString()) {
+      this.log('Skipping self');
       return;
     }
 
     // Check if we already have this peer
     if (this.peers.has(peerId.toString())) {
+      this.log('Already have this peer');
       return;
     }
 
     // Classify the peer
-    const pool = this.peerClassifier(senderPubkey);
+    let pool: 'follows' | 'other';
+    try {
+      pool = this.peerClassifier(senderPubkey);
+      this.log('Classified peer', peerId.short(), 'as pool:', pool);
+    } catch (e) {
+      this.log('Error classifying peer:', e);
+      pool = 'other';
+    }
 
     // Check if we can accept this peer in their pool
     if (!this.canAcceptPeer(pool)) {
@@ -566,6 +579,14 @@ export class WebRTCStore implements Store {
       const event = await this.signer(eventTemplate) as Event;
       await this.pool.publish(this.config.relays, event);
     }
+  }
+
+  /**
+   * Force send a hello message (useful for testing after pool config changes)
+   */
+  sendHello(): void {
+    if (!this.running) return;
+    this.maybeSendHello();
   }
 
   private maybeSendHello(): void {

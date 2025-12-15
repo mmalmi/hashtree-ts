@@ -5,7 +5,7 @@
  * (not files) across all visibility types: public, unlisted, and private.
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
 
 test.describe('Subdirectory Creation', () => {
   // Increase timeout for all tests since new user setup now creates 3 default folders
@@ -15,6 +15,7 @@ test.describe('Subdirectory Creation', () => {
     setupPageErrorHandler(page);
 
     await page.goto('/');
+    await disableOthersPool(page);
 
     // Clear storage for fresh state
     await page.evaluate(async () => {

@@ -13,6 +13,7 @@ import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, GiftWrapp
 export { LinkType };
 import { getSocialGraph, socialGraphStore } from './utils/socialGraph';
 import { settingsStore, DEFAULT_POOL_SETTINGS, DEFAULT_NETWORK_SETTINGS } from './stores/settings';
+import { nostrStore } from './nostr';
 import { blossomLogStore } from './stores/blossomLog';
 import { BlossomStore, OpfsStore } from 'hashtree';
 
@@ -158,17 +159,25 @@ export function decodeAsText(data: Uint8Array): string | null {
 
 /**
  * Create peer classifier using social graph
- * Returns 'follows' for users we follow or who follow us (distance <= 1)
+ * Returns 'follows' for users we follow or who follow us
  * Returns 'other' for everyone else
+ *
+ * Uses isFollowing() which works immediately after handleEvent(),
+ * unlike getFollowDistance() which requires recalculation.
  */
 function createPeerClassifier(): PeerClassifier {
   return (pubkey: string) => {
     const graph = getSocialGraph();
-    if (!graph) return 'other';
+    const myPubkey = get(nostrStore).pubkey;
+    if (!graph || !myPubkey) {
+      return 'other';
+    }
 
-    const distance = graph.getFollowDistance(pubkey);
-    // Distance 0 = self, 1 = we follow them or they follow us
-    if (distance <= 1) {
+    // Check if we follow them OR they follow us (immediate, no recalc needed)
+    const weFollowThem = graph.isFollowing(myPubkey, pubkey);
+    const theyFollowUs = graph.isFollowing(pubkey, myPubkey);
+
+    if (weFollowThem || theyFollowUs) {
       return 'follows';
     }
     return 'other';

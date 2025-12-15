@@ -454,8 +454,8 @@ test.describe('Hashtree Explorer', () => {
 
     // Should display Relays section with relay list
     await expect(page.getByText(/Relays \(\d+\)/)).toBeVisible({ timeout: 5000 });
-    // Should show at least one relay hostname
-    await expect(page.getByText('relay.damus.io')).toBeVisible({ timeout: 5000 });
+    // Should show at least one relay (localhost in e2e tests, or public relays in prod)
+    await expect(page.getByText(/localhost|relay\.damus\.io/)).toBeVisible({ timeout: 5000 });
 
     // Should display Peers section
     await expect(page.getByText(/Peers \(\d+\)/)).toBeVisible({ timeout: 5000 });

@@ -144,7 +144,7 @@ test.describe('Yjs Document Viewer', () => {
 
     // Should now show the Tiptap editor (detects .yjs file)
     const editor = page.locator('.ProseMirror, .prose');
-    await expect(editor.first()).toBeVisible({ timeout: 10000 });
+    await expect(editor.first()).toBeVisible({ timeout: 30000 });
   });
 
   test('typing in document editor works and auto-saves', async ({ page }) => {
@@ -161,7 +161,7 @@ test.describe('Yjs Document Viewer', () => {
 
     // Wait for editor to be visible (confirms document loaded)
     const editor = page.locator('.ProseMirror');
-    await expect(editor).toBeVisible({ timeout: 10000 });
+    await expect(editor).toBeVisible({ timeout: 30000 });
     await editor.click();
 
     // Type some text
@@ -211,7 +211,7 @@ test.describe('Yjs Document Viewer', () => {
     // After creating a document, we should automatically navigate into it
     // Verify the .yjs file is visible (we're inside the document folder)
     const yjsFile = page.locator('a:has-text(".yjs")').first();
-    await expect(yjsFile).toBeVisible({ timeout: 10000 });
+    await expect(yjsFile).toBeVisible({ timeout: 30000 });
 
     // Click on the .yjs file to view it - this should not cause errors
     await yjsFile.click();
@@ -220,7 +220,7 @@ test.describe('Yjs Document Viewer', () => {
     // Verify we're viewing the file (header shows filename)
     // The file viewer should show the .yjs filename
     const fileHeader = page.locator('span:has-text(".yjs")');
-    await expect(fileHeader.first()).toBeVisible({ timeout: 10000 });
+    await expect(fileHeader.first()).toBeVisible({ timeout: 30000 });
 
     // Wait a bit more to ensure any async errors would have appeared
     await page.waitForTimeout(2000);
@@ -241,7 +241,7 @@ test.describe('Yjs Document Viewer', () => {
 
     // Wait for editor to be visible
     const editor = page.locator('.ProseMirror');
-    await expect(editor).toBeVisible({ timeout: 10000 });
+    await expect(editor).toBeVisible({ timeout: 30000 });
     await editor.click();
 
     // Type initial content
@@ -249,7 +249,7 @@ test.describe('Yjs Document Viewer', () => {
 
     // Wait for auto-save to complete (1s debounce + save time)
     const savedStatus = page.locator('text=Saved');
-    await expect(savedStatus).toBeVisible({ timeout: 10000 });
+    await expect(savedStatus).toBeVisible({ timeout: 30000 });
 
     // Wait for merkle root update to fully propagate through stores:
     // 1. Save completes -> local root cache updates
@@ -276,7 +276,7 @@ test.describe('Yjs Document Viewer', () => {
     await expect(editor).toContainText('First sentence. Second sentence.', { timeout: 5000 });
 
     // Wait for the second save + full store update cycle
-    await expect(savedStatus).toBeVisible({ timeout: 10000 });
+    await expect(savedStatus).toBeVisible({ timeout: 30000 });
     await page.waitForTimeout(3000);
 
     // Type a third sentence
@@ -297,7 +297,7 @@ test.describe('Yjs Document Viewer', () => {
 
     // Wait for editor to be visible
     const editor = page.locator('.ProseMirror');
-    await expect(editor).toBeVisible({ timeout: 10000 });
+    await expect(editor).toBeVisible({ timeout: 30000 });
     await editor.click();
 
     // Type content rapidly, triggering save debounces

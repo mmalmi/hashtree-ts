@@ -1,5 +1,5 @@
 import { test, expect, type Route } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool, configureBlossomServers } from './test-utils.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -11,6 +11,7 @@ test.describe('Blossom Push', () => {
     // Go to home page first (creates user session)
     await page.goto('/');
     await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
+    await configureBlossomServers(page); // Enable Blossom servers for this test
 
     // Navigate to public folder where we have files
     await navigateToPublicFolder(page);
@@ -43,6 +44,7 @@ test.describe('Blossom Push', () => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await disableOthersPool(page);
+    await configureBlossomServers(page);
 
     // Navigate to public folder
     await navigateToPublicFolder(page);
@@ -71,6 +73,7 @@ test.describe('Blossom Push', () => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await disableOthersPool(page);
+    await configureBlossomServers(page);
 
     // Track uploaded blobs
     const uploadedBlobs: string[] = [];
@@ -165,6 +168,7 @@ test.describe('Blossom Push', () => {
     setupPageErrorHandler(page);
     await page.goto('/');
     await disableOthersPool(page);
+    await configureBlossomServers(page);
 
     // Mock failing blossom server
     await page.route('**/upload', async (route: Route) => {

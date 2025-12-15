@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler } from './test-utils.js';
+import { setupPageErrorHandler, configureBlossomServers } from './test-utils.js';
 
 test.describe('Settings page', () => {
   test('can navigate to settings page', { timeout: 30000 }, async ({ page }) => {
@@ -68,6 +68,7 @@ test.describe('Settings page', () => {
   test('can toggle blossom server read/write', { timeout: 60000 }, async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/#/settings');
+    await configureBlossomServers(page); // Enable Blossom servers for this test
 
     // Wait for settings page to load
     await expect(page.locator('text=Blossom Servers')).toBeVisible({ timeout: 10000 });

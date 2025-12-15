@@ -33,8 +33,9 @@ class SocialGraphDB extends Dexie {
 
 const db = new SocialGraphDB();
 
-// Social graph instance
-let instance: SocialGraph;
+// Social graph instance - create immediately with default root to ensure it exists
+// before any handleSocialGraphEvent calls
+let instance: SocialGraph = new SocialGraph(DEFAULT_SOCIAL_GRAPH_ROOT);
 let isInitialized = false;
 let resolveLoaded: ((value: boolean) => void) | null = null;
 
@@ -100,21 +101,6 @@ async function loadFromDexie(publicKey: string): Promise<SocialGraph | null> {
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 const SAVE_THROTTLE_MS = 15000;
 
-// Debounced recalculation - avoid recalculating on every event
-let recalcTimeout: ReturnType<typeof setTimeout> | null = null;
-const RECALC_DEBOUNCE_MS = 5000;
-
-function scheduleRecalc() {
-  if (recalcTimeout) clearTimeout(recalcTimeout);
-  recalcTimeout = setTimeout(async () => {
-    recalcTimeout = null;
-    if (!isInitialized || !instance) return;
-    log('recalculateFollowDistances: start');
-    await instance.recalculateFollowDistances();
-    log('recalculateFollowDistances: done');
-    notifyGraphChange();
-  }, RECALC_DEBOUNCE_MS);
-}
 
 function scheduleSave() {
   if (saveTimeout) return;
@@ -152,9 +138,9 @@ async function initializeInstance(publicKey = DEFAULT_SOCIAL_GRAPH_ROOT) {
   if (loaded) {
     instance = loaded;
   } else {
-    // Create new empty graph
-    log('creating new graph with root:', publicKey);
-    instance = new SocialGraph(publicKey);
+    // Update the existing instance's root (instance already created at module load)
+    log('setting root on existing graph:', publicKey);
+    instance.setRoot(publicKey);
   }
   notifyGraphChange();
 }
@@ -177,18 +163,14 @@ export async function initializeSocialGraph() {
  * Handle social graph events (kind 3 contact lists)
  */
 export function handleSocialGraphEvent(evs: NostrEvent | NostrEvent[]) {
-  if (!instance) return;
+  if (!instance) {
+    console.warn('[socialGraph] handleSocialGraphEvent called but instance is null');
+    return;
+  }
 
   instance.handleEvent(evs);
   scheduleSave();
-
-  const events = Array.isArray(evs) ? evs : [evs];
-  const hasFollowListUpdate = events.some((e) => e.kind === KIND_CONTACTS);
-
-  if (hasFollowListUpdate) {
-    // Debounced recalc - avoids heavy computation on every event
-    scheduleRecalc();
-  }
+  notifyGraphChange();
 }
 
 /**
@@ -216,9 +198,6 @@ async function fetchOwnFollowList(publicKey: string): Promise<void> {
   for (const ev of events) {
     handleSocialGraphEvent(ev.rawEvent() as NostrEvent);
   }
-
-  await instance.recalculateFollowDistances();
-  notifyGraphChange();
 }
 
 /**
@@ -270,7 +249,6 @@ async function crawlFollowLists(publicKey: string, depth = DEFAULT_CRAWL_DEPTH):
       }
     }
 
-    await instance.recalculateFollowDistances();
     notifyGraphChange();
     scheduleSave();
   } finally {

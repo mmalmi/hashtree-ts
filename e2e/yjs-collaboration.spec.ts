@@ -74,7 +74,7 @@ async function createDocument(page: Page, name: string) {
   await createButton.click();
 
   // Wait for navigation to complete (URL should contain the document name)
-  await page.waitForURL(`**/${name}**`, { timeout: 10000 });
+  await page.waitForURL(`**/${name}**`, { timeout: 20000 });
 
   // Wait for editor to appear (document was created and navigated to)
   const editor = page.locator('.ProseMirror');

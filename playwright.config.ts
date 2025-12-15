@@ -33,10 +33,23 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'pnpm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: !process.env.CI,
-    timeout: 15000,
-  },
+  webServer: [
+    {
+      command: 'node e2e/relay/index.js',
+      url: 'http://localhost:4736',
+      reuseExistingServer: !process.env.CI,
+      timeout: 5000,
+    },
+    {
+      command: 'pnpm run dev',
+      url: 'http://localhost:5173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 15000,
+      env: {
+        // Test mode: local relay, no Blossom, others pool disabled
+        VITE_TEST_MODE: 'true',
+        VITE_TEST_RELAY: 'ws://localhost:4736',
+      },
+    },
+  ],
 });

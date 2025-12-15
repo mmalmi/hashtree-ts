@@ -76,6 +76,41 @@ export async function disableOthersPool(page: any) {
 }
 
 /**
+ * Configure the app to use the local test relay instead of public relays.
+ * This eliminates network flakiness and rate limiting issues during tests.
+ *
+ * IMPORTANT: Call this BEFORE any navigation or state changes in the test.
+ */
+export async function useLocalRelay(page: any) {
+  await page.evaluate(async () => {
+    const { settingsStore } = await import('/src/stores/settings');
+    settingsStore.setNetworkSettings({
+      relays: ['ws://localhost:4736'],
+    });
+  });
+}
+
+/**
+ * Configure Blossom servers for tests that need them.
+ * By default, test mode disables Blossom servers to avoid external HTTP requests.
+ * Call this for tests that specifically test Blossom functionality.
+ *
+ * Uses a global function exposed by the settings module to avoid Vite module duplication issues.
+ */
+export async function configureBlossomServers(page: any) {
+  await page.evaluate(() => {
+    const configure = (window as unknown as { __configureBlossomServers?: (servers: unknown[]) => void }).__configureBlossomServers;
+    if (!configure) {
+      throw new Error('__configureBlossomServers not found - settings module may not be loaded');
+    }
+    configure([
+      { url: 'https://files.iris.to', read: true, write: false },
+      { url: 'https://hashtree.iris.to', read: false, write: true },
+    ]);
+  });
+}
+
+/**
  * Helper to follow a user by their npub.
  * Navigates to target's profile and clicks Follow, waiting for completion.
  * Use this to establish reliable WebRTC connections via the "follows pool".

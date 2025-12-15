@@ -183,12 +183,20 @@ export async function unfollowPubkey(targetPubkey: string): Promise<boolean> {
   return publishFollowList(pk, newFollows);
 }
 
+// Track the last used timestamp to ensure strictly increasing timestamps
+let lastFollowTimestamp = 0;
+
 async function publishFollowList(pk: string, follows: string[]): Promise<boolean> {
   try {
     const event = new NDKEvent(ndk);
     event.kind = 3;
     event.content = '';
     event.tags = follows.map(p => ['p', p]);
+
+    // Ensure strictly increasing timestamp (nostr-social-graph rejects equal timestamps)
+    const now = Math.floor(Date.now() / 1000);
+    event.created_at = Math.max(now, lastFollowTimestamp + 1);
+    lastFollowTimestamp = event.created_at;
 
     await event.publish();
 
