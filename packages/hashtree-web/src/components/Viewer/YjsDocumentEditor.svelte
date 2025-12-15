@@ -17,14 +17,13 @@
   import { getTree, decodeAsText } from '../../store';
   import { routeStore, createTreesStore, getTreeRootSync } from '../../stores';
   import { openShareModal, openForkModal, openCollaboratorsModal, openBlossomPushModal } from '../../stores/modals';
-  import { autosaveIfOwn, useNostrStore } from '../../nostr';
+  import { autosaveIfOwn, nostrStore, npubToPubkey } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
   import { getCurrentRootCid, deleteCurrentFolder } from '../../actions';
   import { getRefResolver } from '../../refResolver';
   import { nip19 } from 'nostr-tools';
   import VisibilityIcon from '../VisibilityIcon.svelte';
   import { Avatar } from '../User';
-  import { npubToPubkey } from '../../nostr';
 
   const DELTAS_DIR = 'deltas';
   const STATE_FILE = 'state.yjs';
@@ -38,8 +37,7 @@
   let { dirCid, dirName, entries }: Props = $props();
 
   let route = $derived($routeStore);
-  let nostrState = $derived(useNostrStore.getState());
-  let userNpub = $derived(nostrState.npub);
+  let userNpub = $derived($nostrStore.npub);
   let viewedNpub = $derived(route.npub);
   let editorElement: HTMLElement | undefined = $state();
   let editor: Editor | undefined = $state();

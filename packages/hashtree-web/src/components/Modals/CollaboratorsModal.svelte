@@ -11,7 +11,7 @@
   import { nip19 } from 'nostr-tools';
   import Fuse from 'fuse.js';
   import { UserRow } from '../User';
-  import { npubToPubkey, useNostrStore } from '../../nostr';
+  import { npubToPubkey, nostrStore } from '../../nostr';
   import { createFollowsStore } from '../../stores/follows';
   import QRScanner from '../QRScanner.svelte';
 
@@ -27,9 +27,8 @@
   let searchQuery = $state('');
   let showSearchResults = $state(false);
 
-  // Get current user's pubkey for follows lookup
-  let nostrState = $derived(useNostrStore.getState());
-  let userPubkey = $derived(nostrState.pubkey);
+  // Get current user's pubkey for follows lookup (use $ prefix for reactivity)
+  let userPubkey = $derived($nostrStore.pubkey);
 
   // Get followed users
   let followsStore = $derived(createFollowsStore(userPubkey));

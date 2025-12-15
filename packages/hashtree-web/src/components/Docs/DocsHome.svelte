@@ -4,14 +4,13 @@
    * Shows recent docs, docs by followed users, and new doc button
    * Similar to Google Docs home page
    */
-  import { useNostrStore } from '../../nostr';
+  import { nostrStore } from '../../nostr';
   import { createTreesStore } from '../../stores';
   import { openCreateModal } from '../../stores/modals';
   import VisibilityIcon from '../VisibilityIcon.svelte';
 
-  // Get current user
-  let nostrState = $derived(useNostrStore.getState());
-  let userNpub = $derived(nostrState.npub);
+  // Get current user (use $ prefix to auto-subscribe and react to login changes)
+  let userNpub = $derived($nostrStore.npub);
 
   // Get user's trees (which include yjs docs)
   let treesStore = $derived(createTreesStore(userNpub));

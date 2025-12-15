@@ -320,6 +320,25 @@ test.describe('Iris Docs App', () => {
     }
   });
 
+  test('New Document button shows after auto-login on refresh', async ({ page }) => {
+    // This test catches the reactivity bug where userNpub derived doesn't update after auto-login
+    await page.goto('/docs.html#/');
+    await disableOthersPool(page);
+
+    // Login with new account (this stores credentials)
+    await page.getByRole('button', { name: /New/i }).click();
+
+    // Wait for login to complete - New Document button should appear
+    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 15000 });
+
+    // Now refresh the page - auto-login should happen
+    await page.reload();
+
+    // New Document button should be visible WITHOUT clicking login again
+    // This catches the bug where userNpub derived doesn't react to auto-login
+    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 15000 });
+  });
+
   test('editor maintains focus after auto-save in docs app', async ({ page }) => {
     // This test verifies the DocView fix - editor shouldn't unmount on tree root update
     await page.goto('/docs.html#/');
