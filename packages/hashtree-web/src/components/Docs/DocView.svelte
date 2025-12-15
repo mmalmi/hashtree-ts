@@ -58,6 +58,9 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
 
+  // Track previous path to detect path changes vs root-only changes
+  let prevPathKey = '';
+
   // Check if this is a yjs document (has .yjs file)
   let isYjsDoc = $derived(entries.some(e => e.name === '.yjs'));
 
@@ -65,13 +68,20 @@
   $effect(() => {
     const root = treeRoot;
     const path = route.path;
+    const pathKey = path.join('/');
 
     if (!root) {
       loading = true;
       return;
     }
 
-    loading = true;
+    // Only show loading state on initial load or path change, NOT on root-only updates
+    // This prevents YjsDocumentEditor from unmounting when tree root updates after save
+    const isPathChange = pathKey !== prevPathKey;
+    if (isPathChange || !dirCid) {
+      loading = true;
+    }
+    prevPathKey = pathKey;
     error = null;
 
     const tree = getTree();

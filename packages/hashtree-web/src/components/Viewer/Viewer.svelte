@@ -131,36 +131,7 @@
   let hasTreeContext = $derived(!!rootCid || !!route.treeName);
 
   // Check if current directory is a Yjs document (contains .yjs file)
-  // Detect Yjs document - but make it "sticky" to prevent unmount during store updates
-  let isYjsDocumentRaw = $derived(entries.some(e => e.name === '.yjs' && e.type !== LinkType.Dir));
-  let stickyYjsPath = $state<string | null>(null);
-
-  // Update sticky path in an effect (not in derived - mutations in derived are anti-patterns)
-  $effect(() => {
-    const currentPath = urlPath.join('/');
-    if (isYjsDocumentRaw) {
-      // Remember this path when we detect a Yjs document
-      stickyYjsPath = currentPath;
-    } else if (stickyYjsPath !== currentPath || isViewingFile) {
-      // Clear sticky when navigating away or viewing a file
-      stickyYjsPath = null;
-    }
-    // Note: if stickyYjsPath === currentPath && !isViewingFile, we keep it (entries refreshing)
-  });
-
-  // Track if we're in a Yjs document - stays true during updates to prevent remount
-  let isYjsDocument = $derived.by(() => {
-    const currentPath = urlPath.join('/');
-    // If entries show it's a Yjs doc, return true
-    if (isYjsDocumentRaw) {
-      return true;
-    }
-    // If we're still on the same path and sticky is set, stay true (entries might be refreshing)
-    if (stickyYjsPath === currentPath && !isViewingFile) {
-      return true;
-    }
-    return false;
-  });
+  let isYjsDocument = $derived(entries.some(e => e.name === '.yjs' && e.type !== LinkType.Dir));
 
   // Get current directory name from path
   let currentDirName = $derived.by(() => {
