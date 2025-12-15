@@ -687,7 +687,7 @@
           <button
             onclick={() => openBlossomPushModal(entryFromStore.cid, entryFromStore.name, false)}
             class="btn-ghost"
-            title="Push to Blossom"
+            title="Push to file servers"
             data-testid="viewer-push"
           >
             <span class="i-lucide-upload-cloud text-base"></span>

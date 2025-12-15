@@ -375,7 +375,7 @@
       <button
         onclick={() => openBlossomPushModal(dirCid!, forkBaseName, true)}
         class="btn-ghost {btnClass}"
-        title="Push to Blossom servers"
+        title="Push to file servers"
         data-testid="blossom-push-btn"
       >
         <span class="i-lucide-upload-cloud"></span>

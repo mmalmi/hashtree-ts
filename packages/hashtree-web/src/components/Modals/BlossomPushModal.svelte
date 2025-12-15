@@ -172,7 +172,7 @@
       <div class="p-4 border-b border-surface-3 flex items-center justify-between">
         <h2 class="text-lg font-semibold flex items-center gap-2">
           <span class="i-lucide-upload-cloud"></span>
-          Push to Blossom
+          Push to File Servers
         </h2>
         {#if phase !== 'pushing'}
           <button onclick={closeBlossomPushModal} class="btn-ghost p-1">
@@ -192,7 +192,7 @@
             </p>
 
             {#if servers.length === 0}
-              <p class="text-sm text-text-3 italic">No Blossom servers configured</p>
+              <p class="text-sm text-text-3 italic">No file servers configured</p>
             {:else}
               <div class="space-y-2">
                 {#each servers as server, i}

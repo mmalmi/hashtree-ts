@@ -306,11 +306,11 @@
       {/if}
     </div>
 
-    <!-- Blossom Servers -->
+    <!-- File Servers -->
     <div>
       <div class="flex items-center justify-between mb-1">
         <h3 class="text-xs font-medium text-muted uppercase tracking-wide">
-          Blossom Servers ({networkSettings.blossomServers.length})
+          File Servers ({networkSettings.blossomServers.length})
         </h3>
         <button
           onclick={() => editingBlossom = !editingBlossom}
@@ -319,7 +319,9 @@
           {editingBlossom ? 'Done' : 'Edit'}
         </button>
       </div>
-      <p class="text-xs text-text-3 mb-3">Fallback servers for file storage</p>
+      <p class="text-xs text-text-3 mb-3">
+        <a href="https://github.com/hzrd149/blossom" target="_blank" rel="noopener" class="text-accent hover:underline">Blossom</a> servers for fallback when peer-to-peer (WebRTC) connections are unavailable
+      </p>
       <div class="bg-surface-2 rounded divide-y divide-surface-3">
         {#each networkSettings.blossomServers as server}
           <div class="flex items-center gap-2 p-3 text-sm">
@@ -512,7 +514,7 @@
             </div>
             {#if webrtcStats.blossomFetches > 0}
               <div class="flex justify-between col-span-2">
-                <span class="text-text-3">Blossom fetches</span>
+                <span class="text-text-3">File server fetches</span>
                 <span class="text-text-1 font-mono">{webrtcStats.blossomFetches}</span>
               </div>
             {/if}

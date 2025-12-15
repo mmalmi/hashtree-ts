@@ -606,7 +606,7 @@
       <button onclick={handleShare} class="btn-ghost" title="Share document">
         <span class="i-lucide-share"></span>
       </button>
-      <button onclick={() => openBlossomPushModal(dirCid, dirName, true)} class="btn-ghost" title="Push to Blossom">
+      <button onclick={() => openBlossomPushModal(dirCid, dirName, true)} class="btn-ghost" title="Push to file servers">
         <span class="i-lucide-upload-cloud"></span>
       </button>
       <!-- Collaborators button -->
