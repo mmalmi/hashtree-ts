@@ -9,7 +9,7 @@
 import { writable, get, type Readable } from 'svelte/store';
 import { fromHex, cid, visibilityHex } from 'hashtree';
 import type { CID, SubscribeVisibilityInfo, Hash } from 'hashtree';
-import { routeStore } from './route';
+import { routeStore, parseRouteFromHash } from './route';
 import { getRefResolver, getResolverKey } from '../refResolver';
 import { nostrStore, getSecretKey } from '../nostr';
 import { nip44 } from 'nostr-tools';
@@ -241,6 +241,21 @@ export function invalidateTreeRoot(npub: string | null | undefined, treeName: st
   if (!key) return;
   // The resolver subscription will automatically pick up the new value
 }
+
+// Synchronously parse initial permalink (no resolver needed for nhash URLs)
+// This must run BEFORE currentDirHash.ts subscribes to avoid race condition
+function initializePermalink(): void {
+  if (typeof window === 'undefined') return;
+
+  const route = parseRouteFromHash(window.location.hash);
+  if (route.isPermalink && route.cid) {
+    const key = route.cid.key ? fromHex(route.cid.key) : undefined;
+    treeRootStore.set(cid(fromHex(route.cid.hash), key));
+  }
+}
+
+// Initialize permalink synchronously (before currentDirHash subscribes)
+initializePermalink();
 
 // Initialize the store once - guard against HMR re-initialization
 // Store the flag on a global to persist across HMR module reloads

@@ -39,13 +39,23 @@ test.describe('Permalink Navigation', () => {
     await page.locator('textarea').fill('Hello from permalink test content!');
     await page.getByRole('button', { name: 'Save' }).click();
 
-    // Wait for save to complete, then exit edit mode
-    await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 3000 });
+    // Wait for save to complete (Save button becomes disabled when saved)
+    await expect(page.getByRole('button', { name: 'Save' })).toBeDisabled({ timeout: 10000 });
+
+    // Exit edit mode
     await page.getByRole('button', { name: 'Done' }).click();
 
-    // Wait for the content viewer to load after exiting edit mode
-    // The viewer might take time to render under parallel load
-    await expect(page.locator('pre')).toBeVisible({ timeout: 30000 });
+    // Handle "Unsaved Changes" dialog if it appears (race condition between autosave and manual save)
+    const unsavedDialog = page.getByRole('heading', { name: 'Unsaved Changes' });
+    if (await unsavedDialog.isVisible({ timeout: 500 }).catch(() => false)) {
+      await page.getByRole('button', { name: "Don't Save" }).click();
+    }
+
+    // Wait for textarea to disappear (confirms we exited edit mode)
+    await expect(page.locator('textarea')).not.toBeVisible({ timeout: 10000 });
+
+    // Wait for the content to be visible in the viewer (text files render in viewer)
+    await expect(page.getByText('Hello from permalink test content!')).toBeVisible({ timeout: 30000 });
 
     // Find the Permalink link in viewer
     const permalinkLink = page.getByRole('link', { name: 'Permalink', exact: true });
