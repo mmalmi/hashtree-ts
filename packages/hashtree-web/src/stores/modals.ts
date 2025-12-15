@@ -246,6 +246,13 @@ export function openCollaboratorsModal(npubs: string[], onSave?: (npubs: string[
   modalsStore.update(s => ({ ...s, showCollaboratorsModal: true, collaboratorsTarget: { npubs, onSave } }));
 }
 
+export function updateCollaboratorsModal(npubs: string[]) {
+  modalsStore.update(s => {
+    if (!s.showCollaboratorsModal || !s.collaboratorsTarget) return s;
+    return { ...s, collaboratorsTarget: { ...s.collaboratorsTarget, npubs } };
+  });
+}
+
 export function closeCollaboratorsModal() {
   modalsStore.update(s => ({ ...s, showCollaboratorsModal: false, collaboratorsTarget: null }));
 }

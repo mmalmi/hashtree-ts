@@ -7,13 +7,14 @@
    * - QR Scanner for adding npubs
    * - Search through followed users with Fuse.js
    */
-  import { modalsStore, closeCollaboratorsModal } from '../../stores/modals';
+  import { modalsStore, closeCollaboratorsModal, openShareModal } from '../../stores/modals';
   import { nip19 } from 'nostr-tools';
   import Fuse from 'fuse.js';
   import { UserRow } from '../User';
   import { npubToPubkey, nostrStore } from '../../nostr';
   import { createFollowsStore } from '../../stores/follows';
   import QRScanner from '../QRScanner.svelte';
+  import CopyText from '../CopyText.svelte';
 
   let show = $derived($modalsStore.showCollaboratorsModal);
   let target = $derived($modalsStore.collaboratorsTarget);
@@ -29,6 +30,9 @@
 
   // Get current user's pubkey for follows lookup (use $ prefix for reactivity)
   let userPubkey = $derived($nostrStore.pubkey);
+
+  // Get current user's npub for sharing
+  let userNpub = $derived(userPubkey ? nip19.npubEncode(userPubkey) : null);
 
   // Get followed users
   let followsStore = $derived(createFollowsStore(userPubkey));
@@ -88,13 +92,19 @@
   // Sync local state when modal opens
   $effect(() => {
     if (show && target) {
-      localNpubs = [...target.npubs];
       newNpubInput = '';
       addError = null;
       pendingNpub = null;
       showQRScanner = false;
       searchQuery = '';
       showSearchResults = false;
+    }
+  });
+
+  // Keep localNpubs in sync with target.npubs (reactive to external updates)
+  $effect(() => {
+    if (show && target) {
+      localNpubs = [...target.npubs];
     }
   });
 
@@ -273,6 +283,27 @@
             ? 'Add editors by their npub to merge their edits into this document.'
             : 'Users who can edit this document. Their changes will be merged.'}
         </p>
+
+        <!-- Share your npub to request edit access (only when not already an editor) -->
+        {#if !canEdit && userNpub && !localNpubs.includes(userNpub)}
+          <div class="bg-surface-2 rounded p-3 space-y-2">
+            <p class="text-sm text-text-2">Share your npub with an editor to request access:</p>
+            <div class="flex items-center gap-2">
+              <CopyText
+                text={userNpub}
+                displayText={userNpub.slice(0, 12) + '...' + userNpub.slice(-6)}
+                class="text-sm flex-1 min-w-0"
+              />
+              <button
+                onclick={() => openShareModal(`${window.location.origin}/#/${userNpub}`)}
+                class="btn-ghost p-2 shrink-0"
+                title="Share with QR code"
+              >
+                <span class="i-lucide-share text-base"></span>
+              </button>
+            </div>
+          </div>
+        {/if}
 
         <!-- Current editors list -->
         {#if localNpubs.length > 0}

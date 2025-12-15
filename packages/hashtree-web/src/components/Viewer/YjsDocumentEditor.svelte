@@ -16,7 +16,7 @@
   import type { CID, TreeEntry } from 'hashtree';
   import { getTree, decodeAsText } from '../../store';
   import { routeStore, createTreesStore, getTreeRootSync } from '../../stores';
-  import { openShareModal, openForkModal, openCollaboratorsModal, openBlossomPushModal } from '../../stores/modals';
+  import { openShareModal, openForkModal, openCollaboratorsModal, updateCollaboratorsModal, openBlossomPushModal } from '../../stores/modals';
   import { autosaveIfOwn, nostrStore, npubToPubkey } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
   import { getCurrentRootCid, deleteCurrentFolder } from '../../actions';
@@ -55,6 +55,11 @@
 
   // Check if user is listed as an editor
   let isEditor = $derived(userNpub ? collaborators.includes(userNpub) : false);
+
+  // Keep collaborators modal in sync when collaborators change
+  $effect(() => {
+    updateCollaboratorsModal(collaborators);
+  });
 
   // Can edit if own tree or editor
   let canEdit = $derived(isOwnTree || isEditor);
