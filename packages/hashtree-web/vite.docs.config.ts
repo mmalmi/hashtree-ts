@@ -3,6 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import UnoCSS from 'unocss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
+import { rename } from 'fs/promises';
 
 function docsEntryPlugin(): Plugin {
   return {
@@ -14,6 +15,17 @@ function docsEntryPlugin(): Plugin {
         }
         next();
       });
+    },
+    async closeBundle() {
+      // Rename docs.html to index.html for production (Cloudflare Pages)
+      try {
+        await rename(
+          resolve(__dirname, 'dist-docs/docs.html'),
+          resolve(__dirname, 'dist-docs/index.html')
+        );
+      } catch {
+        // Ignore if file doesn't exist (dev mode)
+      }
     },
   };
 }
