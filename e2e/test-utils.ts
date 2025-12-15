@@ -201,3 +201,25 @@ export async function followUser(page: any, targetNpub: string) {
       .or(followButton.and(page.locator('[disabled]')))
   ).toBeVisible({ timeout: 10000 });
 }
+
+/**
+ * Wait for WebRTC connection to be established.
+ * Polls until at least one peer is connected with data channel open.
+ * Use this after users follow each other to ensure WebRTC is ready.
+ */
+export async function waitForWebRTCConnection(page: any, timeoutMs: number = 15000): Promise<boolean> {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeoutMs) {
+    const connected = await page.evaluate(() => {
+      const store = (window as any).webrtcStore;
+      if (!store?.getPeers) return false;
+      const peers = store.getPeers();
+      return peers.some((p: { isConnected?: boolean }) => p.isConnected);
+    });
+    if (connected) {
+      return true;
+    }
+    await page.waitForTimeout(500);
+  }
+  return false;
+}

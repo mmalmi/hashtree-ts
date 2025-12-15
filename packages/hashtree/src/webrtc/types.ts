@@ -152,6 +152,9 @@ export interface WebRTCStoreConfig {
     follows: PoolConfig;
     other: PoolConfig;
   };
+  // Function to get list of followed pubkeys for subscription filtering
+  // When other pool is disabled, only subscribe to hellos from these pubkeys
+  getFollowedPubkeys?: () => string[];
   // Fallback stores to try when WebRTC peers don't have the data
   // Tried in order after all WebRTC peers fail
   // Example: [new BlossomStore({ servers: ['https://hashtree.iris.to'] })]

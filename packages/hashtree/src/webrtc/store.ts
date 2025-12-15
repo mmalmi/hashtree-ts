@@ -81,6 +81,7 @@ export class WebRTCStore implements Store {
   };
   private pools: { follows: PoolConfig; other: PoolConfig };
   private peerClassifier: PeerClassifier;
+  private getFollowedPubkeys: (() => string[]) | null;
   private signer: EventSigner;
   private encrypt: EventEncrypter;
   private decrypt: EventDecrypter;
@@ -89,6 +90,7 @@ export class WebRTCStore implements Store {
   private myPeerId: PeerId;
   private pool: SimplePool;
   private subscriptions: ReturnType<SimplePool['subscribe']>[] = [];
+  private helloSubscription: ReturnType<SimplePool['subscribe']> | null = null;
   private peers = new Map<string, PeerInfo>();
   private helloInterval: ReturnType<typeof setInterval> | null = null;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
@@ -99,6 +101,8 @@ export class WebRTCStore implements Store {
   private pendingGets = new Map<string, Promise<Uint8Array | null>>();
   // Store-level stats (not per-peer)
   private blossomFetches = 0;
+  // Track current hello subscription authors for change detection
+  private currentHelloAuthors: string[] | null = null;
 
   constructor(config: WebRTCStoreConfig) {
     this.signer = config.signer;
@@ -110,6 +114,8 @@ export class WebRTCStore implements Store {
 
     // Default classifier: everyone is 'other' unless classifier provided
     this.peerClassifier = config.peerClassifier ?? (() => 'other');
+    // Function to get followed pubkeys for subscription filtering
+    this.getFollowedPubkeys = config.getFollowedPubkeys ?? null;
 
     // Use pool config if provided, otherwise fall back to legacy config or defaults
     if (config.pools) {
@@ -264,20 +270,11 @@ export class WebRTCStore implements Store {
       },
     };
 
-    // 1. Subscribe to hello messages (kind 25050 with #l: hello) for peer discovery
-    this.subscriptions.push(
-      this.pool.subscribe(
-        this.config.relays,
-        {
-          kinds: [SIGNALING_KIND],
-          '#l': [HELLO_TAG],
-          since,
-        },
-        subHandler
-      )
-    );
+    // 1. Subscribe to hello messages based on pool configuration
+    this.setupHelloSubscription(since, subHandler);
 
     // 2. Subscribe to directed signaling (kind 25050 with #p tag) for offers/answers/candidates
+    // Always subscribe to directed messages (needed to receive offers/answers)
     this.subscriptions.push(
       this.pool.subscribe(
         this.config.relays,
@@ -289,6 +286,102 @@ export class WebRTCStore implements Store {
         subHandler
       )
     );
+  }
+
+  /**
+   * Setup hello subscription based on pool configuration
+   * - If both pools are 0: don't subscribe to hellos
+   * - If other pool is disabled but follows is enabled: subscribe to followed pubkeys only
+   * - If other pool is enabled: subscribe to all hellos
+   */
+  private setupHelloSubscription(since: number, subHandler: { onevent: (event: Event) => void; oneose: () => void }): void {
+    // Close existing hello subscription if any
+    if (this.helloSubscription) {
+      this.helloSubscription.close();
+      this.helloSubscription = null;
+    }
+
+    const followsMax = this.pools.follows.maxConnections;
+    const otherMax = this.pools.other.maxConnections;
+
+    // If both pools are disabled, don't subscribe to hellos at all
+    if (followsMax === 0 && otherMax === 0) {
+      this.log('Both pools disabled, not subscribing to hellos');
+      this.currentHelloAuthors = [];
+      return;
+    }
+
+    // If other pool is disabled but follows pool is enabled, only subscribe to followed users
+    if (otherMax === 0 && followsMax > 0) {
+      const followedPubkeys = this.getFollowedPubkeys?.() ?? [];
+      if (followedPubkeys.length === 0) {
+        this.log('Follows pool enabled but no followed users, not subscribing to hellos');
+        this.currentHelloAuthors = [];
+        return;
+      }
+
+      this.log('Other pool disabled, subscribing to hellos from', followedPubkeys.length, 'followed users');
+      this.currentHelloAuthors = [...followedPubkeys];
+      this.helloSubscription = this.pool.subscribe(
+        this.config.relays,
+        {
+          kinds: [SIGNALING_KIND],
+          '#l': [HELLO_TAG],
+          authors: followedPubkeys,
+          since,
+        },
+        subHandler
+      );
+      return;
+    }
+
+    // Otherwise subscribe to all hellos
+    this.log('Subscribing to all hellos');
+    this.currentHelloAuthors = null; // null means all authors
+    this.helloSubscription = this.pool.subscribe(
+      this.config.relays,
+      {
+        kinds: [SIGNALING_KIND],
+        '#l': [HELLO_TAG],
+        since,
+      },
+      subHandler
+    );
+  }
+
+  /**
+   * Update hello subscription when follows list changes
+   * Call this after social graph updates
+   */
+  updateHelloSubscription(): void {
+    if (!this.running) return;
+
+    const followsMax = this.pools.follows.maxConnections;
+    const otherMax = this.pools.other.maxConnections;
+
+    // Only need to update if we're in follows-only mode
+    if (otherMax === 0 && followsMax > 0) {
+      const followedPubkeys = this.getFollowedPubkeys?.() ?? [];
+      const currentAuthors = this.currentHelloAuthors ?? [];
+
+      // Check if follows list changed
+      const changed = followedPubkeys.length !== currentAuthors.length ||
+        !followedPubkeys.every(pk => currentAuthors.includes(pk));
+
+      if (changed) {
+        this.log('Follows list changed, updating hello subscription');
+        const since = Math.floor((Date.now() - this.config.messageTimeout) / 1000);
+        const subHandler = {
+          onevent: (event: Event) => {
+            this.handleSignalingEvent(event);
+          },
+          oneose: () => {
+            this.log('Subscription EOSE received');
+          },
+        };
+        this.setupHelloSubscription(since, subHandler);
+      }
+    }
   }
 
   private async handleSignalingEvent(event: Event): Promise<void> {
@@ -686,8 +779,32 @@ export class WebRTCStore implements Store {
    * Update pool configuration (e.g., from settings)
    */
   setPoolConfig(pools: { follows: PoolConfig; other: PoolConfig }): void {
+    const oldOtherMax = this.pools.other.maxConnections;
+    const oldFollowsMax = this.pools.follows.maxConnections;
     this.pools = pools;
     this.log('Pool config updated:', pools);
+
+    // Check if subscription mode needs to change
+    const newOtherMax = pools.other.maxConnections;
+    const newFollowsMax = pools.follows.maxConnections;
+    const subscriptionModeChanged =
+      (oldOtherMax === 0) !== (newOtherMax === 0) ||
+      (oldFollowsMax === 0) !== (newFollowsMax === 0);
+
+    if (subscriptionModeChanged && this.running) {
+      this.log('Subscription mode changed, updating hello subscription');
+      const since = Math.floor((Date.now() - this.config.messageTimeout) / 1000);
+      const subHandler = {
+        onevent: (event: Event) => {
+          this.handleSignalingEvent(event);
+        },
+        oneose: () => {
+          this.log('Subscription EOSE received');
+        },
+      };
+      this.setupHelloSubscription(since, subHandler);
+    }
+
     // Existing connections remain, but new limits apply for future connections
     this.emit({ type: 'update' });
   }

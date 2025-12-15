@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, disableOthersPool, configureBlossomServers } from './test-utils';
+import { setupPageErrorHandler, disableOthersPool, configureBlossomServers, waitForWebRTCConnection } from './test-utils';
 
 /**
  * Tests for docs.iris.to (Iris Docs app)
@@ -268,22 +268,29 @@ test.describe('Iris Docs App', () => {
       await page2.getByRole('button', { name: /New/i }).click();
       await expect(page2.locator('button:has-text("New Document")')).toBeVisible({ timeout: 15000 });
 
-      // Get npubs from both browsers
+      // Get npubs and pubkeys from both browsers
       const npub1 = await page1.evaluate(() => (window as any).__nostrStore?.getState()?.npub);
-      const npub2 = await page2.evaluate(() => (window as any).__nostrStore?.getState()?.npub);
-      console.log('Browser 1 npub:', npub1);
-      console.log('Browser 2 npub:', npub2);
+      const pubkey1 = await page1.evaluate(() => (window as any).__nostrStore?.getState()?.pubkey);
+      const pubkey2 = await page2.evaluate(() => (window as any).__nostrStore?.getState()?.pubkey);
 
-      // Have them follow each other for WebRTC connection
-      await page1.evaluate((npub) => {
-        (window as any).__nostrStore?.getState()?.follow?.(npub);
-      }, npub2);
-      await page2.evaluate((npub) => {
-        (window as any).__nostrStore?.getState()?.follow?.(npub);
-      }, npub1);
+      // Wait for test helpers to be available
+      await page1.waitForFunction(() => (window as any).__testHelpers?.followPubkey, { timeout: 10000 });
+      await page2.waitForFunction(() => (window as any).__testHelpers?.followPubkey, { timeout: 10000 });
 
-      // Wait for WebRTC connection
+      // Have them follow each other for WebRTC connection via follows pool
+      await page1.evaluate(async (pk) => {
+        const { followPubkey } = (window as any).__testHelpers;
+        await followPubkey(pk);
+      }, pubkey2);
+      await page2.evaluate(async (pk) => {
+        const { followPubkey } = (window as any).__testHelpers;
+        await followPubkey(pk);
+      }, pubkey1);
+
+      // Wait for follow events to propagate and WebRTC connection to establish
       await page1.waitForTimeout(2000);
+      await waitForWebRTCConnection(page1, 15000);
+      await waitForWebRTCConnection(page2, 15000);
 
       // Browser 1: Create a document
       await page1.keyboard.press('Escape');
@@ -303,11 +310,8 @@ test.describe('Iris Docs App', () => {
       // Wait for autosave
       await page1.waitForTimeout(3000);
 
-      // Get the document hash path
-      const docUrl = page1.url();
-      const hashPath = new URL(docUrl).hash; // e.g., #/npub.../docs/docname
-      console.log('Document URL:', docUrl);
-      console.log('Hash path:', hashPath);
+      // Get the document hash path (e.g., #/npub.../docs/docname)
+      const hashPath = new URL(page1.url()).hash;
 
       // Wait for tree data to sync via Nostr/WebRTC
       await page1.waitForTimeout(5000);

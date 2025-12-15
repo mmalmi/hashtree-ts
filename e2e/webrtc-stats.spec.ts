@@ -2,6 +2,7 @@
  * E2E test for WebRTC stats tracking
  */
 import { test, expect, type Page } from '@playwright/test';
+import { setupPageErrorHandler, disableOthersPool } from './test-utils.js';
 
 test.describe('WebRTC Stats', () => {
   test.setTimeout(120000);
@@ -10,6 +11,8 @@ test.describe('WebRTC Stats', () => {
    * Clear storage and get a fresh session with auto-generated key
    */
   async function setupFreshPeer(page: Page): Promise<string> {
+    setupPageErrorHandler(page);
+
     await page.evaluate(async () => {
       localStorage.clear();
       sessionStorage.clear();
@@ -20,6 +23,7 @@ test.describe('WebRTC Stats', () => {
     });
     await page.reload();
     await page.waitForLoadState('load');
+    await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
 
     // Wait for app to auto-generate key and initialize
     await page.waitForFunction(

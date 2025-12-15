@@ -11,7 +11,7 @@ import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, GiftWrapp
 
 // Re-export LinkType for e2e tests that can't import 'hashtree' directly
 export { LinkType };
-import { getSocialGraph, socialGraphStore } from './utils/socialGraph';
+import { getSocialGraph, socialGraphStore, getFollows, getFollowers } from './utils/socialGraph';
 import { settingsStore, DEFAULT_POOL_SETTINGS, DEFAULT_NETWORK_SETTINGS } from './stores/settings';
 import { nostrStore } from './nostr';
 import { blossomLogStore } from './stores/blossomLog';
@@ -185,6 +185,22 @@ function createPeerClassifier(): PeerClassifier {
 }
 
 /**
+ * Get pubkeys of users we follow or who follow us
+ * Used to filter hello subscriptions when others pool is disabled
+ */
+function getFollowedPubkeys(): string[] {
+  const myPubkey = get(nostrStore).pubkey;
+  if (!myPubkey) return [];
+
+  const follows = getFollows(myPubkey);
+  const followers = getFollowers(myPubkey);
+
+  // Combine and deduplicate
+  const combined = new Set([...follows, ...followers]);
+  return Array.from(combined);
+}
+
+/**
  * Get pool config from settings store
  */
 function getPoolConfigFromSettings() {
@@ -231,6 +247,9 @@ export function initWebRTC(
     // Pool-based peer management
     peerClassifier: createPeerClassifier(),
     pools: getPoolConfigFromSettings(),
+    // Function to get followed pubkeys for subscription filtering
+    // When others pool is disabled, only subscribe to hellos from these pubkeys
+    getFollowedPubkeys,
     // Fallback to Blossom HTTP server when WebRTC peers don't have the data
     // Pass signer so writes can be authenticated (NIP-98)
     fallbackStores: [new BlossomStore({
@@ -256,10 +275,13 @@ export function initWebRTC(
     }
   });
 
-  // Update peer classifier when social graph changes
+  // Update peer classifier and hello subscription when social graph changes
   const unsubSocialGraph = socialGraphStore.subscribe(() => {
     if (webrtcStore) {
       webrtcStore.setPeerClassifier(createPeerClassifier());
+      // Also update hello subscription in case follows list changed
+      // (when others pool is disabled, we only subscribe to followed users)
+      webrtcStore.updateHelloSubscription();
     }
   });
 
