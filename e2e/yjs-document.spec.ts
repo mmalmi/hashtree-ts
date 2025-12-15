@@ -229,4 +229,93 @@ test.describe('Yjs Document Viewer', () => {
     const iterableErrors = consoleErrors.filter(e => e.includes('undefined is not iterable'));
     expect(iterableErrors).toHaveLength(0);
   });
+
+  test('editor maintains focus after auto-save', async ({ page }) => {
+    // This test verifies that typing in the editor doesn't lose focus
+    // when the merkle root updates after auto-save
+
+    // Create a new document
+    await page.getByRole('button', { name: 'New Document' }).click();
+    await page.locator('input[placeholder="Document name..."]').fill('focus-test');
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    // Wait for editor to be visible
+    const editor = page.locator('.ProseMirror');
+    await expect(editor).toBeVisible({ timeout: 10000 });
+    await editor.click();
+
+    // Type initial content
+    await page.keyboard.type('First sentence.');
+
+    // Wait for auto-save to complete (1s debounce + save time)
+    const savedStatus = page.locator('text=Saved');
+    await expect(savedStatus).toBeVisible({ timeout: 10000 });
+
+    // Wait for merkle root update to fully propagate through stores:
+    // 1. Save completes -> local root cache updates
+    // 2. Nostr publish (async) -> resolver subscription fires
+    // 3. treeRootStore updates -> currentDirCidStore recalculates
+    // 4. directoryEntriesStore fetches new entries -> entries prop changes
+    // 5. Component re-renders with new entries
+    // This full cycle can take 2-3 seconds
+    await page.waitForTimeout(3000);
+
+    // Verify editor still has focus (activeElement should be inside ProseMirror)
+    const hasFocus = await page.evaluate(() => {
+      const active = document.activeElement;
+      const editor = document.querySelector('.ProseMirror');
+      return editor?.contains(active) || active === editor;
+    });
+    expect(hasFocus).toBe(true);
+
+    // Now type more content WITHOUT clicking the editor again
+    // If focus is maintained, this text should appear after the first sentence
+    await page.keyboard.type(' Second sentence.');
+
+    // Verify both sentences are in the editor
+    await expect(editor).toContainText('First sentence. Second sentence.', { timeout: 5000 });
+
+    // Wait for the second save + full store update cycle
+    await expect(savedStatus).toBeVisible({ timeout: 10000 });
+    await page.waitForTimeout(3000);
+
+    // Type a third sentence
+    await page.keyboard.type(' Third sentence.');
+
+    // Verify all content is there
+    await expect(editor).toContainText('First sentence. Second sentence. Third sentence.', { timeout: 5000 });
+  });
+
+  test('editor maintains focus during rapid typing and saves', async ({ page }) => {
+    // This test verifies focus is maintained during rapid typing that triggers
+    // multiple overlapping saves and merkle root updates
+
+    // Create a new document
+    await page.getByRole('button', { name: 'New Document' }).click();
+    await page.locator('input[placeholder="Document name..."]').fill('rapid-focus-test');
+    await page.getByRole('button', { name: 'Create' }).click();
+
+    // Wait for editor to be visible
+    const editor = page.locator('.ProseMirror');
+    await expect(editor).toBeVisible({ timeout: 10000 });
+    await editor.click();
+
+    // Type content rapidly, triggering save debounces
+    for (let i = 1; i <= 5; i++) {
+      await page.keyboard.type(`Line ${i}. `);
+      // Small delay to allow debounce to start but not complete
+      await page.waitForTimeout(300);
+    }
+
+    // Wait for all saves to complete
+    const savedStatus = page.locator('text=Saved');
+    await expect(savedStatus).toBeVisible({ timeout: 15000 });
+    await page.waitForTimeout(1000); // Extra time for store updates
+
+    // Now verify we can still type without clicking
+    await page.keyboard.type('Final line.');
+
+    // Verify all content is there
+    await expect(editor).toContainText('Line 1. Line 2. Line 3. Line 4. Line 5. Final line.', { timeout: 5000 });
+  });
 });

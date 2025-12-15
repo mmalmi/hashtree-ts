@@ -220,9 +220,11 @@
     const docPath = route.path.join('/');
     const docOwnerNpub = viewedNpub || userNpub;
 
+    // Subscribe to collaborators' trees, but NOT our own tree
+    // Our own updates are already in local state - re-applying them causes focus loss
+    const otherCollaborators = collaboratorNpubs.filter(npub => npub !== userNpub);
 
-    // Subscribe to all editors' trees (including our own for multi-tab sync)
-    for (const npub of collaboratorNpubs) {
+    for (const npub of otherCollaborators) {
       const resolverKey = `${npub}/${route.treeName}`;
 
       // Track last seen hash to detect actual changes
