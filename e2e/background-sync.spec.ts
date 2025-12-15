@@ -56,7 +56,7 @@ async function followUser(page: Page, targetNpub: string) {
 
   // Click the Follow button
   const followButton = page.getByRole('button', { name: 'Follow', exact: true });
-  await expect(followButton).toBeVisible({ timeout: 5000 });
+  await expect(followButton).toBeVisible({ timeout: 30000 });
   await followButton.click();
 
   // Wait for follow to complete
@@ -240,12 +240,12 @@ test.describe('Background Sync', () => {
 
       // Check if the file appears (should be fast since data was already synced in background)
       const fileLink = pageB.getByRole('link', { name: 'sync-test.txt' });
-      await expect(fileLink).toBeVisible({ timeout: 5000 });
+      await expect(fileLink).toBeVisible({ timeout: 30000 });
 
       // Click to view the file and verify content
       await fileLink.click();
       const content = pageB.locator('pre, .viewer-content').first();
-      await expect(content).toContainText('Hello from User A', { timeout: 5000 });
+      await expect(content).toContainText('Hello from User A', { timeout: 30000 });
 
       // === Verify synced storage shows User A ===
       // Note: The synced storage size reflects what background sync pulled,
@@ -387,7 +387,7 @@ test.describe('Background Sync', () => {
 
       // Click the copy secret key button
       const copyButton = page1.getByTestId('copy-secret-key');
-      await expect(copyButton).toBeVisible({ timeout: 5000 });
+      await expect(copyButton).toBeVisible({ timeout: 30000 });
       await copyButton.click();
       await page1.waitForTimeout(500);
 

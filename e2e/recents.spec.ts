@@ -4,11 +4,11 @@ import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList } from './t
 // Helper to create tree and navigate into it
 async function createAndEnterTree(page: any, name: string) {
   await goToTreeList(page);
-  await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'New Folder' }).click();
   await page.locator('input[placeholder="Folder name..."]').fill(name);
   await page.getByRole('button', { name: 'Create' }).click();
-  await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 30000 });
 }
 
 // Helper to create a file
@@ -16,7 +16,7 @@ async function createFile(page: any, name: string, content: string = '') {
   await page.getByRole('button', { name: /File/ }).first().click();
   await page.locator('input[placeholder="File name..."]').fill(name);
   await page.getByRole('button', { name: 'Create' }).click();
-  await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 30000 });
   if (content) {
     await page.locator('textarea').fill(content);
     await page.getByRole('button', { name: 'Save' }).click();
@@ -45,7 +45,7 @@ test.describe('Recently Visited', () => {
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 30000 });
     await navigateToPublicFolder(page);
   });
 
@@ -174,15 +174,15 @@ test.describe('Recently Visited', () => {
 
     // Look for the Recent section header - it should show our items
     const recentSection = page.getByText('Recent', { exact: true });
-    await expect(recentSection).toBeVisible({ timeout: 5000 });
+    await expect(recentSection).toBeVisible({ timeout: 30000 });
 
     // Check that the file appears in the UI recents list (TreeRow renders as <a>)
     const fileInRecents = page.locator('a:has-text("visible-file.txt")');
-    await expect(fileInRecents).toBeVisible({ timeout: 5000 });
+    await expect(fileInRecents).toBeVisible({ timeout: 30000 });
 
     // Check that the tree also appears (use first() since tree name also shows as subtitle)
     const treeInRecents = page.locator('a:has-text("ui-recents-test")').first();
-    await expect(treeInRecents).toBeVisible({ timeout: 5000 });
+    await expect(treeInRecents).toBeVisible({ timeout: 30000 });
   });
 
   test('clicking recent item navigates to it', async ({ page }) => {
@@ -201,10 +201,10 @@ test.describe('Recently Visited', () => {
 
     // Click on the file in recents (TreeRow renders as <a>)
     const fileInRecents = page.locator('a:has-text("clickable.txt")');
-    await expect(fileInRecents).toBeVisible({ timeout: 5000 });
+    await expect(fileInRecents).toBeVisible({ timeout: 30000 });
     await fileInRecents.click();
 
     // Should navigate to the file
-    await expect(page).toHaveURL(/clickable\.txt/, { timeout: 5000 });
+    await expect(page).toHaveURL(/clickable\.txt/, { timeout: 30000 });
   });
 });

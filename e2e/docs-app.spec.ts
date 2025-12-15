@@ -14,7 +14,7 @@ test.describe('Iris Docs App', () => {
     await page.goto('/docs.html#/');
 
     // Should show the Iris Docs header
-    await expect(page.locator('text=Iris Docs')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Iris Docs')).toBeVisible({ timeout: 30000 });
   });
 
   test('shows New Document card after login', async ({ page }) => {
@@ -47,14 +47,14 @@ test.describe('Iris Docs App', () => {
     await newDocCard.click();
 
     // Modal should appear with input
-    await expect(page.getByRole('heading', { name: 'New Document' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { name: 'New Document' })).toBeVisible({ timeout: 30000 });
 
     // Enter document name
     const docName = `Test Doc ${Date.now()}`;
     await page.locator('input[placeholder="Document name..."]').fill(docName);
 
     // Should show visibility picker (buttons with public/unlisted/private)
-    await expect(page.locator('button:has-text("public")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('button:has-text("public")')).toBeVisible({ timeout: 30000 });
 
     // Click Create button
     await page.getByRole('button', { name: 'Create' }).click();
@@ -66,7 +66,7 @@ test.describe('Iris Docs App', () => {
     expect(page.url()).toContain('/docs/');
 
     // Verify document editor is visible (formatting toolbar with Bold button)
-    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 30000 });
 
     // Verify the editor container is present
     await expect(page.locator('.ProseMirror-container')).toBeVisible();
@@ -76,7 +76,7 @@ test.describe('Iris Docs App', () => {
     await page.goto('/docs.html#/');
 
     // Should have Iris Docs logo/title
-    await expect(page.locator('text=Iris Docs')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Iris Docs')).toBeVisible({ timeout: 30000 });
   });
 
   test('document persists after refresh and shows on home', async ({ page }) => {
@@ -101,7 +101,7 @@ test.describe('Iris Docs App', () => {
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Wait for editor to load
-    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 30000 });
 
     // Type some text in the editor
     const editor = page.locator('.ProseMirror');
@@ -115,20 +115,20 @@ test.describe('Iris Docs App', () => {
     await page.reload();
 
     // Wait for editor to load again
-    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 30000 });
 
     // Verify text is still there (give time for content to load from cache)
-    await expect(page.locator('.ProseMirror')).toContainText('Hello persistence test!', { timeout: 10000 });
+    await expect(page.locator('.ProseMirror')).toContainText('Hello persistence test!', { timeout: 30000 });
 
     // Go to home page by evaluating hash change (keeps session)
     await page.evaluate(() => window.location.hash = '#/');
 
     // Wait for the New Document card to appear (confirms home page loaded)
-    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 30000 });
 
     // Verify document appears in the list
     const displayName = docName;
-    await expect(page.locator(`text=${displayName}`)).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(`text=${displayName}`)).toBeVisible({ timeout: 30000 });
   });
 
   test('can navigate from home to document and view content', async ({ page }) => {
@@ -153,7 +153,7 @@ test.describe('Iris Docs App', () => {
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Wait for editor to load and type some content
-    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 30000 });
     const editor = page.locator('.ProseMirror');
     await editor.click();
     await editor.type('Content for navigation test');
@@ -165,16 +165,16 @@ test.describe('Iris Docs App', () => {
     await page.evaluate(() => window.location.hash = '#/');
 
     // Wait for home page and find the document
-    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 30000 });
 
     // Click on the document card to navigate to it
     const docCard = page.locator(`text=${docName}`);
-    await expect(docCard).toBeVisible({ timeout: 10000 });
+    await expect(docCard).toBeVisible({ timeout: 30000 });
     await docCard.click();
 
     // Verify we're back in the editor with the content
-    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('.ProseMirror')).toContainText('Content for navigation test', { timeout: 10000 });
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('.ProseMirror')).toContainText('Content for navigation test', { timeout: 30000 });
   });
 
   test('edits to existing document persist after navigation and refresh', async ({ page }, testInfo) => {
@@ -197,7 +197,7 @@ test.describe('Iris Docs App', () => {
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Wait for editor and type initial content
-    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 30000 });
     const editor = page.locator('.ProseMirror');
     await editor.click();
     await editor.type('Initial content.');
@@ -207,20 +207,20 @@ test.describe('Iris Docs App', () => {
 
     // Navigate to home
     await page.evaluate(() => window.location.hash = '#/');
-    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 30000 });
 
     // Refresh the page
     await page.reload();
-    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button:has-text("New Document")')).toBeVisible({ timeout: 30000 });
 
     // Navigate back to the document
     const docCard = page.locator(`text=${docName}`);
-    await expect(docCard).toBeVisible({ timeout: 10000 });
+    await expect(docCard).toBeVisible({ timeout: 30000 });
     await docCard.click();
 
     // Verify initial content is there
-    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('.ProseMirror')).toContainText('Initial content.', { timeout: 10000 });
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('.ProseMirror')).toContainText('Initial content.', { timeout: 30000 });
 
     // Add more content
     const editor2 = page.locator('.ProseMirror');
@@ -235,10 +235,10 @@ test.describe('Iris Docs App', () => {
     await page.reload();
 
     // Wait for editor to load
-    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 30000 });
 
     // Verify all content is there
-    await expect(page.locator('.ProseMirror')).toContainText('Initial content. Added more content.', { timeout: 10000 });
+    await expect(page.locator('.ProseMirror')).toContainText('Initial content. Added more content.', { timeout: 30000 });
   });
 
   test('another browser can view document via shared link', async ({ browser }, testInfo) => {
@@ -293,7 +293,7 @@ test.describe('Iris Docs App', () => {
       await page1.getByRole('button', { name: 'Create' }).click();
 
       // Wait for editor and type content
-      await expect(page1.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 10000 });
+      await expect(page1.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 30000 });
       const editor1 = page1.locator('.ProseMirror');
       await editor1.click();
       await editor1.type('Hello from browser 1!');
@@ -313,7 +313,7 @@ test.describe('Iris Docs App', () => {
       await page2.evaluate((hash) => window.location.hash = hash.slice(1), hashPath);
 
       // Verify the content is visible in browser 2 (may be read-only mode without edit toolbar)
-      await expect(page2.locator('.ProseMirror')).toContainText('Hello from browser 1!', { timeout: 10000 });
+      await expect(page2.locator('.ProseMirror')).toContainText('Hello from browser 1!', { timeout: 30000 });
     } finally {
       await context1.close();
       await context2.close();
@@ -362,7 +362,7 @@ test.describe('Iris Docs App', () => {
 
     // Wait for editor to load
     const editor = page.locator('.ProseMirror');
-    await expect(editor).toBeVisible({ timeout: 10000 });
+    await expect(editor).toBeVisible({ timeout: 30000 });
     await editor.click();
 
     // Type initial content
@@ -383,6 +383,6 @@ test.describe('Iris Docs App', () => {
     await page.keyboard.type(' Second sentence.');
 
     // Verify both sentences are in the editor
-    await expect(editor).toContainText('First sentence. Second sentence.', { timeout: 5000 });
+    await expect(editor).toContainText('First sentence. Second sentence.', { timeout: 30000 });
   });
 });

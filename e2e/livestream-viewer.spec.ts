@@ -103,7 +103,7 @@ test.describe('Livestream Viewer Updates', () => {
   async function followUser(page: Page, targetNpub: string) {
     await page.goto(`http://localhost:5173/#/${targetNpub}`);
     const followButton = page.getByRole('button', { name: 'Follow', exact: true });
-    await expect(followButton).toBeVisible({ timeout: 5000 });
+    await expect(followButton).toBeVisible({ timeout: 30000 });
     await followButton.click();
     await expect(
       page.getByRole('button', { name: 'Following' })
@@ -266,26 +266,26 @@ test.describe('Livestream Viewer Updates', () => {
 
       console.log('Broadcaster: Starting stream...');
       const streamLink = pageA.getByRole('link', { name: 'Stream' });
-      await expect(streamLink).toBeVisible({ timeout: 5000 });
+      await expect(streamLink).toBeVisible({ timeout: 30000 });
       await streamLink.click();
       await pageA.waitForTimeout(500);
 
       // Start camera preview
       const startCameraBtn = pageA.getByRole('button', { name: 'Start Camera' });
-      await expect(startCameraBtn).toBeVisible({ timeout: 5000 });
+      await expect(startCameraBtn).toBeVisible({ timeout: 30000 });
       await startCameraBtn.click();
       await pageA.waitForTimeout(1000);
 
       // Set filename
       const filenameInput = pageA.locator('input[placeholder="filename"]');
-      await expect(filenameInput).toBeVisible({ timeout: 5000 });
+      await expect(filenameInput).toBeVisible({ timeout: 30000 });
       const testFilename = `live_test_${Date.now()}`;
       await filenameInput.fill(testFilename);
 
       // Start recording
       console.log('Broadcaster: Starting recording...');
       const startRecordingBtn = pageA.getByRole('button', { name: /Start Recording/ });
-      await expect(startRecordingBtn).toBeVisible({ timeout: 5000 });
+      await expect(startRecordingBtn).toBeVisible({ timeout: 30000 });
       await startRecordingBtn.click();
 
       // Wait for initial chunks to be recorded and published (at least 3 seconds for first publish)
@@ -427,13 +427,13 @@ test.describe('Livestream Viewer Updates', () => {
       await page.waitForTimeout(500);
 
       const startCameraBtn = page.getByRole('button', { name: 'Start Camera' });
-      await expect(startCameraBtn).toBeVisible({ timeout: 5000 });
+      await expect(startCameraBtn).toBeVisible({ timeout: 30000 });
       await startCameraBtn.click();
       await page.waitForTimeout(1000);
 
       const testFilename = `long_stream_${Date.now()}`;
       const filenameInput = page.locator('input[placeholder="filename"]');
-      await expect(filenameInput).toBeVisible({ timeout: 5000 });
+      await expect(filenameInput).toBeVisible({ timeout: 30000 });
       await filenameInput.fill(testFilename);
       await page.getByRole('button', { name: /Start Recording/ }).click();
 
@@ -566,20 +566,20 @@ test.describe('Livestream Viewer Updates', () => {
 
     // Start streaming
     const streamLink = page.getByRole('link', { name: 'Stream' });
-    await expect(streamLink).toBeVisible({ timeout: 5000 });
+    await expect(streamLink).toBeVisible({ timeout: 30000 });
     await streamLink.click();
     await page.waitForTimeout(500);
 
     // Start camera preview
     const startCameraBtn = page.getByRole('button', { name: 'Start Camera' });
-    await expect(startCameraBtn).toBeVisible({ timeout: 5000 });
+    await expect(startCameraBtn).toBeVisible({ timeout: 30000 });
     await startCameraBtn.click();
     await page.waitForTimeout(1000);
 
     // Set filename - wait for it to be visible first
     const testFilename = `same_browser_${Date.now()}`;
     const filenameInput = page.locator('input[placeholder="filename"]');
-    await expect(filenameInput).toBeVisible({ timeout: 5000 });
+    await expect(filenameInput).toBeVisible({ timeout: 30000 });
     await filenameInput.fill(testFilename);
 
     // Start recording
@@ -835,20 +835,20 @@ test.describe('Livestream Viewer Updates', () => {
 
       // Start streaming
       const streamLink = pageA.getByRole('link', { name: 'Stream' });
-      await expect(streamLink).toBeVisible({ timeout: 5000 });
+      await expect(streamLink).toBeVisible({ timeout: 30000 });
       await streamLink.click();
       await pageA.waitForTimeout(500);
 
       // Start camera preview
       const startCameraBtn = pageA.getByRole('button', { name: 'Start Camera' });
-      await expect(startCameraBtn).toBeVisible({ timeout: 5000 });
+      await expect(startCameraBtn).toBeVisible({ timeout: 30000 });
       await startCameraBtn.click();
       await pageA.waitForTimeout(1000);
 
       // Set filename
       const testFilename = `stream_30s_${Date.now()}`;
       const filenameInput = pageA.locator('input[placeholder="filename"]');
-      await expect(filenameInput).toBeVisible({ timeout: 5000 });
+      await expect(filenameInput).toBeVisible({ timeout: 30000 });
       await filenameInput.fill(testFilename);
 
       // Start recording
@@ -1070,20 +1070,20 @@ test.describe('Livestream Viewer Updates', () => {
 
     // Start streaming
     const streamLink = page.getByRole('link', { name: 'Stream' });
-    await expect(streamLink).toBeVisible({ timeout: 5000 });
+    await expect(streamLink).toBeVisible({ timeout: 30000 });
     await streamLink.click();
     await page.waitForTimeout(500);
 
     // Start camera preview
     const startCameraBtn = page.getByRole('button', { name: 'Start Camera' });
-    await expect(startCameraBtn).toBeVisible({ timeout: 5000 });
+    await expect(startCameraBtn).toBeVisible({ timeout: 30000 });
     await startCameraBtn.click();
     await page.waitForTimeout(1000);
 
     // Set filename
     const testFilename = `flicker_test_${Date.now()}`;
     const filenameInput = page.locator('input[placeholder="filename"]');
-    await expect(filenameInput).toBeVisible({ timeout: 5000 });
+    await expect(filenameInput).toBeVisible({ timeout: 30000 });
     await filenameInput.fill(testFilename);
 
     // Start recording

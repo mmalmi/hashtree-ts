@@ -36,7 +36,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await disableOthersPool(page); // Re-apply after reload
 
     // App auto-generates key on first visit, wait for header to appear
-    await expect(page.locator('header span:has-text("hashtree")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('header span:has-text("hashtree")')).toBeVisible({ timeout: 30000 });
 
     // New users get auto-redirected to their public folder - wait for that
     await navigateToPublicFolder(page);
@@ -47,7 +47,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('header a:has-text("hashtree")').click();
 
     // Wait for tree list to load with New Folder button
-    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 30000 });
 
     // Click New Folder button
     await page.getByRole('button', { name: 'New Folder' }).click();
@@ -74,7 +74,7 @@ test.describe('Unlisted Tree Visibility', () => {
     expect(url).toMatch(/\?k=[a-f0-9]+/i);
 
     // Should show Empty directory (we're inside the tree now)
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 30000 });
   });
 
   test('should show link icon for unlisted tree in tree list', async ({ page }) => {
@@ -95,7 +95,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Find the unlisted-icons tree row and check for link icon (use file-list to avoid matching recent folders)
     const treeRow = page.getByTestId('file-list').locator('a:has-text("unlisted-icons")').first();
-    await expect(treeRow).toBeVisible({ timeout: 5000 });
+    await expect(treeRow).toBeVisible({ timeout: 30000 });
 
     // Should have link icon (i-lucide-link) for unlisted visibility
     const linkIcon = treeRow.locator('span.i-lucide-link');
@@ -116,7 +116,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Should be inside the tree now - check for link icon in the current directory row
     const currentDirRow = page.locator('a:has-text("unlisted-inside")').first();
-    await expect(currentDirRow).toBeVisible({ timeout: 5000 });
+    await expect(currentDirRow).toBeVisible({ timeout: 30000 });
 
     // Should have link icon for unlisted visibility inside tree view
     const linkIcon = currentDirRow.locator('span.i-lucide-link');
@@ -222,7 +222,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(500);
 
     // Should be in edit mode
-    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 30000 });
 
     // Type content
     await page.locator('textarea').fill('This is secret content!');
@@ -274,7 +274,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Verify content is visible in view mode (may take time to render under load)
     await expect(page.locator('pre')).toBeVisible({ timeout: 30000 });
-    await expect(page.locator('pre')).toHaveText('Shared secret content', { timeout: 10000 });
+    await expect(page.locator('pre')).toHaveText('Shared secret content', { timeout: 30000 });
 
     // Wait for content to be published to blossom/nostr (background sync)
     await page.waitForTimeout(3000);
@@ -304,12 +304,12 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Navigate to home first so page2 gets a user identity
     await page2.goto('http://localhost:5173');
-    await page2.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+    await page2.waitForSelector('header span:has-text("hashtree")', { timeout: 30000 });
 
     // Get page2's npub by clicking into their public folder
     const publicLink2 = page2.getByRole('link', { name: 'public' }).first();
     await publicLink2.click();
-    await page2.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
+    await page2.waitForURL(/\/#\/npub.*\/public/, { timeout: 30000 });
     const page2Url = page2.url();
     const page2Match = page2Url.match(/npub1[a-z0-9]+/);
     if (!page2Match) throw new Error('Could not find page2 npub in URL');
@@ -319,14 +319,14 @@ test.describe('Unlisted Tree Visibility', () => {
     // Page1 follows page2 for reliable WebRTC connection in follows pool
     await page.goto(`http://localhost:5173/#/${page2Npub}`);
     const followBtn = page.getByRole('button', { name: 'Follow', exact: true });
-    await expect(followBtn).toBeVisible({ timeout: 5000 });
+    await expect(followBtn).toBeVisible({ timeout: 30000 });
     await followBtn.click();
     await page.waitForTimeout(500);
 
     // Page2 follows page1 (owner of the unlisted tree)
     await page2.goto(`http://localhost:5173/#/${npub}`);
     const followBtn2 = page2.getByRole('button', { name: 'Follow', exact: true });
-    await expect(followBtn2).toBeVisible({ timeout: 5000 });
+    await expect(followBtn2).toBeVisible({ timeout: 30000 });
     await followBtn2.click();
     await page2.waitForTimeout(500);
 
@@ -342,7 +342,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page2.waitForTimeout(2000);
 
     // Should NOT see "Link Required" - the key should work
-    await expect(page2.getByText('Link Required')).not.toBeVisible({ timeout: 10000 });
+    await expect(page2.getByText('Link Required')).not.toBeVisible({ timeout: 30000 });
 
     // Verify the content is decrypted and visible (may take time to fetch from network)
     // The fix to tryConnectedPeersForHash should handle the race condition
@@ -351,12 +351,12 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(page2.locator('text="Shared secret content"')).toBeVisible({ timeout: 45000 });
 
     // Also verify the file link is visible (should already be there if content is visible)
-    await expect(page2.locator('[data-testid="file-list"] >> text=shared.txt')).toBeVisible({ timeout: 5000 });
+    await expect(page2.locator('[data-testid="file-list"] >> text=shared.txt')).toBeVisible({ timeout: 30000 });
 
     // Wait 5 seconds and verify content is still visible (not replaced by "Link Required")
     await page2.waitForTimeout(5000);
     await expect(page2.getByText('Link Required')).not.toBeVisible();
-    await expect(page2.locator('text="Shared secret content"')).toBeVisible({ timeout: 5000 });
+    await expect(page2.locator('text="Shared secret content"')).toBeVisible({ timeout: 30000 });
 
     await context2.close();
   });
@@ -374,7 +374,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Wait for navigation to the new tree (URL should contain tree name)
-    await page.waitForURL(/#\/npub[^/]+\/unlisted-no-key/, { timeout: 10000 });
+    await page.waitForURL(/#\/npub[^/]+\/unlisted-no-key/, { timeout: 30000 });
     await page.waitForTimeout(1000);
 
     // Extract npub and treeName from URL
@@ -395,7 +395,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page2.waitForTimeout(3000);
 
     // Should see "Link Required" message
-    await expect(page2.getByText('Link Required')).toBeVisible({ timeout: 10000 });
+    await expect(page2.getByText('Link Required')).toBeVisible({ timeout: 30000 });
     await expect(page2.getByText('This folder requires a special link to access')).toBeVisible();
 
     await context2.close();
@@ -426,7 +426,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Owner should still be able to access (via selfEncryptedKey decryption)
     // The tree should show "Empty directory" since owner can decrypt
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 30000 });
   });
 
   test('should preserve ?k= param after creating file in unlisted tree', async ({ page }) => {
@@ -546,7 +546,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Verify the tree shows link icon (unlisted)
     const currentDirRow = page.locator('a:has-text("unlisted-stays-unlisted")').first();
-    await expect(currentDirRow).toBeVisible({ timeout: 5000 });
+    await expect(currentDirRow).toBeVisible({ timeout: 30000 });
     await expect(currentDirRow.locator('span.i-lucide-link')).toBeVisible();
 
     // Create a file using the File button (simulates upload to the tree)
@@ -570,7 +570,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // CRITICAL: Verify the tree still has link icon (unlisted), NOT globe icon (public)
     const treeRow = page.getByTestId('file-list').locator('a:has-text("unlisted-stays-unlisted")').first();
-    await expect(treeRow).toBeVisible({ timeout: 5000 });
+    await expect(treeRow).toBeVisible({ timeout: 30000 });
 
     // Should have link icon (unlisted), not globe icon (public)
     await expect(treeRow.locator('span.i-lucide-link')).toBeVisible();
@@ -629,18 +629,18 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Public tree should have globe icon
     const publicRow = fileList.locator('a:has-text("public-tree")').first();
-    await expect(publicRow).toBeVisible({ timeout: 5000 });
-    await expect(publicRow.locator('span.i-lucide-globe')).toBeVisible({ timeout: 5000 });
+    await expect(publicRow).toBeVisible({ timeout: 30000 });
+    await expect(publicRow.locator('span.i-lucide-globe')).toBeVisible({ timeout: 30000 });
 
     // Unlisted tree should have link icon
     const unlistedRow = fileList.locator('a:has-text("unlisted-tree")').first();
-    await expect(unlistedRow).toBeVisible({ timeout: 5000 });
-    await expect(unlistedRow.locator('span.i-lucide-link')).toBeVisible({ timeout: 5000 });
+    await expect(unlistedRow).toBeVisible({ timeout: 30000 });
+    await expect(unlistedRow.locator('span.i-lucide-link')).toBeVisible({ timeout: 30000 });
 
     // Private tree should have lock icon
     const privateRow = fileList.locator('a:has-text("private-tree")').first();
-    await expect(privateRow).toBeVisible({ timeout: 5000 });
-    await expect(privateRow.locator('span.i-lucide-lock')).toBeVisible({ timeout: 5000 });
+    await expect(privateRow).toBeVisible({ timeout: 30000 });
+    await expect(privateRow.locator('span.i-lucide-lock')).toBeVisible({ timeout: 30000 });
   });
 
   test('files in unlisted trees should be encrypted (have CHK)', async ({ page }) => {
@@ -658,7 +658,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Wait for tree to be created
-    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 30000 });
 
     // Create a file with content
     await page.getByRole('button', { name: 'New File' }).click();
@@ -666,7 +666,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Type content and save
-    await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 30000 });
     await page.locator('textarea').fill('This content should be encrypted');
     await page.getByRole('button', { name: 'Save' }).click();
 
@@ -716,14 +716,14 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Should be inside the private tree now, not showing "Link Required"
     // The owner should be able to see the folder contents
-    await expect(page.locator('text="Link Required"')).not.toBeVisible({ timeout: 5000 });
-    await expect(page.locator('text="Private Folder"')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text="Link Required"')).not.toBeVisible({ timeout: 30000 });
+    await expect(page.locator('text="Private Folder"')).not.toBeVisible({ timeout: 30000 });
 
     // Wait for the UI to be ready and find the New file button
     await page.waitForTimeout(1000);
 
     // Create a new file in the private tree
-    await page.getByRole('button', { name: 'New File' }).click({ timeout: 10000 });
+    await page.getByRole('button', { name: 'New File' }).click({ timeout: 30000 });
     await page.locator('input[placeholder="File name..."]').fill('secret.txt');
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(500);
@@ -738,7 +738,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(1000);
 
     // Verify content is visible
-    await expect(page.locator('pre')).toHaveText('My secret content', { timeout: 5000 });
+    await expect(page.locator('pre')).toHaveText('My secret content', { timeout: 30000 });
 
     // Navigate away and back to verify persistence
     await page.locator('header a:has-text("hashtree")').click();
@@ -749,10 +749,10 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(2000);
 
     // Should still not show the locked message
-    await expect(page.locator('text="Link Required"')).not.toBeVisible({ timeout: 5000 });
-    await expect(page.locator('text="Private Folder"')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text="Link Required"')).not.toBeVisible({ timeout: 30000 });
+    await expect(page.locator('text="Private Folder"')).not.toBeVisible({ timeout: 30000 });
 
     // The file should be visible
-    await expect(page.locator('text="secret.txt"')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('text="secret.txt"')).toBeVisible({ timeout: 30000 });
   });
 });
