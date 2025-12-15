@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, disableOthersPool } from './test-utils';
+import { setupPageErrorHandler, disableOthersPool, configureBlossomServers } from './test-utils';
 
 /**
  * Tests for docs.iris.to (Iris Docs app)
@@ -257,12 +257,14 @@ test.describe('Iris Docs App', () => {
       // Browser 1: Login first
       await page1.goto('/docs.html#/');
       await disableOthersPool(page1);
+      await configureBlossomServers(page1);
       await page1.getByRole('button', { name: /New/i }).click();
       await expect(page1.locator('button:has-text("New Document")')).toBeVisible({ timeout: 15000 });
 
       // Browser 2: Login
       await page2.goto('/docs.html#/');
       await disableOthersPool(page2);
+      await configureBlossomServers(page2);
       await page2.getByRole('button', { name: /New/i }).click();
       await expect(page2.locator('button:has-text("New Document")')).toBeVisible({ timeout: 15000 });
 
@@ -307,10 +309,19 @@ test.describe('Iris Docs App', () => {
       console.log('Document URL:', docUrl);
       console.log('Hash path:', hashPath);
 
+      // Wait for tree data to sync via Nostr/WebRTC
+      await page1.waitForTimeout(5000);
+
+      // Browser 2: First verify it can see Browser 1's trees
+      // npub1 was already extracted earlier in the test
+      await page2.goto(`/docs.html#/${npub1}`);
+      await expect(page2.getByRole('link', { name: 'docs' }).first()).toBeVisible({ timeout: 30000 });
+
       // Browser 2: Navigate to the document using hash (keeps session)
       await page2.keyboard.press('Escape'); // Close any modals
       await page2.waitForTimeout(200);
       await page2.evaluate((hash) => window.location.hash = hash.slice(1), hashPath);
+      await page2.waitForTimeout(2000);
 
       // Verify the content is visible in browser 2 (may be read-only mode without edit toolbar)
       await expect(page2.locator('.ProseMirror')).toContainText('Hello from browser 1!', { timeout: 30000 });

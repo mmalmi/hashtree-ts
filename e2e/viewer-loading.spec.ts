@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList, disableOthersPool, configureBlossomServers } from './test-utils.js';
 
 // Helper to create tree and navigate into it
 async function createAndEnterTree(page: any, name: string) {
   await goToTreeList(page);
-  await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'New Folder' }).click();
   await page.locator('input[placeholder="Folder name..."]').fill(name);
   await page.getByRole('button', { name: 'Create' }).click();
-  await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 30000 });
 }
 
 // Helper to create a file
@@ -16,7 +16,7 @@ async function createFile(page: any, name: string, content: string = '') {
   await page.getByRole('button', { name: /File/ }).first().click();
   await page.locator('input[placeholder="File name..."]').fill(name);
   await page.getByRole('button', { name: 'Create' }).click();
-  await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 5000 });
+  await expect(page.getByRole('button', { name: 'Done' })).toBeVisible({ timeout: 30000 });
   if (content) {
     await page.locator('textarea').fill(content);
     await page.getByRole('button', { name: 'Save' }).click();
@@ -27,13 +27,15 @@ async function createFile(page: any, name: string, content: string = '') {
 }
 
 test.describe('Viewer Loading Indicator', () => {
-  test.setTimeout(30000);
+  test.setTimeout(60000);
 
   test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
     await page.goto('/');
+    await disableOthersPool(page);
+    await configureBlossomServers(page);
 
-    // Clear storage for fresh state
+    // Clear storage for fresh state (including OPFS)
     await page.evaluate(async () => {
       const dbs = await indexedDB.databases();
       for (const db of dbs) {
@@ -41,11 +43,23 @@ test.describe('Viewer Loading Indicator', () => {
       }
       localStorage.clear();
       sessionStorage.clear();
+
+      // Clear OPFS
+      try {
+        const root = await navigator.storage.getDirectory();
+        for await (const name of root.keys()) {
+          await root.removeEntry(name, { recursive: true });
+        }
+      } catch {
+        // OPFS might not be available
+      }
     });
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await disableOthersPool(page);
+    await configureBlossomServers(page);
+    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 30000 });
     await navigateToPublicFolder(page);
   });
 

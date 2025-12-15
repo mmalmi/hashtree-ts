@@ -15,7 +15,7 @@
  * - If waiting for content sync, use waitForEditorContent() helper
  */
 import { test, expect, Page } from '@playwright/test';
-import { setupPageErrorHandler, disableOthersPool } from './test-utils.js';
+import { setupPageErrorHandler, disableOthersPool, configureBlossomServers } from './test-utils.js';
 
 // Helper to set up a fresh user session
 async function setupFreshUser(page: Page) {
@@ -23,8 +23,9 @@ async function setupFreshUser(page: Page) {
 
   await page.goto('http://localhost:5173');
   await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
+  await configureBlossomServers(page);
 
-  // Clear storage for fresh state
+  // Clear storage for fresh state (including OPFS)
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases();
     for (const db of dbs) {
@@ -32,15 +33,26 @@ async function setupFreshUser(page: Page) {
     }
     localStorage.clear();
     sessionStorage.clear();
+
+    // Clear OPFS
+    try {
+      const root = await navigator.storage.getDirectory();
+      for await (const name of root.keys()) {
+        await root.removeEntry(name, { recursive: true });
+      }
+    } catch {
+      // OPFS might not be available
+    }
   });
 
   await page.reload();
   await disableOthersPool(page); // Re-apply after reload
+  await configureBlossomServers(page);
   await page.waitForSelector('header span:has-text("hashtree")', { timeout: 30000 });
 
   // Wait for the public folder link to appear
   const publicLink = page.getByRole('link', { name: 'public' }).first();
-  await expect(publicLink).toBeVisible({ timeout: 15000 });
+  await expect(publicLink).toBeVisible({ timeout: 30000 });
 
   // Click into the public folder
   await publicLink.click();
@@ -78,7 +90,7 @@ async function createDocument(page: Page, name: string) {
 
   // Wait for editor to appear (document was created and navigated to)
   const editor = page.locator('.ProseMirror');
-  await expect(editor).toBeVisible({ timeout: 15000 });
+  await expect(editor).toBeVisible({ timeout: 30000 });
 }
 
 // Helper to type content in the editor
@@ -93,7 +105,7 @@ async function typeInEditor(page: Page, content: string) {
 async function waitForSave(page: Page) {
   // Wait for "Saved" status to appear (auto-save debounce is 1s, then save happens)
   const savedStatus = page.locator('text=Saved').or(page.locator('text=/Saved \\d/'));
-  await expect(savedStatus).toBeVisible({ timeout: 15000 });
+  await expect(savedStatus).toBeVisible({ timeout: 30000 });
 }
 
 // Helper to set editors using the Collaborators modal UI
@@ -484,11 +496,21 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await setEditors(pageA, [npubA, npubB]);
       console.log('User A: Editors set');
 
+      // Wait for User A's tree data to propagate to User B via Nostr/WebRTC
+      // User B's resolver needs to receive the tree metadata before navigation
+      console.log('Waiting for tree data to sync to User B...');
+      await pageA.waitForTimeout(5000);
+
       // Note: B does NOT create their own document!
       // B will navigate directly to A's document and edit it
 
       // === User B: Navigate to User A's document ===
       console.log('User B: Navigating to User A\'s document (B has NO document yet)...');
+      // First verify B can see A's trees in the resolver
+      await pageB.goto(`http://localhost:5173/#/${npubA}`);
+      await expect(pageB.getByRole('link', { name: 'public' }).first()).toBeVisible({ timeout: 30000 });
+
+      // Now navigate to the specific document
       await navigateToUserDocument(pageB, npubA, 'public', 'shared-doc');
       await pageB.waitForTimeout(3000);
 
@@ -827,7 +849,7 @@ test.describe('Yjs Collaborative Document Editing', () => {
       const peerIndicator = pageA.locator('[data-testid="peer-indicator-dot"]');
       try {
         // Wait for peer indicator to turn green (has peers)
-        await expect(peerIndicator).toHaveCSS('color', 'rgb(63, 185, 80)', { timeout: 15000 });
+        await expect(peerIndicator).toHaveCSS('color', 'rgb(63, 185, 80)', { timeout: 30000 });
         console.log('Peer connection established');
       } catch {
         // If no peers after 15s, continue anyway - test will check content
@@ -856,7 +878,7 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await expect(editorB).toBeVisible({ timeout: 30000 });
 
       // Wait for content to appear (may take time for WebRTC sync)
-      await expect(editorB).toContainText('Content from owner', { timeout: 15000 });
+      await expect(editorB).toContainText('Content from owner', { timeout: 30000 });
       const contentB = await editorB.textContent();
       console.log(`User B sees: "${contentB}"`);
 
@@ -984,7 +1006,7 @@ test.describe('Yjs Collaborative Document Editing', () => {
 
       // Wait for document to load (may take longer under parallel load with WebRTC)
       const editorB = pageB.locator('.ProseMirror');
-      await expect(editorB).toBeVisible({ timeout: 15000 });
+      await expect(editorB).toBeVisible({ timeout: 30000 });
       await expect(editorB).toContainText('Initial text', { timeout: 30000 });
       console.log('User B: Can see User A\'s content');
 

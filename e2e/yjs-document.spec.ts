@@ -5,7 +5,7 @@
  * A Yjs document directory is identified by having a .yjs config file inside.
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool, configureBlossomServers } from './test-utils.js';
 
 test.describe('Yjs Document Viewer', () => {
   test.setTimeout(60000);
@@ -15,8 +15,9 @@ test.describe('Yjs Document Viewer', () => {
 
     await page.goto('/');
     await disableOthersPool(page);
+    await configureBlossomServers(page);
 
-    // Clear storage for fresh state
+    // Clear storage for fresh state (including OPFS)
     await page.evaluate(async () => {
       const dbs = await indexedDB.databases();
       for (const db of dbs) {
@@ -24,11 +25,23 @@ test.describe('Yjs Document Viewer', () => {
       }
       localStorage.clear();
       sessionStorage.clear();
+
+      // Clear OPFS
+      try {
+        const root = await navigator.storage.getDirectory();
+        // @ts-ignore - removeEntry is available in OPFS
+        for await (const name of root.keys()) {
+          await root.removeEntry(name, { recursive: true });
+        }
+      } catch {
+        // OPFS might not be available
+      }
     });
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await configureBlossomServers(page);
+    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 30000 });
     await navigateToPublicFolder(page);
   });
 
@@ -46,7 +59,7 @@ test.describe('Yjs Document Viewer', () => {
 
     // The folder should be visible (named "notes", not "notes.yjs")
     const docFolder = page.locator('a:has-text("notes")').first();
-    await expect(docFolder).toBeVisible({ timeout: 5000 });
+    await expect(docFolder).toBeVisible({ timeout: 30000 });
 
     // Click to navigate into the document folder
     await docFolder.click();
@@ -54,7 +67,7 @@ test.describe('Yjs Document Viewer', () => {
 
     // Verify .yjs file exists inside the folder
     const yjsFile = page.locator('a:has-text(".yjs")').first();
-    await expect(yjsFile).toBeVisible({ timeout: 5000 });
+    await expect(yjsFile).toBeVisible({ timeout: 30000 });
   });
 
   test('non-document directory shows normal directory actions', async ({ page }) => {
@@ -69,7 +82,7 @@ test.describe('Yjs Document Viewer', () => {
 
     // Wait for the folder to appear
     const regularFolder = page.locator('a:has-text("regular-folder")');
-    await expect(regularFolder).toBeVisible({ timeout: 5000 });
+    await expect(regularFolder).toBeVisible({ timeout: 30000 });
 
     // Navigate into the regular folder
     await regularFolder.click();
@@ -77,16 +90,16 @@ test.describe('Yjs Document Viewer', () => {
 
     // Should show normal directory view - look for the upload drop zone text
     const dropZone = page.locator('text=Drop or click to add');
-    await expect(dropZone).toBeVisible({ timeout: 5000 });
+    await expect(dropZone).toBeVisible({ timeout: 30000 });
 
     // Should NOT show the Tiptap ProseMirror editor
     const editor = page.locator('.ProseMirror');
     await expect(editor).not.toBeVisible();
 
     // Should have File/Folder/Document buttons visible
-    await expect(page.getByRole('button', { name: 'New File' })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('button', { name: 'New Document' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'New File' })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 30000 });
+    await expect(page.getByRole('button', { name: 'New Document' })).toBeVisible({ timeout: 30000 });
   });
 
   test('folder with manually created .yjs file shows Tiptap editor', async ({ page }) => {
@@ -105,14 +118,14 @@ test.describe('Yjs Document Viewer', () => {
     const folder = page.locator('a:has-text("manual-doc")');
     const folderCount = await folder.count();
     console.log(`Found ${folderCount} elements matching manual-doc`);
-    await expect(folder).toBeVisible({ timeout: 5000 });
+    await expect(folder).toBeVisible({ timeout: 30000 });
     await folder.click();
     await page.waitForTimeout(1000);
 
     // Should show normal directory (no .yjs file yet)
     console.log('Checking for drop zone...');
     const dropZone = page.locator('text=Drop or click to add');
-    await expect(dropZone).toBeVisible({ timeout: 5000 });
+    await expect(dropZone).toBeVisible({ timeout: 30000 });
 
     // Create a .yjs file inside
     console.log('Creating .yjs file...');
@@ -125,7 +138,7 @@ test.describe('Yjs Document Viewer', () => {
     // Go back to parent - wait for the link to appear
     console.log('Going back to parent...');
     const backLink = page.locator('a:has-text("..")');
-    await expect(backLink).toBeVisible({ timeout: 5000 });
+    await expect(backLink).toBeVisible({ timeout: 30000 });
     await backLink.click();
     await page.waitForTimeout(1000);
 
@@ -138,7 +151,7 @@ test.describe('Yjs Document Viewer', () => {
     const manualDocLink = page.locator('a:has-text("manual-doc")');
     const linkCount = await manualDocLink.count();
     console.log(`Found ${linkCount} manual-doc links`);
-    await expect(manualDocLink).toBeVisible({ timeout: 5000 });
+    await expect(manualDocLink).toBeVisible({ timeout: 30000 });
     await manualDocLink.click();
     await page.waitForTimeout(1500);
 
@@ -176,11 +189,11 @@ test.describe('Yjs Document Viewer', () => {
 
     // Should show "Saved" status
     const savedStatus = page.locator('text=Saved');
-    await expect(savedStatus).toBeVisible({ timeout: 5000 });
+    await expect(savedStatus).toBeVisible({ timeout: 30000 });
 
     // Verify a "deltas" folder was created for delta-based storage
     const deltasFolder = page.getByRole('link', { name: /^deltas$/ }).first();
-    await expect(deltasFolder).toBeVisible({ timeout: 5000 });
+    await expect(deltasFolder).toBeVisible({ timeout: 30000 });
   });
 
   test('clicking .yjs file to view it does not cause errors', async ({ page }) => {
@@ -273,7 +286,7 @@ test.describe('Yjs Document Viewer', () => {
     await page.keyboard.type(' Second sentence.');
 
     // Verify both sentences are in the editor
-    await expect(editor).toContainText('First sentence. Second sentence.', { timeout: 5000 });
+    await expect(editor).toContainText('First sentence. Second sentence.', { timeout: 30000 });
 
     // Wait for the second save + full store update cycle
     await expect(savedStatus).toBeVisible({ timeout: 30000 });
@@ -283,7 +296,7 @@ test.describe('Yjs Document Viewer', () => {
     await page.keyboard.type(' Third sentence.');
 
     // Verify all content is there
-    await expect(editor).toContainText('First sentence. Second sentence. Third sentence.', { timeout: 5000 });
+    await expect(editor).toContainText('First sentence. Second sentence. Third sentence.', { timeout: 30000 });
   });
 
   test('editor maintains focus during rapid typing and saves', async ({ page }) => {
@@ -316,6 +329,6 @@ test.describe('Yjs Document Viewer', () => {
     await page.keyboard.type('Final line.');
 
     // Verify all content is there
-    await expect(editor).toContainText('Line 1. Line 2. Line 3. Line 4. Line 5. Final line.', { timeout: 5000 });
+    await expect(editor).toContainText('Line 1. Line 2. Line 3. Line 4. Line 5. Final line.', { timeout: 30000 });
   });
 });

@@ -8,7 +8,7 @@
  * 4. User B can access A's tree content offline
  */
 import { test, expect, Page } from '@playwright/test';
-import { setupPageErrorHandler, disableOthersPool } from './test-utils.js';
+import { setupPageErrorHandler, disableOthersPool, configureBlossomServers } from './test-utils.js';
 
 // Helper to set up a fresh user session
 async function setupFreshUser(page: Page) {
@@ -16,8 +16,9 @@ async function setupFreshUser(page: Page) {
 
   await page.goto('http://localhost:5173');
   await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
+  await configureBlossomServers(page);
 
-  // Clear storage for fresh state
+  // Clear storage for fresh state (including OPFS)
   await page.evaluate(async () => {
     const dbs = await indexedDB.databases();
     for (const db of dbs) {
@@ -25,10 +26,21 @@ async function setupFreshUser(page: Page) {
     }
     localStorage.clear();
     sessionStorage.clear();
+
+    // Clear OPFS
+    try {
+      const root = await navigator.storage.getDirectory();
+      for await (const name of root.keys()) {
+        await root.removeEntry(name, { recursive: true });
+      }
+    } catch {
+      // OPFS might not be available
+    }
   });
 
   await page.reload();
   await disableOthersPool(page); // Re-apply after reload
+  await configureBlossomServers(page);
   await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
 
   // Wait for the public folder link to appear
@@ -196,6 +208,9 @@ test.describe('Background Sync', () => {
       const testContentSize = Buffer.from(testContent).length; // ~61 bytes
       await uploadFile(pageA, 'sync-test.txt', testContent);
       console.log(`User A: File uploaded (${testContentSize} bytes content)`);
+
+      // Wait for tree data to be published to Nostr
+      await pageA.waitForTimeout(3000);
 
       // Get A's storage stats
       const statsA = await getStorageStats(pageA);

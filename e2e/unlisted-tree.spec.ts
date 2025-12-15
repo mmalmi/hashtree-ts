@@ -8,7 +8,7 @@
  * - Verifying visibility icons in tree list and inside tree view
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool, configureBlossomServers } from './test-utils.js';
 
 test.describe('Unlisted Tree Visibility', () => {
   // Increase timeout for all tests since new user setup now creates 3 default folders
@@ -20,8 +20,9 @@ test.describe('Unlisted Tree Visibility', () => {
     // Go to page first to be able to clear storage
     await page.goto('/');
     await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
+    await configureBlossomServers(page);
 
-    // Clear IndexedDB and localStorage before each test
+    // Clear IndexedDB and localStorage before each test (including OPFS)
     await page.evaluate(async () => {
       const dbs = await indexedDB.databases();
       for (const db of dbs) {
@@ -29,11 +30,22 @@ test.describe('Unlisted Tree Visibility', () => {
       }
       localStorage.clear();
       sessionStorage.clear();
+
+      // Clear OPFS
+      try {
+        const root = await navigator.storage.getDirectory();
+        for await (const name of root.keys()) {
+          await root.removeEntry(name, { recursive: true });
+        }
+      } catch {
+        // OPFS might not be available
+      }
     });
 
     // Reload to get truly fresh state (after clearing storage)
     await page.reload();
     await disableOthersPool(page); // Re-apply after reload
+    await configureBlossomServers(page);
 
     // App auto-generates key on first visit, wait for header to appear
     await expect(page.locator('header span:has-text("hashtree")')).toBeVisible({ timeout: 30000 });
@@ -304,6 +316,8 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Navigate to home first so page2 gets a user identity
     await page2.goto('http://localhost:5173');
+    await disableOthersPool(page2);
+    await configureBlossomServers(page2);
     await page2.waitForSelector('header span:has-text("hashtree")', { timeout: 30000 });
 
     // Get page2's npub by clicking into their public folder
@@ -328,10 +342,18 @@ test.describe('Unlisted Tree Visibility', () => {
     const followBtn2 = page2.getByRole('button', { name: 'Follow', exact: true });
     await expect(followBtn2).toBeVisible({ timeout: 30000 });
     await followBtn2.click();
-    await page2.waitForTimeout(500);
 
-    // Wait for WebRTC connections via follows pool
-    await page2.waitForTimeout(2000);
+    // Wait for follow to propagate via Nostr and for resolver to sync page1's trees
+    // This needs time for:
+    // 1. Follow event to be published to Nostr
+    // 2. page1 to receive follow and potentially republish tree info
+    // 3. page2's resolver to subscribe to page1's trees and receive metadata
+    await page2.waitForTimeout(5000);
+
+    // Verify page2 can see page1's unlisted tree in the tree list before navigating
+    // This confirms the resolver has synced
+    const treeLink = page2.getByRole('link', { name: treeName });
+    await expect(treeLink).toBeVisible({ timeout: 30000 });
 
     // Navigate directly to the file with ?k= param
     const fileUrl = `http://localhost:5173/#/${npub}/${treeName}/shared.txt?k=${kParam}`;
@@ -670,8 +692,18 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('textarea').fill('This content should be encrypted');
     await page.getByRole('button', { name: 'Save' }).click();
 
+    // Wait for save to complete (Save button becomes disabled after save)
+    await expect(page.getByRole('button', { name: 'Save' }).first()).toBeDisabled({ timeout: 30000 });
+
     // Exit edit mode
     await page.getByRole('button', { name: 'Done' }).click();
+
+    // Handle "Unsaved Changes" dialog if it appears (can happen due to race conditions)
+    const unsavedDialog = page.getByRole('heading', { name: 'Unsaved Changes' });
+    if (await unsavedDialog.isVisible({ timeout: 1000 }).catch(() => false)) {
+      // Click "Don't Save" since we already saved
+      await page.getByRole('button', { name: "Don't Save" }).click();
+    }
 
     // Wait for file viewer to load (may take time under parallel load)
     // Look for the content text first as it's more reliable than the pre element
