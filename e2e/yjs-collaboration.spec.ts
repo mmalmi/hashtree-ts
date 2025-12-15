@@ -223,14 +223,27 @@ test.describe('Yjs Collaborative Document Editing', () => {
       const npubB = await getNpub(pageB);
       console.log(`User B npub: ${npubB.slice(0, 20)}...`);
 
-      // === Users follow each other (required for Nostr sync) ===
+      // === Users follow each other (required for Nostr sync and WebRTC via follows pool) ===
       console.log('User A: Following User B...');
       await followUser(pageA, npubB);
       console.log('User B: Following User A...');
       await followUser(pageB, npubA);
 
-      // Wait for WebRTC connection to establish via follows pool
-      await pageA.waitForTimeout(3000);
+      // Wait for WebRTC connection with data channel open
+      console.log('Waiting for WebRTC connection...');
+      for (let i = 0; i < 30; i++) {
+        await pageA.waitForTimeout(500);
+        const peers = await pageA.evaluate(() => {
+          const store = (window as unknown as { webrtcStore?: { getPeers: () => { isConnected?: boolean }[] } }).webrtcStore;
+          if (!store?.getPeers) return [];
+          return store.getPeers();
+        });
+        const connected = peers.filter((p: { isConnected?: boolean }) => p.isConnected);
+        if (connected.length > 0) {
+          console.log(`WebRTC connected after ${(i + 1) * 0.5}s`);
+          break;
+        }
+      }
 
       // Navigate back to public folders
       await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
@@ -316,14 +329,27 @@ test.describe('Yjs Collaborative Document Editing', () => {
       const npubB = await getNpub(pageB);
       console.log(`User B npub: ${npubB.slice(0, 20)}...`);
 
-      // === Users follow each other (required for Nostr sync) ===
+      // === Users follow each other (required for Nostr sync and WebRTC via follows pool) ===
       console.log('User A: Following User B...');
       await followUser(pageA, npubB);
       console.log('User B: Following User A...');
       await followUser(pageB, npubA);
 
-      // Wait for WebRTC connection to establish via follows pool
-      await pageA.waitForTimeout(3000);
+      // Wait for WebRTC connection with data channel open
+      console.log('Waiting for WebRTC connection...');
+      for (let i = 0; i < 30; i++) {
+        await pageA.waitForTimeout(500);
+        const peers = await pageA.evaluate(() => {
+          const store = (window as unknown as { webrtcStore?: { getPeers: () => { isConnected?: boolean }[] } }).webrtcStore;
+          if (!store?.getPeers) return [];
+          return store.getPeers();
+        });
+        const connected = peers.filter((p: { isConnected?: boolean }) => p.isConnected);
+        if (connected.length > 0) {
+          console.log(`WebRTC connected after ${(i + 1) * 0.5}s`);
+          break;
+        }
+      }
 
       // Navigate back to public folders
       await pageA.goto(`http://localhost:5173/#/${npubA}/public`);

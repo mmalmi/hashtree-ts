@@ -27,6 +27,8 @@ async function createFile(page: any, name: string, content: string = '') {
 }
 
 test.describe('Recently Visited', () => {
+  // Serial mode: tests clear IndexedDB and share state
+  test.describe.configure({ mode: 'serial' });
   test.setTimeout(60000);
 
   test.beforeEach(async ({ page }) => {

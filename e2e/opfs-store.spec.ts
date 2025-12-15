@@ -13,6 +13,9 @@ import { disableOthersPool } from './test-utils.js';
 test.setTimeout(30000);
 
 test.describe('OpfsStore', () => {
+  // Serial mode: tests share OPFS and would interfere in parallel
+  test.describe.configure({ mode: 'serial' });
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
@@ -260,6 +263,7 @@ test.describe('OpfsStore', () => {
       // Retrieve with new instance
       const store2 = new OpfsStore('persist-test');
       const retrieved = await store2.get(hash);
+      await store2.close(); // Close store to release OPFS locks
 
       return retrieved ? Array.from(retrieved) : null;
     });
@@ -282,6 +286,10 @@ test.describe('OpfsStore', () => {
 
       const existsInStore1 = await store1.has(hash);
       const existsInStore2 = await store2.has(hash);
+
+      // Close stores to release OPFS locks
+      await store1.close();
+      await store2.close();
 
       return { existsInStore1, existsInStore2 };
     });
@@ -306,15 +314,21 @@ test.describe('OpfsStore', () => {
       await store.put(hash, data);
       const retrieved = await store.get(hash);
 
-      if (!retrieved) return { success: false, sizeMatch: false };
+      if (!retrieved) {
+        await store.close();
+        return { success: false, sizeMatch: false };
+      }
 
       // Verify size and some sample values
-      return {
+      const result = {
         success: true,
         sizeMatch: retrieved.length === data.length,
         firstByte: retrieved[0],
         lastByte: retrieved[retrieved.length - 1],
       };
+
+      await store.close(); // Release OPFS locks
+      return result;
     });
 
     expect(result.success).toBe(true);
