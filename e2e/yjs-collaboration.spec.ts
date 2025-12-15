@@ -963,10 +963,10 @@ test.describe('Yjs Collaborative Document Editing', () => {
       console.log('User B: Navigating to User A\'s document...');
       await navigateToUserDocument(pageB, npubA, 'public', 'collab-doc');
 
-      // Wait for document to load
+      // Wait for document to load (may take longer under parallel load with WebRTC)
       const editorB = pageB.locator('.ProseMirror');
-      await expect(editorB).toBeVisible({ timeout: 5000 });
-      await expect(editorB).toContainText('Initial text', { timeout: 5000 });
+      await expect(editorB).toBeVisible({ timeout: 15000 });
+      await expect(editorB).toContainText('Initial text', { timeout: 10000 });
       console.log('User B: Can see User A\'s content');
 
       // IMPORTANT: Wait for sync after each edit to avoid race conditions
