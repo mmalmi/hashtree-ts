@@ -39,6 +39,7 @@
     loadCollaboratorDeltas,
     setupCollaboratorSubscriptions,
   } from '../../lib/yjs';
+  import { createThrottledCapture, getThumbnailFilename } from '../../lib/yjs/thumbnail';
 
   interface Props {
     dirCid: CID;
@@ -62,6 +63,9 @@
 
   // Image cache for blob URLs
   let imageCache: ImageCache = createImageCache();
+
+  // Throttled thumbnail capture (captures at most once per 30 seconds)
+  const captureThrottled = createThrottledCapture(30000);
 
   // Comments state
   let commentsStore: CommentsStore | undefined = $state();
@@ -353,9 +357,43 @@
 
       saveStatus = 'saved';
       lastSaved = new Date();
+
+      // Capture and save thumbnail (throttled, non-blocking, deferred to idle time)
+      if (editorElement && isOwnTree) {
+        requestIdleCallback(() => captureThumbnail(newRootCid), { timeout: 5000 });
+      }
     } catch (e) {
       console.error('[YjsDoc] Failed to save state snapshot:', e);
       saveStatus = 'error';
+    }
+  }
+
+  // Capture and save thumbnail to document directory (fire-and-forget)
+  async function captureThumbnail(currentRootCid: CID) {
+    if (!editorElement || !userNpub || !route.treeName) return;
+
+    try {
+      const thumbnailData = await captureThrottled(editorElement);
+      if (!thumbnailData) return; // Throttled or failed
+
+      const tree = getTree();
+      const currentPath = route.path;
+
+      // Save thumbnail as .thumbnail.png in the document directory
+      const { cid: thumbCid, size: thumbSize } = await tree.putFile(thumbnailData);
+      const newRootCid = await tree.setEntry(
+        currentRootCid,
+        currentPath,
+        getThumbnailFilename(),
+        thumbCid,
+        thumbSize,
+        LinkType.Blob
+      );
+
+      // Publish the update with thumbnail
+      autosaveIfOwn(newRootCid);
+    } catch (e) {
+      // Silently fail - thumbnail is not critical
     }
   }
 

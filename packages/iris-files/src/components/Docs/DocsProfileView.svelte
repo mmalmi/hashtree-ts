@@ -299,6 +299,8 @@
           href="#/{npub}/{doc.name}{linkKeySuffix}"
           displayName={doc.displayName}
           ownerPubkey={pubkeyHex}
+          ownerNpub={npub}
+          treeName={doc.name}
           visibility={doc.visibility}
         />
       {/each}

@@ -25,6 +25,8 @@
         key: r.path,
         displayName: r.treeName ? r.treeName.slice(5) : r.label,
         ownerPubkey: r.npub ? npubToPubkey(r.npub) : null,
+        ownerNpub: r.npub,
+        treeName: r.treeName,
         visibility: r.visibility,
         href: buildRecentHref(r),
         timestamp: r.timestamp,
@@ -51,6 +53,8 @@
         key: `/${userNpub}/${t.name}`,
         displayName: t.name.slice(5),
         ownerPubkey: userPubkey,
+        ownerNpub: userNpub,
+        treeName: t.name,
         visibility: t.visibility,
         href: `#/${userNpub}/${t.name}${t.linkKey ? `?k=${t.linkKey}` : ''}`,
         timestamp: 0, // Own docs don't have timestamp, will be sorted after recents
@@ -127,6 +131,8 @@
           href={doc.href}
           displayName={doc.displayName}
           ownerPubkey={doc.ownerPubkey}
+          ownerNpub={doc.ownerNpub}
+          treeName={doc.treeName}
           visibility={doc.visibility}
         />
       {/each}
