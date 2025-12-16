@@ -17,7 +17,7 @@
 
 <a
   {href}
-  class="aspect-[1/1.414] bg-surface-1 rounded-lg border border-surface-3 hover:border-accent transition-colors no-underline flex flex-col"
+  class="aspect-[1/1.414] bg-surface-1 rounded-lg border border-surface-3 hover:border-accent hover:shadow-md transition-all no-underline flex flex-col"
 >
   <div class="flex-1 flex items-center justify-center">
     <span class="i-lucide-file-text text-4xl text-accent"></span>
