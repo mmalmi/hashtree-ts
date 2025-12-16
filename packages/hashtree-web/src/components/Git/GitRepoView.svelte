@@ -231,6 +231,17 @@
   // Get git root path from route (for subdirectory operations)
   let gitRootPath = $derived(route.gitRoot);
 
+  // Full repo path for URLs (treeName + path to git root)
+  // e.g., if treeName is "link" and git root is at "link/my-repo", repoPath is "link/my-repo"
+  let repoPath = $derived.by(() => {
+    const gitPath = gitRootPath !== null
+      ? (gitRootPath === '' ? [] : gitRootPath.split('/'))
+      : currentPath;
+    if (!route.treeName) return '';
+    if (gitPath.length === 0) return route.treeName;
+    return `${route.treeName}/${gitPath.join('/')}`;
+  });
+
   // Handle branch selection - checkout the branch
   async function handleBranchSelect(branch: string) {
     // Skip if already on this branch
@@ -411,7 +422,7 @@
       {canEdit}
       dirCid={gitCid}
       npub={route.npub}
-      treeName={route.treeName}
+      {repoPath}
       onBranchSelect={handleBranchSelect}
     />
 

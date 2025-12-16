@@ -42,10 +42,10 @@
   let baseTreeName = $derived(repoName.split('/')[0]);
   let currentTree = $derived(trees.find(t => t.name === baseTreeName));
 
-  // Build back URL (to compare view)
+  // Build back URL (to compare view) - use repoName which includes full path to git repo
   let backUrl = $derived.by(() => {
     const linkKeySuffix = route.linkKey ? `&k=${route.linkKey}` : '';
-    return `#/${npub}/${route.treeName}?compare=${baseBranch}...${headBranch}${linkKeySuffix}`;
+    return `#/${npub}/${repoName}?compare=${baseBranch}...${headBranch}${linkKeySuffix}`;
   });
 
   // Check if current user can merge (owns the repo)

@@ -18,11 +18,12 @@
     canEdit: boolean;
     dirCid: CID;
     npub?: string;
-    treeName?: string;
+    /** Full path to git repo (treeName + subdirectory path if any) */
+    repoPath?: string;
     onBranchSelect?: (branch: string) => void;
   }
 
-  let { branches, currentBranch, branchDisplay, canEdit, dirCid, npub, treeName, onBranchSelect }: Props = $props();
+  let { branches, currentBranch, branchDisplay, canEdit, dirCid, npub, repoPath, onBranchSelect }: Props = $props();
 
   let route = $derived($routeStore);
 
@@ -43,9 +44,9 @@
 
   // Navigate to compare view
   function handleCompareSelect(targetBranch: string) {
-    if (!currentBranch || !npub || !treeName) return;
+    if (!currentBranch || !npub || !repoPath) return;
     const linkKeySuffix = route.linkKey ? `&k=${route.linkKey}` : '';
-    navigate(`#/${npub}/${treeName}?compare=${currentBranch}...${targetBranch}${linkKeySuffix}`);
+    navigate(`#/${npub}/${repoPath}?compare=${currentBranch}...${targetBranch}${linkKeySuffix}`);
     isDropdownOpen = false;
     showCompareSelect = false;
   }
@@ -143,7 +144,7 @@
     </button>
   {/each}
   <!-- Compare branches option (when there are multiple branches and we have navigation info) -->
-  {#if branches.length > 1 && npub && treeName && currentBranch}
+  {#if branches.length > 1 && npub && repoPath && currentBranch}
     {#if showCompareSelect}
       <div class="px-3 py-2 bg-surface-2 b-t-1 b-t-solid b-t-surface-3">
         <div class="text-xs text-text-3 mb-2">Compare {currentBranch} with:</div>

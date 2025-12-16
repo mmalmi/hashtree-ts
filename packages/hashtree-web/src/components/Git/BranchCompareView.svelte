@@ -42,13 +42,10 @@
   let baseTreeName = $derived(repoName.split('/')[0]);
   let currentTree = $derived(trees.find(t => t.name === baseTreeName));
 
-  // Build back URL (to code tab)
+  // Build back URL (to code tab) - use repoName which includes full path to git repo
   let backUrl = $derived.by(() => {
     const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
-    if (currentPath.length > 0) {
-      return `#/${npub}/${route.treeName}/${currentPath.join('/')}${linkKeySuffix}`;
-    }
-    return `#/${npub}/${route.treeName}${linkKeySuffix}`;
+    return `#/${npub}/${repoName}${linkKeySuffix}`;
   });
 
   // Check if current user can merge (owns the repo)
@@ -140,7 +137,7 @@
   // Navigate to merge view
   function goToMerge() {
     const linkKeySuffix = route.linkKey ? `&k=${route.linkKey}` : '';
-    navigate(`#/${npub}/${route.treeName}?merge=1&base=${baseBranch}&head=${headBranch}${linkKeySuffix}`);
+    navigate(`#/${npub}/${repoName}?merge=1&base=${baseBranch}&head=${headBranch}${linkKeySuffix}`);
   }
 </script>
 

@@ -41,13 +41,10 @@
   let baseTreeName = $derived(repoName.split('/')[0]);
   let currentTree = $derived(trees.find(t => t.name === baseTreeName));
 
-  // Build back URL (to code tab)
+  // Build back URL (to code tab) - use repoName which includes full path to git repo
   let backUrl = $derived.by(() => {
     const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
-    if (currentPath.length > 0) {
-      return `#/${npub}/${route.treeName}/${currentPath.join('/')}${linkKeySuffix}`;
-    }
-    return `#/${npub}/${route.treeName}${linkKeySuffix}`;
+    return `#/${npub}/${repoName}${linkKeySuffix}`;
   });
 
   // Get current directory name for header
