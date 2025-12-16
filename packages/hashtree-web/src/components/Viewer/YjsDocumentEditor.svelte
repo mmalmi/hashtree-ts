@@ -157,7 +157,8 @@
       userNpub,
       route.treeName,
       isOwnTree,
-      imageCache
+      imageCache,
+      isOwnTree ? undefined : (visibility as import('hashtree').TreeVisibility)
     );
   }
 
@@ -339,11 +340,13 @@
       } else {
         // Editing someone else's document - save to our own tree
         // Use updateLocalRootCacheHex which triggers throttled publish to Nostr
+        // Pass visibility so our copy uses the same visibility (especially for unlisted with linkKey)
         updateLocalRootCacheHex(
           userNpub,
           route.treeName!,
           toHex(newRootCid.hash),
-          newRootCid.key ? toHex(newRootCid.key) : undefined
+          newRootCid.key ? toHex(newRootCid.key) : undefined,
+          (visibility as import('hashtree').TreeVisibility) || 'public'
         );
       }
 

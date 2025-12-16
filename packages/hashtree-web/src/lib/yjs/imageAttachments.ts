@@ -124,7 +124,8 @@ export async function saveImageToTree(
   userNpub: string,
   treeName: string,
   isOwnTree: boolean,
-  cache: ImageCache
+  cache: ImageCache,
+  visibility?: import('hashtree').TreeVisibility
 ): Promise<string | null> {
   const tree = getTree();
 
@@ -163,7 +164,8 @@ export async function saveImageToTree(
         userNpub,
         treeName,
         toHex(newRootCid.hash),
-        newRootCid.key ? toHex(newRootCid.key) : undefined
+        newRootCid.key ? toHex(newRootCid.key) : undefined,
+        visibility
       );
     }
 
