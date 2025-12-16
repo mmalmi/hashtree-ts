@@ -695,7 +695,7 @@
         {/if}
         {#if canEdit}
           <button onclick={() => openRenameModal(entryFromStore.name)} class="btn-ghost" data-testid="viewer-rename">Rename</button>
-          {#if isTextFile && !isHtml}
+          {#if isTextFile || isHtml}
             <button
               onclick={enterEditMode}
               class="btn-ghost"
