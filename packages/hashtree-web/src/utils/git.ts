@@ -36,6 +36,12 @@ const gitHeadCache = new LRUCache<string, string | null>(20);
  */
 const gitBranchesCache = new LRUCache<string, { branches: string[]; currentBranch: string | null }>(20);
 
+/**
+ * Cache for git status, keyed by git repo hash
+ */
+type GitStatusResult = { staged: string[]; unstaged: string[]; untracked: string[]; hasChanges: boolean };
+const gitStatusCache = new LRUCache<string, GitStatusResult>(20);
+
 export interface CloneOptions {
   url: string;
   /** Optional branch/ref to checkout (default: default branch) */
@@ -155,12 +161,23 @@ export async function getHead(rootCid: CID): Promise<string | null> {
 
 /**
  * Get git status (staged, unstaged, untracked files)
+ * Results are cached by git repo hash
  * Uses wasm-git (libgit2)
  */
 export async function getStatus(rootCid: CID) {
+  const cacheKey = toHex(rootCid.hash);
+
+  // Check cache first
+  const cached = gitStatusCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   try {
     const { getStatusWithWasmGit } = await import('./wasmGit');
-    return await getStatusWithWasmGit(rootCid);
+    const result = await getStatusWithWasmGit(rootCid);
+    gitStatusCache.set(cacheKey, result);
+    return result;
   } catch {
     return { staged: [], unstaged: [], untracked: [], hasChanges: false };
   }
