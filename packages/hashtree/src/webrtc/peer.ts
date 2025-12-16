@@ -96,6 +96,9 @@ export class Peer {
     fragmentsReceived: 0,
     fragmentTimeouts: 0,
     reassembliesCompleted: 0,
+    bytesSent: 0,
+    bytesReceived: 0,
+    bytesForwarded: 0,
   };
 
   // Fragment reassembly tracking
@@ -292,6 +295,7 @@ export class Peer {
         if (isValid) {
           pending.resolve(finalData);
           this.stats.responsesReceived++;
+          this.stats.bytesReceived += finalData.length;
         } else {
           pending.resolve(null);
           this.stats.receiveErrors++;
@@ -336,9 +340,9 @@ export class Peer {
       const data = await this.onForwardRequest(hash, this.peerId, forwardHTL);
 
       if (data) {
-        // Got it from another peer, send response
+        // Got it from another peer, send response (mark as forwarded)
         this.theirRequests.delete(hashKey);
-        this.sendResponse(hash, data);
+        this.sendResponse(hash, data, true);
         this.stats.responsesSent++;
         return;
       }
@@ -348,8 +352,14 @@ export class Peer {
     // Not found anywhere - stay silent, let requester timeout.
   }
 
-  private sendResponse(hash: Uint8Array, data: Uint8Array): void {
+  private sendResponse(hash: Uint8Array, data: Uint8Array, isForwarded = false): void {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
+
+    // Track bytes sent
+    this.stats.bytesSent += data.length;
+    if (isForwarded) {
+      this.stats.bytesForwarded += data.length;
+    }
 
     if (data.length <= FRAGMENT_SIZE) {
       // Small enough - send unfragmented (backward compatible)
@@ -521,6 +531,9 @@ export class Peer {
     fragmentsReceived: number;
     fragmentTimeouts: number;
     reassembliesCompleted: number;
+    bytesSent: number;
+    bytesReceived: number;
+    bytesForwarded: number;
   } {
     return { ...this.stats };
   }

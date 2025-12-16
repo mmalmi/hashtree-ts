@@ -87,6 +87,15 @@ export default defineConfig({
     reportCompressedSize: true,
     chunkSizeWarningLimit: 500,
     rollupOptions: {
+      // Externalize Tauri plugins for web builds - they're dynamically imported with isTauri() checks
+      external: [
+        '@tauri-apps/plugin-autostart',
+        '@tauri-apps/plugin-dialog',
+        '@tauri-apps/plugin-notification',
+        '@tauri-apps/plugin-opener',
+        '@tauri-apps/plugin-os',
+        '@tauri-apps/api',
+      ],
       onLog(level, log, handler) {
         if (log.code === 'CIRCULAR_DEPENDENCY') return;
         handler(level, log);

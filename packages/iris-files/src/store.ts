@@ -48,8 +48,18 @@ export interface PeerStatsInfo {
     responsesSent: number;
     responsesReceived: number;
     receiveErrors: number;
+    bytesSent: number;
+    bytesReceived: number;
+    bytesForwarded: number;
   };
 }
+
+// Bandwidth tracking (rolling 5-second window)
+const BANDWIDTH_WINDOW_MS = 5000;
+const BANDWIDTH_SAMPLE_INTERVAL_MS = 1000;
+let bandwidthSamples: { timestamp: number; bytesSent: number; bytesReceived: number }[] = [];
+let lastBytesSent = 0;
+let lastBytesReceived = 0;
 
 // WebSocket fallback status
 // App state store interface
@@ -64,6 +74,10 @@ interface AppState {
   webrtcStats: WebRTCStats | null;
   perPeerStats: Map<string, PeerStatsInfo>;
 
+  // Bandwidth (bytes per second, rolling average)
+  uploadBandwidth: number;
+  downloadBandwidth: number;
+
   // Storage stats
   stats: StorageStats;
 }
@@ -77,6 +91,8 @@ function createAppStore() {
     fallbackStoresCount: 0,
     webrtcStats: null,
     perPeerStats: new Map(),
+    uploadBandwidth: 0,
+    downloadBandwidth: 0,
     stats: { items: 0, bytes: 0 },
   });
 
@@ -103,7 +119,43 @@ function createAppStore() {
       webrtcStats: WebRTCStats | null,
       perPeerStats: Map<string, PeerStatsInfo>
     ) => {
-      update(state => ({ ...state, webrtcStats, perPeerStats }));
+      // Calculate bandwidth from rolling window
+      let uploadBandwidth = 0;
+      let downloadBandwidth = 0;
+
+      if (webrtcStats) {
+        const now = Date.now();
+        const currentBytesSent = webrtcStats.bytesSent;
+        const currentBytesReceived = webrtcStats.bytesReceived;
+
+        // Add new sample (delta since last)
+        if (lastBytesSent > 0 || lastBytesReceived > 0) {
+          bandwidthSamples.push({
+            timestamp: now,
+            bytesSent: currentBytesSent - lastBytesSent,
+            bytesReceived: currentBytesReceived - lastBytesReceived,
+          });
+        }
+
+        // Update last values
+        lastBytesSent = currentBytesSent;
+        lastBytesReceived = currentBytesReceived;
+
+        // Remove samples older than window
+        const cutoff = now - BANDWIDTH_WINDOW_MS;
+        bandwidthSamples = bandwidthSamples.filter(s => s.timestamp > cutoff);
+
+        // Calculate average bandwidth (bytes per second)
+        if (bandwidthSamples.length > 0) {
+          const totalSent = bandwidthSamples.reduce((sum, s) => sum + s.bytesSent, 0);
+          const totalReceived = bandwidthSamples.reduce((sum, s) => sum + s.bytesReceived, 0);
+          const windowSeconds = BANDWIDTH_WINDOW_MS / 1000;
+          uploadBandwidth = totalSent / windowSeconds;
+          downloadBandwidth = totalReceived / windowSeconds;
+        }
+      }
+
+      update(state => ({ ...state, webrtcStats, perPeerStats, uploadBandwidth, downloadBandwidth }));
     },
 
     setStats: (stats: StorageStats) => {
@@ -131,7 +183,16 @@ if (typeof window !== 'undefined') {
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
+
+// Format bandwidth (bytes per second)
+export function formatBandwidth(bytesPerSecond: number): string {
+  if (bytesPerSecond < 1) return '0 B/s';
+  if (bytesPerSecond < 1024) return `${Math.round(bytesPerSecond)} B/s`;
+  if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSecond / 1024 / 1024).toFixed(1)} MB/s`;
 }
 
 // Update storage stats from IDB

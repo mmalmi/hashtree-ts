@@ -6,7 +6,7 @@
   import { onMount } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { nostrStore, type RelayStatus, getNsec } from '../nostr';
-  import { appStore, formatBytes, updateStorageStats, refreshWebRTCStats } from '../store';
+  import { appStore, formatBytes, formatBandwidth, updateStorageStats, refreshWebRTCStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { syncedStorageStore, refreshSyncedStorage } from '../stores/chunkMetadata';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../stores/settings';
@@ -197,6 +197,8 @@
   let myPeerId = $derived(appState.myPeerId);
   let webrtcStats = $derived(appState.webrtcStats);
   let perPeerStats = $derived(appState.perPeerStats);
+  let uploadBandwidth = $derived(appState.uploadBandwidth);
+  let downloadBandwidth = $derived(appState.downloadBandwidth);
 
   // Load initial data on mount and refresh stats periodically
   onMount(() => {
@@ -521,6 +523,36 @@
       <!-- Aggregate stats -->
       {#if webrtcStats && isLoggedIn}
         <div class="bg-surface-2 rounded p-3 mb-3">
+          <!-- Bandwidth and transfer stats -->
+          <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-3 pb-3 border-b border-surface-3">
+            <div class="flex justify-between">
+              <span class="text-text-3">
+                <span class="i-lucide-arrow-up inline-block align-middle mr-1 text-success"></span>Upload
+              </span>
+              <span class="text-text-1 font-mono">{formatBandwidth(uploadBandwidth)}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-3">
+                <span class="i-lucide-arrow-down inline-block align-middle mr-1 text-accent"></span>Download
+              </span>
+              <span class="text-text-1 font-mono">{formatBandwidth(downloadBandwidth)}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-3">Sent</span>
+              <span class="text-text-1 font-mono">{formatBytes(webrtcStats.bytesSent)}</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-3">Received</span>
+              <span class="text-text-1 font-mono">{formatBytes(webrtcStats.bytesReceived)}</span>
+            </div>
+            {#if webrtcStats.bytesForwarded > 0}
+              <div class="flex justify-between col-span-2">
+                <span class="text-text-3">Forwarded</span>
+                <span class="text-text-1 font-mono">{formatBytes(webrtcStats.bytesForwarded)}</span>
+              </div>
+            {/if}
+          </div>
+          <!-- Request/response stats -->
           <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
             <div class="flex justify-between">
               <span class="text-text-3">Reqs sent</span>

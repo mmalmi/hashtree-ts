@@ -191,6 +191,16 @@ export interface WebRTCStats {
   fragmentsReceived: number;      // Fragment messages received
   fragmentTimeouts: number;       // Reassemblies that timed out (stall or total)
   reassembliesCompleted: number;  // Successful reassemblies
+  bytesSent: number;              // Total bytes sent (responses)
+  bytesReceived: number;          // Total bytes received (responses)
+  bytesForwarded: number;         // Bytes sent on behalf of forwarded requests (included in bytesSent)
+}
+
+// Bandwidth sample for rolling average calculation
+export interface BandwidthSample {
+  timestamp: number;
+  bytesSent: number;
+  bytesReceived: number;
 }
 
 // Fragment reassembly tracking

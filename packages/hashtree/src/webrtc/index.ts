@@ -18,4 +18,5 @@ export {
   type PeerClassifier,
   type PoolConfig,
   type WebRTCStats,
+  type BandwidthSample,
 } from './types.js';
