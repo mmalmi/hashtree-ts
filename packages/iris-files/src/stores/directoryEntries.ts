@@ -236,8 +236,8 @@ export const directoryEntriesStore = createGlobalDirectoryEntriesStore();
 
 // Expose test helper on window for E2E tests
 if (typeof window !== 'undefined') {
-  (window as any).__testSetDirectoryEntries = (entries: TreeEntry[]) => {
-    (directoryEntriesStore as any).__testSet({
+  window.__testSetDirectoryEntries = (entries: TreeEntry[]) => {
+    (directoryEntriesStore as { __testSet: (value: DirectoryEntriesState) => void }).__testSet({
       entries: sortEntries(entries),
       loading: false,
       isDirectory: true,

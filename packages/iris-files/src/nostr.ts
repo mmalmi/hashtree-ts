@@ -155,13 +155,13 @@ function createNostrStore() {
 }
 
 // Use existing store from window if available (ensures singleton even with HMR/dynamic imports)
-const existingStore = typeof window !== 'undefined' ? (window as any).__nostrStore : null;
+const existingStore = typeof window !== 'undefined' ? window.__nostrStore : null;
 
 export const nostrStore = existingStore || createNostrStore();
 
 // Expose singleton on window immediately
 if (typeof window !== 'undefined') {
-  (window as any).__nostrStore = nostrStore;
+  window.__nostrStore = nostrStore;
 }
 
 // Legacy compatibility alias
@@ -198,7 +198,7 @@ export const ndk = new NDK({
 
 // Expose NDK on window for debugging
 if (typeof window !== 'undefined') {
-  (window as any).__ndk = ndk;
+  window.__ndk = ndk;
 }
 
 // Connect on init

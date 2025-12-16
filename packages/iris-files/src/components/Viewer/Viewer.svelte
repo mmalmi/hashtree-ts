@@ -581,9 +581,9 @@
     const fileName = entryFromStore.name;
 
     // Try streaming download with File System Access API (Chrome/Edge)
-    if ('showSaveFilePicker' in window) {
+    if (window.showSaveFilePicker) {
       try {
-        const handle = await (window as any).showSaveFilePicker({
+        const handle = await window.showSaveFilePicker({
           suggestedName: fileName,
           types: [{
             description: 'File',
@@ -598,9 +598,9 @@
         }
         await writable.close();
         return;
-      } catch (err: any) {
+      } catch (err: unknown) {
         // User cancelled or API failed - fall back to blob method
-        if (err.name === 'AbortError') return;
+        if (err instanceof Error && err.name === 'AbortError') return;
         console.warn('File System Access API failed, falling back to blob:', err);
       }
     }

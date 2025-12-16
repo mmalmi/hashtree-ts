@@ -10,7 +10,7 @@ const app = mount(DocsApp, {
 if (typeof window !== 'undefined') {
   import('./actions/index').then(({ uploadSingleFile }) => {
     import('./stores/follows').then(({ followPubkey }) => {
-      (window as any).__testHelpers = { uploadSingleFile, followPubkey };
+      window.__testHelpers = { uploadSingleFile, followPubkey };
     });
   });
 
@@ -20,12 +20,12 @@ if (typeof window !== 'undefined') {
       get: () => webrtcStore,
       configurable: true,
     });
-    (window as any).__localStore = localStore;
+    window.__localStore = localStore;
   });
 
   // Expose social graph for e2e tests
   import('./utils/socialGraph').then(({ getSocialGraph }) => {
-    (window as any).__getSocialGraph = getSocialGraph;
+    window.__getSocialGraph = getSocialGraph;
     // Also expose as getter for compatibility
     Object.defineProperty(window, '__socialGraph', {
       get: () => getSocialGraph(),
@@ -35,7 +35,7 @@ if (typeof window !== 'undefined') {
 
   // Expose settings store for e2e tests
   import('./stores/settings').then(({ settingsStore }) => {
-    (window as any).__settingsStore = settingsStore;
+    window.__settingsStore = settingsStore;
   });
 }
 

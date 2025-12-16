@@ -68,7 +68,7 @@
 
   // Expose for testing
   if (typeof window !== 'undefined') {
-    (window as any).__thumbnailCaptureReset = () => captureThrottled.reset();
+    window.__thumbnailCaptureReset = () => captureThrottled.reset();
   }
 
   // Comments state
