@@ -906,7 +906,6 @@
   :global(.ProseMirror-container .ProseMirror img) {
     max-width: 100%;
     height: auto;
-    border-radius: 4px;
     margin: 1rem 0;
     cursor: pointer;
   }
