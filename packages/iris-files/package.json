@@ -1,8 +1,8 @@
 {
-  "name": "hashtree-web",
+  "name": "iris-files",
   "version": "0.1.0",
   "private": true,
-  "description": "Web explorer for HashTree - content-addressed merkle tree (Svelte)",
+  "description": "Iris Files - content-addressed file storage on Nostr",
   "type": "module",
   "scripts": {
     "dev": "vite",

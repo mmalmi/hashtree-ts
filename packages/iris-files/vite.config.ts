@@ -14,27 +14,27 @@ export default defineConfig({
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      includeAssets: ['iris-favicon.png', 'apple-touch-icon.png'],
       manifest: {
-        name: 'hashtree',
-        short_name: 'hashtree',
+        name: 'Iris Files',
+        short_name: 'Iris Files',
         description: 'Content-addressed file storage on Nostr',
-        theme_color: '#1a1a2e',
-        background_color: '#1a1a2e',
+        theme_color: '#0d1117',
+        background_color: '#0d1117',
         display: 'standalone',
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: 'iris-logo.png',
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'iris-logo.png',
             sizes: '512x512',
             type: 'image/png',
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'iris-logo.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable',

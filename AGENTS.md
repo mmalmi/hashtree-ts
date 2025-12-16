@@ -11,7 +11,7 @@ npm run test:e2e # E2E tests
 
 ## Structure
 - `packages/hashtree` - Core library
-- `packages/hashtree-web` - Web app
+- `packages/iris-files` - Web app (Iris Files)
 - `e2e/` - Playwright tests
 
 ## Design

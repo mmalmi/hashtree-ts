@@ -36,7 +36,7 @@ jobs:
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: packages/hashtree-web/dist
+          path: packages/iris-files/dist
 
   deploy:
     needs: build

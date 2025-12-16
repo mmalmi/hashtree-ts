@@ -15,7 +15,7 @@ Basically [Blossom](https://github.com/hzrd149/blossom) with chunking and direct
 
 - `hashtree` - Core merkle tree library
 - `hashtree-dexie` - IndexedDB/Dexie storage adapter
-- `hashtree-web` - Web app with Nostr integration
+- `iris-files` - Web app with Nostr integration (Iris Files)
 
 ## Storage Backends
 
