@@ -22,7 +22,7 @@
   <div class="flex-1 flex items-center justify-center">
     <span class="i-lucide-file-text text-4xl text-accent"></span>
   </div>
-  <div class="p-2 b-t-1 b-t-solid b-t-surface-3">
+  <div class="p-2">
     <div class="flex items-center gap-1.5">
       {#if ownerPubkey}
         <Avatar pubkey={ownerPubkey} size={16} />
