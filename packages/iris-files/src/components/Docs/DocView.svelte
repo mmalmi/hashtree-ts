@@ -3,13 +3,13 @@
    * DocView - Document view for docs.iris.to
    * Resolves tree path and renders YjsDocumentEditor
    */
-  import { routeStore, treeRootStore } from '../../stores';
+  import { routeStore, treeRootStore, createTreesStore } from '../../stores';
   import { getTree } from '../../store';
   import { type CID, type TreeEntry } from 'hashtree';
   import YjsDocumentEditor from '../Viewer/YjsDocumentEditor.svelte';
   import { nostrStore } from '../../nostr';
   import { nip19 } from 'nostr-tools';
-  import { addRecent } from '../../stores/recents';
+  import { addRecent, updateRecentVisibility } from '../../stores/recents';
 
   let route = $derived($routeStore);
   let treeRoot = $derived($treeRootStore);
@@ -52,6 +52,22 @@
     }
   });
 
+  // Get trees for visibility info
+  let treesStore = $derived(createTreesStore(route.npub));
+  let trees = $state<Array<{ name: string; visibility?: string }>>([]);
+
+  $effect(() => {
+    const store = treesStore;
+    const unsub = store.subscribe(value => {
+      trees = value;
+    });
+    return unsub;
+  });
+
+  let currentTreeVisibility = $derived(
+    route.treeName ? trees.find(t => t.name === route.treeName)?.visibility : undefined
+  );
+
   // Add to recents when viewing a doc
   $effect(() => {
     const npub = route.npub;
@@ -66,6 +82,19 @@
         treeName,
         linkKey: linkKey ?? undefined,
       });
+    }
+  });
+
+  // Update visibility when it becomes available
+  $effect(() => {
+    const npub = route.npub;
+    const treeName = route.treeName;
+    const visibility = currentTreeVisibility;
+    if (npub && treeName?.startsWith('docs/') && visibility) {
+      updateRecentVisibility(
+        `/${npub}/${treeName}`,
+        visibility as 'public' | 'unlisted' | 'private'
+      );
     }
   });
 
