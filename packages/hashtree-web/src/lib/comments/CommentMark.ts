@@ -24,6 +24,10 @@ declare module '@tiptap/core' {
        * Toggle comment mark
        */
       toggleComment: (commentId: string) => ReturnType;
+      /**
+       * Remove all comment marks with the given commentId from the document
+       */
+      removeCommentById: (commentId: string) => ReturnType;
     };
   }
 }
@@ -89,6 +93,37 @@ export const CommentMark = Mark.create<CommentMarkOptions>({
         (commentId: string) =>
         ({ commands }) => {
           return commands.toggleMark(this.name, { commentId });
+        },
+      removeCommentById:
+        (commentId: string) =>
+        ({ tr, state, dispatch }) => {
+          const markType = state.schema.marks[this.name];
+          if (!markType) return false;
+
+          // Find all positions with this comment mark
+          const positionsToRemove: { from: number; to: number }[] = [];
+
+          state.doc.descendants((node, pos) => {
+            const mark = node.marks.find(
+              (m) => m.type === markType && m.attrs.commentId === commentId
+            );
+            if (mark) {
+              positionsToRemove.push({ from: pos, to: pos + node.nodeSize });
+            }
+          });
+
+          if (positionsToRemove.length === 0) return false;
+
+          // Remove marks from all positions
+          for (const { from, to } of positionsToRemove) {
+            tr.removeMark(from, to, markType);
+          }
+
+          if (dispatch) {
+            dispatch(tr);
+          }
+
+          return true;
         },
     };
   },

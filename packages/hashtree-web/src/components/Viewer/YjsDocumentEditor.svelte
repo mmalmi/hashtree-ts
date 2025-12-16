@@ -675,6 +675,12 @@
     });
   }
 
+  function handleDeleteThread(threadId: string) {
+    if (!editor) return;
+    // Remove the comment highlight from the document
+    editor.chain().removeCommentById(threadId).run();
+  }
+
   // Handle click on commented text in the editor
   function handleEditorClick(event: MouseEvent) {
     const target = event.target as HTMLElement;
@@ -803,6 +809,7 @@
           {commentsStore}
           {userNpub}
           onClickThread={handleCommentThreadClick}
+          onDeleteThread={handleDeleteThread}
         />
       </div>
     {/if}

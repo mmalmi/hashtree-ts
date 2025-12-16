@@ -314,7 +314,9 @@
                 {@const pubkey = npubToPubkey(npub)}
                 <li class="flex items-center gap-2 bg-surface-2 rounded px-3 py-2">
                   {#if pubkey}
-                    <UserRow {pubkey} avatarSize={32} class="flex-1 min-w-0" />
+                    <a href="#/{npub}" class="flex-1 min-w-0 hover:opacity-80">
+                      <UserRow {pubkey} avatarSize={32} />
+                    </a>
                   {:else}
                     <span class="i-lucide-user text-text-3"></span>
                     <span class="flex-1 text-sm font-mono truncate">{npub}</span>

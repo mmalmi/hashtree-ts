@@ -5,16 +5,17 @@
    */
   import type { CommentsStore } from '../../lib/comments';
   import type { CommentsState, CommentThread } from '../../lib/comments/types';
-  import { Avatar } from '../User';
+  import { Avatar, Name } from '../User';
   import { npubToPubkey } from '../../nostr';
 
   interface Props {
     commentsStore: CommentsStore;
     userNpub: string | null;
     onClickThread?: (threadId: string) => void;
+    onDeleteThread?: (threadId: string) => void;
   }
 
-  let { commentsStore, userNpub, onClickThread }: Props = $props();
+  let { commentsStore, userNpub, onClickThread, onDeleteThread }: Props = $props();
 
   // Close panel on Escape key
   $effect(() => {
@@ -69,6 +70,7 @@
 
   function handleDelete(threadId: string) {
     if (confirm('Delete this comment thread?')) {
+      onDeleteThread?.(threadId);
       commentsStore.deleteThread(threadId);
     }
   }
@@ -190,9 +192,13 @@
                   {/if}
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 text-xs text-text-3">
-                      <span class="font-medium text-text-2 truncate">
-                        {comment.authorNpub.slice(0, 12)}...
-                      </span>
+                      <a href="#/{comment.authorNpub}" class="font-medium text-text-2 truncate hover:text-accent" onclick={(e) => e.stopPropagation()}>
+                        {#if commentAuthorPubkey}
+                          <Name pubkey={commentAuthorPubkey} />
+                        {:else}
+                          {comment.authorNpub.slice(0, 12)}...
+                        {/if}
+                      </a>
                       <span>{formatTime(comment.createdAt)}</span>
                     </div>
                     <p class="text-sm text-text-1 mt-1 whitespace-pre-wrap break-words">
