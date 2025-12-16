@@ -417,6 +417,14 @@ test.describe('Git branch comparison and merge', () => {
 
   test('merge branches shows success message', async ({ page }) => {
     test.setTimeout(120000);
+
+    // Capture console output for debugging
+    page.on('console', msg => {
+      if (msg.text().includes('[wasm-git]') || msg.text().includes('[applyGitChanges]')) {
+        console.log('[browser]', msg.text());
+      }
+    });
+
     await navigateToPublicFolder(page);
 
     // Create a folder and init as git repo
@@ -542,11 +550,48 @@ test.describe('Git branch comparison and merge', () => {
     // Should have "Back to repository" button
     await expect(page.locator('a:has-text("Back to repository")')).toBeVisible({ timeout: 5000 });
 
-    // The file browser on the left should show both files after the merge
-    // feature-file.txt (from feature branch) should now be on master
-    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'feature-file.txt' })).toBeVisible({ timeout: 15000 });
+    // Click "Code" tab to go back to the repo view
+    await page.locator('a:has-text("Code")').click();
+    await page.waitForTimeout(1000);
 
-    // main-file.txt should still be there
+    // Should see branch selector - after merge we're on master
+    const branchBtn = page.locator('button').filter({ hasText: /master|feature/i }).first();
+    await expect(branchBtn).toBeVisible({ timeout: 10000 });
+
+    // Both files should be visible (merge brought feature-file.txt to master)
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'feature-file.txt' })).toBeVisible({ timeout: 15000 });
     await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'main-file.txt' })).toBeVisible({ timeout: 5000 });
+
+    // Take screenshot to see current state
+    await page.screenshot({ path: 'e2e/screenshots/merge-after-code-tab.png' });
+
+    // Check if there are uncommitted changes - this would indicate merge didn't create a commit
+    const uncommittedIndicator = page.locator('button').filter({ hasText: /uncommitted/i }).first();
+    const hasUncommitted = await uncommittedIndicator.isVisible();
+    console.log('[test] Has uncommitted changes:', hasUncommitted);
+
+    // Check commits count before asserting
+    const commitsText = await page.locator('button').filter({ hasText: /commits/i }).textContent();
+    console.log('[test] Commits text:', commitsText);
+
+    // If there are uncommitted changes, the merge didn't create a commit properly
+    // The merge should create a merge commit, not leave changes uncommitted
+    // For now, let's see what the history shows
+    // expect(hasUncommitted).toBe(false);
+
+    // Click on commits count to open history modal
+    const commitsBtn = page.locator('button').filter({ hasText: /commits/i });
+    await expect(commitsBtn).toBeVisible({ timeout: 5000 });
+    await commitsBtn.click();
+
+    // Take screenshot of history modal
+    await page.waitForTimeout(1000);
+    await page.screenshot({ path: 'e2e/screenshots/merge-history-modal.png' });
+
+    // The history should show a merge commit with the message "Merge branch 'feature' into master"
+    // If the merge worked correctly, this commit should exist
+    await expect(page.locator('text=/Merge branch.*feature.*into master/')).toBeVisible({ timeout: 15000 });
+
+    // If we get here without the merge commit visible, the test will fail appropriately
   });
 });

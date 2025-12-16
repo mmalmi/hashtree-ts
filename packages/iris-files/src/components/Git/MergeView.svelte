@@ -149,15 +149,30 @@
         return;
       }
 
-      // Apply the git changes to get new directory CID
+      // Apply the git changes and working files to get new directory CID
       if (result.gitFiles) {
-        const newDirCid = await applyGitChanges(dirCid, result.gitFiles);
-
-        // Get current tree root and update it with the new directory
         const { getCurrentRootCid } = await import('../../actions/route');
         const { getTree } = await import('../../store');
         const { LinkType } = await import('hashtree');
 
+        const tree = getTree();
+        let newDirCid = await applyGitChanges(dirCid, result.gitFiles);
+
+        // Also apply working directory files that were changed by the merge
+        if (result.workingFiles) {
+          for (const file of result.workingFiles) {
+            if (file.isDir) continue; // Skip directories, they'll be created with files
+
+            const pathParts = file.name.split('/');
+            const fileName = pathParts.pop()!;
+            const filePath = pathParts;
+
+            const { cid: fileCid, size } = await tree.putFile(file.data);
+            newDirCid = await tree.setEntry(newDirCid, filePath, fileName, fileCid, size, LinkType.Blob);
+          }
+        }
+
+        // Get current tree root and update it with the new directory
         const treeRootCid = getCurrentRootCid();
         if (treeRootCid) {
           let newRootCid;
@@ -168,7 +183,6 @@
             newRootCid = newDirCid;
           } else {
             // Git repo is in a subdirectory - replace it at that path
-            const tree = getTree();
             const parentPath = currentPath.slice(0, -1);
             const dirName = currentPath[currentPath.length - 1];
             newRootCid = await tree.setEntry(
