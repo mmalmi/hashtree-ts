@@ -542,7 +542,11 @@ test.describe('Git branch comparison and merge', () => {
     // Should have "Back to repository" button
     await expect(page.locator('a:has-text("Back to repository")')).toBeVisible({ timeout: 5000 });
 
-    // Take screenshot of success state
-    await page.screenshot({ path: 'e2e/screenshots/merge-test-success.png' });
+    // The file browser on the left should show both files after the merge
+    // feature-file.txt (from feature branch) should now be on master
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'feature-file.txt' })).toBeVisible({ timeout: 15000 });
+
+    // main-file.txt should still be there
+    await expect(page.locator('[data-testid="file-list"] a').filter({ hasText: 'main-file.txt' })).toBeVisible({ timeout: 5000 });
   });
 });
