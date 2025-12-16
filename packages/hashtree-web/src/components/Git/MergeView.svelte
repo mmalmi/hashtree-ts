@@ -2,12 +2,14 @@
   /**
    * MergeView - UI for performing a merge between branches
    * Shows merge preview, commit message input, and confirmation
+   * Optionally updates PR status after merge if prEventId/prAuthorPubkey are provided
    */
   import type { CID } from 'hashtree';
   import { diffBranches, canMerge, mergeBranches, applyGitChanges } from '../../utils/git';
   import { routeStore, treeRootStore, createTreesStore, currentDirCidStore } from '../../stores';
   import { nostrStore, autosaveIfOwn } from '../../nostr';
   import { navigate } from '../../lib/router.svelte';
+  import { updateStatus } from '../../nip34';
   import FileBrowser from '../FileBrowser.svelte';
   import ViewerHeader from '../Viewer/ViewerHeader.svelte';
   import RepoTabNav from './RepoTabNav.svelte';
@@ -17,9 +19,13 @@
     repoName: string;
     baseBranch: string;
     headBranch: string;
+    /** PR event ID - if provided, PR status will be updated to 'merged' after successful merge */
+    prEventId?: string;
+    /** PR author pubkey - required if prEventId is provided */
+    prAuthorPubkey?: string;
   }
 
-  let { npub, repoName, baseBranch, headBranch }: Props = $props();
+  let { npub, repoName, baseBranch, headBranch, prEventId, prAuthorPubkey }: Props = $props();
 
   let route = $derived($routeStore);
   let rootCid = $derived($treeRootStore);
@@ -181,6 +187,16 @@
 
           // Save and publish
           autosaveIfOwn(newRootCid);
+        }
+      }
+
+      // Update PR status if this merge is from a PR
+      if (prEventId && prAuthorPubkey) {
+        try {
+          await updateStatus(prEventId, prAuthorPubkey, 'merged');
+        } catch (err) {
+          console.error('Failed to update PR status:', err);
+          // Don't fail the merge if status update fails
         }
       }
 

@@ -72,6 +72,10 @@ interface UnsavedChangesTarget {
 interface NewPullRequestTarget {
   npub: string;
   repoName: string;
+  /** Available branches in the repo */
+  branches?: string[];
+  /** Currently checked out branch (pre-selected as source) */
+  currentBranch?: string;
   /** Callback when PR is created */
   onCreate?: (pr: { id: string; title: string }) => void;
 }
@@ -269,8 +273,27 @@ export function setModalInput(input: string) {
   modalsStore.update(s => ({ ...s, modalInput: input }));
 }
 
-export function openNewPullRequestModal(npub: string, repoName: string, onCreate?: (pr: { id: string; title: string }) => void) {
-  modalsStore.update(s => ({ ...s, showNewPullRequestModal: true, newPullRequestTarget: { npub, repoName, onCreate }, modalInput: '' }));
+export function openNewPullRequestModal(
+  npub: string,
+  repoName: string,
+  options?: {
+    branches?: string[];
+    currentBranch?: string;
+    onCreate?: (pr: { id: string; title: string }) => void;
+  }
+) {
+  modalsStore.update(s => ({
+    ...s,
+    showNewPullRequestModal: true,
+    newPullRequestTarget: {
+      npub,
+      repoName,
+      branches: options?.branches,
+      currentBranch: options?.currentBranch,
+      onCreate: options?.onCreate,
+    },
+    modalInput: '',
+  }));
 }
 
 export function closeNewPullRequestModal() {

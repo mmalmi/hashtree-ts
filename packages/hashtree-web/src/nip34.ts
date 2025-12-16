@@ -288,13 +288,16 @@ export async function createPullRequest(
     targetBranch?: string;
     commitTip?: string;
     labels?: string[];
+    /** Custom clone URL for cross-repo PRs (npub/path or nhash format) */
+    cloneUrl?: string;
   } = {}
 ): Promise<PullRequest | null> {
   const state = nostrStore.getState();
   if (!state.pubkey || !ndk.signer) return null;
 
   const repoAddress = buildRepoAddress(npub, repoName);
-  const htreeUrl = buildHtreeUrl(npub, repoName);
+  // Use custom clone URL if provided (for cross-repo PRs), otherwise default to target repo
+  const cloneUrl = options.cloneUrl || buildHtreeUrl(npub, repoName);
 
   const event = new NDKEvent(ndk);
   event.kind = KIND_PULL_REQUEST;
@@ -303,7 +306,7 @@ export async function createPullRequest(
     ['a', repoAddress],
     ['p', npubToPubkey(npub)!], // Notify repo owner
     ['subject', title],
-    ['clone', htreeUrl],
+    ['clone', cloneUrl],
   ];
 
   if (options.branch) {
@@ -333,7 +336,7 @@ export async function createPullRequest(
       branch: options.branch,
       targetBranch: options.targetBranch || 'main',
       commitTip: options.commitTip,
-      cloneUrl: htreeUrl,
+      cloneUrl,
       created_at: event.created_at || Math.floor(Date.now() / 1000),
       updated_at: event.created_at || Math.floor(Date.now() / 1000),
       labels: options.labels || [],

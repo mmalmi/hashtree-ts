@@ -81,14 +81,17 @@
   }
 
   // Check for ?merge=1&base=<base>&head=<head> query param (merge view)
-  function parseMergeQuery(fullHash: string): { base: string; head: string } | null {
+  function parseMergeQuery(fullHash: string): { base: string; head: string; prId?: string; prPubkey?: string } | null {
     const qIdx = fullHash.indexOf('?');
     if (qIdx === -1) return null;
     const params = new URLSearchParams(fullHash.slice(qIdx + 1));
     if (params.get('merge') !== '1') return null;
     const base = params.get('base');
     const head = params.get('head');
-    return base && head ? { base, head } : null;
+    if (!base || !head) return null;
+    const prId = params.get('prId') || undefined;
+    const prPubkey = params.get('prPubkey') || undefined;
+    return { base, head, prId, prPubkey };
   }
 
   interface Props {
@@ -137,7 +140,7 @@
 
 <div class="flex-1 flex flex-col lg:flex-row min-h-0">
   {#if mergeQuery && route.params.npub && route.params.treeName}
-    <MergeView npub={route.params.npub} repoName={repoPath || route.params.treeName} baseBranch={mergeQuery.base} headBranch={mergeQuery.head} />
+    <MergeView npub={route.params.npub} repoName={repoPath || route.params.treeName} baseBranch={mergeQuery.base} headBranch={mergeQuery.head} prEventId={mergeQuery.prId} prAuthorPubkey={mergeQuery.prPubkey} />
   {:else if compareQuery && route.params.npub && route.params.treeName}
     <BranchCompareView npub={route.params.npub} repoName={repoPath || route.params.treeName} baseBranch={compareQuery.base} headBranch={compareQuery.head} />
   {:else if commitHash && route.params.npub && route.params.treeName}
