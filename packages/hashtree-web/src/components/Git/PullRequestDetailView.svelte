@@ -62,7 +62,7 @@
   let userPubkey = $derived($nostrStore.pubkey);
   let canComment = $derived(!!userPubkey);
   let isAuthor = $derived(pr?.authorPubkey === userPubkey);
-  let isOwner = $derived($nostrStore?.currentUser?.npub === npub); // Check if user is repo owner
+  let isOwner = $derived($nostrStore?.npub === npub); // Check if user is repo owner
 
   // Fetch PR and comments
   $effect(() => {
@@ -285,14 +285,16 @@
             {/if}
           </div>
 
-          <!-- Status actions -->
+          <!-- Status actions (only for repo owner) -->
           {#if isOwner}
             <div class="flex gap-2">
               {#if pr.status === 'open'}
-                <button onclick={() => handleStatusChange('merged')} class="btn-primary text-sm">
-                  <span class="i-lucide-git-merge mr-1"></span>
-                  Merge
-                </button>
+                {#if pr.branch && pr.targetBranch}
+                  <button onclick={goToMerge} class="btn-success text-sm">
+                    <span class="i-lucide-git-merge mr-1"></span>
+                    Merge
+                  </button>
+                {/if}
                 <button onclick={() => handleStatusChange('closed')} class="btn-ghost text-sm">
                   <span class="i-lucide-circle-x mr-1"></span>
                   Close
@@ -438,24 +440,6 @@
               </div>
             </div>
           {:else if diffData}
-            <!-- Merge action for open PRs -->
-            {#if pr.status === 'open' && isOwner}
-              <div class="bg-surface-1 rounded-lg b-1 b-solid b-surface-3 p-4 mb-4">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <div class="text-sm font-medium text-text-1">Ready to merge</div>
-                    <div class="text-xs text-text-3">
-                      Merge <span class="font-mono">{pr.branch}</span> into <span class="font-mono">{pr.targetBranch}</span>
-                    </div>
-                  </div>
-                  <button onclick={goToMerge} class="btn-success flex items-center gap-2">
-                    <span class="i-lucide-git-merge"></span>
-                    Merge
-                  </button>
-                </div>
-              </div>
-            {/if}
-
             <!-- Stats summary -->
             <div class="bg-surface-1 rounded-lg b-1 b-solid b-surface-3 overflow-hidden mb-4">
               <div class="px-4 py-2 flex items-center gap-4 text-sm">
