@@ -18,6 +18,7 @@
     "build:docs": "pnpm --filter iris-files build:docs",
     "dev": "pnpm --filter iris-files dev",
     "dev:docs": "pnpm --filter iris-files dev:docs",
+    "dev:video": "pnpm --filter iris-files dev:video",
     "test": "pnpm --filter hashtree test",
     "test:watch": "pnpm --filter hashtree test:watch",
     "test:e2e": "playwright test",

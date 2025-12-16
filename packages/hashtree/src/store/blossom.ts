@@ -70,12 +70,20 @@ interface ServerHealth {
 /** Backoff config */
 const BASE_BACKOFF_MS = 1000; // 1 second
 const MAX_BACKOFF_MS = 60000; // 1 minute
+const MAX_HASH_ATTEMPTS = 4; // Give up after this many attempts per hash
+
+/** Per-hash failure tracking */
+interface HashAttempts {
+  attempts: number;
+  lastAttempt: number;
+}
 
 export class BlossomStore implements StoreWithMeta {
   private servers: BlossomServer[];
   private signer?: BlossomSigner;
   private logger?: BlossomLogger;
   private serverHealth: Map<string, ServerHealth> = new Map();
+  private hashAttempts: Map<string, HashAttempts> = new Map();
   private writeQueue: Promise<boolean> = Promise.resolve(true);
 
   constructor(config: BlossomStoreConfig) {
@@ -109,6 +117,26 @@ export class BlossomStore implements StoreWithMeta {
   /** Record server success - reset backoff */
   private recordSuccess(serverUrl: string): void {
     this.serverHealth.delete(serverUrl);
+  }
+
+  /** Check if we should give up on a hash (too many failures) */
+  private shouldGiveUpOnHash(hashHex: string): boolean {
+    const attempts = this.hashAttempts.get(hashHex);
+    if (!attempts) return false;
+    return attempts.attempts >= MAX_HASH_ATTEMPTS;
+  }
+
+  /** Record a failed attempt for a hash */
+  private recordHashFailure(hashHex: string): void {
+    const existing = this.hashAttempts.get(hashHex) || { attempts: 0, lastAttempt: 0 };
+    existing.attempts++;
+    existing.lastAttempt = Date.now();
+    this.hashAttempts.set(hashHex, existing);
+  }
+
+  /** Clear hash failure tracking on success */
+  private clearHashFailure(hashHex: string): void {
+    this.hashAttempts.delete(hashHex);
   }
 
   private log(entry: Omit<BlossomLogEntry, 'timestamp'>) {
@@ -157,9 +185,17 @@ export class BlossomStore implements StoreWithMeta {
   }
 
   private async doPut(hash: Hash, data: Uint8Array, contentType?: string): Promise<boolean> {
+    const hashHex = toHex(hash);
+
+    // Check if we've given up on this hash
+    if (this.shouldGiveUpOnHash(hashHex)) {
+      // Silently return false - we've tried enough times
+      return false;
+    }
+
     // Verify hash matches data
     const computed = await sha256(data);
-    if (toHex(computed) !== toHex(hash)) {
+    if (toHex(computed) !== hashHex) {
       throw new Error('Hash does not match data');
     }
 
@@ -171,11 +207,12 @@ export class BlossomStore implements StoreWithMeta {
       if (anyWriteServers.length === 0) {
         throw new Error('No write-enabled server configured');
       }
+      // All servers in backoff - count as an attempt
+      this.recordHashFailure(hashHex);
       throw new Error('All write servers are in backoff');
     }
 
     const authHeader = await this.createAuthHeader('upload', hash, contentType);
-    const hashHex = toHex(hash);
 
     // Upload to all available write-enabled servers in parallel, succeed if any succeeds
     const results = await Promise.allSettled(
@@ -236,10 +273,14 @@ export class BlossomStore implements StoreWithMeta {
     // Check if any succeeded
     const successes = results.filter(r => r.status === 'fulfilled');
     if (successes.length === 0) {
-      // All failed - report first error
+      // All failed - record hash failure and report first error
+      this.recordHashFailure(hashHex);
       const firstError = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
       throw new Error(`Blossom upload failed: ${firstError.reason}`);
     }
+
+    // Success - clear any previous failure tracking for this hash
+    this.clearHashFailure(hashHex);
 
     // Return true if any server stored it as new (not already existed)
     return successes.some(r => (r as PromiseFulfilledResult<boolean>).value);
