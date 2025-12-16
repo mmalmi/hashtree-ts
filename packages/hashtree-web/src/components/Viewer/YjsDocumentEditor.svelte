@@ -15,23 +15,30 @@
   import Collaboration from '@tiptap/extension-collaboration';
   import { toHex, LinkType } from 'hashtree';
   import type { CID, TreeEntry } from 'hashtree';
-  import { getTree, decodeAsText } from '../../store';
+  import { getTree } from '../../store';
   import { routeStore, createTreesStore, getTreeRootSync } from '../../stores';
   import { openShareModal, openForkModal, openCollaboratorsModal, updateCollaboratorsModal, openBlossomPushModal } from '../../stores/modals';
   import { autosaveIfOwn, nostrStore, npubToPubkey } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
   import { getCurrentRootCid, deleteCurrentFolder } from '../../actions';
-  import { getRefResolver } from '../../refResolver';
-  import { nip19 } from 'nostr-tools';
   import VisibilityIcon from '../VisibilityIcon.svelte';
   import { Avatar } from '../User';
   import { CommentMark, createCommentsStore, type CommentsStore } from '../../lib/comments';
   import type { CommentsState } from '../../lib/comments/types';
   import { CommentsPanel, AddCommentModal } from '../Comments';
-
-  const DELTAS_DIR = 'deltas';
-  const STATE_FILE = 'state.yjs';
-  const ATTACHMENTS_DIR = 'attachments';
+  import EditorToolbar from './EditorToolbar.svelte';
+  import {
+    createImageCache,
+    loadImageFromTree,
+    saveImageToTree,
+    preloadAttachments,
+    generateImageFilename,
+    getMimeType,
+    type ImageCache,
+    loadDeltasFromEntries,
+    loadCollaboratorDeltas,
+    setupCollaboratorSubscriptions,
+  } from '../../lib/yjs';
 
   interface Props {
     dirCid: CID;
@@ -53,8 +60,8 @@
   let loading = $state(true);
   let imageFileInput: HTMLInputElement | undefined = $state();
 
-  // Map of image names to blob URLs for display
-  let imageUrlCache = new Map<string, string>();
+  // Image cache for blob URLs
+  let imageCache: ImageCache = createImageCache();
 
   // Comments state
   let commentsStore: CommentsStore | undefined = $state();
@@ -113,7 +120,7 @@
     const currentKey = collaborators.join(',');
     if (currentKey !== prevCollaboratorsKey && ydoc && collaborators.length > 0) {
       prevCollaboratorsKey = currentKey;
-      setupCollaboratorSubscriptions(collaborators);
+      setupCollabSubscriptions(collaborators);
     }
   });
 
@@ -124,137 +131,34 @@
     }
   });
 
-  // Generate a unique filename for an image
-  function generateImageFilename(file: File): string {
-    const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).slice(2, 6);
-    return `${timestamp}-${random}.${ext}`;
-  }
-
   // Get blob URL for an image (from cache or load from tree)
   async function getImageUrl(imageName: string): Promise<string | null> {
-    // Check cache first
-    if (imageUrlCache.has(imageName)) {
-      return imageUrlCache.get(imageName)!;
-    }
-
-    // Load from tree
-    const tree = getTree();
-    const currentPath = route.path;
-    const attachmentsPath = [...currentPath, ATTACHMENTS_DIR, imageName].join('/');
-
-    // Use the viewed tree's root or our own
-    let rootCid: CID | null = null;
-    if (viewedNpub) {
-      rootCid = route.treeName ? getTreeRootSync(viewedNpub, route.treeName) : null;
-    } else if (userNpub && route.treeName) {
-      rootCid = getTreeRootSync(userNpub, route.treeName);
-    }
-
-    if (!rootCid) return null;
-
-    try {
-      const result = await tree.resolvePath(rootCid, attachmentsPath);
-      if (!result) return null;
-
-      const data = await tree.readFile(result.cid);
-      if (!data) return null;
-
-      // Determine MIME type from extension
-      const ext = imageName.split('.').pop()?.toLowerCase() || '';
-      const mimeTypes: Record<string, string> = {
-        'png': 'image/png',
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'gif': 'image/gif',
-        'webp': 'image/webp',
-        'svg': 'image/svg+xml',
-        'avif': 'image/avif',
-      };
-      const mimeType = mimeTypes[ext] || 'image/png';
-
-      const blob = new Blob([data.buffer], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      imageUrlCache.set(imageName, url);
-      return url;
-    } catch (err) {
-      console.error(`[YjsDoc] Failed to load image ${imageName}:`, err);
-      return null;
-    }
+    return loadImageFromTree(
+      imageName,
+      route.path,
+      viewedNpub,
+      userNpub,
+      route.treeName,
+      imageCache
+    );
   }
 
   // Save image to attachments/ directory
   async function saveImage(data: Uint8Array, filename: string): Promise<string | null> {
-    const tree = getTree();
     if (!userNpub || !route.treeName) {
       console.warn('[YjsDoc] Missing userNpub or treeName, cannot save image');
       return null;
     }
 
-    // Always save to our own tree
-    let rootCid = getTreeRootSync(userNpub, route.treeName);
-    if (!rootCid) {
-      const { cid: emptyDirCid } = await tree.putDirectory([]);
-      rootCid = emptyDirCid;
-    }
-
-    try {
-      const currentPath = route.path;
-      const attachmentsPath = [...currentPath, ATTACHMENTS_DIR];
-
-      // Ensure attachments directory exists
-      const attachmentsResult = await tree.resolvePath(rootCid, attachmentsPath.join('/'));
-      if (!attachmentsResult) {
-        // Create attachments directory
-        const { cid: emptyDirCid } = await tree.putDirectory([]);
-        rootCid = await tree.setEntry(rootCid, currentPath, ATTACHMENTS_DIR, emptyDirCid, 0, LinkType.Dir);
-      }
-
-      // Save the image file
-      const { cid: imageCid, size: imageSize } = await tree.putFile(data);
-      const newRootCid = await tree.setEntry(
-        rootCid,
-        attachmentsPath,
-        filename,
-        imageCid,
-        imageSize,
-        LinkType.Blob
-      );
-
-      // Publish update
-      if (isOwnTree) {
-        autosaveIfOwn(newRootCid);
-      } else {
-        updateLocalRootCacheHex(
-          userNpub,
-          route.treeName!,
-          toHex(newRootCid.hash),
-          newRootCid.key ? toHex(newRootCid.key) : undefined
-        );
-      }
-
-      // Cache the blob URL
-      const ext = filename.split('.').pop()?.toLowerCase() || 'png';
-      const mimeTypes: Record<string, string> = {
-        'png': 'image/png',
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'gif': 'image/gif',
-        'webp': 'image/webp',
-        'svg': 'image/svg+xml',
-        'avif': 'image/avif',
-      };
-      const mimeType = mimeTypes[ext] || 'image/png';
-      const blob = new Blob([data.buffer], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      imageUrlCache.set(filename, url);
-
-      return filename;
-    } catch (err) {
-      console.error('[YjsDoc] Failed to save image:', err);
-      return null;
-    }
+    return saveImageToTree(
+      data,
+      filename,
+      route.path,
+      userNpub,
+      route.treeName,
+      isOwnTree,
+      imageCache
+    );
   }
 
   // Handle image upload from file input, paste, or drop
@@ -318,221 +222,31 @@
 
   // Load and resolve all images in document content
   async function loadDocumentImages(): Promise<void> {
-    const tree = getTree();
-    const currentPath = route.path;
-    const attachmentsPath = [...currentPath, ATTACHMENTS_DIR].join('/');
-
-    // Get root CID
-    let rootCid: CID | null = null;
-    if (viewedNpub) {
-      rootCid = route.treeName ? getTreeRootSync(viewedNpub, route.treeName) : null;
-    } else if (userNpub && route.treeName) {
-      rootCid = getTreeRootSync(userNpub, route.treeName);
-    }
-
-    if (!rootCid) return;
-
-    try {
-      const result = await tree.resolvePath(rootCid, attachmentsPath);
-      if (!result) return;
-
-      const isDir = await tree.isDirectory(result.cid);
-      if (!isDir) return;
-
-      const attachmentEntries = await tree.listDirectory(result.cid);
-
-      // Pre-load all images into cache
-      for (const entry of attachmentEntries) {
-        if (entry.type !== LinkType.Dir) {
-          await getImageUrl(entry.name);
-        }
-      }
-    } catch (err) {
-      // Attachments directory doesn't exist yet, that's fine
-    }
+    await preloadAttachments(route.path, viewedNpub, userNpub, route.treeName, imageCache);
   }
 
-  // Load deltas from a directory's entries
-  async function loadDeltasFromEntries(docEntries: TreeEntry[]): Promise<Uint8Array[]> {
-    const tree = getTree();
-    const deltas: Uint8Array[] = [];
+  // Subscription cleanup function
+  let cleanupCollabSubscriptions: (() => void) | null = null;
 
-    // Load state.yjs if exists
-    const stateEntry = docEntries.find(e => e.name === STATE_FILE && e.type !== LinkType.Dir);
-    if (stateEntry) {
-      const data = await tree.readFile(stateEntry.cid);
-      if (data) deltas.push(data);
-    }
-
-    // Load deltas from deltas/ directory
-    const deltasEntry = docEntries.find(e => e.name === DELTAS_DIR && e.type === LinkType.Dir);
-    if (deltasEntry) {
-      try {
-        const deltaEntries = await tree.listDirectory(deltasEntry.cid);
-        // Sort by name (timestamp-based or numeric)
-        const sorted = deltaEntries
-          .filter(e => e.type !== LinkType.Dir)
-          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-        for (const entry of sorted) {
-          const data = await tree.readFile(entry.cid);
-          if (data) deltas.push(data);
-        }
-      } catch (err) {
-        console.error(`[YjsDoc] loadDeltasFromEntries error:`, err);
-      }
-    }
-
-    return deltas;
-  }
-
-  // Load deltas from all collaborators' trees
-  async function loadCollaboratorDeltas(collaboratorNpubs: string[]): Promise<void> {
-    const tree = getTree();
-    const resolver = getRefResolver();
-    const docPath = route.path.join('/');
-    const treeName = route.treeName;
-
-    if (!treeName) return;
-
-    // Filter out the currently viewed tree's npub (we already loaded local deltas)
-    const otherEditors = collaboratorNpubs.filter(npub => npub !== route.npub);
-
-    for (const npub of otherEditors) {
-      try {
-        // Resolve the editor's tree root via subscription
-        const resolverKey = `${npub}/${treeName}`;
-        const rootCid = await new Promise<CID | null>((resolve) => {
-          let hasResolved = false;
-          let unsub: (() => void) | null = null;
-
-          const cleanup = () => {
-            if (unsub) unsub();
-          };
-
-          unsub = resolver.subscribe(resolverKey, (cidObj) => {
-            if (hasResolved) return;
-            hasResolved = true;
-            // Defer cleanup to avoid referencing unsub before assignment
-            queueMicrotask(cleanup);
-            resolve(cidObj);
-          });
-
-          // Timeout after 5 seconds
-          setTimeout(() => {
-            if (!hasResolved) {
-              hasResolved = true;
-              cleanup();
-              resolve(null);
-            }
-          }, 5000);
-        });
-
-        if (!rootCid) continue;
-
-        // Resolve the path to the document directory in their tree
-        const result = await tree.resolvePath(rootCid, docPath);
-        if (!result) continue;
-
-        // Check if it's a directory
-        const isDir = await tree.isDirectory(result.cid);
-        if (!isDir) continue;
-
-        // List entries in their document directory
-        const collabEntries = await tree.listDirectory(result.cid);
-
-        // Load and apply their deltas
-        const collabDeltas = await loadDeltasFromEntries(collabEntries);
-        for (const delta of collabDeltas) {
-          if (ydoc) Y.applyUpdate(ydoc, delta, 'remote');
-        }
-
-      } catch (err) {
-        console.warn(`[YjsDoc] Failed to load deltas from collaborator ${npub}:`, err);
-      }
-    }
-  }
-
-  // Subscription cleanup functions
-  let collabUnsubscribes: (() => void)[] = [];
-
-  // Subscribe to collaborators' trees for live updates
-  function setupCollaboratorSubscriptions(collaboratorNpubs: string[]) {
+  // Setup live subscriptions to collaborators' trees
+  function setupCollabSubscriptions(collaboratorNpubs: string[]) {
     // Clean up existing subscriptions
-    collabUnsubscribes.forEach(unsub => unsub());
-    collabUnsubscribes = [];
-
-    if (collaboratorNpubs.length === 0 || !route.treeName) return;
-
-    const resolver = getRefResolver();
-    const tree = getTree();
-    const docPath = route.path.join('/');
-    const docOwnerNpub = viewedNpub || userNpub;
-
-    // Subscribe to collaborators' trees, but NOT our own tree
-    // Our own updates are already in local state - re-applying them causes focus loss
-    const otherCollaborators = collaboratorNpubs.filter(npub => npub !== userNpub);
-
-    for (const npub of otherCollaborators) {
-      const resolverKey = `${npub}/${route.treeName}`;
-
-      // Track last seen hash to detect actual changes
-      let lastSeenHash: string | null = null;
-
-      const unsub = resolver.subscribe(resolverKey, async (cidObj) => {
-        const newHash = cidObj ? toHex(cidObj.hash) : null;
-        const isNewUpdate = newHash !== lastSeenHash;
-        lastSeenHash = newHash;
-        if (!cidObj || !ydoc) {
-          return;
-        }
-
-        try {
-          // Fetch and apply deltas from this editor
-          const rootCid = cidObj;
-          const result = await tree.resolvePath(rootCid, docPath);
-          if (!result) {
-            return;
-          }
-
-          const isDir = await tree.isDirectory(result.cid);
-          if (!isDir) {
-            return;
-          }
-
-          const collabEntries = await tree.listDirectory(result.cid);
-
-          // If this update is from the document owner, re-read .yjs to check for collaborator changes
-          if (npub === docOwnerNpub) {
-            const yjsConfigEntry = collabEntries.find(e => e.name === '.yjs' && e.type !== LinkType.Dir);
-            if (yjsConfigEntry) {
-              const data = await tree.readFile(yjsConfigEntry.cid);
-              if (data) {
-                const text = decodeAsText(data);
-                if (text) {
-                  const newCollaborators = text.split('\n').filter(line => line.trim().startsWith('npub1'));
-                  // Update if changed
-                  if (JSON.stringify(newCollaborators) !== JSON.stringify(collaborators)) {
-                    collaborators = newCollaborators;
-                  }
-                }
-              }
-            }
-          }
-
-          // Load and apply deltas
-          const collabDeltas = await loadDeltasFromEntries(collabEntries);
-          for (const delta of collabDeltas) {
-            Y.applyUpdate(ydoc, delta, 'remote');
-          }
-
-        } catch (err) {
-          console.warn(`[YjsDoc] Failed to fetch updates from editor ${npub}:`, err);
-        }
-      });
-
-      collabUnsubscribes.push(unsub);
+    if (cleanupCollabSubscriptions) {
+      cleanupCollabSubscriptions();
     }
+
+    if (!ydoc) return;
+
+    cleanupCollabSubscriptions = setupCollaboratorSubscriptions(
+      collaboratorNpubs,
+      route.treeName,
+      route.path,
+      viewedNpub,
+      userNpub,
+      ydoc,
+      () => collaborators,
+      (npubs) => { collaborators = npubs; }
+    );
   }
 
   // Save state snapshot to tree (full document state)
@@ -751,7 +465,7 @@
 
     // Load deltas from collaborators' trees
     if (collaborators.length > 0) {
-      await loadCollaboratorDeltas(collaborators);
+      await loadCollaboratorDeltas(collaborators, route.npub, route.path, route.treeName, ydoc);
     }
 
     loading = false;
@@ -826,7 +540,7 @@
 
     // Set up live subscriptions to collaborators' trees
     if (collaborators.length > 0) {
-      setupCollaboratorSubscriptions(collaborators);
+      setupCollabSubscriptions(collaborators);
     }
 
     // Listen for updates and save (full state snapshot, not incremental delta)
@@ -885,34 +599,17 @@
   onDestroy(() => {
     if (saveTimer) clearTimeout(saveTimer);
     // Clean up collaborator subscriptions
-    collabUnsubscribes.forEach(unsub => unsub());
-    collabUnsubscribes = [];
-    // Clean up image blob URLs
-    for (const url of imageUrlCache.values()) {
-      URL.revokeObjectURL(url);
+    if (cleanupCollabSubscriptions) {
+      cleanupCollabSubscriptions();
+      cleanupCollabSubscriptions = null;
     }
-    imageUrlCache.clear();
+    // Clean up image blob URLs
+    imageCache.cleanup();
     // Clean up comments store
     commentsStore?.destroy();
     editor?.destroy();
     ydoc?.destroy();
   });
-
-  // Formatting toolbar actions
-  function toggleBold() { editor?.chain().focus().toggleBold().run(); }
-  function toggleItalic() { editor?.chain().focus().toggleItalic().run(); }
-  function toggleStrike() { editor?.chain().focus().toggleStrike().run(); }
-  function toggleCode() { editor?.chain().focus().toggleCode().run(); }
-  function toggleHeading1() { editor?.chain().focus().toggleHeading({ level: 1 }).run(); }
-  function toggleHeading2() { editor?.chain().focus().toggleHeading({ level: 2 }).run(); }
-  function toggleHeading3() { editor?.chain().focus().toggleHeading({ level: 3 }).run(); }
-  function toggleBulletList() { editor?.chain().focus().toggleBulletList().run(); }
-  function toggleOrderedList() { editor?.chain().focus().toggleOrderedList().run(); }
-  function toggleBlockquote() { editor?.chain().focus().toggleBlockquote().run(); }
-  function toggleCodeBlock() { editor?.chain().focus().toggleCodeBlock().run(); }
-  function insertHorizontalRule() { editor?.chain().focus().setHorizontalRule().run(); }
-  function undo() { editor?.chain().focus().undo().run(); }
-  function redo() { editor?.chain().focus().redo().run(); }
 
   // Comment functions
   function addComment() {
@@ -1076,154 +773,16 @@
 
   <!-- Formatting Toolbar -->
   {#if canEdit && editor && !loading}
-    <div class="flex items-center justify-center gap-1 px-4 py-2 border-b border-surface-3 bg-surface-1 shrink-0 flex-wrap">
-      <!-- Text formatting -->
-      <button
-        onclick={toggleBold}
-        class="toolbar-btn {editor.isActive('bold') ? 'active' : ''}"
-        title="Bold (Ctrl+B)"
-      >
-        <span class="i-lucide-bold"></span>
-      </button>
-      <button
-        onclick={toggleItalic}
-        class="toolbar-btn {editor.isActive('italic') ? 'active' : ''}"
-        title="Italic (Ctrl+I)"
-      >
-        <span class="i-lucide-italic"></span>
-      </button>
-      <button
-        onclick={toggleStrike}
-        class="toolbar-btn {editor.isActive('strike') ? 'active' : ''}"
-        title="Strikethrough"
-      >
-        <span class="i-lucide-strikethrough"></span>
-      </button>
-      <button
-        onclick={toggleCode}
-        class="toolbar-btn {editor.isActive('code') ? 'active' : ''}"
-        title="Inline Code"
-      >
-        <span class="i-lucide-code"></span>
-      </button>
-
-      <div class="w-px h-5 bg-surface-3 mx-1"></div>
-
-      <!-- Headings -->
-      <button
-        onclick={toggleHeading1}
-        class="toolbar-btn {editor.isActive('heading', { level: 1 }) ? 'active' : ''}"
-        title="Heading 1"
-      >
-        <span class="i-lucide-heading-1"></span>
-      </button>
-      <button
-        onclick={toggleHeading2}
-        class="toolbar-btn {editor.isActive('heading', { level: 2 }) ? 'active' : ''}"
-        title="Heading 2"
-      >
-        <span class="i-lucide-heading-2"></span>
-      </button>
-      <button
-        onclick={toggleHeading3}
-        class="toolbar-btn {editor.isActive('heading', { level: 3 }) ? 'active' : ''}"
-        title="Heading 3"
-      >
-        <span class="i-lucide-heading-3"></span>
-      </button>
-
-      <div class="w-px h-5 bg-surface-3 mx-1"></div>
-
-      <!-- Lists -->
-      <button
-        onclick={toggleBulletList}
-        class="toolbar-btn {editor.isActive('bulletList') ? 'active' : ''}"
-        title="Bullet List"
-      >
-        <span class="i-lucide-list"></span>
-      </button>
-      <button
-        onclick={toggleOrderedList}
-        class="toolbar-btn {editor.isActive('orderedList') ? 'active' : ''}"
-        title="Numbered List"
-      >
-        <span class="i-lucide-list-ordered"></span>
-      </button>
-
-      <div class="w-px h-5 bg-surface-3 mx-1"></div>
-
-      <!-- Block elements -->
-      <button
-        onclick={toggleBlockquote}
-        class="toolbar-btn {editor.isActive('blockquote') ? 'active' : ''}"
-        title="Quote"
-      >
-        <span class="i-lucide-quote"></span>
-      </button>
-      <button
-        onclick={toggleCodeBlock}
-        class="toolbar-btn {editor.isActive('codeBlock') ? 'active' : ''}"
-        title="Code Block"
-      >
-        <span class="i-lucide-file-code"></span>
-      </button>
-      <button
-        onclick={insertHorizontalRule}
-        class="toolbar-btn"
-        title="Horizontal Rule"
-      >
-        <span class="i-lucide-minus"></span>
-      </button>
-      <button
-        onclick={triggerImageUpload}
-        class="toolbar-btn"
-        title="Insert Image"
-      >
-        <span class="i-lucide-image"></span>
-      </button>
-
-      <div class="w-px h-5 bg-surface-3 mx-1"></div>
-
-      <!-- Undo/Redo -->
-      <button
-        onclick={undo}
-        disabled={!editor.can().undo()}
-        class="toolbar-btn disabled:opacity-30"
-        title="Undo (Ctrl+Z)"
-      >
-        <span class="i-lucide-undo"></span>
-      </button>
-      <button
-        onclick={redo}
-        disabled={!editor.can().redo()}
-        class="toolbar-btn disabled:opacity-30"
-        title="Redo (Ctrl+Shift+Z)"
-      >
-        <span class="i-lucide-redo"></span>
-      </button>
-
-      <div class="w-px h-5 bg-surface-3 mx-1"></div>
-
-      <!-- Comments -->
-      <button
-        onclick={addComment}
-        disabled={!hasTextSelection || !userNpub}
-        class="toolbar-btn disabled:opacity-30"
-        title="Add comment (select text first)"
-      >
-        <span class="i-lucide-message-square-plus"></span>
-      </button>
-      <button
-        onclick={toggleCommentsPanel}
-        class="toolbar-btn {commentsState.panelOpen ? 'active' : ''}"
-        title="Toggle comments panel"
-      >
-        <span class="i-lucide-message-square"></span>
-        {#if commentsState.threads.size > 0}
-          <span class="text-xs ml-1">{commentsState.threads.size}</span>
-        {/if}
-      </button>
-    </div>
+    <EditorToolbar
+      {editor}
+      {hasTextSelection}
+      {userNpub}
+      commentsCount={commentsState.threads.size}
+      commentsPanelOpen={commentsState.panelOpen}
+      onAddComment={addComment}
+      onToggleCommentsPanel={toggleCommentsPanel}
+      onImageUpload={triggerImageUpload}
+    />
   {/if}
 
   <!-- Editor area with comments panel -->
@@ -1289,38 +848,6 @@
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
       border-radius: 4px;
     }
-  }
-
-  /* Toolbar button styles */
-  .toolbar-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.5rem;
-    border-radius: 0.25rem;
-    background: transparent;
-    border: none;
-    color: var(--color-text-1);
-    cursor: pointer;
-    transition: background-color 0.15s, color 0.15s;
-  }
-
-  .toolbar-btn:hover {
-    background: var(--color-surface-2);
-  }
-
-  .toolbar-btn.active {
-    background: var(--color-surface-3);
-    color: var(--color-accent);
-  }
-
-  .toolbar-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
-
-  .toolbar-btn span {
-    font-size: 1rem;
   }
 
   :global(.ProseMirror-container .ProseMirror) {
