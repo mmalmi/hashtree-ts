@@ -91,7 +91,7 @@ export function createThrottledCapture(intervalMs: number = 30000) {
   let lastCapture = 0;
   let pendingCapture: Promise<Uint8Array | null> | null = null;
 
-  return async (element: HTMLElement): Promise<Uint8Array | null> => {
+  const capture = async (element: HTMLElement): Promise<Uint8Array | null> => {
     const now = Date.now();
 
     // If we captured recently, skip
@@ -113,4 +113,11 @@ export function createThrottledCapture(intervalMs: number = 30000) {
       pendingCapture = null;
     }
   };
+
+  // Expose reset for testing
+  capture.reset = () => {
+    lastCapture = 0;
+  };
+
+  return capture;
 }

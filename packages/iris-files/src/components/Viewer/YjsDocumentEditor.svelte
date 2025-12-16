@@ -67,6 +67,11 @@
   // Throttled thumbnail capture (captures at most once per 30 seconds)
   const captureThrottled = createThrottledCapture(30000);
 
+  // Expose for testing
+  if (typeof window !== 'undefined') {
+    (window as any).__thumbnailCaptureReset = () => captureThrottled.reset();
+  }
+
   // Comments state
   let commentsStore: CommentsStore | undefined = $state();
   let commentsState = $state<CommentsState>({ threads: new Map(), activeThreadId: null, panelOpen: false });
@@ -358,9 +363,9 @@
       saveStatus = 'saved';
       lastSaved = new Date();
 
-      // Capture and save thumbnail (throttled, non-blocking, deferred to idle time)
+      // Capture and save thumbnail (throttled, non-blocking)
       if (editorElement && isOwnTree) {
-        requestIdleCallback(() => captureThumbnail(newRootCid), { timeout: 5000 });
+        captureThumbnail(newRootCid);
       }
     } catch (e) {
       console.error('[YjsDoc] Failed to save state snapshot:', e);
@@ -379,7 +384,7 @@
       const tree = getTree();
       const currentPath = route.path;
 
-      // Save thumbnail as .thumbnail.png in the document directory
+      // Save thumbnail as .thumbnail.jpg in the document directory
       const { cid: thumbCid, size: thumbSize } = await tree.putFile(thumbnailData);
       const newRootCid = await tree.setEntry(
         currentRootCid,
@@ -392,7 +397,7 @@
 
       // Publish the update with thumbnail
       autosaveIfOwn(newRootCid);
-    } catch (e) {
+    } catch {
       // Silently fail - thumbnail is not critical
     }
   }

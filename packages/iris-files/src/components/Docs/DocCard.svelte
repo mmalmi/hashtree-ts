@@ -40,14 +40,16 @@
       if (!rootCid) return;
 
       const tree = getTree();
+
+      // Thumbnail is at .thumbnail.jpg in the tree root
       const thumbPath = getThumbnailFilename();
 
-      // Resolve thumbnail path in doc root
+      // Resolve thumbnail path from tree root
       const result = await tree.resolvePath(rootCid, thumbPath);
       if (!result) return;
 
       // Read thumbnail data
-      const data = await tree.get(result.cid);
+      const data = await tree.readFile(result.cid);
       if (!data) return;
 
       // Create blob URL

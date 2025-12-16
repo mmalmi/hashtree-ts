@@ -86,9 +86,13 @@ function subscribeToResolver(
     const cached = subscriptionCache.get(key);
     if (cached) {
       cached.listeners.delete(callback);
+      // Note: We don't delete the cache entry when the last listener unsubscribes
+      // because the data is still valid and may be needed by other components
+      // (e.g., DocCard uses getTreeRootSync after the editor unmounts)
       if (cached.listeners.size === 0) {
         cached.unsubscribe?.();
-        subscriptionCache.delete(key);
+        // Keep the cached data, just stop the subscription
+        // subscriptionCache.delete(key);
       }
     }
   };
