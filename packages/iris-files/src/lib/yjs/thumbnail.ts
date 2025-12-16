@@ -3,8 +3,8 @@
  * Captures a preview image of the document editor content
  */
 
-const THUMBNAIL_WIDTH = 200;
-const THUMBNAIL_HEIGHT = 283; // A4 aspect ratio (1:1.414)
+const THUMBNAIL_WIDTH = 300;
+const THUMBNAIL_HEIGHT = 424; // A4 aspect ratio (1:1.414)
 const THUMBNAIL_FILENAME = '.thumbnail.jpg';
 
 /**
@@ -18,7 +18,7 @@ export async function captureThumbnail(element: HTMLElement): Promise<Uint8Array
 
     // Capture the element
     const canvas = await html2canvas(element, {
-      scale: 0.5, // Lower resolution for smaller file size
+      scale: 1, // Full resolution for better quality
       logging: false,
       useCORS: true,
       allowTaint: true,
@@ -62,7 +62,7 @@ export async function captureThumbnail(element: HTMLElement): Promise<Uint8Array
 
     // Convert to JPEG blob (smaller file size than PNG)
     const blob = await new Promise<Blob | null>((resolve) => {
-      thumbCanvas.toBlob(resolve, 'image/jpeg', 0.7);
+      thumbCanvas.toBlob(resolve, 'image/jpeg', 0.85);
     });
 
     if (!blob) return null;

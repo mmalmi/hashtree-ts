@@ -6,7 +6,7 @@
    * When collaborators are defined, this component will also fetch and merge
    * deltas from those users' hashtrees at the same relative path.
    */
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { Editor } from '@tiptap/core';
   import StarterKit from '@tiptap/starter-kit';
   import Placeholder from '@tiptap/extension-placeholder';
@@ -493,8 +493,6 @@
   }
 
   onMount(async () => {
-    if (!editorElement) return;
-
     // Load editors
     await loadEditors();
 
@@ -515,7 +513,11 @@
       await loadCollaboratorDeltas(collaborators, route.npub, route.path, route.treeName, ydoc);
     }
 
+    // Set loading false and wait for DOM to render editorElement
     loading = false;
+    await tick();
+
+    if (!editorElement) return;
 
     // Create comments store backed by Yjs
     commentsStore = createCommentsStore(ydoc);
@@ -861,13 +863,20 @@
   {/if}
 
   <!-- Editor area with comments panel -->
-  <div class="flex-1 flex min-h-0 {loading ? 'hidden' : ''}">
+  <div class="flex-1 flex min-h-0">
     <!-- Main editor area - A4 paper style on large screens -->
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="flex-1 overflow-auto bg-[#0d0d14]" onclick={handleEditorClick}>
       <div class="a4-page bg-[#1a1a24]">
-        <div bind:this={editorElement} class="ProseMirror-container prose prose-sm max-w-none min-h-full"></div>
+        {#if loading}
+          <div class="flex items-center justify-center min-h-[400px] text-text-3">
+            <span class="i-lucide-loader-2 animate-spin mr-2"></span>
+            Loading document...
+          </div>
+        {:else}
+          <div bind:this={editorElement} class="ProseMirror-container prose prose-sm max-w-none min-h-full"></div>
+        {/if}
       </div>
     </div>
 
@@ -883,14 +892,6 @@
       </div>
     {/if}
   </div>
-
-  <!-- Loading state -->
-  {#if loading}
-    <div class="flex-1 flex items-center justify-center text-text-3">
-      <span class="i-lucide-loader-2 animate-spin mr-2"></span>
-      Loading document...
-    </div>
-  {/if}
 </div>
 
 <!-- Hidden file input for image upload -->

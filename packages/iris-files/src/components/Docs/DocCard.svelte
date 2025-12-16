@@ -7,7 +7,7 @@
   import VisibilityIcon from '../VisibilityIcon.svelte';
   import { Avatar } from '../User';
   import { getTree } from '../../store';
-  import { getTreeRootSync } from '../../stores';
+  import { getTreeRootSync, subscribeToTreeRoot } from '../../stores';
   import { getThumbnailFilename } from '../../lib/yjs/thumbnail';
 
   interface Props {
@@ -23,17 +23,29 @@
 
   let thumbnailUrl = $state<string | null>(null);
 
-  // Load thumbnail on mount
+  // Subscribe to tree root updates and load thumbnail when available
   onMount(() => {
+    if (!ownerNpub || !treeName) return;
+
+    // Try loading immediately if cached
     loadThumbnail();
+
+    // Subscribe to resolver for updates (handles first load case)
+    const unsubscribe = subscribeToTreeRoot(ownerNpub, treeName, (hash) => {
+      if (hash && !thumbnailUrl) {
+        loadThumbnail();
+      }
+    });
+
     return () => {
+      unsubscribe();
       // Revoke blob URL on unmount
       if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl);
     };
   });
 
   async function loadThumbnail() {
-    if (!ownerNpub || !treeName) return;
+    if (!ownerNpub || !treeName || thumbnailUrl) return;
 
     try {
       const rootCid = getTreeRootSync(ownerNpub, treeName);

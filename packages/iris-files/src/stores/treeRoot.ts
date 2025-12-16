@@ -47,6 +47,19 @@ export function updateSubscriptionCache(key: string, hash: Hash, encryptionKey?:
   cached.listeners.forEach(listener => listener(hash, encryptionKey, cached!.visibilityInfo));
 }
 
+/**
+ * Subscribe to tree root updates for a specific npub/treeName
+ * Returns an unsubscribe function
+ */
+export function subscribeToTreeRoot(
+  npub: string,
+  treeName: string,
+  callback: (hash: Hash | null, encryptionKey?: Hash) => void
+): () => void {
+  const key = `${npub}/${treeName}`;
+  return subscribeToResolver(key, callback);
+}
+
 function subscribeToResolver(
   key: string,
   callback: (hash: Hash | null, encryptionKey?: Hash, visibilityInfo?: SubscribeVisibilityInfo) => void

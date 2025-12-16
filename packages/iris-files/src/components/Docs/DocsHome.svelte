@@ -61,23 +61,25 @@
       }))
   );
 
-  // Merge recents and own docs, deduplicate by key, recents first
+  // Merge recents and own docs, deduplicate by treeName, recents first
   let allDocs = $derived.by(() => {
     const seen = new Set<string>();
     const result: typeof recentDocs = [];
 
     // Add recents first (they have timestamps)
     for (const doc of recentDocs) {
-      if (!seen.has(doc.key)) {
-        seen.add(doc.key);
+      const dedupeKey = `${doc.ownerNpub}/${doc.treeName}`;
+      if (!seen.has(dedupeKey)) {
+        seen.add(dedupeKey);
         result.push(doc);
       }
     }
 
     // Add own docs that aren't already in recents
     for (const doc of ownDocs) {
-      if (!seen.has(doc.key)) {
-        seen.add(doc.key);
+      const dedupeKey = `${doc.ownerNpub}/${doc.treeName}`;
+      if (!seen.has(dedupeKey)) {
+        seen.add(dedupeKey);
         result.push(doc);
       }
     }
