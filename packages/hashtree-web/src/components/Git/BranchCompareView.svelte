@@ -50,7 +50,7 @@
 
   // Check if current user can merge (owns the repo)
   let nostr = $derived($nostrStore);
-  let canMerge = $derived(nostr?.currentUser?.npub === npub);
+  let canMerge = $derived(nostr?.npub === npub);
 
   // Diff data state
   let loading = $state(true);

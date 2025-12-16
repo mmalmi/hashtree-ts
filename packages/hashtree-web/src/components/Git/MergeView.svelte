@@ -56,7 +56,7 @@
 
   // Check if current user can merge (owns the repo)
   let nostr = $derived($nostrStore);
-  let canMergeCheck = $derived(nostr?.currentUser?.npub === npub);
+  let canMergeCheck = $derived(nostr?.npub === npub);
 
   // State
   let loading = $state(true);
@@ -134,9 +134,8 @@
     mergeError = null;
 
     try {
-      const user = nostr?.currentUser;
-      const authorName = user?.profile?.name || 'User';
-      const authorEmail = user?.profile?.email || 'user@example.com';
+      const authorName = nostr?.npub?.slice(0, 12) || 'User';
+      const authorEmail = 'user@hashtree.org';
 
       const result = await mergeBranches(
         dirCid,
