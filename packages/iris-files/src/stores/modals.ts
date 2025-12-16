@@ -133,6 +133,7 @@ interface ModalState {
   gitCommitTarget: GitCommitTarget | null;
   showBlossomPushModal: boolean;
   blossomPushTarget: BlossomPushTarget | null;
+  showVideoUploadModal: boolean;
   modalInput: string;
 }
 
@@ -167,6 +168,7 @@ const initialState: ModalState = {
   gitCommitTarget: null,
   showBlossomPushModal: false,
   blossomPushTarget: null,
+  showVideoUploadModal: false,
   modalInput: '',
 };
 
@@ -322,6 +324,14 @@ export function openBlossomPushModal(cid: CID, name: string, isDirectory: boolea
 
 export function closeBlossomPushModal() {
   modalsStore.update(s => ({ ...s, showBlossomPushModal: false, blossomPushTarget: null }));
+}
+
+export function openVideoUploadModal() {
+  modalsStore.update(s => ({ ...s, showVideoUploadModal: true }));
+}
+
+export function closeVideoUploadModal() {
+  modalsStore.update(s => ({ ...s, showVideoUploadModal: false }));
 }
 
 export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, GitShellTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget, BlossomPushTarget };

@@ -7,16 +7,21 @@
   "scripts": {
     "dev": "vite",
     "dev:docs": "vite --config vite.docs.config.ts",
+    "dev:video": "vite --config vite.video.config.ts",
     "build": "vite build",
     "build:docs": "vite build --config vite.docs.config.ts",
+    "build:video": "vite build --config vite.video.config.ts",
     "build:analyze": "vite build && echo '\nBundle stats: dist/stats.html\nBundle list: dist/stats-list.txt'",
     "preview": "vite preview",
     "preview:docs": "vite preview --config vite.docs.config.ts",
+    "preview:video": "vite preview --config vite.video.config.ts",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
     "@noble/hashes": "^2.0.1",
     "@nostr-dev-kit/ndk": "^2.18.1",
     "@nostr-dev-kit/ndk-cache-dexie": "^2.6.44",
