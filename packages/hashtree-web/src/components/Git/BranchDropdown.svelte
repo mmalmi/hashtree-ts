@@ -144,7 +144,7 @@
   {/each}
   <!-- Compare branches option (when there are multiple branches and we have navigation info) -->
   {#if branches.length > 1 && npub && treeName && currentBranch}
-    <div class="b-t-1 b-t-solid b-t-surface-3 mt-1 pt-1 bg-surface-2">
+    <div class="b-t-1 b-t-solid b-t-surface-3 pt-1 bg-surface-2">
       {#if showCompareSelect}
         <div class="px-3 py-2 bg-surface-2">
           <div class="text-xs text-text-3 mb-2">Compare {currentBranch} with:</div>
@@ -177,7 +177,7 @@
   {/if}
   <!-- New branch option (only for editors) -->
   {#if canEdit}
-    <div class="b-t-1 b-t-solid b-t-surface-3 mt-1 pt-1 bg-surface-2">
+    <div class="b-t-1 b-t-solid b-t-surface-3 pt-1 bg-surface-2">
       {#if showNewBranchInput}
         <div class="px-3 py-2 bg-surface-2">
           {#if branchError}
