@@ -134,9 +134,6 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
   }
   const listSubscriptions = new Map<string, ListSubscriptionEntry>();
 
-  // Unique ID for this resolver instance (for debugging)
-  const resolverId = Math.random().toString(36).slice(2, 8);
-
   // Persistent local cache for list entries (survives subscription lifecycle)
   // Key is npub, value is map of tree name -> entry
   const localListCache = new Map<string, Map<string, ParsedTreeVisibility & { created_at: number }>>();
@@ -411,7 +408,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
         // Skip if this would undelete a recently-deleted entry (within 30 seconds)
         if (existingWasDeleted && hashHex && timeDiff < 30) {
-          console.log(`[publish:${resolverId}] Blocked undelete of ${treeName}: timeDiff=${timeDiff}s`);
+          // Blocked stale undelete
         } else {
           listSub.entriesByDTag.set(treeName, {
             hash: hashHex,
@@ -436,7 +433,6 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
               createdAt: entry.created_at,
             });
           }
-          console.log(`[publish:${resolverId}] Emitting ${result.length} trees:`, result.map(e => e.key.split('/')[1]));
           for (const cb of listSub.callbacks) {
             try {
               cb(result);
@@ -504,13 +500,11 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
       if (existingSub) {
         // Add callback to existing subscription
         existingSub.callbacks.add(callback);
-        console.log(`[list:${resolverId}] Joining existing subscription, callbacks count now: ${existingSub.callbacks.size}`);
 
         // Fire immediately with current state
         const result: RefResolverListEntry[] = [];
         for (const [dTag, entry] of existingSub.entriesByDTag) {
           if (!entry.hash) {
-            console.log(`[list join] Skipping entry with empty hash: ${dTag}`);
             continue;
           }
           result.push({
@@ -523,7 +517,6 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             createdAt: entry.created_at,
           });
         }
-        console.log(`[join:${resolverId}] Emitting ${result.length} trees:`, result.map(e => e.key.split('/')[1]));
         callback(result);
 
         // Return unsubscribe that removes this callback
@@ -538,7 +531,6 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
       }
 
       // Create new subscription
-      console.log(`[list:${resolverId}] Creating NEW subscription for ${npubStr}`);
       const entriesByDTag = new Map<string, ParsedTreeVisibility & { created_at: number }>();
       const callbacks = new Set<(entries: RefResolverListEntry[]) => void>([callback]);
 
@@ -594,11 +586,6 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           const hasHash = !!parsed?.hash;
           const existing = entriesByDTag.get(dTag);
           const eventTime = event.created_at || 0;
-
-          // Debug logging for delete-test trees
-          if (dTag.includes('delete-test')) {
-            console.log(`[event] ${dTag}: hasHash=${hasHash}, eventTime=${eventTime}, existing=${existing ? `hash=${!!existing.hash},time=${existing.created_at}` : 'none'}`);
-          }
 
           // Timestamp-based update logic:
           // 1. Accept if no existing entry
@@ -800,7 +787,6 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
       // Skip if this would undelete a recently-deleted entry (within 30 seconds)
       if (existingWasDeletedCache && hasHash && timeDiffCache < 30) {
-        console.log(`[inject:${resolverId}] Blocked cache undelete of ${treeName}: timeDiff=${timeDiffCache}s`);
         return;
       }
 
@@ -825,12 +811,10 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
 
         // Skip if this would undelete a recently-deleted entry (within 30 seconds)
         if (existingWasDeleted && hasHash && timeDiff < 30) {
-          console.log(`[inject:${resolverId}] Blocked undelete of ${treeName}: timeDiff=${timeDiff}s`);
           return;
         }
 
         if (!existingSub || now >= existingSub.created_at) {
-          console.log(`[inject:${resolverId}] Updating ${treeName}: hasHash=${hasHash}, existingWasDeleted=${existingWasDeleted}, timeDiff=${timeDiff}`);
           listSub.entriesByDTag.set(treeName, {
             hash: toHex(entry.cid.hash),
             visibility: entry.visibility ?? 'public',

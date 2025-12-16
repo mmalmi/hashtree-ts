@@ -59,8 +59,6 @@ export class BackgroundSyncService {
     if (this.running) return;
     this.running = true;
 
-    console.log('[backgroundSync] Starting service');
-
     // Subscribe to own trees first (for cross-device sync)
     this.subscribeToOwnTrees();
 
@@ -75,8 +73,6 @@ export class BackgroundSyncService {
   stop(): void {
     if (!this.running) return;
     this.running = false;
-
-    console.log('[backgroundSync] Stopping service');
 
     // Cleanup subscriptions
     this.ownTreesUnsubscriber?.();
@@ -214,12 +210,8 @@ export class BackgroundSyncService {
     const resolver = getRefResolver();
     if (!resolver.list) return;
 
-    console.log(`[backgroundSync] Subscribing to trees for followed user: ${npub.slice(0, 20)}...`);
-
     const unsub = resolver.list(npub, (entries) => {
-      console.log(`[backgroundSync] Resolver callback for ${npub.slice(0, 20)}...: ${entries.length} entries`);
       for (const entry of entries) {
-        console.log(`[backgroundSync] Entry: ${entry.key}, visibility: ${entry.visibility}`);
         // Only sync public trees from followed users
         if (entry.visibility === 'public') {
           this.queueTreeSync(entry.key, entry.cid, false, 2);
@@ -259,7 +251,6 @@ export class BackgroundSyncService {
         const hasConnectedPeer = await this.hasConnectedPeer();
         if (!hasConnectedPeer) {
           // No peers connected yet, reschedule with delay
-          console.log('[backgroundSync] No WebRTC peers ready, waiting...');
           this.processing = false;
           setTimeout(() => {
             if (this.running) this.scheduleProcessQueue();
@@ -314,12 +305,9 @@ export class BackgroundSyncService {
       return;
     }
 
-    console.log(`[backgroundSync] Syncing tree: ${key}${retryCount > 0 ? ` (retry ${retryCount})` : ''}`);
-
     try {
       // Use tree.pull() to recursively fetch all chunks
       const tree = getTree();
-      console.log(`[backgroundSync] Calling tree.pull for ${key}`);
 
       // Add timeout to prevent hanging when peers aren't available
       const pullWithTimeout = async () => {
@@ -330,7 +318,6 @@ export class BackgroundSyncService {
       };
 
       const { chunks, bytes } = await pullWithTimeout();
-      console.log(`[backgroundSync] tree.pull returned: chunks=${chunks}, bytes=${bytes}`);
 
       // Check if pull actually fetched any data
       // tree.pull returns 0 chunks if data couldn't be fetched (e.g., no WebRTC peers)
@@ -354,14 +341,9 @@ export class BackgroundSyncService {
 
       // Update reactive store for UI
       refreshSyncedStorage();
-
-      console.log(`[backgroundSync] Synced ${key}: ${chunks} chunks, ${bytes} bytes`);
-    } catch (error) {
-      console.error(`[backgroundSync] Failed to sync ${key}:`, error);
-
+    } catch {
       // Re-queue for retry if under max retries
       if (retryCount < MAX_RETRIES && this.running) {
-        console.log(`[backgroundSync] Scheduling retry ${retryCount + 1}/${MAX_RETRIES} for ${key} in ${RETRY_DELAY_MS}ms`);
         setTimeout(() => {
           if (this.running) {
             this.syncQueue.push({ ...task, retryCount: retryCount + 1 });
@@ -386,8 +368,6 @@ export class BackgroundSyncService {
       return;
     }
 
-    console.log(`[backgroundSync] Storage ${totalBytes} exceeds cap ${settings.storageCap}, enforcing quotas`);
-
     // Get all "other" users (not own accounts)
     const ownNpubs = this.getOwnNpubs();
     const otherUsers = await getOtherUsersWithTrees(ownNpubs);
@@ -406,8 +386,6 @@ export class BackgroundSyncService {
       const userBytes = await getStorageByUser(npub);
       if (userBytes > perUserQuota) {
         const toEvictBytes = userBytes - perUserQuota;
-        console.log(`[backgroundSync] User ${npub.slice(0, 12)}... over quota by ${toEvictBytes} bytes`);
-
         const chunksToEvict = await getChunksToEvict(npub, toEvictBytes);
 
         // Delete chunks from IndexedDB
@@ -421,8 +399,6 @@ export class BackgroundSyncService {
 
         // Remove from metadata
         await removeChunks(chunksToEvict);
-
-        console.log(`[backgroundSync] Evicted ${chunksToEvict.length} chunks from ${npub.slice(0, 12)}...`);
       }
     }
   }

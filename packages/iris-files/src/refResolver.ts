@@ -71,13 +71,6 @@ export function getRefResolver(): RefResolver {
           cacheUsage: NDKSubscriptionCacheUsage.CACHE_FIRST,
         };
 
-        console.log('[refResolver] Creating subscription with filter:', JSON.stringify({
-          kinds: ndkFilter.kinds,
-          authors: ndkFilter.authors?.map(a => a.slice(0, 8) + '...'),
-          '#d': ndkFilter['#d'],
-          '#l': ndkFilter['#l'],
-        }));
-
         // Track if subscription is still active
         let active = true;
 
@@ -88,12 +81,10 @@ export function getRefResolver(): RefResolver {
           if (!connected) {
             console.warn('[refResolver] NDK connection timeout, subscription may not receive events');
           }
-          console.log('[refResolver] NDK connected:', connected, '- starting subscription');
 
           const sub = ndk.subscribe(ndkFilter, opts);
           sub.on('event', (e: NDKEvent) => {
             if (!active) return;
-            console.log('[refResolver] Received event from', e.pubkey.slice(0, 8), 'kind:', e.kind, 'id:', e.id.slice(0, 8));
             onEvent({
               id: e.id,
               pubkey: e.pubkey,
