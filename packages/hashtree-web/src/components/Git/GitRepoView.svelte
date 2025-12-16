@@ -55,11 +55,23 @@
     return unsub;
   });
 
+  // Track which branch we're switching to (null = not switching)
+  let switchingToBranch = $state<string | null>(null);
+
   // Detached HEAD state - show short commit hash instead of branch name
-  let branchDisplay = $derived(currentBranch || (headOid ? headOid.slice(0, 7) : 'detached'));
+  // While switching, show the target branch name optimistically
+  let branchDisplay = $derived(
+    switchingToBranch || currentBranch || (headOid ? headOid.slice(0, 7) : 'detached')
+  );
+
+  // Clear switchingToBranch once currentBranch catches up
+  $effect(() => {
+    if (switchingToBranch && currentBranch === switchingToBranch) {
+      switchingToBranch = null;
+    }
+  });
 
   // Handle ?branch= URL parameter - automatically switch to specified branch
-  let switchingBranch = $state(false);
   $effect(() => {
     const targetBranch = route.branch;
     const current = currentBranch;
@@ -71,13 +83,10 @@
     }
 
     // Skip if already switching
-    if (switchingBranch) return;
+    if (switchingToBranch) return;
 
-    // Auto-switch to the branch from URL
-    switchingBranch = true;
-    handleBranchSelect(targetBranch).finally(() => {
-      switchingBranch = false;
-    });
+    // Auto-switch to the branch from URL (handleBranchSelect manages switchingToBranch state)
+    handleBranchSelect(targetBranch);
   });
 
   // Calculate subdirectory path relative to git root
@@ -244,18 +253,20 @@
 
   // Handle branch selection - checkout the branch
   async function handleBranchSelect(branch: string) {
-    // Skip if already on this branch
-    if (branch === currentBranch) return;
+    // Skip if already on this branch or already switching
+    if (branch === currentBranch || switchingToBranch) return;
 
-    const { checkoutCommit } = await import('../../utils/git');
-    const { autosaveIfOwn } = await import('../../nostr');
-    const { getCurrentRootCid } = await import('../../actions/route');
-
-    // Get current tree root
-    const treeRootCid = getCurrentRootCid();
-    if (!treeRootCid) return;
+    switchingToBranch = branch;
 
     try {
+      const { checkoutCommit } = await import('../../utils/git');
+      const { autosaveIfOwn } = await import('../../nostr');
+      const { getCurrentRootCid } = await import('../../actions/route');
+
+      // Get current tree root
+      const treeRootCid = getCurrentRootCid();
+      if (!treeRootCid) return;
+
       // Checkout the branch - use gitCid for git operations
       const newDirCid = await checkoutCommit(gitCid, branch);
 
@@ -287,6 +298,7 @@
       autosaveIfOwn(newRootCid);
     } catch (err) {
       console.error('Failed to switch branch:', err);
+      switchingToBranch = null;
     }
   }
 
@@ -424,6 +436,7 @@
       npub={route.npub}
       {repoPath}
       onBranchSelect={handleBranchSelect}
+      loading={!!switchingToBranch}
     />
 
     <!-- Branch count -->

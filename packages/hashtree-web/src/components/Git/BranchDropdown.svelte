@@ -21,9 +21,11 @@
     /** Full path to git repo (treeName + subdirectory path if any) */
     repoPath?: string;
     onBranchSelect?: (branch: string) => void;
+    /** Show loading spinner (e.g., when switching branches) */
+    loading?: boolean;
   }
 
-  let { branches, currentBranch, branchDisplay, canEdit, dirCid, npub, repoPath, onBranchSelect }: Props = $props();
+  let { branches, currentBranch, branchDisplay, canEdit, dirCid, npub, repoPath, onBranchSelect, loading = false }: Props = $props();
 
   let route = $derived($routeStore);
 
@@ -123,10 +125,17 @@
     <button
       onclick={() => isDropdownOpen = !isDropdownOpen}
       class="btn-ghost flex items-center gap-1 px-3 h-9 text-sm"
+      disabled={loading}
     >
-      <span class="i-lucide-git-branch"></span>
+      {#if loading}
+        <span class="i-lucide-loader-2 animate-spin"></span>
+      {:else}
+        <span class="i-lucide-git-branch"></span>
+      {/if}
       <span class={currentBranch ? '' : 'font-mono text-xs'}>{branchDisplay}</span>
-      <span class="i-lucide-chevron-down text-xs"></span>
+      {#if !loading}
+        <span class="i-lucide-chevron-down text-xs"></span>
+      {/if}
     </button>
   {/snippet}
   <!-- Branch list -->
