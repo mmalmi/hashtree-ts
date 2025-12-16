@@ -214,19 +214,32 @@ test.describe('WebRTC Stats', () => {
       if (finalStats1?.aggregate && initialStats1?.aggregate) {
         const sentDiff = finalStats1.aggregate.requestsSent - (initialStats1.aggregate.requestsSent || 0);
         const recvDiff = finalStats1.aggregate.responsesReceived - (initialStats1.aggregate.responsesReceived || 0);
+        const bytesRecvDiff = finalStats1.aggregate.bytesReceived - (initialStats1.aggregate.bytesReceived || 0);
         console.log('Peer 1 requestsSent diff:', sentDiff);
         console.log('Peer 1 responsesReceived diff:', recvDiff);
+        console.log('Peer 1 bytesReceived diff:', bytesRecvDiff);
       }
 
       if (finalStats2?.aggregate && initialStats2?.aggregate) {
         const recvDiff = finalStats2.aggregate.requestsReceived - (initialStats2.aggregate.requestsReceived || 0);
         const sentDiff = finalStats2.aggregate.responsesSent - (initialStats2.aggregate.responsesSent || 0);
+        const bytesSentDiff = finalStats2.aggregate.bytesSent - (initialStats2.aggregate.bytesSent || 0);
         console.log('Peer 2 requestsReceived diff:', recvDiff);
         console.log('Peer 2 responsesSent diff:', sentDiff);
+        console.log('Peer 2 bytesSent diff:', bytesSentDiff);
       }
 
       // Verify at least some activity occurred
       expect(finalStats1?.aggregate || finalStats2?.aggregate).toBeTruthy();
+
+      // Verify byte stats are tracked when data was transferred
+      if (connected && foundCount > 0) {
+        // Peer 1 should have received bytes (downloaded chunks)
+        expect(finalStats1?.aggregate?.bytesReceived).toBeGreaterThan(0);
+        // Peer 2 should have sent bytes (uploaded chunks)
+        expect(finalStats2?.aggregate?.bytesSent).toBeGreaterThan(0);
+        console.log('Byte stats verified: peer1 bytesReceived=' + finalStats1?.aggregate?.bytesReceived + ', peer2 bytesSent=' + finalStats2?.aggregate?.bytesSent);
+      }
 
     } finally {
       await context1.close();
