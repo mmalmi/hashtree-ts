@@ -10,6 +10,7 @@
   import { Editor } from '@tiptap/core';
   import StarterKit from '@tiptap/starter-kit';
   import Placeholder from '@tiptap/extension-placeholder';
+  import Image from '@tiptap/extension-image';
   import * as Y from 'yjs';
   import Collaboration from '@tiptap/extension-collaboration';
   import { toHex, LinkType } from 'hashtree';
@@ -27,6 +28,7 @@
 
   const DELTAS_DIR = 'deltas';
   const STATE_FILE = 'state.yjs';
+  const ATTACHMENTS_DIR = 'attachments';
 
   interface Props {
     dirCid: CID;
@@ -46,6 +48,10 @@
   let lastSaved = $state<Date | null>(null);
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let loading = $state(true);
+  let imageFileInput: HTMLInputElement | undefined = $state();
+
+  // Map of image names to blob URLs for display
+  let imageUrlCache = new Map<string, string>();
 
   // Collaborators list
   let collaborators = $state<string[]>([]);
@@ -105,6 +111,234 @@
       editor.setEditable(canEdit);
     }
   });
+
+  // Generate a unique filename for an image
+  function generateImageFilename(file: File): string {
+    const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+    const timestamp = Date.now().toString(36);
+    const random = Math.random().toString(36).slice(2, 6);
+    return `${timestamp}-${random}.${ext}`;
+  }
+
+  // Get blob URL for an image (from cache or load from tree)
+  async function getImageUrl(imageName: string): Promise<string | null> {
+    // Check cache first
+    if (imageUrlCache.has(imageName)) {
+      return imageUrlCache.get(imageName)!;
+    }
+
+    // Load from tree
+    const tree = getTree();
+    const currentPath = route.path;
+    const attachmentsPath = [...currentPath, ATTACHMENTS_DIR, imageName].join('/');
+
+    // Use the viewed tree's root or our own
+    let rootCid: CID | null = null;
+    if (viewedNpub) {
+      rootCid = route.treeName ? getTreeRootSync(viewedNpub, route.treeName) : null;
+    } else if (userNpub && route.treeName) {
+      rootCid = getTreeRootSync(userNpub, route.treeName);
+    }
+
+    if (!rootCid) return null;
+
+    try {
+      const result = await tree.resolvePath(rootCid, attachmentsPath);
+      if (!result) return null;
+
+      const data = await tree.readFile(result.cid);
+      if (!data) return null;
+
+      // Determine MIME type from extension
+      const ext = imageName.split('.').pop()?.toLowerCase() || '';
+      const mimeTypes: Record<string, string> = {
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'svg': 'image/svg+xml',
+        'avif': 'image/avif',
+      };
+      const mimeType = mimeTypes[ext] || 'image/png';
+
+      const blob = new Blob([data.buffer], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      imageUrlCache.set(imageName, url);
+      return url;
+    } catch (err) {
+      console.error(`[YjsDoc] Failed to load image ${imageName}:`, err);
+      return null;
+    }
+  }
+
+  // Save image to attachments/ directory
+  async function saveImage(data: Uint8Array, filename: string): Promise<string | null> {
+    const tree = getTree();
+    if (!userNpub || !route.treeName) {
+      console.warn('[YjsDoc] Missing userNpub or treeName, cannot save image');
+      return null;
+    }
+
+    // Always save to our own tree
+    let rootCid = getTreeRootSync(userNpub, route.treeName);
+    if (!rootCid) {
+      const { cid: emptyDirCid } = await tree.putDirectory([]);
+      rootCid = emptyDirCid;
+    }
+
+    try {
+      const currentPath = route.path;
+      const attachmentsPath = [...currentPath, ATTACHMENTS_DIR];
+
+      // Ensure attachments directory exists
+      const attachmentsResult = await tree.resolvePath(rootCid, attachmentsPath.join('/'));
+      if (!attachmentsResult) {
+        // Create attachments directory
+        const { cid: emptyDirCid } = await tree.putDirectory([]);
+        rootCid = await tree.setEntry(rootCid, currentPath, ATTACHMENTS_DIR, emptyDirCid, 0, LinkType.Dir);
+      }
+
+      // Save the image file
+      const { cid: imageCid, size: imageSize } = await tree.putFile(data);
+      const newRootCid = await tree.setEntry(
+        rootCid,
+        attachmentsPath,
+        filename,
+        imageCid,
+        imageSize,
+        LinkType.Blob
+      );
+
+      // Publish update
+      if (isOwnTree) {
+        autosaveIfOwn(newRootCid);
+      } else {
+        updateLocalRootCacheHex(
+          userNpub,
+          route.treeName!,
+          toHex(newRootCid.hash),
+          newRootCid.key ? toHex(newRootCid.key) : undefined
+        );
+      }
+
+      // Cache the blob URL
+      const ext = filename.split('.').pop()?.toLowerCase() || 'png';
+      const mimeTypes: Record<string, string> = {
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'svg': 'image/svg+xml',
+        'avif': 'image/avif',
+      };
+      const mimeType = mimeTypes[ext] || 'image/png';
+      const blob = new Blob([data.buffer], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      imageUrlCache.set(filename, url);
+
+      return filename;
+    } catch (err) {
+      console.error('[YjsDoc] Failed to save image:', err);
+      return null;
+    }
+  }
+
+  // Handle image upload from file input, paste, or drop
+  async function handleImageUpload(file: File): Promise<void> {
+    if (!file.type.startsWith('image/')) return;
+
+    const data = new Uint8Array(await file.arrayBuffer());
+    const filename = generateImageFilename(file);
+
+    const savedFilename = await saveImage(data, filename);
+    if (savedFilename && editor) {
+      // Insert image into editor with a special src that we'll resolve
+      // Use attachments:filename format to indicate it's a local attachment
+      editor.chain().focus().setImage({ src: `attachments:${savedFilename}` }).run();
+    }
+  }
+
+  // Handle paste event for images
+  function handlePaste(event: ClipboardEvent): void {
+    const items = event.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        event.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleImageUpload(file);
+        return;
+      }
+    }
+  }
+
+  // Handle drop event for images
+  function handleDrop(event: DragEvent): void {
+    const files = event.dataTransfer?.files;
+    if (!files) return;
+
+    for (const file of files) {
+      if (file.type.startsWith('image/')) {
+        event.preventDefault();
+        handleImageUpload(file);
+        return;
+      }
+    }
+  }
+
+  // Trigger file input for image upload
+  function triggerImageUpload(): void {
+    imageFileInput?.click();
+  }
+
+  // Handle file input change
+  function handleFileInputChange(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+      input.value = ''; // Reset for next upload
+    }
+  }
+
+  // Load and resolve all images in document content
+  async function loadDocumentImages(): Promise<void> {
+    const tree = getTree();
+    const currentPath = route.path;
+    const attachmentsPath = [...currentPath, ATTACHMENTS_DIR].join('/');
+
+    // Get root CID
+    let rootCid: CID | null = null;
+    if (viewedNpub) {
+      rootCid = route.treeName ? getTreeRootSync(viewedNpub, route.treeName) : null;
+    } else if (userNpub && route.treeName) {
+      rootCid = getTreeRootSync(userNpub, route.treeName);
+    }
+
+    if (!rootCid) return;
+
+    try {
+      const result = await tree.resolvePath(rootCid, attachmentsPath);
+      if (!result) return;
+
+      const isDir = await tree.isDirectory(result.cid);
+      if (!isDir) return;
+
+      const attachmentEntries = await tree.listDirectory(result.cid);
+
+      // Pre-load all images into cache
+      for (const entry of attachmentEntries) {
+        if (entry.type !== LinkType.Dir) {
+          await getImageUrl(entry.name);
+        }
+      }
+    } catch (err) {
+      // Attachments directory doesn't exist yet, that's fine
+    }
+  }
 
   // Load deltas from a directory's entries
   async function loadDeltasFromEntries(docEntries: TreeEntry[]): Promise<Uint8Array[]> {
@@ -491,6 +725,9 @@
     // Load editors
     await loadEditors();
 
+    // Load images from attachments directory
+    await loadDocumentImages();
+
     // Create Yjs document
     ydoc = new Y.Doc();
 
@@ -507,7 +744,7 @@
 
     loading = false;
 
-    // Create Tiptap editor with Yjs collaboration
+    // Create Tiptap editor with Yjs collaboration and image support
     editor = new Editor({
       element: editorElement,
       extensions: [
@@ -520,11 +757,44 @@
         Collaboration.configure({
           document: ydoc,
         }),
+        Image.configure({
+          inline: false,
+          allowBase64: false,
+        }),
       ],
       editable: canEdit,
       editorProps: {
         attributes: {
           class: 'prose prose-invert max-w-none focus:outline-none min-h-[200px] p-4',
+        },
+        handlePaste: (view, event) => {
+          const items = event.clipboardData?.items;
+          if (!items) return false;
+
+          for (const item of items) {
+            if (item.type.startsWith('image/')) {
+              event.preventDefault();
+              const file = item.getAsFile();
+              if (file) handleImageUpload(file);
+              return true;
+            }
+          }
+          return false;
+        },
+        handleDrop: (view, event, slice, moved) => {
+          if (moved) return false;
+
+          const files = event.dataTransfer?.files;
+          if (!files) return false;
+
+          for (const file of files) {
+            if (file.type.startsWith('image/')) {
+              event.preventDefault();
+              handleImageUpload(file);
+              return true;
+            }
+          }
+          return false;
         },
       },
     });
@@ -541,13 +811,62 @@
         scheduleSave();
       }
     });
+
+    // Set up image URL resolution for attachments:* sources
+    // Use MutationObserver to watch for new images and resolve their sources
+    const observer = new MutationObserver(async (mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node instanceof HTMLImageElement) {
+            await resolveImageSrc(node);
+          } else if (node instanceof HTMLElement) {
+            const images = node.querySelectorAll('img');
+            for (const img of images) {
+              await resolveImageSrc(img);
+            }
+          }
+        }
+      }
+    });
+
+    observer.observe(editorElement, { childList: true, subtree: true });
+
+    // Resolve existing images
+    const existingImages = editorElement.querySelectorAll('img');
+    for (const img of existingImages) {
+      await resolveImageSrc(img);
+    }
+
+    // Cleanup observer on destroy
+    const originalDestroy = editor.destroy.bind(editor);
+    editor.destroy = () => {
+      observer.disconnect();
+      originalDestroy();
+    };
   });
+
+  // Resolve image src from attachments:filename to blob URL
+  async function resolveImageSrc(img: HTMLImageElement): Promise<void> {
+    const src = img.getAttribute('src');
+    if (!src || !src.startsWith('attachments:')) return;
+
+    const filename = src.replace('attachments:', '');
+    const url = await getImageUrl(filename);
+    if (url) {
+      img.src = url;
+    }
+  }
 
   onDestroy(() => {
     if (saveTimer) clearTimeout(saveTimer);
     // Clean up collaborator subscriptions
     collabUnsubscribes.forEach(unsub => unsub());
     collabUnsubscribes = [];
+    // Clean up image blob URLs
+    for (const url of imageUrlCache.values()) {
+      URL.revokeObjectURL(url);
+    }
+    imageUrlCache.clear();
     editor?.destroy();
     ydoc?.destroy();
   });
@@ -730,6 +1049,13 @@
       >
         <span class="i-lucide-minus"></span>
       </button>
+      <button
+        onclick={triggerImageUpload}
+        class="toolbar-btn"
+        title="Insert Image"
+      >
+        <span class="i-lucide-image"></span>
+      </button>
 
       <div class="w-px h-5 bg-surface-3 mx-1"></div>
 
@@ -768,6 +1094,15 @@
     </div>
   {/if}
 </div>
+
+<!-- Hidden file input for image upload -->
+<input
+  bind:this={imageFileInput}
+  type="file"
+  accept="image/*"
+  onchange={handleFileInputChange}
+  class="hidden"
+/>
 
 <style>
   /* A4 paper styling for large screens */
@@ -836,5 +1171,18 @@
     float: left;
     height: 0;
     pointer-events: none;
+  }
+
+  /* Image styles */
+  :global(.ProseMirror-container .ProseMirror img) {
+    max-width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin: 1rem 0;
+  }
+
+  :global(.ProseMirror-container .ProseMirror img.ProseMirror-selectednode) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 </style>
