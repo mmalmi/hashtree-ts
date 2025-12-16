@@ -276,7 +276,7 @@
             </div>
             {#if pr.labels.length > 0}
               <div class="flex gap-2 mt-2 flex-wrap">
-                {#each pr.labels as label}
+                {#each pr.labels as label (label)}
                   <span class="px-2 py-0.5 text-xs rounded-full bg-accent/10 text-accent">{label}</span>
                 {/each}
               </div>
@@ -461,7 +461,7 @@
                   <span class="text-sm font-medium">Changed files</span>
                 </div>
                 <div class="p-2">
-                  {#each diffData.stats.files as file}
+                  {#each diffData.stats.files as file (file)}
                     <div class="px-2 py-1 text-sm font-mono text-text-2 hover:bg-surface-2 rounded">
                       {file}
                     </div>

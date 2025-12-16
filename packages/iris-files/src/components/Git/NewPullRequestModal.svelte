@@ -177,7 +177,7 @@
                   </button>
                   {#if sourceBranchDropdownOpen}
                     <div class="absolute top-full left-0 right-0 mt-1 bg-surface-1 b-1 b-solid b-surface-3 rounded-md shadow-lg z-10 max-h-48 overflow-auto">
-                      {#each branches as branch}
+                      {#each branches as branch (branch)}
                         <button
                           type="button"
                           onclick={() => selectSourceBranch(branch)}
@@ -227,7 +227,7 @@
                   </button>
                   {#if targetBranchDropdownOpen}
                     <div class="absolute top-full left-0 right-0 mt-1 bg-surface-1 b-1 b-solid b-surface-3 rounded-md shadow-lg z-10 max-h-48 overflow-auto">
-                      {#each branches as branch}
+                      {#each branches as branch (branch)}
                         <button
                           type="button"
                           onclick={() => selectTargetBranch(branch)}

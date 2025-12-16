@@ -23,7 +23,7 @@
 </script>
 
 <div class="flex items-center gap-1 px-4 b-b-1 b-b-solid b-b-surface-3">
-  {#each tabs as tab}
+  {#each tabs as tab (tab.id)}
     <a
       href={getHref(tab)}
       class="flex items-center gap-2 px-3 py-3 text-sm transition-colors b-b-2 b-b-solid -mb-px no-underline {

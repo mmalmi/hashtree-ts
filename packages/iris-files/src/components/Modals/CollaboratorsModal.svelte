@@ -310,7 +310,7 @@
           <div class="space-y-2">
             <label class="text-sm font-medium">Current editors:</label>
             <ul class="space-y-1 list-none m-0 p-0">
-              {#each localNpubs as npub, index}
+              {#each localNpubs as npub, index (npub)}
                 {@const pubkey = npubToPubkey(npub)}
                 <li class="flex items-center gap-2 bg-surface-2 rounded px-3 py-2">
                   {#if pubkey}
@@ -433,7 +433,7 @@
                 <!-- Search results dropdown -->
                 {#if showSearchResults && searchResults.length > 0}
                   <div class="absolute top-full left-0 right-0 mt-1 bg-surface-2 rounded border border-surface-3 shadow-lg z-10 max-h-48 overflow-auto">
-                    {#each searchResults as result}
+                    {#each searchResults as result (result.pubkey)}
                       <button
                         onclick={() => handleSearchSelect(result)}
                         class="w-full px-3 py-2 hover:bg-surface-3 text-left"

@@ -139,7 +139,7 @@
     </button>
   {/snippet}
   <!-- Branch list -->
-  {#each branches as branch}
+  {#each branches as branch (branch)}
     <button
       onclick={() => handleBranchSelect(branch)}
       class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 cursor-pointer"
@@ -157,7 +157,7 @@
     {#if showCompareSelect}
       <div class="px-3 py-2 bg-surface-2 b-t-1 b-t-solid b-t-surface-3">
         <div class="text-xs text-text-3 mb-2">Compare {currentBranch} with:</div>
-        {#each branches.filter(b => b !== currentBranch) as branch}
+        {#each branches.filter(b => b !== currentBranch) as branch (branch)}
           <button
             onclick={() => handleCompareSelect(branch)}
             class="w-full text-left px-2 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 rounded mb-1 cursor-pointer"

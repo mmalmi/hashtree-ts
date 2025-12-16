@@ -293,7 +293,7 @@
       {/if}
 
       <!-- Documents -->
-      {#each docs as doc}
+      {#each docs as doc (doc.name)}
         {@const linkKeySuffix = doc.linkKey ? `?k=${doc.linkKey}` : ''}
         <DocCard
           href="#/{npub}/{doc.name}{linkKeySuffix}"

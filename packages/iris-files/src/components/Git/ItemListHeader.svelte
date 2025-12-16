@@ -46,7 +46,7 @@
           <span class="i-lucide-chevron-down text-xs"></span>
         </button>
       {/snippet}
-      {#each filterOptions as option}
+      {#each filterOptions as option (option.value)}
         <button
           onclick={() => { onFilterChange(option.value); isDropdownOpen = false; }}
           class="w-full text-left px-3 py-2 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0"

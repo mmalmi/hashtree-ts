@@ -170,7 +170,7 @@
         </div>
       {:else}
         <div class="divide-y divide-surface-3">
-          {#each entries as entry}
+          {#each entries as entry (entry.name)}
             <div class="flex items-center gap-3 px-3 py-2 hover:bg-surface-3/50">
               <span class="{getFileIcon(entry.name)} text-text-2 shrink-0"></span>
               <span class="flex-1 truncate text-sm">{entry.name}</span>

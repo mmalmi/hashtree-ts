@@ -172,7 +172,7 @@
                   href={getIssueHref(issue)}
                   class="font-medium text-text-1 hover:text-accent hover:underline truncate"
                 >{issue.title}</a>
-                {#each issue.labels as label}
+                {#each issue.labels as label (label)}
                   <span class="px-2 py-0.5 text-xs rounded-full bg-accent/10 text-accent">{label}</span>
                 {/each}
               </div>

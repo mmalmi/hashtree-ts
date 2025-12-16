@@ -290,7 +290,7 @@ Not supported:
             Type a git command below (e.g., status, log, branch). Type <span class="text-accent">help</span> for available commands.
           </div>
         {:else}
-          {#each commandHistory as result}
+          {#each commandHistory as result, index (index)}
             <div class="mb-4">
               <div class="text-accent flex items-center gap-2">
                 <span class="text-text-3">$</span>

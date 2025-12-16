@@ -82,7 +82,7 @@
       <!-- File list preview -->
       <div class="mb-4 max-h-32 overflow-y-auto bg-surface-0 rounded border border-surface-3 p-2">
         <ul class="text-sm text-text-2 space-y-0.5">
-          {#each target.files.slice(0, 10) as file}
+          {#each target.files.slice(0, 10) as file (file.name)}
             <li class="flex items-center gap-2">
               <span class="i-lucide-file text-xs shrink-0"></span>
               <span class="truncate flex-1">{file.name}</span>

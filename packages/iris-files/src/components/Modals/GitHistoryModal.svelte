@@ -205,7 +205,7 @@
                 You're viewing an older commit. Switch to a branch to see all commits:
               </p>
               <div class="flex flex-wrap gap-2">
-                {#each branchInfo.branches as branch}
+                {#each branchInfo.branches as branch (branch)}
                   <button
                     onclick={() => handleCheckoutBranch(branch)}
                     disabled={checkoutInProgress !== null}
@@ -223,7 +223,7 @@
             </div>
           {/if}
           <div class="flex flex-col">
-            {#each logState.commits as commit, i}
+            {#each logState.commits as commit, i (commit.oid)}
               {@const isHead = commit.oid === logState.headOid}
               <div class="flex gap-3 pb-4 {i < logState.commits.length - 1 ? 'b-b-1 b-b-solid b-b-surface-3 mb-4' : ''} {isHead ? 'bg-accent/5 -mx-4 px-4 py-3 rounded-lg' : ''}">
                 <!-- Timeline dot -->

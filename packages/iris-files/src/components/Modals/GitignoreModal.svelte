@@ -63,7 +63,7 @@
           <div class="mb-3">
             <div class="text-sm text-text-3 mb-1">Ignored files:</div>
             <div class="max-h-30 overflow-y-auto bg-surface-2 rounded p-2 text-sm">
-              {#each target.excludedFiles.slice(0, 15) as f}
+              {#each target.excludedFiles.slice(0, 15) as f (f.relativePath)}
                 <div class="flex justify-between py-0.5 text-text-3">
                   <span class="truncate flex-1 mr-2">{f.relativePath}</span>
                   <span>{formatBytes(f.file.size)}</span>

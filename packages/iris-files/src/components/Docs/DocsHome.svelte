@@ -128,7 +128,7 @@
       {/if}
 
       <!-- Documents -->
-      {#each allDocs as doc}
+      {#each allDocs as doc (doc.href)}
         <DocCard
           href={doc.href}
           displayName={doc.displayName}

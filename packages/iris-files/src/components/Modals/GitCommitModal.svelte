@@ -337,7 +337,7 @@
 
           <!-- Changes list with checkboxes -->
           <div class="bg-surface-0 rounded-lg b-1 b-solid b-surface-3 overflow-hidden max-h-64 overflow-y-auto">
-            {#each selectableFiles as file}
+            {#each selectableFiles as file (file.path)}
               {@const isSelected = file.selected}
               <button
                 onclick={() => toggleFile(file.path)}

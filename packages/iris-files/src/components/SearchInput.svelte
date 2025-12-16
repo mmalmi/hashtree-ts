@@ -204,7 +204,7 @@
   <!-- Search results dropdown -->
   {#if showDropdown && searchResults.length > 0}
     <div class="absolute top-full left-0 right-0 mt-1 bg-surface-2 rounded border border-surface-3 shadow-lg z-50 max-h-64 overflow-auto">
-      {#each searchResults as result, index}
+      {#each searchResults as result, index (result.pubkey)}
         <button
           onclick={() => handleSelectUser(result)}
           onmouseenter={() => (selectedIndex = index)}

@@ -178,7 +178,7 @@
             </div>
             {#if issue.labels.length > 0}
               <div class="flex gap-2 mt-2 flex-wrap">
-                {#each issue.labels as label}
+                {#each issue.labels as label (label)}
                   <span class="px-2 py-0.5 text-xs rounded-full bg-accent/10 text-accent">{label}</span>
                 {/each}
               </div>

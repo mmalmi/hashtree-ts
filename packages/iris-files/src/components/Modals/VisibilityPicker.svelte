@@ -31,7 +31,7 @@
 <div>
   <label class="text-sm text-text-2 mb-2 block">Visibility</label>
   <div class="flex gap-2">
-    {#each ['public', 'unlisted', 'private'] as vis}
+    {#each ['public', 'unlisted', 'private'] as vis (vis)}
       <button
         type="button"
         onclick={() => onchange(vis as TreeVisibility)}

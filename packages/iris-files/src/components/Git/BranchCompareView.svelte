@@ -239,7 +239,7 @@
             <span class="text-sm font-medium">Changed files</span>
           </div>
           <div class="p-2">
-            {#each diffData.stats.files as file}
+            {#each diffData.stats.files as file (file)}
               <div class="px-2 py-1 text-sm font-mono text-text-2 hover:bg-surface-2 rounded">
                 {file}
               </div>

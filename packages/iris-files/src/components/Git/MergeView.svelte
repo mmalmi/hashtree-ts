@@ -285,7 +285,7 @@
                 <span class="font-medium">Merge conflicts detected</span>
                 <p class="text-text-2 mt-1">The following files have conflicts that must be resolved:</p>
                 <ul class="mt-2 font-mono text-xs">
-                  {#each mergeInfo.conflicts as conflict}
+                  {#each mergeInfo.conflicts as conflict (conflict)}
                     <li class="text-danger">{conflict}</li>
                   {/each}
                 </ul>
@@ -370,7 +370,7 @@
             <span class="text-sm font-medium">Files to be changed</span>
           </div>
           <div class="p-2 max-h-64 overflow-auto">
-            {#each mergeInfo.stats.files as file}
+            {#each mergeInfo.stats.files as file (file)}
               <div class="px-2 py-1 text-sm font-mono text-text-2 hover:bg-surface-2 rounded">
                 {file}
               </div>

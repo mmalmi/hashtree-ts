@@ -187,7 +187,7 @@
                   href={getPRHref(pr)}
                   class="font-medium text-text-1 hover:text-accent hover:underline truncate"
                 >{pr.title}</a>
-                {#each pr.labels as label}
+                {#each pr.labels as label (label)}
                   <span class="px-2 py-0.5 text-xs rounded-full bg-accent/10 text-accent">{label}</span>
                 {/each}
               </div>

@@ -484,7 +484,7 @@
           Add files to begin
         </div>
       {:else}
-        {#each sortedTrees as tree, idx}
+        {#each sortedTrees as tree, idx (tree.name)}
           <TreeRow
             href={buildTreeHref(targetNpub!, tree.name, tree.linkKey)}
             name={tree.name}
@@ -627,7 +627,7 @@
             {isDraggingOver ? '' : 'Empty directory'}
           </div>
         {:else}
-          {#each entries as entry, idx}
+          {#each entries as entry, idx (entry.name)}
             <a
               href={buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootCid, linkKey, effectiveGitRoot)}
               class="p-3 pl-9 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {selectedEntry?.name === entry.name && focusedIndex < 0 ? 'bg-surface-2' : ''} {focusedIndex === idx + specialItemCount ? 'ring-2 ring-inset ring-accent' : ''} {recentlyChanged.has(entry.name) && selectedEntry?.name !== entry.name ? 'animate-pulse-live' : ''}"

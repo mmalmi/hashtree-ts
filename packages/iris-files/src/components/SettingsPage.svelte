@@ -229,7 +229,7 @@
       </div>
       <p class="text-xs text-text-3 mb-3">Nostr servers used to find peers and npub/path directories</p>
       <div class="bg-surface-2 rounded divide-y divide-surface-3">
-        {#each networkSettings.relays as relay}
+        {#each networkSettings.relays as relay (relay)}
           {@const status = getRelayStatus(relay)}
           <div class="flex items-center gap-2 p-3 text-sm">
             <span class="w-2 h-2 rounded-full {getStatusColor(status)} shrink-0"></span>
@@ -284,7 +284,7 @@
           </button>
           {#if showDiscoveredRelays}
             <div class="divide-y divide-surface-3">
-            {#each discoveredRelays as relay}
+            {#each discoveredRelays as relay (relay.url)}
               <div class="flex items-center gap-2 p-3 text-sm">
                 <span class="w-2 h-2 rounded-full {getStatusColor(relay.status)} shrink-0"></span>
                 <span class="text-text-1 truncate flex-1">
@@ -322,7 +322,7 @@
         <a href="https://github.com/hzrd149/blossom" target="_blank" rel="noopener" class="text-accent hover:underline">Blossom</a> servers for fallback when peer-to-peer (WebRTC) connections are unavailable
       </p>
       <div class="bg-surface-2 rounded divide-y divide-surface-3">
-        {#each networkSettings.blossomServers as server}
+        {#each networkSettings.blossomServers as server (server.url)}
           <div class="flex items-center gap-2 p-3 text-sm">
             <span class="i-lucide-server text-text-3 shrink-0"></span>
             <span class="text-text-1 truncate flex-1">
@@ -390,7 +390,7 @@
             <button onclick={() => blossomLogStore.clear()} class="btn-ghost text-xs text-text-3">Clear</button>
           </div>
           <div class="bg-surface-3 rounded text-xs font-mono max-h-32 overflow-y-auto overflow-x-auto p-2 space-y-1">
-            {#each blossomLogs as log}
+            {#each blossomLogs as log (log.timestamp + log.hash)}
               {@const time = new Date(log.timestamp).toLocaleTimeString()}
               <div class="flex items-center gap-2 whitespace-nowrap {log.success ? 'text-success' : 'text-danger'}">
                 <span class="text-text-3">{time}</span>
@@ -542,7 +542,7 @@
         </div>
       {:else}
         <div class="bg-surface-2 rounded divide-y divide-surface-3">
-          {#each peerList as peer}
+          {#each peerList as peer (peer.peerId)}
             {@const peerStats = getPeerStats(peer.peerId)}
             <a
               href="#/{nip19.npubEncode(peer.pubkey)}"
@@ -639,7 +639,7 @@
           Autosynced trees ({formatBytes(syncedStorageTotal)} total)
         </p>
         <div class="bg-surface-2 rounded divide-y divide-surface-3" data-testid="synced-storage">
-          {#each syncedStorage as userStats}
+          {#each syncedStorage as userStats (userStats.npub)}
             {@const pubkey = (() => {
               try { return nip19.decode(userStats.npub).data as string; }
               catch { return ''; }

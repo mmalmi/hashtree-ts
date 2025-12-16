@@ -124,7 +124,7 @@
         </td>
       </tr>
     {/if}
-    {#each sortedEntries as entry}
+    {#each sortedEntries as entry (entry.name)}
       {@const isGitDir = entry.name === '.git'}
       {@const href = buildEntryHref(entry)}
       {@const commitInfo = fileCommits.get(entry.name)}

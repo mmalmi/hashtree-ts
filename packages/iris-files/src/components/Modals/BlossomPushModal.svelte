@@ -195,7 +195,7 @@
               <p class="text-sm text-text-3 italic">No file servers configured</p>
             {:else}
               <div class="space-y-2">
-                {#each servers as server, i}
+                {#each servers as server, i (server.url)}
                   <label class="flex items-center gap-2 p-2 rounded bg-surface-2 cursor-pointer hover:bg-surface-3">
                     <input
                       type="checkbox"
@@ -287,7 +287,7 @@
             {#if stats.errors > 0}
               <div class="bg-surface-2 rounded p-2 max-h-40 overflow-auto">
                 <div class="text-xs text-text-3 mb-1">Errors:</div>
-                {#each results.filter(r => r.status === 'error') as result}
+                {#each results.filter(r => r.status === 'error') as result (result.name)}
                   <div class="text-xs text-danger truncate" title={result.error}>
                     {result.name}: {result.error}
                   </div>
