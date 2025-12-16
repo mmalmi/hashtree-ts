@@ -201,12 +201,6 @@
 
       mergeSuccess = true;
       merging = false;
-
-      // Navigate back to the repo view after a brief delay
-      setTimeout(() => {
-        const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
-        navigate(`/${npub}/${route.treeName}${linkKeySuffix}`);
-      }, 1500);
     } catch (err) {
       mergeError = err instanceof Error ? err.message : String(err);
       merging = false;
@@ -247,10 +241,16 @@
         <span>{error}</span>
       </div>
     {:else if mergeSuccess}
-      <div class="flex flex-col items-center justify-center py-12 text-success">
-        <span class="i-lucide-check-circle text-4xl mb-4"></span>
-        <h2 class="text-xl font-semibold mb-2">Merge successful!</h2>
-        <p class="text-text-2">Redirecting to repository...</p>
+      <div class="flex flex-col items-center justify-center py-12">
+        <span class="i-lucide-check-circle text-4xl mb-4 text-success"></span>
+        <h2 class="text-xl font-semibold mb-2 text-success">Merge successful!</h2>
+        <p class="text-text-2 mb-4">
+          Branch <span class="font-mono text-accent">{headBranch}</span> has been merged into <span class="font-mono">{baseBranch}</span>
+        </p>
+        <a href={backUrl} class="btn-primary">
+          <span class="i-lucide-arrow-left mr-2"></span>
+          Back to repository
+        </a>
       </div>
     {:else if mergeInfo}
       <!-- Merge preview -->
