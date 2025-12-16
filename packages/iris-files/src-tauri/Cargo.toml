@@ -1,0 +1,30 @@
+[package]
+name = "iris-files"
+version = "0.1.0"
+description = "Iris Files - Content-addressed file storage on Nostr"
+authors = ["Martti Malmi"]
+license = "MIT"
+repository = "https://github.com/irislib/hashtree-ts"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.3.0", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tauri = { version = "2.6", features = [] }
+tauri-plugin-os = "2"
+tauri-plugin-opener = "2.5"
+tauri-plugin-dialog = "2.4"
+tauri-plugin-notification = "2"
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-autostart = "2"

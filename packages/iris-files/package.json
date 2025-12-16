@@ -11,7 +11,10 @@
     "build:docs": "vite build --config vite.docs.config.ts",
     "build:analyze": "vite build && echo '\nBundle stats: dist/stats.html\nBundle list: dist/stats-list.txt'",
     "preview": "vite preview",
-    "preview:docs": "vite preview --config vite.docs.config.ts"
+    "preview:docs": "vite preview --config vite.docs.config.ts",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@noble/hashes": "^2.0.1",
@@ -45,6 +48,13 @@
     "yjs": "^13.6.27"
   },
   "devDependencies": {
+    "@tauri-apps/api": "^2.5.0",
+    "@tauri-apps/cli": "^2.6.0",
+    "@tauri-apps/plugin-autostart": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-notification": "^2",
+    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-os": "^2",
     "@iconify-json/lucide": "^1.2.75",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@tsconfig/svelte": "^5.0.4",
