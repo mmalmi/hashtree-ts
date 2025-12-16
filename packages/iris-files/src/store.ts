@@ -56,10 +56,71 @@ export interface PeerStatsInfo {
 
 // Bandwidth tracking (rolling 5-second window)
 const BANDWIDTH_WINDOW_MS = 5000;
-const BANDWIDTH_SAMPLE_INTERVAL_MS = 1000;
 let bandwidthSamples: { timestamp: number; bytesSent: number; bytesReceived: number }[] = [];
 let lastBytesSent = 0;
 let lastBytesReceived = 0;
+
+// Lifetime transfer stats (persisted to localStorage)
+const LIFETIME_STATS_KEY = 'hashtree:lifetimeStats';
+interface LifetimeStats {
+  bytesSent: number;
+  bytesReceived: number;
+  bytesForwarded: number;
+  lastSessionBytesSent: number;
+  lastSessionBytesReceived: number;
+  lastSessionBytesForwarded: number;
+}
+
+function loadLifetimeStats(): LifetimeStats {
+  try {
+    const stored = localStorage.getItem(LIFETIME_STATS_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch {}
+  return {
+    bytesSent: 0,
+    bytesReceived: 0,
+    bytesForwarded: 0,
+    lastSessionBytesSent: 0,
+    lastSessionBytesReceived: 0,
+    lastSessionBytesForwarded: 0,
+  };
+}
+
+let lifetimeStats = loadLifetimeStats();
+
+function saveLifetimeStats(): void {
+  try {
+    localStorage.setItem(LIFETIME_STATS_KEY, JSON.stringify(lifetimeStats));
+  } catch {}
+}
+
+// Update lifetime stats from current session stats
+function updateLifetimeStats(sessionBytesSent: number, sessionBytesReceived: number, sessionBytesForwarded: number): void {
+  // Add delta since last update
+  const deltaSent = sessionBytesSent - lifetimeStats.lastSessionBytesSent;
+  const deltaReceived = sessionBytesReceived - lifetimeStats.lastSessionBytesReceived;
+  const deltaForwarded = sessionBytesForwarded - lifetimeStats.lastSessionBytesForwarded;
+
+  if (deltaSent > 0) lifetimeStats.bytesSent += deltaSent;
+  if (deltaReceived > 0) lifetimeStats.bytesReceived += deltaReceived;
+  if (deltaForwarded > 0) lifetimeStats.bytesForwarded += deltaForwarded;
+
+  lifetimeStats.lastSessionBytesSent = sessionBytesSent;
+  lifetimeStats.lastSessionBytesReceived = sessionBytesReceived;
+  lifetimeStats.lastSessionBytesForwarded = sessionBytesForwarded;
+
+  saveLifetimeStats();
+}
+
+export function getLifetimeStats(): { bytesSent: number; bytesReceived: number; bytesForwarded: number } {
+  return {
+    bytesSent: lifetimeStats.bytesSent,
+    bytesReceived: lifetimeStats.bytesReceived,
+    bytesForwarded: lifetimeStats.bytesForwarded,
+  };
+}
 
 // WebSocket fallback status
 // App state store interface
@@ -153,6 +214,9 @@ function createAppStore() {
           uploadBandwidth = totalSent / windowSeconds;
           downloadBandwidth = totalReceived / windowSeconds;
         }
+
+        // Persist lifetime stats
+        updateLifetimeStats(webrtcStats.bytesSent, webrtcStats.bytesReceived, webrtcStats.bytesForwarded);
       }
 
       update(state => ({ ...state, webrtcStats, perPeerStats, uploadBandwidth, downloadBandwidth }));

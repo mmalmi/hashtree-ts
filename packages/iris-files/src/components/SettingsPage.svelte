@@ -6,7 +6,7 @@
   import { onMount } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { nostrStore, type RelayStatus, getNsec } from '../nostr';
-  import { appStore, formatBytes, formatBandwidth, updateStorageStats, refreshWebRTCStats } from '../store';
+  import { appStore, formatBytes, formatBandwidth, updateStorageStats, refreshWebRTCStats, getLifetimeStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { syncedStorageStore, refreshSyncedStorage } from '../stores/chunkMetadata';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../stores/settings';
@@ -199,6 +199,13 @@
   let perPeerStats = $derived(appState.perPeerStats);
   let uploadBandwidth = $derived(appState.uploadBandwidth);
   let downloadBandwidth = $derived(appState.downloadBandwidth);
+
+  // Lifetime stats (recalculated on each render when webrtcStats changes)
+  let lifetimeStats = $derived.by(() => {
+    // Trigger recalculation when webrtcStats changes
+    webrtcStats;
+    return getLifetimeStats();
+  });
 
   // Load initial data on mount and refresh stats periodically
   onMount(() => {
@@ -520,10 +527,10 @@
       </h3>
       <p class="text-xs text-text-3 mb-3">WebRTC connections for file exchange</p>
 
-      <!-- Aggregate stats -->
-      {#if webrtcStats && isLoggedIn}
+      <!-- Transfer stats -->
+      {#if isLoggedIn}
         <div class="bg-surface-2 rounded p-3 mb-3">
-          <!-- Bandwidth and transfer stats -->
+          <!-- Bandwidth -->
           <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs mb-3 pb-3 border-b border-surface-3">
             <div class="flex justify-between">
               <span class="text-text-3">
@@ -537,52 +544,36 @@
               </span>
               <span class="text-text-1 font-mono">{formatBandwidth(downloadBandwidth)}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-text-3">Sent</span>
-              <span class="text-text-1 font-mono">{formatBytes(webrtcStats.bytesSent)}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-text-3">Received</span>
-              <span class="text-text-1 font-mono">{formatBytes(webrtcStats.bytesReceived)}</span>
-            </div>
-            {#if webrtcStats.bytesForwarded > 0}
-              <div class="flex justify-between col-span-2">
-                <span class="text-text-3">Forwarded</span>
-                <span class="text-text-1 font-mono">{formatBytes(webrtcStats.bytesForwarded)}</span>
-              </div>
-            {/if}
           </div>
-          <!-- Request/response stats -->
-          <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <div class="flex justify-between">
-              <span class="text-text-3">Reqs sent</span>
-              <span class="text-text-1 font-mono">{webrtcStats.requestsSent}</span>
+          <!-- Session transfer -->
+          <div class="grid grid-cols-3 gap-x-3 gap-y-2 text-xs mb-3">
+            <div class="text-text-3 text-center">Session</div>
+            <div class="text-center">
+              <span class="text-success font-mono">{formatBytes(webrtcStats?.bytesSent ?? 0)}</span>
+              <span class="text-text-3 ml-1">up</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-text-3">Reqs received</span>
-              <span class="text-text-1 font-mono">{webrtcStats.requestsReceived}</span>
+            <div class="text-center">
+              <span class="text-accent font-mono">{formatBytes(webrtcStats?.bytesReceived ?? 0)}</span>
+              <span class="text-text-3 ml-1">down</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-text-3">Res sent</span>
-              <span class="text-text-1 font-mono">{webrtcStats.responsesSent}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-text-3">Res received</span>
-              <span class="text-text-1 font-mono">{webrtcStats.responsesReceived}</span>
-            </div>
-            {#if webrtcStats.blossomFetches > 0}
-              <div class="flex justify-between col-span-2">
-                <span class="text-text-3">File server fetches</span>
-                <span class="text-text-1 font-mono">{webrtcStats.blossomFetches}</span>
-              </div>
-            {/if}
-            {#if webrtcStats.receiveErrors > 0}
-              <div class="flex justify-between col-span-2">
-                <span class="text-danger">Receive errors</span>
-                <span class="text-danger font-mono">{webrtcStats.receiveErrors}</span>
-              </div>
-            {/if}
           </div>
+          <!-- Lifetime transfer -->
+          <div class="grid grid-cols-3 gap-x-3 gap-y-2 text-xs">
+            <div class="text-text-3 text-center">Lifetime</div>
+            <div class="text-center">
+              <span class="text-success font-mono">{formatBytes(lifetimeStats.bytesSent)}</span>
+              <span class="text-text-3 ml-1">up</span>
+            </div>
+            <div class="text-center">
+              <span class="text-accent font-mono">{formatBytes(lifetimeStats.bytesReceived)}</span>
+              <span class="text-text-3 ml-1">down</span>
+            </div>
+          </div>
+          {#if lifetimeStats.bytesForwarded > 0}
+            <div class="text-xs text-text-3 mt-2 text-center">
+              Forwarded: {formatBytes(lifetimeStats.bytesForwarded)}
+            </div>
+          {/if}
         </div>
       {/if}
 
@@ -626,18 +617,17 @@
               <!-- Per-peer stats -->
               {#if peerStats && peer.state === 'connected'}
                 <div class="mt-2 ml-4 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-3">
-                  <span title="Requests sent to this peer">
-                    <span class="i-lucide-arrow-up-right inline-block align-middle mr-0.5"></span>{peerStats.requestsSent}
+                  <span title="Bytes sent to this peer" class="text-success">
+                    <span class="i-lucide-arrow-up inline-block align-middle mr-0.5"></span>{formatBytes(peerStats.bytesSent)}
                   </span>
-                  <span title="Requests received from this peer">
-                    <span class="i-lucide-arrow-down-left inline-block align-middle mr-0.5"></span>{peerStats.requestsReceived}
+                  <span title="Bytes received from this peer" class="text-accent">
+                    <span class="i-lucide-arrow-down inline-block align-middle mr-0.5"></span>{formatBytes(peerStats.bytesReceived)}
                   </span>
-                  <span title="Responses sent to this peer">
-                    <span class="i-lucide-upload inline-block align-middle mr-0.5"></span>{peerStats.responsesSent}
-                  </span>
-                  <span title="Responses received from this peer">
-                    <span class="i-lucide-download inline-block align-middle mr-0.5"></span>{peerStats.responsesReceived}
-                  </span>
+                  {#if peerStats.bytesForwarded > 0}
+                    <span title="Bytes forwarded for this peer">
+                      <span class="i-lucide-forward inline-block align-middle mr-0.5"></span>{formatBytes(peerStats.bytesForwarded)}
+                    </span>
+                  {/if}
                   {#if peerStats.receiveErrors > 0}
                     <span title="Receive errors from this peer" class="text-danger">
                       <span class="i-lucide-alert-triangle inline-block align-middle mr-0.5"></span>{peerStats.receiveErrors}
