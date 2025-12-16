@@ -137,7 +137,7 @@
   // Navigate to merge view
   function goToMerge() {
     const linkKeySuffix = route.linkKey ? `&k=${route.linkKey}` : '';
-    navigate(`#/${npub}/${repoName}?merge=1&base=${baseBranch}&head=${headBranch}${linkKeySuffix}`);
+    navigate(`/${npub}/${repoName}?merge=1&base=${baseBranch}&head=${headBranch}${linkKeySuffix}`);
   }
 </script>
 

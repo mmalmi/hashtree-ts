@@ -46,7 +46,7 @@
   function handleCompareSelect(targetBranch: string) {
     if (!currentBranch || !npub || !repoPath) return;
     const linkKeySuffix = route.linkKey ? `&k=${route.linkKey}` : '';
-    navigate(`#/${npub}/${repoPath}?compare=${currentBranch}...${targetBranch}${linkKeySuffix}`);
+    navigate(`/${npub}/${repoPath}?compare=${currentBranch}...${targetBranch}${linkKeySuffix}`);
     isDropdownOpen = false;
     showCompareSelect = false;
   }

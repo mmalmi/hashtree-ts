@@ -190,7 +190,7 @@
       // Navigate back to the repo view after a brief delay
       setTimeout(() => {
         const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
-        navigate(`#/${npub}/${route.treeName}${linkKeySuffix}`);
+        navigate(`/${npub}/${route.treeName}${linkKeySuffix}`);
       }, 1500);
     } catch (err) {
       mergeError = err instanceof Error ? err.message : String(err);
