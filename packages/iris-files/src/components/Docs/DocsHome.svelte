@@ -1,17 +1,19 @@
 <script lang="ts">
   /**
    * DocsHome - Home page for docs.iris.to
-   * Shows recent docs and new doc button
+   * Shows combination of recent docs and user's own docs
    * Similar to Google Docs home page
    */
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../../nostr';
   import { recentsStore, type RecentItem } from '../../stores/recents';
+  import { createTreesStore } from '../../stores';
   import { openCreateModal } from '../../stores/modals';
   import DocCard from './DocCard.svelte';
 
   // Get current user
   let userNpub = $derived($nostrStore.npub);
+  let userPubkey = $derived($nostrStore.pubkey);
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
 
   // Get recents and filter to only docs
@@ -20,12 +22,64 @@
     recents
       .filter(r => r.treeName?.startsWith('docs/'))
       .map(r => ({
-        ...r,
-        displayName: r.treeName ? r.treeName.slice(5) : r.label, // Remove 'docs/' prefix
+        key: r.path,
+        displayName: r.treeName ? r.treeName.slice(5) : r.label,
         ownerPubkey: r.npub ? npubToPubkey(r.npub) : null,
+        visibility: r.visibility,
+        href: buildRecentHref(r),
+        timestamp: r.timestamp,
       }))
-      .slice(0, 20)
   );
+
+  // Get user's own trees
+  let treesStore = $derived(createTreesStore(userNpub));
+  let trees = $state<Array<{ name: string; visibility?: string; rootHash?: string; linkKey?: string }>>([]);
+
+  $effect(() => {
+    const store = treesStore;
+    const unsub = store.subscribe(value => {
+      trees = value;
+    });
+    return unsub;
+  });
+
+  // User's own docs
+  let ownDocs = $derived(
+    trees
+      .filter(t => t.name.startsWith('docs/'))
+      .map(t => ({
+        key: `/${userNpub}/${t.name}`,
+        displayName: t.name.slice(5),
+        ownerPubkey: userPubkey,
+        visibility: t.visibility,
+        href: `#/${userNpub}/${t.name}${t.linkKey ? `?k=${t.linkKey}` : ''}`,
+        timestamp: 0, // Own docs don't have timestamp, will be sorted after recents
+      }))
+  );
+
+  // Merge recents and own docs, deduplicate by key, recents first
+  let allDocs = $derived.by(() => {
+    const seen = new Set<string>();
+    const result: typeof recentDocs = [];
+
+    // Add recents first (they have timestamps)
+    for (const doc of recentDocs) {
+      if (!seen.has(doc.key)) {
+        seen.add(doc.key);
+        result.push(doc);
+      }
+    }
+
+    // Add own docs that aren't already in recents
+    for (const doc of ownDocs) {
+      if (!seen.has(doc.key)) {
+        seen.add(doc.key);
+        result.push(doc);
+      }
+    }
+
+    return result.slice(0, 30);
+  });
 
   function npubToPubkey(npub: string): string | null {
     try {
@@ -37,7 +91,7 @@
     return null;
   }
 
-  function buildHref(item: RecentItem): string {
+  function buildRecentHref(item: RecentItem): string {
     const base = `#${item.path}`;
     return item.linkKey ? `${base}?k=${item.linkKey}` : base;
   }
@@ -67,10 +121,10 @@
         </button>
       {/if}
 
-      <!-- Recent documents -->
-      {#each recentDocs as doc}
+      <!-- Documents -->
+      {#each allDocs as doc}
         <DocCard
-          href={buildHref(doc)}
+          href={doc.href}
           displayName={doc.displayName}
           ownerPubkey={doc.ownerPubkey}
           visibility={doc.visibility}

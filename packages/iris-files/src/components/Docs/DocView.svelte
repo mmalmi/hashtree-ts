@@ -5,10 +5,11 @@
    */
   import { routeStore, treeRootStore } from '../../stores';
   import { getTree } from '../../store';
-  import { LinkType, type CID, type TreeEntry } from 'hashtree';
+  import { type CID, type TreeEntry } from 'hashtree';
   import YjsDocumentEditor from '../Viewer/YjsDocumentEditor.svelte';
   import { nostrStore } from '../../nostr';
   import { nip19 } from 'nostr-tools';
+  import { addRecent } from '../../stores/recents';
 
   let route = $derived($routeStore);
   let treeRoot = $derived($treeRootStore);
@@ -48,6 +49,23 @@
     const treeName = route.treeName;
     if (npub && treeName) {
       setSelectedTreeIfOwn(npub, treeName);
+    }
+  });
+
+  // Add to recents when viewing a doc
+  $effect(() => {
+    const npub = route.npub;
+    const treeName = route.treeName;
+    const linkKey = route.linkKey;
+    if (npub && treeName?.startsWith('docs/')) {
+      addRecent({
+        type: 'tree',
+        label: treeName.slice(5), // Remove 'docs/' prefix for display
+        path: `/${npub}/${treeName}`,
+        npub,
+        treeName,
+        linkKey: linkKey ?? undefined,
+      });
     }
   });
 
