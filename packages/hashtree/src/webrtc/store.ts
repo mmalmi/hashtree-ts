@@ -245,6 +245,35 @@ export class WebRTCStore implements Store {
   }
 
   /**
+   * Set relays and reconnect. Useful for runtime relay configuration changes.
+   * Closes existing subscriptions and starts new ones with the updated relays.
+   */
+  setRelays(relays: string[]): void {
+    this.log('setRelays:', relays);
+    this.config.relays = relays;
+
+    // If running, restart subscriptions with new relays
+    if (this.running) {
+      // Close existing subscriptions
+      for (const sub of this.subscriptions) {
+        sub.close();
+      }
+      this.subscriptions = [];
+
+      // Clear existing peers (they were discovered via old relays)
+      for (const { peer } of this.peers.values()) {
+        peer.close();
+      }
+      this.peers.clear();
+
+      // Start new subscriptions with updated relays
+      this.startSubscription();
+
+      this.emit({ type: 'update' });
+    }
+  }
+
+  /**
    * Add event listener
    */
   on(handler: WebRTCStoreEventHandler): () => void {

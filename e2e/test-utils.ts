@@ -149,14 +149,25 @@ export async function presetOthersPoolInDB(page: any) {
  * Configure the app to use the local test relay instead of public relays.
  * This eliminates network flakiness and rate limiting issues during tests.
  *
- * IMPORTANT: Call this BEFORE any navigation or state changes in the test.
+ * Updates both settings store (for future store creations) and the
+ * existing WebRTC store (for immediate effect on current connections).
  */
 export async function useLocalRelay(page: any) {
   await page.evaluate(async () => {
+    const localRelay = 'ws://localhost:4736';
+
+    // Update settings store for future store creations
     const { settingsStore } = await import('/src/stores/settings');
     settingsStore.setNetworkSettings({
-      relays: ['ws://localhost:4736'],
+      relays: [localRelay],
     });
+
+    // Also update the running WebRTC store if it exists
+    // Use window global which is always in sync with the app
+    const store = (window as unknown as { webrtcStore?: { setRelays?: (relays: string[]) => void } }).webrtcStore;
+    if (store && typeof store.setRelays === 'function') {
+      store.setRelays([localRelay]);
+    }
   });
 }
 
