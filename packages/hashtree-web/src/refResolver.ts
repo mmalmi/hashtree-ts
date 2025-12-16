@@ -18,6 +18,39 @@ declare global {
 }
 
 /**
+ * Wait for NDK to have at least one connected relay
+ * Returns immediately if already connected
+ */
+async function waitForNdkConnection(timeout = 10000): Promise<boolean> {
+  const checkConnected = () => {
+    const pool = ndk.pool;
+    if (!pool) return false;
+    for (const relay of pool.relays.values()) {
+      // NDKRelayStatus.CONNECTED = 5
+      if (relay.status >= 5) return true;
+    }
+    return false;
+  };
+
+  // Already connected
+  if (checkConnected()) return true;
+
+  // Wait for connection
+  return new Promise((resolve) => {
+    const startTime = Date.now();
+    const checkInterval = setInterval(() => {
+      if (checkConnected()) {
+        clearInterval(checkInterval);
+        resolve(true);
+      } else if (Date.now() - startTime > timeout) {
+        clearInterval(checkInterval);
+        resolve(false);
+      }
+    }, 100);
+  });
+}
+
+/**
  * Get the ref resolver instance (creates it on first call)
  */
 export function getRefResolver(): RefResolver {
@@ -37,18 +70,54 @@ export function getRefResolver(): RefResolver {
           closeOnEose: false,
           cacheUsage: NDKSubscriptionCacheUsage.CACHE_FIRST,
         };
-        const sub = ndk.subscribe(ndkFilter, opts);
-        sub.on('event', (e: NDKEvent) => {
-          onEvent({
-            id: e.id,
-            pubkey: e.pubkey,
-            kind: e.kind ?? 30078,
-            content: e.content,
-            tags: e.tags,
-            created_at: e.created_at ?? 0,
+
+        console.log('[refResolver] Creating subscription with filter:', JSON.stringify({
+          kinds: ndkFilter.kinds,
+          authors: ndkFilter.authors?.map(a => a.slice(0, 8) + '...'),
+          '#d': ndkFilter['#d'],
+          '#l': ndkFilter['#l'],
+        }));
+
+        // Track if subscription is still active
+        let active = true;
+
+        // Ensure NDK is connected before subscribing
+        // This prevents race conditions where subscription is created before relay connection
+        waitForNdkConnection().then((connected) => {
+          if (!active) return; // Subscription was cancelled
+          if (!connected) {
+            console.warn('[refResolver] NDK connection timeout, subscription may not receive events');
+          }
+          console.log('[refResolver] NDK connected:', connected, '- starting subscription');
+
+          const sub = ndk.subscribe(ndkFilter, opts);
+          sub.on('event', (e: NDKEvent) => {
+            if (!active) return;
+            console.log('[refResolver] Received event from', e.pubkey.slice(0, 8), 'kind:', e.kind, 'id:', e.id.slice(0, 8));
+            onEvent({
+              id: e.id,
+              pubkey: e.pubkey,
+              kind: e.kind ?? 30078,
+              content: e.content,
+              tags: e.tags,
+              created_at: e.created_at ?? 0,
+            });
           });
+
+          // Store unsubscribe in closure for cleanup
+          const originalUnsubscribe = unsubscribe;
+          unsubscribe = () => {
+            active = false;
+            sub.stop();
+            originalUnsubscribe?.();
+          };
         });
-        return () => sub.stop();
+
+        let unsubscribe: (() => void) | undefined = () => {
+          active = false;
+        };
+
+        return () => unsubscribe?.();
       },
       publish: async (event) => {
         try {

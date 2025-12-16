@@ -15,7 +15,7 @@
  * - If waiting for content sync, use waitForEditorContent() helper
  */
 import { test, expect, Page } from '@playwright/test';
-import { setupPageErrorHandler, disableOthersPool, configureBlossomServers, waitForWebRTCConnection } from './test-utils.js';
+import { setupPageErrorHandler, disableOthersPool, configureBlossomServers, waitForWebRTCConnection, presetOthersPoolInDB, enableOthersPool } from './test-utils.js';
 
 // Helper to set up a fresh user session
 async function setupFreshUser(page: Page) {
@@ -103,8 +103,22 @@ async function typeInEditor(page: Page, content: string) {
 
 // Helper to wait for auto-save
 async function waitForSave(page: Page) {
-  // Wait for "Saved" status to appear (auto-save debounce is 1s, then save happens)
+  // Wait for "Saving..." to appear first (debounce triggers), then "Saved"
+  // This ensures we wait for a NEW save, not just that "Saved" is still visible from before
+  const savingStatus = page.locator('text=Saving');
   const savedStatus = page.locator('text=Saved').or(page.locator('text=/Saved \\d/'));
+
+  // First wait for saving to start (may already be in progress)
+  try {
+    await expect(savingStatus).toBeVisible({ timeout: 5000 });
+  } catch {
+    // If "Saving" not visible, it might have already completed - check for saved
+    if (await savedStatus.isVisible()) {
+      return;
+    }
+  }
+
+  // Now wait for save to complete
   await expect(savedStatus).toBeVisible({ timeout: 30000 });
 }
 
@@ -1116,13 +1130,20 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await editorA.click();
       await pageA.keyboard.press('End');
       await pageA.keyboard.type(' [A-MID]');
-      await pageA.waitForTimeout(1500);
       console.log('User A: Added A-MID at end');
+
+      // Wait for B to see A's edit via real-time Yjs sync
       await expect(editorB).toContainText('[A-MID]', { timeout: 30000 });
 
-      // Wait for all saves to complete
+      // Wait for autosave debounce (1s) + save time + Nostr propagation
+      // The debounce starts after typing, so we need at least 1s + buffer
+      console.log('Waiting for saves to complete...');
+      await pageA.waitForTimeout(3000); // Ensure debounce expires and save completes
+      await waitForSave(pageA);
+      await waitForSave(pageB);
+      // Additional wait for tree data to propagate
       await pageA.waitForTimeout(2000);
-      await pageB.waitForTimeout(2000);
+      console.log('Saves complete');
 
       // Get content before refresh
       const contentBeforeRefresh = await editorA.textContent();
@@ -1188,6 +1209,329 @@ test.describe('Yjs Collaborative Document Editing', () => {
       console.log(`User B's npub: ${npubB}`);
       console.log(`Final content (A): "${contentAAfterRefresh}"`);
       console.log(`Final content (B): "${contentBAfterRefresh}"`);
+
+    } finally {
+      await contextA.close();
+      await contextB.close();
+    }
+  });
+
+  test('browser can view document via direct link without creator making more edits', async ({ browser }) => {
+    // This test verifies that Browser 2 can view Browser 1's document via direct link
+    // WITHOUT Browser 1 making additional edits to trigger sync.
+    //
+    // The key requirement: once WebRTC connection is established, Browser 2 should
+    // be able to navigate to the document URL and see its content immediately.
+
+    const contextA = await browser.newContext();
+    const contextB = await browser.newContext();
+
+    const pageA = await contextA.newPage();
+    const pageB = await contextB.newPage();
+
+    setupPageErrorHandler(pageA);
+    setupPageErrorHandler(pageB);
+
+    try {
+      // === Setup both users ===
+      console.log('Setting up User A...');
+      await setupFreshUser(pageA);
+      const npubA = await getNpub(pageA);
+      const pubkeyA = await pageA.evaluate(() => (window as any).__nostrStore?.getState()?.pubkey);
+      console.log(`User A npub: ${npubA}`);
+
+      console.log('Setting up User B...');
+      await pageB.goto('/');
+      await setupFreshUser(pageB);
+      const pubkeyB = await pageB.evaluate(() => (window as any).__nostrStore?.getState()?.pubkey);
+      console.log(`User B ready`);
+
+      // === Users follow each other for WebRTC connection ===
+      console.log('Users following each other...');
+      await pageA.waitForFunction(() => (window as any).__testHelpers?.followPubkey, { timeout: 10000 });
+      await pageB.waitForFunction(() => (window as any).__testHelpers?.followPubkey, { timeout: 10000 });
+
+      await pageA.evaluate(async (pk) => {
+        const { followPubkey } = (window as any).__testHelpers;
+        await followPubkey(pk);
+      }, pubkeyB);
+      await pageB.evaluate(async (pk) => {
+        const { followPubkey } = (window as any).__testHelpers;
+        await followPubkey(pk);
+      }, pubkeyA);
+
+      // Wait for WebRTC connection
+      await waitForWebRTCConnection(pageA, 15000);
+      await waitForWebRTCConnection(pageB, 15000);
+      console.log('WebRTC connected');
+
+      // === User A: Create document and type content ===
+      console.log('User A: Creating document...');
+      await createDocument(pageA, 'direct-view-test');
+
+      const editorA = pageA.locator('.ProseMirror');
+      await expect(editorA).toBeVisible({ timeout: 30000 });
+      await editorA.click();
+      await pageA.keyboard.type('Content created by Browser 1 - should be visible to Browser 2');
+      console.log('User A: Content typed');
+
+      // Wait for save to complete
+      await waitForSave(pageA);
+      console.log('User A: Document saved');
+
+      // Wait a bit for sync
+      await pageA.waitForTimeout(3000);
+
+      // Get the document URL
+      const docUrl = pageA.url();
+      console.log(`Document URL: ${docUrl}`);
+
+      // === Browser 2 navigates directly to the document URL ===
+      // This tests that Browser 2 can view without Browser 1 making more edits
+      console.log('Browser 2: Navigating directly to document URL...');
+      await pageB.goto(docUrl);
+
+      // Wait for the editor to appear with content
+      const editorB = pageB.locator('.ProseMirror');
+      await expect(editorB).toBeVisible({ timeout: 30000 });
+      await expect(editorB).toContainText('Content created by Browser 1', { timeout: 30000 });
+
+      const contentB = await editorB.textContent();
+      console.log(`Browser 2 sees: "${contentB}"`);
+      console.log('Test PASSED: Browser 2 viewed document without Browser 1 making more edits');
+
+    } finally {
+      await contextA.close();
+      await contextB.close();
+    }
+  });
+
+  test('incognito browser views document via direct URL without prior WebRTC', async ({ browser }) => {
+    // This test simulates the REAL scenario:
+    // 1. Browser A creates a document
+    // 2. Browser B (fresh/incognito) navigates DIRECTLY to the document URL
+    // 3. B has NO follows, NO prior WebRTC connection
+    // 4. B discovers A via "others" pool and eventually sees the content
+    //
+    // This is different from the above test where they follow each other first.
+
+    const contextA = await browser.newContext();
+    const contextB = await browser.newContext();
+
+    const pageA = await contextA.newPage();
+    const pageB = await contextB.newPage();
+
+    setupPageErrorHandler(pageA);
+    setupPageErrorHandler(pageB);
+
+    // Enable console logging for debugging
+    pageA.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('[WebRTCStore]') || text.includes('[Peer]') || text.includes('onmessage')) {
+        console.log(`[A] ${text}`);
+      }
+    });
+    pageB.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('[WebRTCStore]') || text.includes('[Peer]') || text.includes('pending') || text.includes('onmessage') || text.includes('resolver') || text.includes('treeRoot') || text.includes('[refResolver]')) {
+        console.log(`[B] ${text}`);
+      }
+    });
+
+    try {
+      // === Setup User A using setupFreshUser (includes disableOthersPool) ===
+      console.log('Setting up User A...');
+      await setupFreshUser(pageA);
+      const npubA = await getNpub(pageA);
+      console.log(`User A npub: ${npubA}`);
+
+      // === User A: Create document and type content ===
+      console.log('User A: Creating document...');
+      await createDocument(pageA, 'incognito-test');
+
+      const editorA = pageA.locator('.ProseMirror');
+      await expect(editorA).toBeVisible({ timeout: 30000 });
+      await editorA.click();
+      await pageA.keyboard.type('Content from A - incognito B should see this');
+      console.log('User A: Content typed');
+
+      // Wait for save to complete
+      await waitForSave(pageA);
+      console.log('User A: Document saved');
+
+      // Debug: Check A's local store
+      const aStoreStats = await pageA.evaluate(async () => {
+        const localStore = (window as any).__localStore;
+        if (!localStore) return 'no localStore';
+        const count = await localStore.count();
+        return { count };
+      });
+      console.log(`User A local store:`, aStoreStats);
+
+      // Get the document URL
+      const docUrl = pageA.url();
+      console.log(`Document URL: ${docUrl}`);
+
+      // Now enable others pool for A so B can discover them
+      console.log('User A: Enabling others pool...');
+      await pageA.evaluate(async () => {
+        const { settingsStore } = await import('/src/stores/settings');
+        settingsStore.setPoolSettings({ otherMax: 10, otherSatisfied: 1 });
+        const store = (window as any).webrtcStore;
+        if (store) {
+          store.setPoolConfig({
+            follows: { maxConnections: 20, satisfiedConnections: 10 },
+            other: { maxConnections: 10, satisfiedConnections: 1 },
+          });
+        }
+      });
+
+      // === Browser B: Navigate DIRECTLY to the document URL ===
+      // B has NOT visited the site before, has no follows, no WebRTC connections
+      console.log('Browser B: Navigating directly to document URL (no prior setup)...');
+
+      // In test mode, otherMax defaults to 0. We need to preset it BEFORE WebRTC starts.
+      // Navigate to main page just to get indexedDB access and preset config
+      await pageB.goto('http://localhost:5173');
+      // Custom preset that handles existing DB version
+      await pageB.evaluate(async () => {
+        // Open without version to use existing
+        const request = indexedDB.open('hashtree-settings');
+        await new Promise<void>((resolve, reject) => {
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => {
+            const db = request.result;
+            const tx = db.transaction('settings', 'readwrite');
+            const store = tx.objectStore('settings');
+            store.put({
+              key: 'pools',
+              value: {
+                followsMax: 20,
+                followsSatisfied: 10,
+                otherMax: 100,
+                otherSatisfied: 1
+              }
+            });
+            tx.oncomplete = () => {
+              db.close();
+              resolve();
+            };
+            tx.onerror = () => reject(tx.error);
+          };
+        });
+      });
+      console.log('Browser B: Pool config pre-set in IndexedDB');
+
+      // Navigate to doc URL - WebRTC will restart on page load
+      await pageB.goto(docUrl, { waitUntil: 'networkidle' });
+      // Force reload to ensure WebRTC picks up the new config from IndexedDB
+      await pageB.reload({ waitUntil: 'networkidle' });
+
+      // Wait for app to fully load with header AND enable others pool
+      await pageB.waitForSelector('header span:has-text("hashtree")', { timeout: 30000 });
+
+      // Also enable others pool for B after app loads (the IndexedDB preset might not be enough)
+      await pageB.evaluate(async () => {
+        const store = (window as any).webrtcStore;
+        if (store) {
+          store.setPoolConfig({
+            follows: { maxConnections: 20, satisfiedConnections: 10 },
+            other: { maxConnections: 100, satisfiedConnections: 1 },
+          });
+        }
+      });
+      console.log('Browser B: App loaded, others pool enabled');
+
+      // Check WebRTC connection status periodically
+      for (let i = 0; i < 60; i++) {
+        const status = await pageB.evaluate(() => {
+          const store = (window as any).webrtcStore;
+          if (!store?.getPeers) return { peers: [], connected: 0 };
+          const peers = store.getPeers();
+          const connected = peers.filter((p: any) => p.isConnected).length;
+          return { peers: peers.length, connected };
+        });
+
+        if (status.connected > 0) {
+          console.log(`Browser B: WebRTC connected after ${i}s - ${status.connected} peers`);
+          break;
+        }
+        if (i % 10 === 0) {
+          console.log(`Browser B: ${i}s - peers: ${status.peers}, connected: ${status.connected}`);
+        }
+        await pageB.waitForTimeout(1000);
+      }
+
+      // Debug: Check what B sees on the page
+      const pageContent = await pageB.locator('body').textContent();
+      console.log(`Browser B page content preview: "${pageContent?.slice(0, 200)}..."`);
+
+      // Check if there's a loading state
+      const loadingVisible = await pageB.locator('text=Loading').isVisible().catch(() => false);
+      console.log(`Browser B: Loading visible: ${loadingVisible}`);
+
+      // Check if editor exists
+      const editorExists = await pageB.locator('.ProseMirror').count();
+      console.log(`Browser B: Editor elements found: ${editorExists}`);
+
+      // Debug: Check treeRootStore and route status
+      const storeStatus = await pageB.evaluate(async () => {
+        try {
+          const hashtree = (window as any).__hashtree;
+          const localStore = (window as any).__localStore;
+          const getTreeRoot = (window as any).__getTreeRoot;
+
+          if (!hashtree) return { error: 'no hashtree' };
+
+          const rootHashHex = getTreeRoot?.(); // Returns hex string directly
+
+          // Check if we have the root data locally
+          let hasRootData = false;
+          let rootDataSize = 0;
+          let localCount = 0;
+          if (localStore) {
+            localCount = await localStore.count();
+            if (rootHashHex) {
+              const hash = hashtree.fromHex(rootHashHex);
+              const data = await localStore.get(hash);
+              hasRootData = !!data;
+              rootDataSize = data?.length ?? 0;
+            }
+          }
+
+          return {
+            treeRoot: rootHashHex ? { hash: rootHashHex.slice(0, 16), hasRootData, rootDataSize } : null,
+            localStoreCount: localCount
+          };
+        } catch (e) {
+          return { error: String(e) };
+        }
+      });
+      console.log('Browser B store status:', JSON.stringify(storeStatus, null, 2));
+
+      // Debug: Check WebRTC pending requests
+      const webrtcStatus = await pageB.evaluate(async () => {
+        const store = (window as any).webrtcStore;
+        if (!store) return { error: 'no webrtcStore' };
+        const peers = store.getPeers?.() ?? [];
+        const pendingReqs = store.getPendingRequests?.() ?? [];
+        return {
+          peers: peers.map((p: any) => ({ id: p.peerId?.slice(0, 8), connected: p.isConnected })),
+          pendingRequests: pendingReqs.length
+        };
+      });
+      console.log('Browser B WebRTC status:', JSON.stringify(webrtcStatus, null, 2));
+
+      // Wait for the editor to appear with content
+      const editorB = pageB.locator('.ProseMirror');
+      await expect(editorB).toBeVisible({ timeout: 60000 });
+
+      // This is the key assertion - B should see A's content without A making more edits
+      await expect(editorB).toContainText('Content from A', { timeout: 60000 });
+
+      const contentB = await editorB.textContent();
+      console.log(`Browser B sees: "${contentB}"`);
+      console.log('Test PASSED: Incognito browser viewed document via direct URL');
 
     } finally {
       await contextA.close();

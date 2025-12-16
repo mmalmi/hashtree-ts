@@ -197,6 +197,11 @@ export const ndk = new NDK({
   cacheAdapter,
 });
 
+// Expose NDK on window for debugging
+if (typeof window !== 'undefined') {
+  (window as any).__ndk = ndk;
+}
+
 // Connect on init
 ndk.connect().catch(console.error);
 

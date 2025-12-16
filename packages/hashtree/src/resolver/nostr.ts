@@ -232,7 +232,21 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
           callback(cid(fromHex(sub.currentHash), keyBytes), sub.currentVisibility ?? undefined);
         }
       } else {
-        // Create new subscription
+        // Helper to notify all callbacks
+        const notifyCallbacks = (subEntry: SubscriptionEntry) => {
+          if (!subEntry.currentHash) return;
+          const keyBytes = subEntry.currentKey ? fromHex(subEntry.currentKey) : undefined;
+          const visibilityInfo = subEntry.currentVisibility ?? undefined;
+          for (const cb of subEntry.callbacks) {
+            try {
+              cb(cid(fromHex(subEntry.currentHash), keyBytes), visibilityInfo);
+            } catch (e) {
+              console.error('Resolver callback error:', e);
+            }
+          }
+        };
+
+        // Create new subscription for live updates
         const unsubscribe = nostrSubscribe(
           {
             kinds: [30078],
@@ -254,7 +268,7 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
             const newHash = visibilityData.hash;
             const newKey = visibilityData.key;
 
-            // Only update if this event is newer
+            // Only update if this event is newer (or same timestamp with different hash)
             if (eventCreatedAt >= subEntry.latestCreatedAt && newHash && newHash !== subEntry.currentHash) {
               subEntry.currentHash = newHash;
               subEntry.currentKey = newKey || null;
@@ -269,15 +283,24 @@ export function createNostrRefResolver(config: NostrRefResolverConfig): RefResol
               };
               subEntry.currentVisibility = visibilityInfo;
 
-              const keyBytes = newKey ? fromHex(newKey) : undefined;
-              // Notify all callbacks with CID
-              for (const cb of subEntry.callbacks) {
-                try {
-                  cb(cid(fromHex(newHash), keyBytes), visibilityInfo);
-                } catch (e) {
-                  console.error('Resolver callback error:', e);
-                }
+              // Update localListCache so other subscriptions can find this data
+              const npubStr = key.split('/')[0];
+              let npubCache = localListCache.get(npubStr);
+              if (!npubCache) {
+                npubCache = new Map();
+                localListCache.set(npubStr, npubCache);
               }
+              npubCache.set(treeName, {
+                hash: newHash,
+                visibility: visibilityData.visibility,
+                key: newKey,
+                encryptedKey: visibilityData.encryptedKey,
+                keyId: visibilityData.keyId,
+                selfEncryptedKey: visibilityData.selfEncryptedKey,
+                created_at: eventCreatedAt,
+              });
+
+              notifyCallbacks(subEntry);
             }
           }
         );

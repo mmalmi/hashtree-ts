@@ -997,8 +997,11 @@ export class WebRTCStore implements Store {
       }
     }
 
-    // If running and not satisfied, add to pending reqs and wait for new peers
-    if (this.running && !this.isSatisfied()) {
+    // If running and either:
+    // 1. Not satisfied (still seeking more peers), OR
+    // 2. We haven't tried any peers yet (no peers connected, but might connect soon)
+    // Then add to pending reqs and wait for new peers
+    if (this.running && (!this.isSatisfied() || triedPeers.size === 0)) {
       return this.waitForHash(hash, triedPeers);
     }
 

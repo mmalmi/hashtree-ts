@@ -68,6 +68,7 @@ export class Peer {
   private sendSignaling: (msg: SignalingMessage) => Promise<void>;
   private onClose: () => void;
   private onConnected?: () => void;
+  private onConnectedFired = false;  // Guard against double-firing
   private debug: boolean;
 
   // Requests we sent TO this peer (keyed by hash hex)
@@ -197,7 +198,13 @@ export class Peer {
 
       if (this.pc.connectionState === 'connected') {
         this.connectedAt = Date.now();
-        this.onConnected?.();
+        // Only trigger onConnected if data channel is also ready
+        // (it may already be open, or will fire via channel.onopen)
+        if (this.dataChannel?.readyState === 'open' && !this.onConnectedFired) {
+          this.onConnectedFired = true;
+          this.log('PC connected and data channel already open, firing onConnected');
+          this.onConnected?.();
+        }
       } else if (
         this.pc.connectionState === 'failed' ||
         this.pc.connectionState === 'closed' ||
@@ -218,6 +225,13 @@ export class Peer {
 
     channel.onopen = () => {
       this.log('Data channel open');
+      // If PC is already connected, fire onConnected now
+      // (handles case where data channel opens after PC connects)
+      if (this.pc.connectionState === 'connected' && !this.onConnectedFired) {
+        this.onConnectedFired = true;
+        this.log('Data channel opened after PC connected, firing onConnected');
+        this.onConnected?.();
+      }
     };
 
     channel.onclose = () => {
