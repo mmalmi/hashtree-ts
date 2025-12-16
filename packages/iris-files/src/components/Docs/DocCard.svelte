@@ -17,12 +17,12 @@
 
 <a
   {href}
-  class="aspect-[1/1.414] bg-surface-1 rounded-lg border border-surface-3 hover:border-accent hover:shadow-md transition-all no-underline flex flex-col"
+  class="aspect-[1/1.414] bg-surface-1 rounded-lg b-1 b-solid b-surface-3 hover:b-accent hover:shadow-md transition-all no-underline flex flex-col"
 >
   <div class="flex-1 flex items-center justify-center">
     <span class="i-lucide-file-text text-4xl text-accent"></span>
   </div>
-  <div class="p-2 border-t border-surface-3">
+  <div class="p-2 b-t-1 b-t-solid b-t-surface-3">
     <div class="flex items-center gap-1.5">
       {#if ownerPubkey}
         <Avatar pubkey={ownerPubkey} size={16} />
