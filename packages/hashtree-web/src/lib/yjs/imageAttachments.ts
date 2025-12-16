@@ -6,6 +6,7 @@ import { LinkType } from 'hashtree';
 import type { CID } from 'hashtree';
 import { getTree } from '../../store';
 import { getTreeRootSync } from '../../stores';
+import { getRefResolver } from '../../refResolver';
 import { autosaveIfOwn } from '../../nostr';
 import { updateLocalRootCacheHex } from '../../treeRootCache';
 import { toHex } from 'hashtree';
@@ -68,30 +69,51 @@ export function createImageCache() {
 export type ImageCache = ReturnType<typeof createImageCache>;
 
 /**
- * Load an image from the tree and return a blob URL
+ * Try to load an image from a specific npub's tree
+ * Uses the ref resolver to get the tree root (handles collaborators properly)
  */
-export async function loadImageFromTree(
+async function tryLoadImageFromNpub(
   imageName: string,
   path: string[],
-  viewedNpub: string | null,
-  userNpub: string | null,
-  treeName: string | null,
+  npub: string,
+  treeName: string,
   cache: ImageCache
 ): Promise<string | null> {
-  // Check cache first
-  if (cache.has(imageName)) {
-    return cache.get(imageName)!;
-  }
-
   const tree = getTree();
   const attachmentsPath = [...path, ATTACHMENTS_DIR, imageName].join('/');
 
-  // Get root CID
-  let rootCid: CID | null = null;
-  if (viewedNpub) {
-    rootCid = treeName ? getTreeRootSync(viewedNpub, treeName) : null;
-  } else if (userNpub && treeName) {
-    rootCid = getTreeRootSync(userNpub, treeName);
+  // First try the sync cache (works for currently viewed tree and own tree)
+  let rootCid = getTreeRootSync(npub, treeName);
+
+  // If not in cache, try the resolver (handles collaborator trees)
+  if (!rootCid) {
+    const resolver = getRefResolver();
+    const resolverKey = `${npub}/${treeName}`;
+
+    rootCid = await new Promise<CID | null>((resolve) => {
+      let hasResolved = false;
+      let unsub: (() => void) | null = null;
+
+      const cleanup = () => {
+        if (unsub) unsub();
+      };
+
+      unsub = resolver.subscribe(resolverKey, (cidObj) => {
+        if (hasResolved) return;
+        hasResolved = true;
+        queueMicrotask(cleanup);
+        resolve(cidObj);
+      });
+
+      // Short timeout for image loading
+      setTimeout(() => {
+        if (!hasResolved) {
+          hasResolved = true;
+          cleanup();
+          resolve(null);
+        }
+      }, 3000);
+    });
   }
 
   if (!rootCid) return null;
@@ -108,10 +130,48 @@ export async function loadImageFromTree(
     const url = URL.createObjectURL(blob);
     cache.set(imageName, url);
     return url;
-  } catch (err) {
-    console.error(`[YjsDoc] Failed to load image ${imageName}:`, err);
+  } catch {
     return null;
   }
+}
+
+/**
+ * Load an image from the tree and return a blob URL
+ * Tries the viewed user's tree first, then falls back to collaborators' trees
+ */
+export async function loadImageFromTree(
+  imageName: string,
+  path: string[],
+  viewedNpub: string | null,
+  userNpub: string | null,
+  treeName: string | null,
+  cache: ImageCache,
+  collaborators: string[] = []
+): Promise<string | null> {
+  // Check cache first
+  if (cache.has(imageName)) {
+    return cache.get(imageName)!;
+  }
+
+  if (!treeName) return null;
+
+  // Try the primary tree (viewed user or current user)
+  const primaryNpub = viewedNpub || userNpub;
+  if (primaryNpub) {
+    const url = await tryLoadImageFromNpub(imageName, path, primaryNpub, treeName, cache);
+    if (url) return url;
+  }
+
+  // If not found in primary tree, try collaborators' trees
+  for (const collabNpub of collaborators) {
+    // Skip if same as primary
+    if (collabNpub === primaryNpub) continue;
+
+    const url = await tryLoadImageFromNpub(imageName, path, collabNpub, treeName, cache);
+    if (url) return url;
+  }
+
+  return null;
 }
 
 /**

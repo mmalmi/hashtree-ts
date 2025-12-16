@@ -139,7 +139,8 @@
       viewedNpub,
       userNpub,
       route.treeName,
-      imageCache
+      imageCache,
+      collaborators
     );
   }
 
@@ -596,6 +597,26 @@
     const url = await getImageUrl(filename);
     if (url) {
       img.src = url;
+    } else {
+      // Mark as needing retry - will be resolved when collaborator trees are available
+      img.dataset.pendingResolve = 'true';
+    }
+  }
+
+  // Re-resolve any images that failed to load initially (after collaborator data available)
+  async function retryPendingImages(): Promise<void> {
+    if (!editorElement) return;
+    const pendingImages = editorElement.querySelectorAll('img[data-pending-resolve="true"]');
+    for (const img of pendingImages) {
+      const src = img.getAttribute('src');
+      if (!src || !src.startsWith('attachments:')) continue;
+
+      const filename = src.replace('attachments:', '');
+      const url = await getImageUrl(filename);
+      if (url) {
+        (img as HTMLImageElement).src = url;
+        delete (img as HTMLImageElement).dataset.pendingResolve;
+      }
     }
   }
 
