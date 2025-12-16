@@ -887,11 +887,14 @@
     height: auto;
     border-radius: 4px;
     margin: 1rem 0;
+    cursor: pointer;
   }
 
   :global(.ProseMirror-container .ProseMirror img.ProseMirror-selectednode) {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+    outline: 3px solid var(--color-accent);
+    outline-offset: 3px;
+    box-shadow: 0 0 0 6px rgba(var(--color-accent-rgb, 99, 102, 241), 0.2);
+    cursor: grab;
   }
 
   /* Comment highlight styles */
