@@ -207,14 +207,18 @@ export async function initGitRepo(
 /**
  * Get last commit info for files in a directory
  * Returns a map of filename -> commit info
+ * @param rootCid - The root CID of the git repository
+ * @param filenames - Array of filenames (base names only, not full paths)
+ * @param subpath - Optional subdirectory path relative to git root (e.g., 'src' or 'src/utils')
  */
 export async function getFileLastCommits(
   rootCid: CID,
-  filenames: string[]
+  filenames: string[],
+  subpath?: string
 ): Promise<Map<string, { oid: string; message: string; timestamp: number }>> {
   try {
     const { getFileLastCommitsWithWasmGit } = await import('./wasmGit');
-    return await getFileLastCommitsWithWasmGit(rootCid, filenames);
+    return await getFileLastCommitsWithWasmGit(rootCid, filenames, subpath);
   } catch {
     return new Map();
   }

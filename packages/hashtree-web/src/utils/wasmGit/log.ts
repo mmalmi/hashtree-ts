@@ -216,10 +216,14 @@ export async function getLogWithWasmGit(
 /**
  * Get last commit info for files in a directory
  * Returns a map of filename -> commit info
+ * @param rootCid - The root CID of the git repository
+ * @param filenames - Array of filenames (base names only, not full paths)
+ * @param subpath - Optional subdirectory path relative to git root (e.g., 'src' or 'src/utils')
  */
 export async function getFileLastCommitsWithWasmGit(
   rootCid: CID,
-  filenames: string[]
+  filenames: string[],
+  subpath?: string
 ): Promise<Map<string, { oid: string; message: string; timestamp: number }>> {
   return withWasmGitLock(async () => {
     const tree = getTree();
@@ -262,8 +266,10 @@ export async function getFileLastCommitsWithWasmGit(
         if (filename === '.git') continue;
 
         try {
-          // Run git log -1 -- <filename> to get last commit for this file
-          const output = module.callWithOutput(['log', '-1', '--', filename]);
+          // Build the full path relative to git root
+          const fullPath = subpath ? `${subpath}/${filename}` : filename;
+          // Run git log -1 -- <fullPath> to get last commit for this file
+          const output = module.callWithOutput(['log', '-1', '--', fullPath]);
 
           if (!output || output.trim() === '') continue;
 

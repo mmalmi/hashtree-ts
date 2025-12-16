@@ -80,12 +80,36 @@
     });
   });
 
+  // Calculate subdirectory path relative to git root
+  // gitRootPath is the path to git root (e.g., "my-repo"), currentPath is full path (e.g., ["my-repo", "src"])
+  // We need to compute the subpath within the git repo (e.g., "src")
+  let gitSubpath = $derived.by(() => {
+    // Get the git root path as an array
+    const gitRootParts = gitRootPath !== null
+      ? (gitRootPath === '' ? [] : gitRootPath.split('/'))
+      : currentPath; // If gitRootPath is null, we're at git root, so use currentPath as git root
+
+    // If we're at git root level (gitRootPath null), subpath is empty
+    if (gitRootPath === null) {
+      return '';
+    }
+
+    // currentPath should start with gitRootParts
+    // The subpath is everything after gitRootParts
+    if (currentPath.length <= gitRootParts.length) {
+      return ''; // At git root
+    }
+
+    return currentPath.slice(gitRootParts.length).join('/');
+  });
+
   // Load file last commit info when entries or gitCid change
   // Use gitCid for git operations, but track entries for file names
   $effect(() => {
     // Access props to track them for reactivity
     const cid = gitCid;
     const filenames = entries.map(e => e.name);
+    const subpath = gitSubpath;
 
     if (!cid || filenames.length === 0) {
       fileCommits = new Map();
@@ -93,7 +117,7 @@
     }
 
     let cancelled = false;
-    getFileLastCommits(cid, filenames).then(result => {
+    getFileLastCommits(cid, filenames, subpath || undefined).then(result => {
       if (!cancelled) {
         fileCommits = result;
       }

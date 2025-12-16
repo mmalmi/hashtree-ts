@@ -596,6 +596,151 @@ test.describe('Git history features', () => {
     }
   });
 
+  test('getFileLastCommits should work in subdirectories', { timeout: 30000 }, async ({ page }) => {
+    test.slow(); // This test involves git operations that take time
+
+    await navigateToPublicFolder(page);
+
+    // Create a real git repo with commits in subdirectories
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { execSync } = await import('child_process');
+    const os = await import('os');
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-subdir-commits-'));
+
+    try {
+      // Initialize git repo
+      execSync('git init', { cwd: tmpDir });
+      execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+      execSync('git config user.name "Test User"', { cwd: tmpDir });
+
+      // Create first commit with README
+      await fs.writeFile(path.join(tmpDir, 'README.md'), '# Test Repo\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Add README"', { cwd: tmpDir });
+
+      // Create second commit with src/index.ts
+      await fs.mkdir(path.join(tmpDir, 'src'));
+      await fs.writeFile(path.join(tmpDir, 'src', 'index.ts'), 'export const x = 1;\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Add src/index.ts"', { cwd: tmpDir });
+
+      // Create third commit with src/utils/helper.ts
+      await fs.mkdir(path.join(tmpDir, 'src', 'utils'));
+      await fs.writeFile(path.join(tmpDir, 'src', 'utils', 'helper.ts'), 'export const helper = () => {};\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Add src/utils/helper.ts"', { cwd: tmpDir });
+
+      // Read all files and directories
+      interface FileEntry { type: 'file'; path: string; content: number[]; }
+      interface DirEntry { type: 'dir'; path: string; }
+      type Entry = FileEntry | DirEntry;
+
+      const getAllEntries = async (dir: string, base = ''): Promise<Entry[]> => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const result: Entry[] = [];
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          const relativePath = base ? `${base}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            result.push({ type: 'dir', path: relativePath });
+            result.push(...await getAllEntries(fullPath, relativePath));
+          } else {
+            const content = await fs.readFile(fullPath);
+            result.push({ type: 'file', path: relativePath, content: Array.from(content) });
+          }
+        }
+        return result;
+      };
+
+      const allEntries = await getAllEntries(tmpDir);
+      const allFiles = allEntries.filter((e): e is FileEntry => e.type === 'file');
+      const allDirs = allEntries.filter((e): e is DirEntry => e.type === 'dir').map(d => d.path);
+
+      // Upload and test getFileLastCommits in subdirectory
+      const result = await page.evaluate(async ({ files, dirs }) => {
+        const { getTree, LinkType } = await import('/src/store.ts');
+        const tree = getTree();
+
+        // Create root directory and upload all files
+        let { cid: rootCid } = await tree.putDirectory([]);
+
+        // Create directories
+        const dirPaths = new Set<string>(dirs);
+        for (const file of files) {
+          const parts = file.path.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            dirPaths.add(parts.slice(0, i).join('/'));
+          }
+        }
+        const sortedDirs = Array.from(dirPaths).sort((a, b) =>
+          a.split('/').length - b.split('/').length
+        );
+
+        for (const dir of sortedDirs) {
+          const parts = dir.split('/');
+          const name = parts.pop()!;
+          const { cid: emptyDir } = await tree.putDirectory([]);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, LinkType.Dir);
+        }
+
+        // Add files
+        for (const file of files) {
+          const parts = file.path.split('/');
+          const name = parts.pop()!;
+          const data = new Uint8Array(file.content);
+          const { cid: fileCid, size } = await tree.putFile(data);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, LinkType.Blob);
+        }
+
+        // Test getFileLastCommits in root - should work
+        const { getFileLastCommits } = await import('/src/utils/git.ts');
+        const rootCommits = await getFileLastCommits(rootCid, ['README.md', 'src']);
+
+        // Test getFileLastCommits in src subdirectory - this is what's broken
+        // We need to pass the subpath to the function
+        const srcCommits = await getFileLastCommits(rootCid, ['index.ts', 'utils'], 'src');
+
+        // Test getFileLastCommits in src/utils subdirectory
+        const utilsCommits = await getFileLastCommits(rootCid, ['helper.ts'], 'src/utils');
+
+        return {
+          // Root level
+          rootCommitsSize: rootCommits.size,
+          rootReadmeCommit: rootCommits.get('README.md'),
+          rootSrcCommit: rootCommits.get('src'),
+          // src subdirectory level
+          srcCommitsSize: srcCommits.size,
+          srcIndexCommit: srcCommits.get('index.ts'),
+          srcUtilsCommit: srcCommits.get('utils'),
+          // src/utils subdirectory level
+          utilsCommitsSize: utilsCommits.size,
+          utilsHelperCommit: utilsCommits.get('helper.ts'),
+        };
+      }, { files: allFiles, dirs: allDirs });
+
+      console.log('Subdirectory commits result:', JSON.stringify(result, null, 2));
+
+      // Verify root level works
+      expect(result.rootCommitsSize).toBeGreaterThan(0);
+      expect(result.rootReadmeCommit?.message).toContain('Add README');
+      expect(result.rootSrcCommit?.message).toContain('Add src');
+
+      // Verify src subdirectory commits work
+      expect(result.srcCommitsSize).toBeGreaterThan(0);
+      expect(result.srcIndexCommit?.message).toContain('Add src/index.ts');
+      expect(result.srcUtilsCommit?.message).toContain('Add src/utils');
+
+      // Verify src/utils subdirectory commits work
+      expect(result.utilsCommitsSize).toBeGreaterThan(0);
+      expect(result.utilsHelperCommit?.message).toContain('Add src/utils/helper.ts');
+
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   test('wasm-git should not spam console with git output', { timeout: 30000 }, async ({ page }) => {
     // Capture ALL console messages to check for git output spam
     const consoleLogs: string[] = [];
