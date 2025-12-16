@@ -246,7 +246,6 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
 
 // Create a new tree as a document (with .yjs config file)
 // Used by docs app to create standalone documents
-// Documents use d-tag prefix "docs/" to separate from regular hashtrees
 export async function createDocumentTree(
   name: string,
   visibility: import('hashtree').TreeVisibility = 'public'
@@ -263,8 +262,7 @@ export async function createDocumentTree(
     return { success: false };
   }
 
-  // Use docs/ prefix for document trees
-  const treeName = `docs/${name}`;
+  const treeName = name;
 
   // Create .yjs config file with owner's npub as first editor
   const yjsContent = new TextEncoder().encode(nostrState.npub + '\n');

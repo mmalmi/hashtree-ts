@@ -110,18 +110,11 @@ export function parseRoute(): RouteInfo {
 
     // Tree route: #/npub/treeName/path...
     if (parts[1] && !['profile', 'follows', 'followers', 'edit'].includes(parts[1])) {
-      // Handle docs/ prefix: docs/docname is a single treeName
-      let treeName = parts[1];
-      let pathStart = 2;
-      if (parts[1] === 'docs' && parts[2]) {
-        treeName = `docs/${parts[2]}`;
-        pathStart = 3;
-      }
       return {
         npub,
-        treeName,
+        treeName: parts[1],
         cid: null,
-        path: parts.slice(pathStart),
+        path: parts.slice(2),
         isPermalink: false,
         linkKey,
         isStreaming,

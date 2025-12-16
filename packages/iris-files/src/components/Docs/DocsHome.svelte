@@ -16,14 +16,13 @@
   let userPubkey = $derived($nostrStore.pubkey);
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
 
-  // Get recents and filter to only docs
+  // Get recents - show all trees (documents detected by .yjs file in root)
   let recents = $derived($recentsStore);
   let recentDocs = $derived(
     recents
-      .filter(r => r.treeName?.startsWith('docs/'))
       .map(r => ({
         key: r.path,
-        displayName: r.treeName ? r.treeName.slice(5) : r.label,
+        displayName: r.treeName || r.label,
         ownerPubkey: r.npub ? npubToPubkey(r.npub) : null,
         ownerNpub: r.npub,
         treeName: r.treeName,
@@ -45,13 +44,12 @@
     return unsub;
   });
 
-  // User's own docs
+  // User's own docs - show all trees
   let ownDocs = $derived(
     trees
-      .filter(t => t.name.startsWith('docs/'))
       .map(t => ({
         key: `/${userNpub}/${t.name}`,
-        displayName: t.name.slice(5),
+        displayName: t.name,
         ownerPubkey: userPubkey,
         ownerNpub: userNpub,
         treeName: t.name,

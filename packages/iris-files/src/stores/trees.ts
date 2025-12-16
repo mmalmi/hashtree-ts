@@ -138,7 +138,7 @@ export function createTreesStore(npub: string | null): Readable<TreeEntry[]> {
       const storedLinkKeys = isOwnTrees ? getStoredLinkKeys() : {};
 
       const mapped = entries.map(e => {
-        // Get tree name - everything after the first '/' (handles names with slashes like docs/docname)
+        // Get tree name - everything after the first '/' (npub/treeName format)
         const slashIdx = e.key.indexOf('/');
         const name = slashIdx >= 0 ? e.key.slice(slashIdx + 1) : '';
         // Don't default visibility - let it be undefined if not resolved from Nostr

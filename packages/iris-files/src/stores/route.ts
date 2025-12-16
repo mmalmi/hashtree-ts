@@ -116,18 +116,11 @@ export function parseRouteFromHash(hash: string): RouteInfo {
 
     // Tree route: /npub/treeName/path...
     if (parts[1] && !['profile', 'follows', 'edit'].includes(parts[1])) {
-      // Handle docs/ and videos/ prefix: docs/docname and videos/videoname are single treeNames
-      let treeName = parts[1];
-      let pathStart = 2;
-      if ((parts[1] === 'docs' || parts[1] === 'videos') && parts[2]) {
-        treeName = `${parts[1]}/${parts[2]}`;
-        pathStart = 3;
-      }
       return {
         npub,
-        treeName,
+        treeName: parts[1],
         cid: null,
-        path: parts.slice(pathStart),
+        path: parts.slice(2),
         isPermalink: false,
         linkKey,
         isStreaming,

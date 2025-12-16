@@ -59,11 +59,8 @@ test.describe('Iris Docs App', () => {
     // Click Create button
     await page.getByRole('button', { name: 'Create' }).click();
 
-    // Should navigate to the new document (URL contains docs/ prefix)
-    await page.waitForURL(/\/docs\.html#\/npub.*\/docs\//, { timeout: 15000 });
-
-    // URL should contain the docs/ prefix
-    expect(page.url()).toContain('/docs/');
+    // Should navigate to the new document (URL contains npub and tree name)
+    await page.waitForURL(/\/docs\.html#\/npub.*\/Test%20Doc/, { timeout: 15000 });
 
     // Verify document editor is visible (formatting toolbar with Bold button)
     await expect(page.locator('button[title="Bold (Ctrl+B)"]')).toBeVisible({ timeout: 30000 });
