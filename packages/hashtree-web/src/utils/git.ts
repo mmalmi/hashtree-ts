@@ -13,6 +13,29 @@ import { LRUCache } from './lruCache';
 type FileCommitInfo = { oid: string; message: string; timestamp: number };
 const fileCommitsCache = new LRUCache<string, Map<string, FileCommitInfo>>(20);
 
+/**
+ * Cache for git log (commits), keyed by "hash:depth"
+ */
+type CommitLog = Array<{
+  oid: string;
+  message: string;
+  author: string;
+  email: string;
+  timestamp: number;
+  parent: string[];
+}>;
+const gitLogCache = new LRUCache<string, CommitLog>(20);
+
+/**
+ * Cache for HEAD commit SHA, keyed by git repo hash
+ */
+const gitHeadCache = new LRUCache<string, string | null>(20);
+
+/**
+ * Cache for branches info, keyed by git repo hash
+ */
+const gitBranchesCache = new LRUCache<string, { branches: string[]; currentBranch: string | null }>(20);
+
 export interface CloneOptions {
   url: string;
   /** Optional branch/ref to checkout (default: default branch) */
@@ -40,17 +63,9 @@ export async function cloneRepo(_options: CloneOptions): Promise<CloneResult> {
   throw new Error('Clone not yet implemented with wasm-git. Upload a git repo folder instead.');
 }
 
-type CommitLog = Array<{
-  oid: string;
-  message: string;
-  author: string;
-  email: string;
-  timestamp: number;
-  parent: string[];
-}>;
-
 /**
  * Get commit log for a repository
+ * Results are cached by git repo hash for fast navigation
  * Uses wasm-git (libgit2)
  */
 export async function getLog(rootCid: CID, options?: { depth?: number }): Promise<CommitLog>;
@@ -58,12 +73,25 @@ export async function getLog(rootCid: CID, options: { depth?: number; debug: tru
 export async function getLog(rootCid: CID, options?: { depth?: number; debug?: boolean }): Promise<CommitLog | { commits: CommitLog; debug: string[] }> {
   const debugInfo: string[] = [];
   const depth = options?.depth ?? 20;
+  const cacheKey = `${toHex(rootCid.hash)}:${depth}`;
+
+  // Check cache first (skip for debug mode)
+  if (!options?.debug) {
+    const cached = gitLogCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
 
   try {
     const { getLogWithWasmGit } = await import('./wasmGit');
     debugInfo.push('Using wasm-git');
     const commits = await getLogWithWasmGit(rootCid, { depth });
     debugInfo.push(`Found ${commits.length} commits`);
+
+    // Cache the result
+    gitLogCache.set(cacheKey, commits);
+
     if (options?.debug) {
       return { commits, debug: debugInfo };
     }
@@ -80,12 +108,23 @@ export async function getLog(rootCid: CID, options?: { depth?: number; debug?: b
 
 /**
  * Get list of branches
+ * Results are cached by git repo hash
  * Uses wasm-git (libgit2)
  */
 export async function getBranches(rootCid: CID) {
+  const cacheKey = toHex(rootCid.hash);
+
+  // Check cache first
+  const cached = gitBranchesCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   try {
     const { getBranchesWithWasmGit } = await import('./wasmGit');
-    return await getBranchesWithWasmGit(rootCid);
+    const result = await getBranchesWithWasmGit(rootCid);
+    gitBranchesCache.set(cacheKey, result);
+    return result;
   } catch {
     return { branches: [], currentBranch: null };
   }
@@ -93,12 +132,22 @@ export async function getBranches(rootCid: CID) {
 
 /**
  * Get current HEAD commit SHA
+ * Results are cached by git repo hash
  * Uses wasm-git (libgit2)
  */
 export async function getHead(rootCid: CID): Promise<string | null> {
+  const cacheKey = toHex(rootCid.hash);
+
+  // Check cache first
+  if (gitHeadCache.has(cacheKey)) {
+    return gitHeadCache.get(cacheKey) ?? null;
+  }
+
   try {
     const { getHeadWithWasmGit } = await import('./wasmGit');
-    return await getHeadWithWasmGit(rootCid);
+    const result = await getHeadWithWasmGit(rootCid);
+    gitHeadCache.set(cacheKey, result);
+    return result;
   } catch {
     return null;
   }
