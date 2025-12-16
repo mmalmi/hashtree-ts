@@ -112,6 +112,30 @@ Falls back to Blossom servers when data isn't found on peers or WebRTC isn't ava
 
 **Request forwarding**: Peers forward requests they can't fulfill locally. HTL (Hops-To-Live, default 10) limits propagation depth. Uses Freenet-style probabilistic decrement—each peer randomly decides whether to decrement at HTL boundaries, making it harder to infer request origin.
 
+## Desktop App (Tauri)
+
+Iris Files can be built as a native desktop app using [Tauri](https://tauri.app/):
+
+```bash
+cd packages/iris-files
+
+# Install dependencies
+npm install
+
+# Development
+npm run tauri:dev
+
+# Build for distribution
+npm run tauri:build
+```
+
+Features:
+- Native window with system tray
+- Autostart on login (configurable in Settings)
+- Native file dialogs and notifications
+
+Requirements: [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) (Rust, platform-specific deps)
+
 ## Development
 
 ```bash
