@@ -4,7 +4,7 @@
    * Similar to Google Docs comments sidebar
    */
   import type { CommentsStore } from '../../lib/comments';
-  import type { CommentsState, CommentThread } from '../../lib/comments/types';
+  import type { CommentsState } from '../../lib/comments/types';
   import { Avatar, Name } from '../User';
   import { npubToPubkey } from '../../nostr';
 
@@ -157,8 +157,6 @@
       <div class="p-2 space-y-2">
         {#each threads as thread (thread.id)}
           {@const isActive = state.activeThreadId === thread.id}
-          {@const firstComment = thread.comments[0]}
-          {@const authorPubkey = firstComment ? npubToPubkey(firstComment.authorNpub) : null}
 
           <div
             class="rounded-lg border transition-colors cursor-pointer {isActive

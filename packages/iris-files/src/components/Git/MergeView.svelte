@@ -4,11 +4,9 @@
    * Shows merge preview, commit message input, and confirmation
    * Optionally updates PR status after merge if prEventId/prAuthorPubkey are provided
    */
-  import type { CID } from 'hashtree';
   import { diffBranches, canMerge, mergeBranches, applyGitChanges } from '../../utils/git';
   import { routeStore, treeRootStore, createTreesStore, currentDirCidStore } from '../../stores';
   import { nostrStore, autosaveIfOwn } from '../../nostr';
-  import { navigate } from '../../lib/router.svelte';
   import { updateStatus } from '../../nip34';
   import FileBrowser from '../FileBrowser.svelte';
   import ViewerHeader from '../Viewer/ViewerHeader.svelte';
@@ -29,7 +27,6 @@
 
   let route = $derived($routeStore);
   let rootCid = $derived($treeRootStore);
-  let currentPath = $derived(route.path);
   let dirCid = $derived($currentDirCidStore);
 
   // Get tree visibility info

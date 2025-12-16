@@ -29,7 +29,6 @@ import {
   createResponse,
   createFragmentResponse,
   isFragmented,
-  handleResponse,
   clearPendingRequests,
   generatePeerHTLConfig,
   decrementHTL,

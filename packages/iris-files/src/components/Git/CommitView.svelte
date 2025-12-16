@@ -4,10 +4,8 @@
    * Displays commit message, author, date, and diff
    * Uses getLog to find commits (since git show is not supported by wasm-git)
    */
-  import type { CID } from 'hashtree';
   import { getLog, runGitCommand } from '../../utils/git';
   import { routeStore, treeRootStore, createTreesStore, currentDirCidStore } from '../../stores';
-  import { nostrStore } from '../../nostr';
   import FileBrowser from '../FileBrowser.svelte';
   import ViewerHeader from '../Viewer/ViewerHeader.svelte';
   import RepoTabNav from './RepoTabNav.svelte';
@@ -22,7 +20,6 @@
 
   let route = $derived($routeStore);
   let rootCid = $derived($treeRootStore);
-  let currentPath = $derived(route.path);
   let dirCid = $derived($currentDirCidStore);
 
   // Get tree visibility info
@@ -46,9 +43,6 @@
     const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
     return `#/${npub}/${repoName}${linkKeySuffix}`;
   });
-
-  // Get current directory name for header
-  let currentDirName = $derived(currentPath.length > 0 ? currentPath[currentPath.length - 1] : baseTreeName);
 
   // Commit data state
   let loading = $state(true);

@@ -8,8 +8,8 @@
   import { nostrStore, type RelayStatus, getNsec } from '../nostr';
   import { appStore, formatBytes, updateStorageStats, refreshWebRTCStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
-  import { syncedStorageStore, refreshSyncedStorage, type UserStorageStats } from '../stores/chunkMetadata';
-  import { settingsStore, DEFAULT_NETWORK_SETTINGS, DEFAULT_POOL_SETTINGS } from '../stores/settings';
+  import { syncedStorageStore, refreshSyncedStorage } from '../stores/chunkMetadata';
+  import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../stores/settings';
   import { blossomLogStore } from '../stores/blossomLog';
   import { BackButton } from './ui';
   import { UserRow } from './User';
@@ -34,7 +34,6 @@
   let syncedStorage = $derived($syncedStorageStore);
   let syncedStorageTotal = $derived(syncedStorage.reduce((sum, s) => sum + s.bytes, 0));
 
-  let relayList = $derived($nostrStore.relays);
   let relayStatuses = $derived($nostrStore.relayStatuses);
   let discoveredRelays = $derived($nostrStore.discoveredRelays);
   let isLoggedIn = $derived($nostrStore.isLoggedIn);

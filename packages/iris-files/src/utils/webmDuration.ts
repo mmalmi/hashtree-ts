@@ -12,29 +12,12 @@
 
 import type { CID, HashTree } from 'hashtree';
 
-// EBML Element IDs
-const DURATION_ID = 0x4489;
-const SEGMENT_ID = 0x18538067;
-const INFO_ID = 0x1549a966;
-const TIMECODE_SCALE_ID = 0x2ad7b1;
-
 /**
  * Find the byte offset of the Duration element in a WebM file
  * Returns { offset, size } where offset is where to write and size is the value length
  */
 function findDurationOffset(data: Uint8Array): { offset: number; size: number } | null {
   let i = 0;
-
-  // Helper to read variable-size EBML ID
-  function readEbmlId(pos: number): { id: number; len: number } | null {
-    if (pos >= data.length) return null;
-    const first = data[pos];
-    if (first & 0x80) return { id: first, len: 1 }; // 1-byte ID
-    if (first & 0x40) return { id: (first << 8) | data[pos + 1], len: 2 };
-    if (first & 0x20) return { id: (first << 16) | (data[pos + 1] << 8) | data[pos + 2], len: 3 };
-    if (first & 0x10) return { id: (first << 24) | (data[pos + 1] << 16) | (data[pos + 2] << 8) | data[pos + 3], len: 4 };
-    return null;
-  }
 
   // Helper to read variable-size EBML size
   function readEbmlSize(pos: number): { size: number; len: number } | null {

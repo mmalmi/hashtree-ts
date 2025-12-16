@@ -25,7 +25,6 @@ import {
   type EventSigner,
   type GiftWrapper,
   type GiftUnwrapper,
-  type SignedEvent,
   type CID,
   type TreeVisibility,
   visibilityHex,
@@ -381,7 +380,6 @@ function createGiftWrapFunctions(
 
     // Generate ephemeral keypair for the wrapper
     const ephemeralSk = generateSecretKey();
-    const ephemeralPk = getPublicKey(ephemeralSk);
 
     // Encrypt the seal for the recipient using ephemeral key (NIP-44)
     const conversationKey = nip44.v2.utils.getConversationKey(ephemeralSk, recipientPubkey);

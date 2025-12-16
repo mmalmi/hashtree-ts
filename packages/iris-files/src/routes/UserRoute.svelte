@@ -11,7 +11,7 @@
     wild?: string;
   }
 
-  let { id, wild }: Props = $props();
+  let { id }: Props = $props();
 
   // Clear selected tree when viewing a user (not nhash/npath)
   $effect(() => {

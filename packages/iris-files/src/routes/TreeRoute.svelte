@@ -3,7 +3,7 @@
   import Viewer from '../components/Viewer/Viewer.svelte';
   import StreamView from '../components/stream/StreamView.svelte';
   import { nostrStore } from '../nostr';
-  import { routeStore, addRecent, isViewingFileStore, currentHash, currentDirCidStore, directoryEntriesStore } from '../stores';
+  import { routeStore, addRecent, isViewingFileStore, currentHash, directoryEntriesStore } from '../stores';
   import { LinkType } from 'hashtree';
   import { updateRecentVisibility } from '../stores/recents';
   import { nip19 } from 'nostr-tools';
@@ -14,7 +14,7 @@
     wild?: string;
   }
 
-  let { npub, treeName, wild }: Props = $props();
+  let { npub, treeName }: Props = $props();
 
   // Use derived from routeStore for reactivity
   let route = $derived($routeStore);
@@ -39,7 +39,6 @@
   let isViewingFile = $derived($isViewingFileStore);
 
   // Check if current directory is a git repo (quick check via .git dir for immediate UI)
-  let currentDirCid = $derived($currentDirCidStore);
   let dirEntries = $derived($directoryEntriesStore);
   let isGitRepo = $derived(dirEntries.entries.some(e => e.name === '.git' && e.type === LinkType.Dir));
 

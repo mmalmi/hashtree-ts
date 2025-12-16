@@ -6,7 +6,7 @@
   import { onDestroy } from 'svelte';
   import { formatBytes } from '../../store';
   import { nostrStore } from '../../nostr';
-  import { routeStore, currentDirCidStore, directoryEntriesStore } from '../../stores';
+  import { routeStore, directoryEntriesStore } from '../../stores';
   import { openShareModal } from '../../stores/modals';
   import {
     streamStore,
@@ -26,7 +26,6 @@
   let route = $derived($routeStore);
   let selectedTree = $derived($nostrStore.selectedTree);
   let stream = $derived($streamStore);
-  let currentDirCid = $derived($currentDirCidStore);
   let dirEntries = $derived($directoryEntriesStore);
   let entries = $derived(dirEntries.entries);
 

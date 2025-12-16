@@ -260,6 +260,7 @@ echo.
         canvas.style.imageRendering = 'pixelated';
         canvas.style.background = '#000';
         canvas.style.outline = 'none';
+        // eslint-disable-next-line svelte/no-dom-manipulating -- DOSBox requires direct DOM manipulation for canvas
         containerEl?.appendChild(canvas);
 
         // Set up audio context for sound
@@ -524,6 +525,7 @@ echo.
         dosInstanceRef = null;
       }
       if (containerEl) {
+        // eslint-disable-next-line svelte/no-dom-manipulating -- cleanup requires direct DOM manipulation
         containerEl.innerHTML = '';
       }
     };

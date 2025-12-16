@@ -5,7 +5,7 @@
    */
   import { toHex, nhashEncode, LinkType, type TreeEntry as HashTreeEntry } from 'hashtree';
   import { formatBytes } from '../store';
-  import { deleteEntry, moveEntry, moveToParent } from '../actions';
+  import { deleteEntry } from '../actions';
   import { openCreateModal, openShareModal } from '../stores/modals';
   import { uploadFiles, uploadDirectory } from '../stores/upload';
   import { recentlyChangedFiles } from '../stores/recentlyChanged';
@@ -97,9 +97,6 @@
   // Git root tracking - from URL or detected from .git directory
   let gitRootFromUrl = $derived(route.gitRoot);
 
-  // Check if we have a tree hash but no decryption key (protected tree without access)
-  let hasHashButNoKey = $derived(rootCid?.hash && !rootCid?.key);
-
   // Check if we're missing the decryption key (either no rootCid yet, or rootCid without key)
   let missingDecryptionKey = $derived(!rootCid?.key);
 
@@ -158,7 +155,6 @@
   // Directory entries - use global store (shared with Viewer)
   let dirEntries = $derived($directoryEntriesStore);
   let entries = $derived(dirEntries.entries);
-  let isDirectory = $derived(dirEntries.isDirectory);
   let loadingEntries = $derived(dirEntries.loading);
   let resolvingPath = $derived($resolvingPathStore);
 
@@ -290,7 +286,7 @@
   // Auto-focus file list when view changes
   $effect(() => {
     // Track dependencies
-    const _ = [inTreeView, currentTreeName, currentPath.join('/')];
+    void [inTreeView, currentTreeName, currentPath.join('/')];
     // Small delay to ensure DOM is ready after navigation
     const timer = setTimeout(() => {
       fileListRef?.focus();

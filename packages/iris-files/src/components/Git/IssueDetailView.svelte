@@ -19,7 +19,6 @@
   import AuthorName from './AuthorName.svelte';
   import FileBrowser from '../FileBrowser.svelte';
   import { ndk } from '../../nostr';
-  import { KIND_ISSUE } from '../../utils/constants';
 
   interface Props {
     npub: string;

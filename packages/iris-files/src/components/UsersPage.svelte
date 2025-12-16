@@ -5,7 +5,7 @@
    */
   import { navigate } from '../utils/navigate';
   import { accountsStore, createAccountFromNsec, saveActiveAccountToStorage, hasNostrExtension, type Account } from '../accounts';
-  import { nostrStore, loginWithNsec, loginWithExtension, generateNewKey, restoreSession } from '../nostr';
+  import { loginWithNsec, loginWithExtension, generateNewKey, restoreSession } from '../nostr';
   import { Avatar, Name } from './User';
   import { BackButton } from './ui';
 
@@ -20,12 +20,7 @@
   let accountsState = $derived($accountsStore);
   let accounts = $derived(accountsState.accounts);
   let activeAccountPubkey = $derived(accountsState.activeAccountPubkey);
-  let hasExtension = $state(false);
-
-  // Check for extension on mount
-  $effect(() => {
-    hasExtension = hasNostrExtension();
-  });
+  let hasExtension = $derived(hasNostrExtension());
 
   // Sort accounts by creation time (oldest first)
   let sortedAccounts = $derived(

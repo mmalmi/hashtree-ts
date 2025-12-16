@@ -5,7 +5,7 @@
  * For a large file with a small patch, this is much more efficient than putFile.
  */
 
-import { Store, Hash, TreeNode, Link, LinkType, CID, toHex } from '../types.js';
+import { Store, Hash, TreeNode, Link, LinkType, toHex } from '../types.js';
 import { sha256 } from '../hash.js';
 import { encodeAndHash, decodeTreeNode, tryDecodeTreeNode } from '../codec.js';
 import { encryptChk, decryptChk, type EncryptionKey } from '../crypto.js';
@@ -156,7 +156,6 @@ async function writeAtInNode(
   const { store } = config;
   const newLinks: Link[] = [];
   let position = 0;
-  let dataOffset = 0;
 
   for (const link of node.links) {
     const linkStart = position;

@@ -7,8 +7,8 @@
   import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../../stores/settings';
   import { getTree } from '../../store';
   import { signEvent } from '../../nostr';
-  import { LinkType, toHex, BlossomStore } from 'hashtree';
-  import type { CID, BlossomSigner, Hash } from 'hashtree';
+  import { toHex, BlossomStore } from 'hashtree';
+  import type { BlossomSigner } from 'hashtree';
 
   interface PushResult {
     hash: string;
@@ -112,7 +112,7 @@
     // Use tree.push() which handles pull + walkBlocks + per-block uploads
     currentFile = 'Pushing...';
 
-    const pushResult = await tree.push(target.cid, blossomStore, {
+    await tree.push(target.cid, blossomStore, {
       onProgress: (current, total) => {
         progress = { current, total };
       },

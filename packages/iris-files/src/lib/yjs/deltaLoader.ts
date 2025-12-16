@@ -3,7 +3,7 @@
  * Handles loading Yjs deltas and state from tree entries
  */
 import * as Y from 'yjs';
-import { LinkType, toHex } from 'hashtree';
+import { LinkType } from 'hashtree';
 import type { CID, TreeEntry } from 'hashtree';
 import { getTree, decodeAsText } from '../../store';
 import { getRefResolver } from '../../refResolver';
@@ -151,13 +151,7 @@ export function setupCollaboratorSubscriptions(
   for (const npub of otherCollaborators) {
     const resolverKey = `${npub}/${treeName}`;
 
-    // Track last seen hash to detect actual changes
-    let lastSeenHash: string | null = null;
-
     const unsub = resolver.subscribe(resolverKey, async (cidObj) => {
-      const newHash = cidObj ? toHex(cidObj.hash) : null;
-      const isNewUpdate = newHash !== lastSeenHash;
-      lastSeenHash = newHash;
       if (!cidObj || !ydoc) {
         return;
       }

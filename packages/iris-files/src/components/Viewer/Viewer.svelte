@@ -533,7 +533,8 @@
   });
 
   // Get file icon based on extension
-  function getFileIcon(filename: string): string {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function _getFileIcon(_filename: string): string {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
     const iconMap: Record<string, string> = {
       // Images

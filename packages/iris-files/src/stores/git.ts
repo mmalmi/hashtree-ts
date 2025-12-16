@@ -126,7 +126,7 @@ export function createGitStatusStore(dirCid: CID | null): Readable<{
     error: null,
   });
 
-  let currentCid = dirCid;
+  const currentCid = dirCid;
 
   function load() {
     if (!currentCid) {

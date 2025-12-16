@@ -8,9 +8,7 @@ import { NDKEvent, type NDKFilter } from '@nostr-dev-kit/ndk';
 import { nip19 } from 'nostr-tools';
 import {
   KIND_REPO_ANNOUNCEMENT,
-  KIND_PATCH,
   KIND_PULL_REQUEST,
-  KIND_PR_UPDATE,
   KIND_ISSUE,
   KIND_STATUS_OPEN,
   KIND_STATUS_APPLIED,

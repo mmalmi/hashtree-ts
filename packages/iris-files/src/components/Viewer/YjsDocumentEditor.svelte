@@ -33,7 +33,6 @@
     saveImageToTree,
     preloadAttachments,
     generateImageFilename,
-    getMimeType,
     type ImageCache,
     loadDeltasFromEntries,
     loadCollaboratorDeltas,
@@ -188,6 +187,7 @@
   }
 
   // Handle paste event for images
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function handlePaste(event: ClipboardEvent): void {
     const items = event.clipboardData?.items;
     if (!items) return;
@@ -203,6 +203,7 @@
   }
 
   // Handle drop event for images
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function handleDrop(event: DragEvent): void {
     const files = event.dataTransfer?.files;
     if (!files) return;
@@ -649,7 +650,8 @@
   }
 
   // Re-resolve any images that failed to load initially (after collaborator data available)
-  async function retryPendingImages(): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async function _retryPendingImages(): Promise<void> {
     if (!editorElement) return;
     const pendingImages = editorElement.querySelectorAll('img[data-pending-resolve="true"]');
     for (const img of pendingImages) {

@@ -9,9 +9,9 @@ export default [
   {
     ignores: ['**/dist/**', '**/node_modules/**', '**/*.d.ts', '**/build/**'],
   },
-  // TypeScript files
+  // TypeScript files (including .svelte.ts which are plain TS with Svelte conventions)
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    files: ['**/*.ts', '**/*.tsx', '**/*.svelte.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
@@ -35,7 +35,11 @@ export default [
     },
   },
   // Svelte files - use recommended flat config
-  ...svelte.configs['flat/recommended'],
+  ...svelte.configs['flat/recommended'].map(config => ({
+    ...config,
+    // Exclude .svelte.ts files - they are pure TS, not Svelte components
+    ignores: [...(config.ignores || []), '**/*.svelte.ts'],
+  })),
   {
     files: ['**/*.svelte'],
     languageOptions: {

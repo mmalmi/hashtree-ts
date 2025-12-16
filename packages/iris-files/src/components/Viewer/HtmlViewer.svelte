@@ -3,7 +3,7 @@
    * HtmlViewer - renders HTML content in a sandboxed iframe
    * Resources are resolved relative to the current directory
    */
-  import { routeStore, currentDirCidStore, directoryEntriesStore } from '../../stores';
+  import { directoryEntriesStore } from '../../stores';
   import { getTree } from '../../store';
   import { LinkType, type TreeEntry } from 'hashtree';
 
@@ -14,19 +14,8 @@
 
   let { content, fileName }: Props = $props();
 
-  let route = $derived($routeStore);
-  let currentDirCid = $derived($currentDirCidStore);
   let dirEntries = $derived($directoryEntriesStore);
   let entries = $derived(dirEntries.entries);
-
-  // Build a map of files in current directory for resource lookup
-  let fileMap = $derived.by(() => {
-    const map = new Map<string, TreeEntry>();
-    for (const entry of entries) {
-      map.set(entry.name, entry);
-    }
-    return map;
-  });
 
   // Recursively resolve path segments to get an entry
   async function resolveRelativePath(pathParts: string[], currentEntries: TreeEntry[]): Promise<TreeEntry | null> {
@@ -57,7 +46,6 @@
   }
 
   // Transform HTML content to use blob URLs for resources
-  let transformedHtml = $state<string>('');
   let iframeSrc = $state<string>('');
 
   $effect(() => {

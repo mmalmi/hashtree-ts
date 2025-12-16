@@ -3,7 +3,6 @@
    * BranchCompareView - Shows diff between two branches for PR review
    * Displays branch names, diff statistics, and colorized diff output
    */
-  import type { CID } from 'hashtree';
   import { diffBranches } from '../../utils/git';
   import { routeStore, treeRootStore, createTreesStore, currentDirCidStore } from '../../stores';
   import { nostrStore } from '../../nostr';
@@ -23,7 +22,6 @@
 
   let route = $derived($routeStore);
   let rootCid = $derived($treeRootStore);
-  let currentPath = $derived(route.path);
   let dirCid = $derived($currentDirCidStore);
 
   // Get tree visibility info

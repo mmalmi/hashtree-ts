@@ -10,7 +10,7 @@
   import { getTree } from '../../store';
   import { nostrStore } from '../../nostr';
   import { createProfileStore } from '../../stores/profile';
-  import type { GitStatusResult, GitStatusEntry } from '../../utils/wasmGit';
+  import type { GitStatusResult } from '../../utils/wasmGit';
 
   let show = $derived($modalsStore.showGitCommitModal);
   let target = $derived($modalsStore.gitCommitTarget);
@@ -133,7 +133,6 @@
   let totalChanges = $derived(selectableFiles.length);
   let selectedCount = $derived(selectableFiles.filter(f => f.selected).length);
   let allSelected = $derived(selectableFiles.length > 0 && selectableFiles.every(f => f.selected));
-  let noneSelected = $derived(selectableFiles.every(f => !f.selected));
 
   // Toggle all files
   function toggleAll() {
@@ -260,11 +259,6 @@
     }
   }
 
-  // Render file list section
-  function renderFileList(title: string, files: GitStatusEntry[], color: string) {
-    if (files.length === 0) return null;
-    return { title, files, color };
-  }
 </script>
 
 {#if show && target}

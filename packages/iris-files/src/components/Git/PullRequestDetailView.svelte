@@ -19,7 +19,6 @@
   import AuthorName from './AuthorName.svelte';
   import FileBrowser from '../FileBrowser.svelte';
   import { ndk } from '../../nostr';
-  import { KIND_PULL_REQUEST } from '../../utils/constants';
   import { currentDirCidStore, routeStore } from '../../stores';
   import { diffBranches } from '../../utils/git';
   import { navigate } from '../../lib/router.svelte';
@@ -61,7 +60,6 @@
   // Check if user can interact
   let userPubkey = $derived($nostrStore.pubkey);
   let canComment = $derived(!!userPubkey);
-  let isAuthor = $derived(pr?.authorPubkey === userPubkey);
   let isOwner = $derived($nostrStore?.npub === npub); // Check if user is repo owner
 
   // Fetch PR and comments

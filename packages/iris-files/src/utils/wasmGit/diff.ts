@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, parseCommandArgs } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS } from './core';
 
 export interface BranchDiffStats {
   additions: number;
@@ -87,8 +87,8 @@ export async function diffBranchesWithWasmGit(
       let diff = '';
       try {
         diff = module.callWithOutput(['diff', baseBranch, headBranch]) || '';
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+      } catch (_err) {
+        const errorMsg = _err instanceof Error ? _err.message : String(_err);
         return { diff: '', stats: { additions: 0, deletions: 0, files: [] }, canFastForward: false, error: `Failed to diff branches: ${errorMsg}` };
       }
 
@@ -183,8 +183,8 @@ export async function canMergeWithWasmGit(
       // Checkout base branch first
       try {
         module.callWithOutput(['checkout', baseBranch]);
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
+      } catch (_err) {
+        const errorMsg = _err instanceof Error ? _err.message : String(_err);
         return { canMerge: false, conflicts: [], isFastForward: false, error: `Failed to checkout ${baseBranch}: ${errorMsg}` };
       }
 
@@ -199,7 +199,7 @@ export async function canMergeWithWasmGit(
           // Ignore abort errors
         }
         return { canMerge: true, conflicts: [], isFastForward: false };
-      } catch (err) {
+      } catch {
         // Merge failed, check for conflicts
         const conflicts: string[] = [];
         try {
@@ -227,9 +227,9 @@ export async function canMergeWithWasmGit(
 
         return { canMerge: conflicts.length === 0, conflicts, isFastForward: false };
       }
-    } catch (err) {
-      console.error('[wasm-git] canMerge failed:', err);
-      return { canMerge: false, conflicts: [], isFastForward: false, error: err instanceof Error ? err.message : String(err) };
+    } catch (_err) {
+      console.error('[wasm-git] canMerge failed:', _err);
+      return { canMerge: false, conflicts: [], isFastForward: false, error: _err instanceof Error ? _err.message : String(_err) };
     } finally {
       try {
         module.FS.chdir(originalCwd);

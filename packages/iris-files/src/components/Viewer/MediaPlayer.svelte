@@ -207,14 +207,12 @@
   }
 
   // Buffer size constants
-  const INITIAL_BUFFER_SIZE = 1024 * 1024; // 1MB initial load
   const BUFFER_AHEAD_SIZE = 512 * 1024; // 512KB fetch at a time
   const BUFFER_THRESHOLD = 5; // Start fetching when buffer < 5 seconds ahead
 
   // Track if we've loaded all data
   let isFullyLoaded = $state(false);
   let isFetching = $state(false);
-  let totalFileSize = $state<number | null>(null);
 
   // Fetch more data when buffer runs low
   async function fetchMoreData() {
@@ -634,7 +632,7 @@
         lastDataReceivedTime = Date.now();
         lastCidHash = currentCidHash;
       }
-    } catch (e) {
+    } catch {
       // Silently ignore errors during polling - data might not be available yet
       // This is expected when the viewer hasn't synced the latest chunks
     } finally {
