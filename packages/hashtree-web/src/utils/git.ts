@@ -2,8 +2,16 @@
  * Git utilities using wasm-git (libgit2 compiled to WebAssembly)
  */
 import type { CID } from 'hashtree';
-import { LinkType } from 'hashtree';
+import { LinkType, toHex } from 'hashtree';
 import { getTree } from '../store';
+import { LRUCache } from './lruCache';
+
+/**
+ * Cache for file commit info, keyed by git repo hash
+ * Each entry maps full file paths to their commit info
+ */
+type FileCommitInfo = { oid: string; message: string; timestamp: number };
+const fileCommitsCache = new LRUCache<string, Map<string, FileCommitInfo>>(20);
 
 export interface CloneOptions {
   url: string;
@@ -207,6 +215,7 @@ export async function initGitRepo(
 /**
  * Get last commit info for files in a directory
  * Returns a map of filename -> commit info
+ * Results are cached by git repo hash for fast navigation between subdirectories
  * @param rootCid - The root CID of the git repository
  * @param filenames - Array of filenames (base names only, not full paths)
  * @param subpath - Optional subdirectory path relative to git root (e.g., 'src' or 'src/utils')
@@ -215,13 +224,52 @@ export async function getFileLastCommits(
   rootCid: CID,
   filenames: string[],
   subpath?: string
-): Promise<Map<string, { oid: string; message: string; timestamp: number }>> {
+): Promise<Map<string, FileCommitInfo>> {
+  const cacheKey = toHex(rootCid.hash);
+  const result = new Map<string, FileCommitInfo>();
+
+  // Check cache first
+  let cachedData = fileCommitsCache.get(cacheKey);
+  const uncachedFiles: string[] = [];
+
+  for (const filename of filenames) {
+    if (filename === '.git') continue;
+    const fullPath = subpath ? `${subpath}/${filename}` : filename;
+    const cached = cachedData?.get(fullPath);
+    if (cached) {
+      result.set(filename, cached);
+    } else {
+      uncachedFiles.push(filename);
+    }
+  }
+
+  // If all files are cached, return early
+  if (uncachedFiles.length === 0) {
+    return result;
+  }
+
+  // Fetch uncached files from wasm-git
   try {
     const { getFileLastCommitsWithWasmGit } = await import('./wasmGit');
-    return await getFileLastCommitsWithWasmGit(rootCid, filenames, subpath);
+    const freshData = await getFileLastCommitsWithWasmGit(rootCid, uncachedFiles, subpath);
+
+    // Initialize cache map if needed
+    if (!cachedData) {
+      cachedData = new Map();
+      fileCommitsCache.set(cacheKey, cachedData);
+    }
+
+    // Add fresh data to result and cache
+    for (const [filename, commitInfo] of freshData) {
+      result.set(filename, commitInfo);
+      const fullPath = subpath ? `${subpath}/${filename}` : filename;
+      cachedData.set(fullPath, commitInfo);
+    }
   } catch {
-    return new Map();
+    // Silently fail for uncached files
   }
+
+  return result;
 }
 
 /**

@@ -741,6 +741,134 @@ test.describe('Git history features', () => {
     }
   });
 
+  test('getFileLastCommits should use cache for repeated calls', { timeout: 30000 }, async ({ page }) => {
+    await navigateToPublicFolder(page);
+
+    // Create a real git repo with commits
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const { execSync } = await import('child_process');
+    const os = await import('os');
+
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'git-cache-test-'));
+
+    try {
+      // Initialize git repo
+      execSync('git init', { cwd: tmpDir });
+      execSync('git config user.email "test@example.com"', { cwd: tmpDir });
+      execSync('git config user.name "Test User"', { cwd: tmpDir });
+
+      // Create commit with files
+      await fs.writeFile(path.join(tmpDir, 'file1.txt'), 'content1\n');
+      await fs.writeFile(path.join(tmpDir, 'file2.txt'), 'content2\n');
+      execSync('git add .', { cwd: tmpDir });
+      execSync('git commit -m "Add files"', { cwd: tmpDir });
+
+      // Read all files
+      interface FileEntry { type: 'file'; path: string; content: number[]; }
+      interface DirEntry { type: 'dir'; path: string; }
+      type Entry = FileEntry | DirEntry;
+
+      const getAllEntries = async (dir: string, base = ''): Promise<Entry[]> => {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
+        const result: Entry[] = [];
+        for (const entry of entries) {
+          const fullPath = path.join(dir, entry.name);
+          const relativePath = base ? `${base}/${entry.name}` : entry.name;
+          if (entry.isDirectory()) {
+            result.push({ type: 'dir', path: relativePath });
+            result.push(...await getAllEntries(fullPath, relativePath));
+          } else {
+            const content = await fs.readFile(fullPath);
+            result.push({ type: 'file', path: relativePath, content: Array.from(content) });
+          }
+        }
+        return result;
+      };
+
+      const allEntries = await getAllEntries(tmpDir);
+      const allFiles = allEntries.filter((e): e is FileEntry => e.type === 'file');
+      const allDirs = allEntries.filter((e): e is DirEntry => e.type === 'dir').map(d => d.path);
+
+      // Test caching behavior
+      const result = await page.evaluate(async ({ files, dirs }) => {
+        const { getTree, LinkType } = await import('/src/store.ts');
+        const tree = getTree();
+
+        let { cid: rootCid } = await tree.putDirectory([]);
+
+        const dirPaths = new Set<string>(dirs);
+        for (const file of files) {
+          const parts = file.path.split('/');
+          for (let i = 1; i < parts.length; i++) {
+            dirPaths.add(parts.slice(0, i).join('/'));
+          }
+        }
+        const sortedDirs = Array.from(dirPaths).sort((a, b) =>
+          a.split('/').length - b.split('/').length
+        );
+
+        for (const dir of sortedDirs) {
+          const parts = dir.split('/');
+          const name = parts.pop()!;
+          const { cid: emptyDir } = await tree.putDirectory([]);
+          rootCid = await tree.setEntry(rootCid, parts, name, emptyDir, 0, LinkType.Dir);
+        }
+
+        for (const file of files) {
+          const parts = file.path.split('/');
+          const name = parts.pop()!;
+          const data = new Uint8Array(file.content);
+          const { cid: fileCid, size } = await tree.putFile(data);
+          rootCid = await tree.setEntry(rootCid, parts, name, fileCid, size, LinkType.Blob);
+        }
+
+        const { getFileLastCommits } = await import('/src/utils/git.ts');
+
+        // First call - should hit wasm-git
+        const start1 = performance.now();
+        const commits1 = await getFileLastCommits(rootCid, ['file1.txt', 'file2.txt']);
+        const time1 = performance.now() - start1;
+
+        // Second call with same files - should be cached (much faster)
+        const start2 = performance.now();
+        const commits2 = await getFileLastCommits(rootCid, ['file1.txt', 'file2.txt']);
+        const time2 = performance.now() - start2;
+
+        // Third call with just one file - should be cached
+        const start3 = performance.now();
+        const commits3 = await getFileLastCommits(rootCid, ['file1.txt']);
+        const time3 = performance.now() - start3;
+
+        return {
+          commits1Size: commits1.size,
+          commits2Size: commits2.size,
+          commits3Size: commits3.size,
+          time1,
+          time2,
+          time3,
+          // Cache should make subsequent calls much faster
+          cacheSpeedup: time1 > time2 * 2, // First call should be at least 2x slower
+        };
+      }, { files: allFiles, dirs: allDirs });
+
+      console.log('Cache test result:', JSON.stringify(result, null, 2));
+
+      // All calls should return correct data
+      expect(result.commits1Size).toBe(2);
+      expect(result.commits2Size).toBe(2);
+      expect(result.commits3Size).toBe(1);
+
+      // Cache should provide speedup (first call > second call)
+      // Note: We check that caching returns immediately, but don't strictly enforce timing
+      // as it can vary on different systems
+      expect(result.time2).toBeLessThan(result.time1);
+
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   test('wasm-git should not spam console with git output', { timeout: 30000 }, async ({ page }) => {
     // Capture ALL console messages to check for git output spam
     const consoleLogs: string[] = [];
