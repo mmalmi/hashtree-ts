@@ -2,11 +2,11 @@
 
 ## Commands
 ```bash
-npm install      # Install dependencies
-npm test         # Run tests
-npm run build    # Build
-npm run dev      # Dev server
-npm run test:e2e # E2E tests
+pnpm install      # Install dependencies
+pnpm test         # Run tests
+pnpm run build    # Build
+pnpm run dev      # Dev server
+pnpm run test:e2e # E2E tests
 ```
 
 ## Structure

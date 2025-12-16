@@ -120,13 +120,13 @@ Iris Files can be built as a native desktop app using [Tauri](https://tauri.app/
 cd packages/iris-files
 
 # Install dependencies
-npm install
+pnpm install
 
 # Development
-npm run tauri:dev
+pnpm run tauri:dev
 
 # Build for distribution
-npm run tauri:build
+pnpm run tauri:build
 ```
 
 Features:
@@ -139,11 +139,11 @@ Requirements: [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) (
 ## Development
 
 ```bash
-npm install      # Install dependencies
-npm test         # Run tests
-npm run build    # Build
-npm run dev      # Dev server
-npm run test:e2e # E2E tests
+pnpm install      # Install dependencies
+pnpm test         # Run tests
+pnpm run build    # Build
+pnpm run dev      # Dev server
+pnpm run test:e2e # E2E tests
 ```
 
 ## License

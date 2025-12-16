@@ -11,3 +11,5 @@ e2e/screenshots/
 e2e/screenshots/
 packages/hashtree-web/dist-docs/
 packages/iris-files/dist-docs/
+packages/iris-files/src-tauri/target/
+packages/iris-files/src-tauri/gen/
