@@ -42,6 +42,15 @@ const gitBranchesCache = new LRUCache<string, { branches: string[]; currentBranc
 type GitStatusResult = { staged: string[]; unstaged: string[]; untracked: string[]; hasChanges: boolean };
 const gitStatusCache = new LRUCache<string, GitStatusResult>(20);
 
+/**
+ * Cache for read-only git commands (diff, diff-tree, show, etc.)
+ * Keyed by "hash:command"
+ */
+const gitCommandCache = new LRUCache<string, { output: string; error?: string }>(50);
+
+// Commands that are safe to cache (read-only)
+const CACHEABLE_COMMANDS = ['diff', 'diff-tree', 'show', 'log', 'cat-file', 'ls-tree', 'rev-parse'];
+
 export interface CloneOptions {
   url: string;
   /** Optional branch/ref to checkout (default: default branch) */
@@ -477,12 +486,36 @@ export interface RunGitCommandResult {
 /**
  * Run an arbitrary git command in a repository
  * Returns the command output and updated .git files for write commands
+ * Read-only commands (diff, show, etc.) are cached by repo hash
  */
 export async function runGitCommand(
   rootCid: CID,
   command: string,
   options?: RunGitCommandOptions
 ): Promise<RunGitCommandResult> {
+  // Check if command is cacheable (read-only)
+  const cmdName = command.trim().split(/\s+/)[0];
+  const isCacheable = CACHEABLE_COMMANDS.includes(cmdName);
+
+  if (isCacheable) {
+    const cacheKey = `${toHex(rootCid.hash)}:${command}`;
+    const cached = gitCommandCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const { runGitCommand: runGitCommandWasm } = await import('./wasmGit');
+    const result = await runGitCommandWasm(rootCid, command, options);
+
+    // Only cache if no gitFiles returned (pure read operation)
+    if (!result.gitFiles) {
+      gitCommandCache.set(cacheKey, { output: result.output, error: result.error });
+    }
+
+    return result;
+  }
+
+  // Non-cacheable command - run directly
   const { runGitCommand: runGitCommandWasm } = await import('./wasmGit');
   return runGitCommandWasm(rootCid, command, options);
 }
