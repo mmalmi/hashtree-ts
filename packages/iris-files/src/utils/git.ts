@@ -562,8 +562,6 @@ export async function applyGitChanges(
 ): Promise<CID> {
   const tree = getTree();
 
-  console.log('[applyGitChanges] Applying', gitFiles.length, 'files');
-
   // Build the new .git directory from gitFiles
   // First, organize files into a tree structure
   const dirMap = new Map<string, Array<{ name: string; cid: CID; size: number; type: LinkType }>>();
@@ -574,15 +572,11 @@ export async function applyGitChanges(
     .filter(f => f.isDir)
     .sort((a, b) => a.name.split('/').length - b.name.split('/').length);
 
-  console.log('[applyGitChanges] Directories:', sortedDirs.map(d => d.name));
-
   for (const dir of sortedDirs) {
     dirMap.set(dir.name, []);
   }
 
   // Process files
-  let filesProcessed = 0;
-  let filesMissedParent = 0;
   for (const file of gitFiles) {
     if (file.isDir) continue;
 
@@ -593,13 +587,8 @@ export async function applyGitChanges(
     const entries = dirMap.get(parentDir);
     if (entries) {
       entries.push({ name: fileName, cid, size, type: LinkType.Blob });
-      filesProcessed++;
-    } else {
-      console.log('[applyGitChanges] Missing parent for:', file.name, 'parent:', parentDir);
-      filesMissedParent++;
     }
   }
-  console.log('[applyGitChanges] Processed', filesProcessed, 'files, missed', filesMissedParent);
 
   // Build directories from deepest to root
   const sortedDirKeys = Array.from(dirMap.keys()).sort((a, b) => b.split('/').length - a.split('/').length);

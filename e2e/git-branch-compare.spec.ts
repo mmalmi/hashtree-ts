@@ -418,9 +418,9 @@ test.describe('Git branch comparison and merge', () => {
   test('merge branches shows success message', async ({ page }) => {
     test.setTimeout(120000);
 
-    // Capture console output for debugging
+    // Capture merge-related console output
     page.on('console', msg => {
-      if (msg.text().includes('[wasm-git]') || msg.text().includes('[applyGitChanges]')) {
+      if (msg.text().includes('[wasm-git]') || msg.text().includes('[MergeView]')) {
         console.log('[browser]', msg.text());
       }
     });
@@ -570,14 +570,8 @@ test.describe('Git branch comparison and merge', () => {
     const hasUncommitted = await uncommittedIndicator.isVisible();
     console.log('[test] Has uncommitted changes:', hasUncommitted);
 
-    // Check commits count before asserting
-    const commitsText = await page.locator('button').filter({ hasText: /commits/i }).textContent();
-    console.log('[test] Commits text:', commitsText);
-
-    // If there are uncommitted changes, the merge didn't create a commit properly
     // The merge should create a merge commit, not leave changes uncommitted
-    // For now, let's see what the history shows
-    // expect(hasUncommitted).toBe(false);
+    expect(hasUncommitted).toBe(false);
 
     // Click on commits count to open history modal
     const commitsBtn = page.locator('button').filter({ hasText: /commits/i });
@@ -588,10 +582,14 @@ test.describe('Git branch comparison and merge', () => {
     await page.waitForTimeout(1000);
     await page.screenshot({ path: 'e2e/screenshots/merge-history-modal.png' });
 
-    // The history should show a merge commit with the message "Merge branch 'feature' into master"
-    // If the merge worked correctly, this commit should exist
-    await expect(page.locator('text=/Merge branch.*feature.*into master/')).toBeVisible({ timeout: 15000 });
+    // For a fast-forward merge, the history should show:
+    // 1. The feature branch commit (e.g., "Add feature file")
+    // 2. The initial commit
+    // There's no merge commit in a fast-forward merge
+    // Use a more specific locator to avoid matching multiple elements
+    await expect(page.locator('span').filter({ hasText: 'Add feature file' })).toBeVisible({ timeout: 15000 });
 
-    // If we get here without the merge commit visible, the test will fail appropriately
+    // Also verify the initial commit is still in history
+    await expect(page.locator('span').filter({ hasText: 'Initial commit' })).toBeVisible({ timeout: 5000 });
   });
 });

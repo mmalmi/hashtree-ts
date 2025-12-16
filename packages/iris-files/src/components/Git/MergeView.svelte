@@ -75,10 +75,13 @@
   $effect(() => {
     if (!dirCid || !baseBranch || !headBranch) return;
 
+    // Don't reload merge info if merge was already successful
+    // (dirCid changes after merge due to autosave)
+    if (mergeSuccess) return;
+
     loading = true;
     error = null;
     mergeInfo = null;
-    mergeSuccess = false;
     mergeError = null;
 
     let cancelled = false;
