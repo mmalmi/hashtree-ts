@@ -5,11 +5,11 @@
 
 const THUMBNAIL_WIDTH = 200;
 const THUMBNAIL_HEIGHT = 283; // A4 aspect ratio (1:1.414)
-const THUMBNAIL_FILENAME = '.thumbnail.png';
+const THUMBNAIL_FILENAME = '.thumbnail.jpg';
 
 /**
  * Capture a thumbnail of an element
- * Returns PNG data as Uint8Array, or null if capture fails
+ * Returns JPEG data as Uint8Array, or null if capture fails
  */
 export async function captureThumbnail(element: HTMLElement): Promise<Uint8Array | null> {
   try {
@@ -60,9 +60,9 @@ export async function captureThumbnail(element: HTMLElement): Promise<Uint8Array
     // Draw the captured content onto the thumbnail canvas
     ctx.drawImage(canvas, offsetX, offsetY, drawWidth, drawHeight);
 
-    // Convert to PNG blob
+    // Convert to JPEG blob (smaller file size than PNG)
     const blob = await new Promise<Blob | null>((resolve) => {
-      thumbCanvas.toBlob(resolve, 'image/png', 0.8);
+      thumbCanvas.toBlob(resolve, 'image/jpeg', 0.7);
     });
 
     if (!blob) return null;

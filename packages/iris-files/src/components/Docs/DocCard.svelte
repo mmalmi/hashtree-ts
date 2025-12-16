@@ -51,7 +51,7 @@
       if (!data) return;
 
       // Create blob URL
-      const blob = new Blob([data], { type: 'image/png' });
+      const blob = new Blob([data], { type: 'image/jpeg' });
       thumbnailUrl = URL.createObjectURL(blob);
     } catch {
       // Thumbnail not available - that's fine
