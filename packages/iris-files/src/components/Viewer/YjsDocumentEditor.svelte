@@ -747,8 +747,10 @@
       <a href="#/" class="btn-ghost p-1" title="Back to home">
         <span class="i-lucide-chevron-left text-lg"></span>
       </a>
-      {#if ownerPubkey}
-        <Avatar pubkey={ownerPubkey} size={20} />
+      {#if ownerPubkey && ownerNpub}
+        <a href="#/{ownerNpub}" class="shrink-0">
+          <Avatar pubkey={ownerPubkey} size={20} />
+        </a>
       {/if}
       <span class="i-lucide-file-text text-text-2 shrink-0"></span>
       <span class="font-medium text-text-1 truncate">{dirName}</span>
