@@ -10,3 +10,4 @@ e2e/screenshots/
 .pnpm-store/
 e2e/screenshots/
 packages/hashtree-web/dist-docs/
+packages/iris-files/dist-docs/
