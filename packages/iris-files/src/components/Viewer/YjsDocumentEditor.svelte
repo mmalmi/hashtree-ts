@@ -872,7 +872,7 @@
     <div class="flex-1 overflow-auto bg-[#0d0d14]" onclick={handleEditorClick}>
       <div class="a4-page bg-[#1a1a24]">
         {#if loading}
-          <div class="flex items-center justify-center min-h-[400px] text-text-3">
+          <div class="flex items-center justify-center min-h-[400px] text-text-3 p-4 md:p-8">
             <span class="i-lucide-loader-2 animate-spin mr-2"></span>
             Loading document...
           </div>
