@@ -144,82 +144,78 @@
   {/each}
   <!-- Compare branches option (when there are multiple branches and we have navigation info) -->
   {#if branches.length > 1 && npub && treeName && currentBranch}
-    <div class="b-t-1 b-t-solid b-t-surface-3 pt-1 bg-surface-2">
-      {#if showCompareSelect}
-        <div class="px-3 py-2 bg-surface-2">
-          <div class="text-xs text-text-3 mb-2">Compare {currentBranch} with:</div>
-          {#each branches.filter(b => b !== currentBranch) as branch}
-            <button
-              onclick={() => handleCompareSelect(branch)}
-              class="w-full text-left px-2 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 rounded mb-1 cursor-pointer"
-            >
-              <span class="i-lucide-git-branch text-xs text-accent"></span>
-              <span>{branch}</span>
-            </button>
-          {/each}
+    {#if showCompareSelect}
+      <div class="px-3 py-2 bg-surface-2 b-t-1 b-t-solid b-t-surface-3">
+        <div class="text-xs text-text-3 mb-2">Compare {currentBranch} with:</div>
+        {#each branches.filter(b => b !== currentBranch) as branch}
           <button
-            onclick={() => { showCompareSelect = false; }}
-            class="btn-ghost text-xs px-2 py-1 mt-1"
+            onclick={() => handleCompareSelect(branch)}
+            class="w-full text-left px-2 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 rounded mb-1 cursor-pointer"
+          >
+            <span class="i-lucide-git-branch text-xs text-accent"></span>
+            <span>{branch}</span>
+          </button>
+        {/each}
+        <button
+          onclick={() => { showCompareSelect = false; }}
+          class="btn-ghost text-xs px-2 py-1 mt-1"
+        >
+          Cancel
+        </button>
+      </div>
+    {:else}
+      <button
+        onclick={() => { showCompareSelect = true; }}
+        class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 b-t-1 b-t-solid b-t-surface-3 cursor-pointer"
+      >
+        <span class="i-lucide-git-compare text-xs"></span>
+        <span>Compare branches</span>
+      </button>
+    {/if}
+  {/if}
+  <!-- New branch option (only for editors) -->
+  {#if canEdit}
+    {#if showNewBranchInput}
+      <div class="px-3 py-2 bg-surface-2 b-t-1 b-t-solid b-t-surface-3">
+        {#if branchError}
+          <div class="text-xs text-error mb-2">{branchError}</div>
+        {/if}
+        <input
+          type="text"
+          bind:value={newBranchName}
+          placeholder="Branch name"
+          class="w-full px-2 py-1 text-sm bg-surface-0 b-1 b-solid b-surface-3 rounded focus:outline-none focus:b-accent"
+          onkeydown={(e) => { if (e.key === 'Enter') handleCreateBranch(); if (e.key === 'Escape') { showNewBranchInput = false; branchError = null; } }}
+        />
+        <div class="flex gap-2 mt-2">
+          <button
+            onclick={handleCreateBranch}
+            disabled={isCreatingBranch || !newBranchName.trim()}
+            class="btn-primary text-xs px-2 py-1 flex items-center gap-1"
+          >
+            {#if isCreatingBranch}
+              <span class="i-lucide-loader-2 animate-spin"></span>
+            {:else}
+              <span class="i-lucide-plus"></span>
+            {/if}
+            Create
+          </button>
+          <button
+            onclick={() => { showNewBranchInput = false; branchError = null; }}
+            class="btn-ghost text-xs px-2 py-1"
           >
             Cancel
           </button>
         </div>
-      {:else}
-        <button
-          onclick={() => { showCompareSelect = true; }}
-          class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 cursor-pointer"
-        >
-          <span class="i-lucide-git-compare text-xs"></span>
-          <span>Compare branches</span>
-        </button>
-      {/if}
-    </div>
-  {/if}
-  <!-- New branch option (only for editors) -->
-  {#if canEdit}
-    <div class="b-t-1 b-t-solid b-t-surface-3 pt-1 bg-surface-2">
-      {#if showNewBranchInput}
-        <div class="px-3 py-2 bg-surface-2">
-          {#if branchError}
-            <div class="text-xs text-error mb-2">{branchError}</div>
-          {/if}
-          <input
-            type="text"
-            bind:value={newBranchName}
-            placeholder="Branch name"
-            class="w-full px-2 py-1 text-sm bg-surface-0 b-1 b-solid b-surface-3 rounded focus:outline-none focus:b-accent"
-            onkeydown={(e) => { if (e.key === 'Enter') handleCreateBranch(); if (e.key === 'Escape') { showNewBranchInput = false; branchError = null; } }}
-          />
-          <div class="flex gap-2 mt-2">
-            <button
-              onclick={handleCreateBranch}
-              disabled={isCreatingBranch || !newBranchName.trim()}
-              class="btn-primary text-xs px-2 py-1 flex items-center gap-1"
-            >
-              {#if isCreatingBranch}
-                <span class="i-lucide-loader-2 animate-spin"></span>
-              {:else}
-                <span class="i-lucide-plus"></span>
-              {/if}
-              Create
-            </button>
-            <button
-              onclick={() => { showNewBranchInput = false; branchError = null; }}
-              class="btn-ghost text-xs px-2 py-1"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      {:else}
-        <button
-          onclick={() => { showNewBranchInput = true; newBranchName = ''; }}
-          class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 cursor-pointer"
-        >
-          <span class="i-lucide-git-branch-plus text-xs"></span>
-          <span>New branch</span>
-        </button>
-      {/if}
-    </div>
+      </div>
+    {:else}
+      <button
+        onclick={() => { showNewBranchInput = true; newBranchName = ''; }}
+        class="w-full text-left px-3 py-1.5 text-sm bg-surface-2 hover:bg-surface-3 flex items-center gap-2 text-text-1 b-0 b-t-1 b-t-solid b-t-surface-3 cursor-pointer"
+      >
+        <span class="i-lucide-git-branch-plus text-xs"></span>
+        <span>New branch</span>
+      </button>
+    {/if}
   {/if}
 </Dropdown>
