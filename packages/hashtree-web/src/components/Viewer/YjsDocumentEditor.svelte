@@ -25,6 +25,9 @@
   import { nip19 } from 'nostr-tools';
   import VisibilityIcon from '../VisibilityIcon.svelte';
   import { Avatar } from '../User';
+  import { CommentMark, createCommentsStore, type CommentsStore } from '../../lib/comments';
+  import type { CommentsState } from '../../lib/comments/types';
+  import { CommentsPanel, AddCommentModal } from '../Comments';
 
   const DELTAS_DIR = 'deltas';
   const STATE_FILE = 'state.yjs';
@@ -52,6 +55,15 @@
 
   // Map of image names to blob URLs for display
   let imageUrlCache = new Map<string, string>();
+
+  // Comments state
+  let commentsStore: CommentsStore | undefined = $state();
+  let commentsState = $state<CommentsState>({ threads: new Map(), activeThreadId: null, panelOpen: false });
+  let hasTextSelection = $state(false);
+
+  // Add comment modal state
+  let showAddCommentModal = $state(false);
+  let pendingCommentSelection = $state<{ from: number; to: number; text: string } | null>(null);
 
   // Collaborators list
   let collaborators = $state<string[]>([]);
@@ -744,7 +756,15 @@
 
     loading = false;
 
-    // Create Tiptap editor with Yjs collaboration and image support
+    // Create comments store backed by Yjs
+    commentsStore = createCommentsStore(ydoc);
+
+    // Subscribe to comments state changes
+    const unsubComments = commentsStore.subscribe((state) => {
+      commentsState = state;
+    });
+
+    // Create Tiptap editor with Yjs collaboration, image support, and comments
     editor = new Editor({
       element: editorElement,
       extensions: [
@@ -760,6 +780,11 @@
         Image.configure({
           inline: false,
           allowBase64: false,
+        }),
+        CommentMark.configure({
+          HTMLAttributes: {
+            class: 'comment-highlight',
+          },
         }),
       ],
       editable: canEdit,
@@ -802,7 +827,6 @@
     // Set up live subscriptions to collaborators' trees
     if (collaborators.length > 0) {
       setupCollaboratorSubscriptions(collaborators);
-    } else {
     }
 
     // Listen for updates and save (full state snapshot, not incremental delta)
@@ -837,11 +861,12 @@
       await resolveImageSrc(img);
     }
 
-    // Cleanup observer on destroy
-    const originalDestroy = editor.destroy.bind(editor);
+    // Cleanup observer and comments on destroy
+    const editorOriginalDestroy = editor.destroy.bind(editor);
     editor.destroy = () => {
       observer.disconnect();
-      originalDestroy();
+      unsubComments();
+      editorOriginalDestroy();
     };
   });
 
@@ -867,6 +892,8 @@
       URL.revokeObjectURL(url);
     }
     imageUrlCache.clear();
+    // Clean up comments store
+    commentsStore?.destroy();
     editor?.destroy();
     ydoc?.destroy();
   });
@@ -886,6 +913,104 @@
   function insertHorizontalRule() { editor?.chain().focus().setHorizontalRule().run(); }
   function undo() { editor?.chain().focus().undo().run(); }
   function redo() { editor?.chain().focus().redo().run(); }
+
+  // Comment functions
+  function addComment() {
+    if (!editor || !commentsStore || !userNpub) return;
+
+    const { from, to } = editor.state.selection;
+    if (from === to) return; // No selection
+
+    const selectedText = editor.state.doc.textBetween(from, to, ' ');
+    if (!selectedText.trim()) return;
+
+    // Store the selection and show modal
+    pendingCommentSelection = { from, to, text: selectedText };
+    showAddCommentModal = true;
+  }
+
+  function handleAddCommentSubmit(commentText: string) {
+    if (!editor || !commentsStore || !userNpub || !pendingCommentSelection) return;
+
+    const { from, to, text } = pendingCommentSelection;
+
+    // Create the thread in the store
+    const threadId = commentsStore.createThread(text, commentText, userNpub);
+
+    // Restore selection and apply the comment mark
+    editor.chain()
+      .focus()
+      .setTextSelection({ from, to })
+      .setComment(threadId)
+      .run();
+
+    // Close modal and clear pending selection
+    showAddCommentModal = false;
+    pendingCommentSelection = null;
+  }
+
+  function handleAddCommentCancel() {
+    showAddCommentModal = false;
+    pendingCommentSelection = null;
+    editor?.chain().focus().run();
+  }
+
+  function handleCommentThreadClick(threadId: string) {
+    if (!editor) return;
+
+    // Find the comment mark in the document and scroll to it
+    const { doc } = editor.state;
+    let found = false;
+
+    doc.descendants((node, pos) => {
+      if (found) return false;
+
+      const commentMark = node.marks.find(
+        mark => mark.type.name === 'comment' && mark.attrs.commentId === threadId
+      );
+
+      if (commentMark) {
+        // Select the commented text
+        editor?.chain().focus().setTextSelection({ from: pos, to: pos + node.nodeSize }).run();
+        found = true;
+        return false;
+      }
+    });
+  }
+
+  // Handle click on commented text in the editor
+  function handleEditorClick(event: MouseEvent) {
+    const target = event.target as HTMLElement;
+    const commentHighlight = target.closest('.comment-highlight');
+
+    if (commentHighlight) {
+      const commentId = commentHighlight.getAttribute('data-comment-id');
+      if (commentId && commentsStore) {
+        // Open panel and select thread
+        commentsStore.setPanelOpen(true);
+        commentsStore.setActiveThread(commentId);
+      }
+    }
+  }
+
+  function toggleCommentsPanel() {
+    commentsStore?.togglePanel();
+  }
+
+  // Track selection changes to enable/disable comment button
+  $effect(() => {
+    if (!editor) return;
+
+    const updateSelection = () => {
+      const { from, to } = editor!.state.selection;
+      hasTextSelection = from !== to;
+    };
+
+    editor.on('selectionUpdate', updateSelection);
+    return () => {
+      editor?.off('selectionUpdate', updateSelection);
+    };
+  });
 </script>
 
 <div class="flex-1 flex flex-col min-h-0 bg-surface-0">
@@ -1076,14 +1201,52 @@
       >
         <span class="i-lucide-redo"></span>
       </button>
+
+      <div class="w-px h-5 bg-surface-3 mx-1"></div>
+
+      <!-- Comments -->
+      <button
+        onclick={addComment}
+        disabled={!hasTextSelection || !userNpub}
+        class="toolbar-btn disabled:opacity-30"
+        title="Add comment (select text first)"
+      >
+        <span class="i-lucide-message-square-plus"></span>
+      </button>
+      <button
+        onclick={toggleCommentsPanel}
+        class="toolbar-btn {commentsState.panelOpen ? 'active' : ''}"
+        title="Toggle comments panel"
+      >
+        <span class="i-lucide-message-square"></span>
+        {#if commentsState.threads.size > 0}
+          <span class="text-xs ml-1">{commentsState.threads.size}</span>
+        {/if}
+      </button>
     </div>
   {/if}
 
-  <!-- Editor area - A4 paper style on large screens -->
-  <div class="flex-1 overflow-auto bg-[#0d0d14] {loading ? 'hidden' : ''}">
-    <div class="a4-page bg-[#1a1a24]">
-      <div bind:this={editorElement} class="ProseMirror-container prose prose-sm max-w-none min-h-full"></div>
+  <!-- Editor area with comments panel -->
+  <div class="flex-1 flex min-h-0 {loading ? 'hidden' : ''}">
+    <!-- Main editor area - A4 paper style on large screens -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="flex-1 overflow-auto bg-[#0d0d14]" onclick={handleEditorClick}>
+      <div class="a4-page bg-[#1a1a24]">
+        <div bind:this={editorElement} class="ProseMirror-container prose prose-sm max-w-none min-h-full"></div>
+      </div>
     </div>
+
+    <!-- Comments panel (CSS visibility toggle) -->
+    {#if commentsStore}
+      <div class="w-80 shrink-0 border-l border-surface-3 {commentsState.panelOpen ? '' : 'hidden'}">
+        <CommentsPanel
+          {commentsStore}
+          {userNpub}
+          onClickThread={handleCommentThreadClick}
+        />
+      </div>
+    {/if}
   </div>
 
   <!-- Loading state -->
@@ -1102,6 +1265,14 @@
   accept="image/*"
   onchange={handleFileInputChange}
   class="hidden"
+/>
+
+<!-- Add Comment Modal -->
+<AddCommentModal
+  show={showAddCommentModal}
+  quotedText={pendingCommentSelection?.text || ''}
+  onSubmit={handleAddCommentSubmit}
+  onCancel={handleAddCommentCancel}
 />
 
 <style>
@@ -1184,5 +1355,20 @@
   :global(.ProseMirror-container .ProseMirror img.ProseMirror-selectednode) {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
+  }
+
+  /* Comment highlight styles */
+  :global(.ProseMirror-container .comment-highlight) {
+    background-color: rgba(255, 213, 79, 0.3);
+    border-bottom: 2px solid rgba(255, 213, 79, 0.7);
+    padding: 0 2px;
+    margin: 0 -2px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+
+  :global(.ProseMirror-container .comment-highlight:hover) {
+    background-color: rgba(255, 213, 79, 0.5);
   }
 </style>
