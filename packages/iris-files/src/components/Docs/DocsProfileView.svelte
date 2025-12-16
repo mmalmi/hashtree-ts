@@ -12,7 +12,7 @@
   import { Avatar, Name, Badge, FollowedBy } from '../User';
   import CopyText from '../CopyText.svelte';
   import { getFollowsMe, getFollowers, socialGraphStore } from '../../utils/socialGraph';
-  import VisibilityIcon from '../VisibilityIcon.svelte';
+  import DocCard from './DocCard.svelte';
 
   interface Props {
     npub: string;
@@ -295,20 +295,12 @@
       <!-- Documents -->
       {#each docs as doc}
         {@const linkKeySuffix = doc.linkKey ? `?k=${doc.linkKey}` : ''}
-        <a
+        <DocCard
           href="#/{npub}/{doc.name}{linkKeySuffix}"
-          class="aspect-[1/1.414] bg-surface-1 rounded-lg border border-surface-3 hover:border-accent transition-colors no-underline flex flex-col"
-        >
-          <div class="flex-1 flex items-center justify-center">
-            <span class="i-lucide-file-text text-4xl text-accent"></span>
-          </div>
-          <div class="p-2 border-t border-surface-3">
-            <div class="flex items-center gap-1.5">
-              <VisibilityIcon visibility={doc.visibility} class="text-text-3 text-xs" />
-              <h3 class="text-sm font-medium text-text-1 truncate">{doc.displayName}</h3>
-            </div>
-          </div>
-        </a>
+          displayName={doc.displayName}
+          ownerPubkey={pubkeyHex}
+          visibility={doc.visibility}
+        />
       {/each}
 
       <!-- Empty state -->
