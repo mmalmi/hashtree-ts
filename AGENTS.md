@@ -30,6 +30,10 @@ pnpm run test:e2e # E2E tests
 
 ## Testing
 - Playwright runs its own dev server - no need to `pnpm run dev` when running tests
+- **Run tests selectively**: Full test suite takes ~5 minutes. Run only relevant tests during development:
+  - `pnpm run test:e2e -- --grep "test name"` - Run tests matching pattern
+  - `pnpm run test:e2e -- e2e/specific-file.spec.ts` - Run single test file
+  - Only run full suite for final verification
 - **Always verify changes work with e2e tests** - don't just say "should work now", run the tests to confirm
 - **Port conflicts**: If Playwright reports port 5173 in use, it may test against a different process (wrong app!). Kill any running dev servers first.
 - When tests are failing, increasing timeouts is usually not the solution. The app should work fast

@@ -1,11 +1,13 @@
 <script lang="ts">
   /**
    * HtmlViewer - renders HTML content in a sandboxed iframe
-   * Resources are resolved relative to the current directory
+   *
+   * Injects a <base> tag so relative URLs resolve to SW paths,
+   * but serves HTML as blob to maintain sandbox security (no same-origin).
+   * The SW then intercepts resource requests and serves from hashtree.
    */
-  import { directoryEntriesStore } from '../../stores';
-  import { getTree } from '../../store';
-  import { LinkType, type TreeEntry } from 'hashtree';
+  import { untrack } from 'svelte';
+  import { routeStore } from '../../stores';
 
   interface Props {
     content: string;
@@ -14,150 +16,66 @@
 
   let { content, fileName }: Props = $props();
 
-  let dirEntries = $derived($directoryEntriesStore);
-  let entries = $derived(dirEntries.entries);
+  let route = $derived($routeStore);
 
-  // Recursively resolve path segments to get an entry
-  async function resolveRelativePath(pathParts: string[], currentEntries: TreeEntry[]): Promise<TreeEntry | null> {
-    if (pathParts.length === 0) return null;
+  // Build base URL for the directory containing the HTML file
+  // e.g., /htree/npub1.../treeName/path/to/ (trailing slash for directory)
+  let baseUrl = $derived.by(() => {
+    if (!route.npub || !route.treeName) return '';
 
-    const [first, ...rest] = pathParts;
+    const encodedTreeName = encodeURIComponent(route.treeName);
+    // Get directory path (all segments except the filename)
+    const dirPath = route.path.slice(0, -1);
+    const encodedPath = dirPath.map(encodeURIComponent).join('/');
 
-    // Handle ".." by going up (not supported in sandboxed view)
-    if (first === '..') return null;
-
-    // Find entry with this name
-    const entry = currentEntries.find(e => e.name === first);
-    if (!entry) return null;
-
-    // If this is the last segment, return it
-    if (rest.length === 0) return entry;
-
-    // If it's a directory, recurse into it
-    if (entry.type === LinkType.Dir && entry.cid) {
-      const tree = getTree();
-      const subEntries = await tree.listDirectory(entry.cid);
-      if (subEntries) {
-        return resolveRelativePath(rest, subEntries);
-      }
+    // Build base URL with trailing slash
+    let base = `/htree/${route.npub}/${encodedTreeName}`;
+    if (encodedPath) {
+      base += `/${encodedPath}`;
     }
-
-    return null;
-  }
-
-  // Transform HTML content to use blob URLs for resources
-  let iframeSrc = $state<string>('');
-
-  $effect(() => {
-    let cancelled = false;
-
-    async function transformContent() {
-      const html = content;
-      const currentEntries = entries;
-      const tree = getTree();
-
-      // Find all resource references (src, href attributes)
-      const resourcePatterns = [
-        /src="([^"]+)"/gi,
-        /href="([^"]+\.(?:css|js|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot))"/gi,
-      ];
-
-      // Collect all URLs to replace
-      const replacements = new Map<string, string>();
-
-      for (const pattern of resourcePatterns) {
-        let match;
-        const regex = new RegExp(pattern.source, pattern.flags);
-        while ((match = regex.exec(html)) !== null) {
-          const url = match[1];
-
-          // Skip external URLs and data URLs
-          if (url.startsWith('http://') || url.startsWith('https://') ||
-              url.startsWith('data:') || url.startsWith('//') ||
-              url.startsWith('#')) {
-            continue;
-          }
-
-          if (!replacements.has(url)) {
-            // Parse the relative path
-            const pathParts = url.split('/').filter(p => p && p !== '.');
-
-            // Resolve to an entry
-            const entry = await resolveRelativePath(pathParts, currentEntries);
-
-            if (entry && entry.cid && entry.type !== LinkType.Dir) {
-              // Read the file content
-              const data = await tree.readFile(entry.cid);
-              if (data && !cancelled) {
-                // Create blob URL
-                const mimeType = getMimeType(entry.name);
-                const blob = new Blob([data], { type: mimeType });
-                const blobUrl = URL.createObjectURL(blob);
-                replacements.set(url, blobUrl);
-              }
-            }
-          }
-        }
-      }
-
-      if (cancelled) return;
-
-      // Replace all URLs in HTML
-      let result = html;
-      for (const [originalUrl, blobUrl] of replacements) {
-        // Escape special regex characters in URL
-        const escaped = originalUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        result = result.replace(new RegExp(`(src|href)="${escaped}"`, 'gi'), `$1="${blobUrl}"`);
-      }
-
-      transformedHtml = result;
-
-      // Create blob for the entire HTML
-      const htmlBlob = new Blob([result], { type: 'text/html' });
-      const newSrc = URL.createObjectURL(htmlBlob);
-
-      // Clean up old blob URL
-      if (iframeSrc) {
-        URL.revokeObjectURL(iframeSrc);
-      }
-
-      iframeSrc = newSrc;
-    }
-
-    transformContent();
-
-    return () => {
-      cancelled = true;
-      if (iframeSrc) {
-        URL.revokeObjectURL(iframeSrc);
-      }
-    };
+    return base + '/';
   });
 
-  function getMimeType(filename: string): string {
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
-    const mimeTypes: Record<string, string> = {
-      'css': 'text/css',
-      'js': 'text/javascript',
-      'json': 'application/json',
-      'html': 'text/html',
-      'htm': 'text/html',
-      'png': 'image/png',
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'gif': 'image/gif',
-      'svg': 'image/svg+xml',
-      'ico': 'image/x-icon',
-      'woff': 'font/woff',
-      'woff2': 'font/woff2',
-      'ttf': 'font/ttf',
-      'eot': 'application/vnd.ms-fontobject',
-      'mp3': 'audio/mpeg',
-      'mp4': 'video/mp4',
-      'webm': 'video/webm',
+  let iframeSrc = $state<string>('');
+
+  // Inject <base> tag into HTML and create blob URL
+  $effect(() => {
+    if (!content || !baseUrl) {
+      return;
+    }
+
+    // Inject <base href="..."> tag to make relative URLs resolve to SW paths
+    // Insert after <head> if present, otherwise at start
+    let modifiedHtml = content;
+    const baseTag = `<base href="${baseUrl}">`;
+
+    if (/<head[^>]*>/i.test(modifiedHtml)) {
+      modifiedHtml = modifiedHtml.replace(/<head[^>]*>/i, `$&${baseTag}`);
+    } else if (/<html[^>]*>/i.test(modifiedHtml)) {
+      modifiedHtml = modifiedHtml.replace(/<html[^>]*>/i, `$&<head>${baseTag}</head>`);
+    } else {
+      // No html/head tags - prepend base tag
+      modifiedHtml = baseTag + modifiedHtml;
+    }
+
+    // Create blob URL for the modified HTML
+    const blob = new Blob([modifiedHtml], { type: 'text/html' });
+    const newSrc = URL.createObjectURL(blob);
+
+    // Store old URL for cleanup before setting new one (use untrack to avoid dependency)
+    const oldSrc = untrack(() => iframeSrc);
+    iframeSrc = newSrc;
+
+    // Cleanup: revoke old blob URL
+    if (oldSrc) {
+      URL.revokeObjectURL(oldSrc);
+    }
+
+    return () => {
+      // Revoke on component unmount
+      URL.revokeObjectURL(newSrc);
     };
-    return mimeTypes[ext] || 'application/octet-stream';
-  }
+  });
 </script>
 
 <div class="flex-1 flex flex-col min-h-0">
