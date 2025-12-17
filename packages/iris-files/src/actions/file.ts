@@ -254,14 +254,14 @@ export async function uploadExtractedFiles(files: { name: string; data: Uint8Arr
         const result = await tree.putDirectory([{ name: entry.name, cid: entry.cid, size: entry.size }]);
         rootCid = result.cid;
       }
+
+      // Publish after each file so UI updates progressively
+      if (rootCid) {
+        autosaveIfOwn(rootCid);
+      }
     }
   }
 
   // Clear progress
   setUploadProgress(null);
-
-  if (rootCid) {
-    // Publish to nostr - resolver will pick up the update
-    autosaveIfOwn(rootCid);
-  }
 }
