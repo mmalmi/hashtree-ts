@@ -40,7 +40,14 @@ export default defineConfig({
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      includeAssets: ['iris-favicon.png', 'apple-touch-icon.png'],
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
       manifest: {
         name: 'Iris Video',
         short_name: 'Iris Video',
@@ -50,42 +57,26 @@ export default defineConfig({
         display: 'standalone',
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: 'iris-logo.png',
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'iris-logo.png',
             sizes: '512x512',
             type: 'image/png',
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'iris-logo.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable',
           },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,wasm}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.blossom\..*\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'blossom-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 30,
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-        ],
       },
     }),
   ],

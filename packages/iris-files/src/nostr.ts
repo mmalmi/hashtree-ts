@@ -893,6 +893,10 @@ export async function saveHashtree(
     const encryptionKey = rootKey ? fromHex(rootKey) : undefined;
     // This synchronously updates the resolver's localListCache (skips Nostr publish)
     resolver.publish?.(`${npub}/${name}`, cid(hash, encryptionKey), { visibility }, true);
+
+    // Also update treeRootCache for SW file handler access
+    // This is critical for immediate video playback after upload
+    updateLocalRootCacheHex(npub, name, rootHash, rootKey, visibility);
   }
 
   return { success: true, linkKey };

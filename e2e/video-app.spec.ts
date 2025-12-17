@@ -129,6 +129,33 @@ test.describe('Iris Video App', () => {
     const videoLocator = page.locator('video');
     await expect(videoLocator).toBeVisible({ timeout: 60000 });
 
+    // Wait for video to actually load metadata and have duration
+    await page.waitForFunction(() => {
+      const video = document.querySelector('video');
+      return video && video.readyState >= 1 && video.duration > 0;
+    }, { timeout: 30000 });
+
+    // Verify video properties are valid
+    const videoProps = await page.evaluate(() => {
+      const video = document.querySelector('video');
+      if (!video) return null;
+      return {
+        duration: video.duration,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        readyState: video.readyState,
+        src: video.src?.substring(0, 100),
+        error: video.error?.message
+      };
+    });
+
+    // Video should have valid properties (Big Buck Bunny is ~10 seconds)
+    expect(videoProps).not.toBeNull();
+    expect(videoProps!.duration).toBeGreaterThan(5);
+    expect(videoProps!.videoWidth).toBeGreaterThan(0);
+    expect(videoProps!.videoHeight).toBeGreaterThan(0);
+    expect(videoProps!.error).toBeUndefined();
+
     // Take final screenshot
     await page.screenshot({ path: 'e2e/screenshots/video-player-loaded.png' });
   });

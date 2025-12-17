@@ -1,6 +1,22 @@
 import 'virtual:uno.css';
 import DocsApp from './DocsApp.svelte';
 import { mount } from 'svelte';
+import { registerSW } from 'virtual:pwa-register';
+import { setupSwFileHandler } from './lib/swFileHandler';
+
+// Register service worker for file streaming
+registerSW({
+  immediate: true,
+  onRegistered(r) {
+    console.log('SW registered:', r);
+  },
+  onRegisterError(error) {
+    console.error('SW registration error:', error);
+  },
+});
+
+// Set up handler for SW file requests
+setupSwFileHandler();
 
 const app = mount(DocsApp, {
   target: document.getElementById('app')!,
