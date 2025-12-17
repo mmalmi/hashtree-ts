@@ -82,9 +82,9 @@
             </button>
           </div>
           <p class="text-xs text-text-3 mt-2">
-            Requires <a href="#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-rs" class="text-accent hover:underline">hashtree-cli</a>
+            Requires <a href="#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-rs" class="text-accent hover:underline">git-remote-htree</a>
           </p>
-          <code class="block text-xs bg-surface-2 px-2 py-1 rounded mt-1 text-text-2">cargo install hashtree-cli</code>
+          <code class="block text-xs bg-surface-2 px-2 py-1 rounded mt-1 text-text-2">cargo install git-remote-htree</code>
         </div>
       </div>
     </div>
