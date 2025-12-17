@@ -8,7 +8,7 @@
   import { getTree } from '../../store';
   import { nostrStore } from '../../nostr';
   import { treeRootStore, createTreesStore } from '../../stores';
-  import { openShareModal } from '../../stores/modals';
+  import { openShareModal, openBlossomPushModal } from '../../stores/modals';
   import type { TreeVisibility } from 'hashtree';
   import { deleteTree } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
@@ -202,6 +202,11 @@
     openShareModal(url);
   }
 
+  function handleBlossomPush() {
+    if (!rootCid) return;
+    openBlossomPushModal(rootCid, title, true);
+  }
+
   async function handleDelete() {
     if (!treeName || deleting) return;
     if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
@@ -364,6 +369,9 @@
               <span class="i-lucide-share text-lg"></span>
             </button>
             {#if isOwner}
+              <button onclick={handleBlossomPush} class="btn-ghost p-2" title="Push to file servers">
+                <span class="i-lucide-upload-cloud text-lg"></span>
+              </button>
               <button onclick={startEdit} class="btn-ghost p-2" title="Edit">
                 <span class="i-lucide-pencil text-lg"></span>
               </button>
