@@ -2,20 +2,21 @@
   /**
    * MediaPlayer - On-demand streaming media player for video and audio
    *
-   * Primary mode: Service Worker streaming
-   * - Uses /media/{cidHex}/{path} URLs intercepted by service worker
+   * Primary mode: Service Worker streaming via npub URL
+   * - Uses /{npub}/{treeName}/{path} URLs intercepted by service worker
    * - Service worker streams data from hashtree worker
+   * - Supports live streaming (worker watches for tree root updates)
    * - Browser handles seeking, buffering, range requests natively
    *
    * Fallback mode: MSE with direct fetching
-   * - Used when service worker not available
+   * - Used when service worker not available or npub context missing
    * - Uses MediaSource Extensions with on-demand range fetching
    */
   import { getTree } from '../../store';
   import { recentlyChangedFiles } from '../../stores/recentlyChanged';
   import { currentHash } from '../../stores';
   import { toHex, type CID } from 'hashtree';
-  import { getMediaUrl } from '../../lib/mediaUrl';
+  import { getCidFileUrl, getNpubFileUrl } from '../../lib/mediaUrl';
   import { isMediaStreamingSetup, setupMediaStreaming } from '../../lib/mediaStreamingSetup';
 
   interface Props {
@@ -24,6 +25,12 @@
     fileSize?: number;
     /** Media type: 'video' or 'audio' */
     type?: 'video' | 'audio';
+    /** Npub for live streaming support (optional) */
+    npub?: string;
+    /** Tree name for live streaming support (optional) */
+    treeName?: string;
+    /** Full path within tree for live streaming support (optional) */
+    path?: string;
   }
 
   let props: Props = $props();
@@ -33,6 +40,10 @@
   let fileSize = $derived(props.fileSize ?? 0);
   let mediaType = $derived(props.type ?? 'video');
   let isAudio = $derived(mediaType === 'audio');
+  // Npub context for live streaming
+  let npub = $derived(props.npub);
+  let treeName = $derived(props.treeName);
+  let filePath = $derived(props.path);
 
   let mediaRef: HTMLVideoElement | HTMLAudioElement | undefined = $state();
   let mediaSource: MediaSource | null = $state(null);
@@ -358,8 +369,16 @@
       return false;
     }
 
-    const url = getMediaUrl(cid, fileName);
-    console.log('[MediaPlayer] Using SW streaming:', url);
+    // Use npub-based URL if we have the context (supports live streaming)
+    // Otherwise fall back to CID-based URL
+    let url: string;
+    if (npub && treeName && filePath) {
+      url = getNpubFileUrl(npub, treeName, filePath);
+      console.log('[MediaPlayer] Using npub SW streaming (live-capable):', url);
+    } else {
+      url = getCidFileUrl(cid, fileName);
+      console.log('[MediaPlayer] Using CID SW streaming:', url);
+    }
 
     usingSWStreaming = true;
     mediaRef.src = url;

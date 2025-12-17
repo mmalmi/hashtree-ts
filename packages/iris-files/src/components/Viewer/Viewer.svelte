@@ -733,7 +733,14 @@
     {#if isVideo && entryFromStore?.cid}
       <!-- Key by filename to prevent remount on CID change during live streaming -->
       {#key urlFileName}
-        <MediaPlayer cid={entryFromStore.cid} fileName={urlFileName} type="video" />
+        <MediaPlayer
+          cid={entryFromStore.cid}
+          fileName={urlFileName}
+          type="video"
+          npub={targetNpub}
+          treeName={currentTreeName}
+          path={urlPath.join('/')}
+        />
       {/key}
     {:else if isHtml && fileContent !== null}
       {#key cidKey}
@@ -754,7 +761,14 @@
     {:else if isAudio && entryFromStore?.cid}
       <!-- Audio player - keyed by filename for live streaming support -->
       {#key urlFileName}
-        <MediaPlayer cid={entryFromStore.cid} fileName={urlFileName} type="audio" />
+        <MediaPlayer
+          cid={entryFromStore.cid}
+          fileName={urlFileName}
+          type="audio"
+          npub={targetNpub}
+          treeName={currentTreeName}
+          path={urlPath.join('/')}
+        />
       {/key}
     {:else if isPdf && blobUrl}
       <!-- PDF viewer - keyed by CID -->
