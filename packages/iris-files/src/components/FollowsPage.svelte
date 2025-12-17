@@ -8,6 +8,7 @@
   import { getFollowsMe, socialGraphStore } from '../utils/socialGraph';
   import { Avatar, Name, Badge } from './User';
   import { BackButton } from './ui';
+  import InfiniteScroll from './InfiniteScroll.svelte';
 
   interface Props {
     npub?: string;
@@ -95,6 +96,21 @@
   function isFollowingUser(pubkey: string): boolean {
     return myFollows.includes(pubkey);
   }
+
+  // Infinite scroll state
+  const INITIAL_COUNT = 20;
+  const LOAD_MORE_COUNT = 20;
+  let displayCount = $state(INITIAL_COUNT);
+
+  function loadMore() {
+    displayCount = Math.min(displayCount + LOAD_MORE_COUNT, profileFollows.length);
+  }
+
+  // Reset display count when profile changes
+  $effect(() => {
+    pubkeyHex;
+    displayCount = INITIAL_COUNT;
+  });
 </script>
 
 <div class="flex-1 flex flex-col min-h-0 bg-surface-0 overflow-y-auto">
@@ -124,51 +140,53 @@
           Not following anyone yet
         </div>
       {:else}
-        <div class="divide-y divide-surface-2">
-          {#each profileFollows as followedPubkey (followedPubkey)}
-            {@const isLoading = loadingPubkeys.has(followedPubkey)}
-            {@const amFollowing = isFollowingUser(followedPubkey)}
-            {@const isSelf = followedPubkey === myPubkey}
-            {@const theyFollowMe = followsMe(followedPubkey)}
-            <div class="flex items-center gap-3 p-4 hover:bg-surface-1 transition-colors">
-              <!-- Avatar -->
-              <a
-                href="#/{nip19.npubEncode(followedPubkey)}"
-                class="shrink-0"
-              >
-                <Avatar pubkey={followedPubkey} size={44} showBadge={true} />
-              </a>
-
-              <!-- Name and info -->
-              <div class="flex-1 min-w-0">
+        <InfiniteScroll onLoadMore={loadMore}>
+          <div class="divide-y divide-surface-2">
+            {#each profileFollows.slice(0, displayCount) as followedPubkey (followedPubkey)}
+              {@const isLoading = loadingPubkeys.has(followedPubkey)}
+              {@const amFollowing = isFollowingUser(followedPubkey)}
+              {@const isSelf = followedPubkey === myPubkey}
+              {@const theyFollowMe = followsMe(followedPubkey)}
+              <div class="flex items-center gap-3 p-4 hover:bg-surface-1 transition-colors">
+                <!-- Avatar -->
                 <a
                   href="#/{nip19.npubEncode(followedPubkey)}"
-                  class="font-medium text-text-1 hover:underline truncate block"
+                  class="shrink-0"
                 >
-                  <Name pubkey={followedPubkey} />
+                  <Avatar pubkey={followedPubkey} size={44} showBadge={true} />
                 </a>
-                {#if theyFollowMe}
-                  <div class="text-xs text-accent">Follows you</div>
+
+                <!-- Name and info -->
+                <div class="flex-1 min-w-0">
+                  <a
+                    href="#/{nip19.npubEncode(followedPubkey)}"
+                    class="font-medium text-text-1 hover:underline truncate block"
+                  >
+                    <Name pubkey={followedPubkey} />
+                  </a>
+                  {#if theyFollowMe}
+                    <div class="text-xs text-accent">Follows you</div>
+                  {/if}
+                </div>
+
+                <!-- Follow/Unfollow button -->
+                {#if isLoggedIn && !isSelf}
+                  <button
+                    onclick={() => handleFollowToggle(followedPubkey)}
+                    disabled={isLoading}
+                    class="shrink-0 {amFollowing ? 'btn-ghost' : 'btn-success'} text-sm"
+                  >
+                    {isLoading ? '...' : amFollowing ? 'Unfollow' : 'Follow'}
+                  </button>
+                {:else if isSelf}
+                  <span class="text-xs text-accent flex items-center gap-1 shrink-0">
+                    <Badge pubKeyHex={followedPubkey} size="sm" /> You
+                  </span>
                 {/if}
               </div>
-
-              <!-- Follow/Unfollow button -->
-              {#if isLoggedIn && !isSelf}
-                <button
-                  onclick={() => handleFollowToggle(followedPubkey)}
-                  disabled={isLoading}
-                  class="shrink-0 {amFollowing ? 'btn-ghost' : 'btn-success'} text-sm"
-                >
-                  {isLoading ? '...' : amFollowing ? 'Unfollow' : 'Follow'}
-                </button>
-              {:else if isSelf}
-                <span class="text-xs text-accent flex items-center gap-1 shrink-0">
-                  <Badge pubKeyHex={followedPubkey} size="sm" /> You
-                </span>
-              {/if}
-            </div>
-          {/each}
-        </div>
+            {/each}
+          </div>
+        </InfiniteScroll>
       {/if}
     </div>
   </div>
