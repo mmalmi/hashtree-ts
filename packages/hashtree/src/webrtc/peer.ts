@@ -196,15 +196,12 @@ export class Peer {
     };
 
     this.pc.onconnectionstatechange = () => {
-      this.log('Connection state:', this.pc.connectionState);
-
       if (this.pc.connectionState === 'connected') {
         this.connectedAt = Date.now();
         // Only trigger onConnected if data channel is also ready
         // (it may already be open, or will fire via channel.onopen)
         if (this.dataChannel?.readyState === 'open' && !this.onConnectedFired) {
           this.onConnectedFired = true;
-          this.log('PC connected and data channel already open, firing onConnected');
           this.onConnected?.();
         }
       } else if (
@@ -226,12 +223,10 @@ export class Peer {
     channel.binaryType = 'arraybuffer';
 
     channel.onopen = () => {
-      this.log('Data channel open');
       // If PC is already connected, fire onConnected now
       // (handles case where data channel opens after PC connects)
       if (this.pc.connectionState === 'connected' && !this.onConnectedFired) {
         this.onConnectedFired = true;
-        this.log('Data channel opened after PC connected, firing onConnected');
         this.onConnected?.();
       }
     };

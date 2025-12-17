@@ -578,23 +578,10 @@
       }
     }
 
-    // Fallback: fetch via SW URL and download as blob
-    // (direct <a download> doesn't work reliably with SW-served content)
-    const swUrl = getNhashFileUrl(entryFromStore.cid, fileName);
-    const response = await fetch(swUrl);
-    if (!response.ok) {
-      console.error('Download failed:', response.status);
-      return;
-    }
-    const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
+    // Fallback: navigate to SW URL with ?download=1 query param
+    // SW will serve with Content-Disposition: attachment header
+    const swUrl = getNhashFileUrl(entryFromStore.cid, fileName) + '?download=1';
+    window.location.href = swUrl;
   }
 
   // Share handler

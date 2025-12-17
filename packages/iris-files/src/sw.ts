@@ -96,6 +96,7 @@ interface FileRequest {
   start: number;
   end?: number;
   mimeType: string;
+  download?: boolean;
 }
 
 interface FileResponseHeaders {
@@ -246,7 +247,8 @@ function createNpubFileResponse(
 function createNhashFileResponse(
   nhash: string,
   filename: string,
-  rangeHeader: string | null
+  rangeHeader: string | null,
+  forceDownload: boolean
 ): Promise<Response> {
   const id = `file_${++requestId}`;
   const mimeType = guessMimeType(filename);
@@ -270,6 +272,7 @@ function createNhashFileResponse(
     start,
     end,
     mimeType,
+    download: forceDownload,
   };
 
   return serveFile(request).catch((error) => {
@@ -296,7 +299,8 @@ self.addEventListener('fetch', (event: FetchEvent) => {
   if (pathParts.length >= 2 && pathParts[1].startsWith('nhash1')) {
     const nhash = pathParts[1];
     const filename = pathParts.slice(2).join('/') || 'file';
-    event.respondWith(createNhashFileResponse(nhash, filename, rangeHeader));
+    const forceDownload = url.searchParams.get('download') === '1';
+    event.respondWith(createNhashFileResponse(nhash, filename, rangeHeader, forceDownload));
     return;
   }
 

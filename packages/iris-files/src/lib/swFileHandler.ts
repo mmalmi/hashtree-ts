@@ -25,6 +25,7 @@ interface FileRequest {
   start: number;
   end?: number;
   mimeType: string;
+  download?: boolean;
 }
 
 interface FileResponseHeaders {
@@ -81,7 +82,7 @@ function handleSwMessage(event: MessageEvent): void {
  * Handle a file request from the service worker
  */
 async function handleFileRequest(request: FileRequest, port: MessagePort): Promise<void> {
-  const { npub, nhash, treeName, path, start, end, mimeType } = request;
+  const { npub, nhash, treeName, path, start, end, mimeType, download } = request;
 
   console.log('[SwFileHandler] File request:', { npub, nhash, treeName, path, start, end });
 
@@ -166,6 +167,12 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       'Accept-Ranges': 'bytes',
       'Cache-Control': 'public, max-age=31536000, immutable',
     };
+
+    // Add Content-Disposition header for downloads
+    if (download) {
+      const filename = path || 'file';
+      headers['Content-Disposition'] = `attachment; filename="${filename}"`;
+    }
 
     let status = 200;
     if (start !== undefined && start > 0) {

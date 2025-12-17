@@ -518,7 +518,6 @@ export class WebRTCStore implements Store {
 
     // Check if we can accept (unless we already have this peer)
     if (!this.peers.has(peerIdStr) && !this.canAcceptPeer(pool)) {
-      this.log('Rejecting offer from', peerId.short(), '- pool', pool, 'is full');
       return;
     }
 
@@ -529,7 +528,6 @@ export class WebRTCStore implements Store {
       this.peers.delete(peerIdStr);
     }
 
-    this.log('Accepting offer from', peerId.short(), 'pool:', pool);
 
     const peer = new Peer({
       peerId,
@@ -1138,8 +1136,7 @@ export class WebRTCStore implements Store {
         r.triedPeers.add(peerIdStr);
       }
 
-      this.log('Trying pending req from new peer:', hash.slice(0, 16));
-
+  
       const data = await peer.request(hash);
       if (data) {
         // Store locally

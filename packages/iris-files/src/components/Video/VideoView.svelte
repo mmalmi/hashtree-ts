@@ -201,25 +201,12 @@
     openShareModal(url);
   }
 
-  async function handleDownload() {
+  function handleDownload() {
     if (!videoCid || !videoFileName) return;
-    // Fetch via SW URL and download as blob
-    // (direct <a download> doesn't work reliably with SW-served content)
-    const swUrl = getNhashFileUrl(videoCid, videoFileName);
-    const response = await fetch(swUrl);
-    if (!response.ok) {
-      console.error('Download failed:', response.status);
-      return;
-    }
-    const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = blobUrl;
-    a.download = videoFileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(blobUrl);
+    // Navigate to SW URL with ?download=1 query param
+    // SW will serve with Content-Disposition: attachment header for streaming download
+    const swUrl = getNhashFileUrl(videoCid, videoFileName) + '?download=1';
+    window.location.href = swUrl;
   }
 
   function handleBlossomPush() {
