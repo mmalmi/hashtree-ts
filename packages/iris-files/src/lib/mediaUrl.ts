@@ -1,46 +1,52 @@
 /**
- * Media URL Helper
+ * File URL Helper
  *
- * Generates URLs for streaming media through the service worker.
- * URLs are in the format: /media/{cidHex}/{path}
+ * Generates URLs for streaming files through the service worker.
+ * The SW intercepts these URLs and streams data from the hashtree worker.
  *
- * The service worker intercepts these URLs and streams data from the worker.
+ * URL formats:
+ * - /{npub}/{treeName}/{path} - Npub-based, supports live streaming
+ * - /cid/{cidHex}/{filename} - Direct CID access
  */
 
 import { toHex, type CID } from 'hashtree';
 
 /**
- * Generate a media URL for a CID and optional path
+ * Generate a file URL for npub-based access
+ *
+ * @param npub - The npub of the user
+ * @param treeName - The tree name (e.g., 'public')
+ * @param path - File path within the tree
+ * @returns URL string like /npub1.../public/video.mp4
+ */
+export function getNpubFileUrl(npub: string, treeName: string, path: string): string {
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  return `/${npub}/${treeName}/${encodedPath}`;
+}
+
+/**
+ * Generate a file URL for direct CID access
  *
  * @param cid - The content ID
- * @param path - Optional file path (used for MIME type detection)
- * @returns URL string like /media/abc123/video.mp4
+ * @param filename - Filename (for MIME type detection)
+ * @returns URL string like /cid/abc123/video.mp4
+ */
+export function getCidFileUrl(cid: CID, filename: string = 'file'): string {
+  const cidHex = toHex(cid.hash);
+  return `/cid/${cidHex}/${encodeURIComponent(filename)}`;
+}
+
+/**
+ * Legacy alias for getCidFileUrl (backwards compatibility)
  */
 export function getMediaUrl(cid: CID, path: string = ''): string {
-  const cidHex = toHex(cid.hash);
-  const encodedPath = encodeURIComponent(path).replace(/%2F/g, '/');
-  return `/media/${cidHex}/${encodedPath}`;
+  return getCidFileUrl(cid, path);
 }
 
 /**
- * Parse a media URL back to CID hex and path
- *
- * @param url - URL string like /media/abc123/video.mp4
- * @returns Object with cidHex and path, or null if not a media URL
+ * Check if service worker is ready to handle file requests
  */
-export function parseMediaUrl(url: string): { cidHex: string; path: string } | null {
-  const match = url.match(/^\/media\/([a-f0-9]+)\/(.*)$/i);
-  if (!match) return null;
-  return {
-    cidHex: match[1],
-    path: decodeURIComponent(match[2]),
-  };
-}
-
-/**
- * Check if the service worker is ready to handle media requests
- */
-export async function isMediaStreamingAvailable(): Promise<boolean> {
+export async function isFileStreamingAvailable(): Promise<boolean> {
   if (!('serviceWorker' in navigator)) return false;
 
   const registration = await navigator.serviceWorker.ready;

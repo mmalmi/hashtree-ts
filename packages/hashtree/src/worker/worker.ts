@@ -487,20 +487,43 @@ async function handlePublish(id: string, event: SignedEvent) {
 // Media Port Handler
 // ============================================================================
 
+// Active media streams (for live streaming - can receive updates)
+const activeMediaStreams = new Map<string, {
+  requestId: string;
+  npub: string;
+  path: string;
+  offset: number;
+  cancelled: boolean;
+}>();
+
+// Timeout for considering a stream "done" (no updates)
+const LIVE_STREAM_TIMEOUT = 10000; // 10 seconds
+
 function handleRegisterMediaPort(port: MessagePort) {
   mediaPort = port;
 
-  port.onmessage = async (e: MessageEvent<import('./protocol').MediaRequest>) => {
+  port.onmessage = async (e: MessageEvent) => {
     const req = e.data;
-    if (req.type !== 'media') return;
 
-    await handleMediaRequest(req);
+    if (req.type === 'media') {
+      await handleMediaRequestByCid(req);
+    } else if (req.type === 'mediaByPath') {
+      await handleMediaRequestByPath(req);
+    } else if (req.type === 'cancelMedia') {
+      // Cancel an active stream
+      const stream = activeMediaStreams.get(req.requestId);
+      if (stream) {
+        stream.cancelled = true;
+        activeMediaStreams.delete(req.requestId);
+      }
+    }
   };
 
   console.log('[Worker] Media port registered');
 }
 
-async function handleMediaRequest(req: import('./protocol').MediaRequest) {
+// Handle direct CID-based media request
+async function handleMediaRequestByCid(req: import('./protocol').MediaRequestByCid) {
   if (!tree || !mediaPort) return;
 
   const { requestId, cid: cidHex, start, end, mimeType } = req;
@@ -522,21 +545,13 @@ async function handleMediaRequest(req: import('./protocol').MediaRequest) {
       requestId,
       totalSize,
       mimeType: mimeType || 'application/octet-stream',
+      isLive: false,
     } as import('./protocol').MediaResponse);
 
     // Read range and stream chunks
     const data = await tree.readFileRange(cid, start, end);
     if (data) {
-      // Send in chunks for large files
-      const CHUNK_SIZE = 64 * 1024; // 64KB chunks
-      for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
-        const chunk = data.slice(offset, offset + CHUNK_SIZE);
-        const done = offset + CHUNK_SIZE >= data.length;
-        mediaPort.postMessage(
-          { type: 'chunk', requestId, data: chunk, done } as import('./protocol').MediaResponse,
-          [chunk.buffer]
-        );
-      }
+      await streamChunksToPort(requestId, data);
     } else {
       mediaPort.postMessage({
         type: 'error',
@@ -551,6 +566,184 @@ async function handleMediaRequest(req: import('./protocol').MediaRequest) {
       message: err instanceof Error ? err.message : String(err),
     } as import('./protocol').MediaResponse);
   }
+}
+
+// Handle npub/path-based media request (supports live streaming)
+async function handleMediaRequestByPath(req: import('./protocol').MediaRequestByPath) {
+  if (!tree || !mediaPort) return;
+
+  const { requestId, npub, path, start, mimeType } = req;
+
+  try {
+    // Parse path to get tree name
+    const pathParts = path.split('/').filter(Boolean);
+    const treeName = pathParts[0] || 'public';
+    const filePath = pathParts.slice(1).join('/');
+
+    // Resolve npub to current CID
+    let cid = await getCachedRoot(npub, treeName);
+
+    if (!cid) {
+      // Not in cache - try to resolve via Nostr subscription
+      // For now, just return error. Full implementation would subscribe and wait.
+      mediaPort.postMessage({
+        type: 'error',
+        requestId,
+        message: `Tree root not found for ${npub}/${treeName}`,
+      } as import('./protocol').MediaResponse);
+      return;
+    }
+
+    // Navigate to file within tree if path specified
+    if (filePath) {
+      const resolved = await tree.resolvePath(cid, filePath);
+      if (!resolved) {
+        mediaPort.postMessage({
+          type: 'error',
+          requestId,
+          message: `File not found: ${filePath}`,
+        } as import('./protocol').MediaResponse);
+        return;
+      }
+      cid = resolved.cid;
+    }
+
+    // Get file size
+    const totalSize = await tree.getSize(cid.hash);
+
+    // Send headers (isLive will be determined by watching for updates)
+    mediaPort.postMessage({
+      type: 'headers',
+      requestId,
+      totalSize,
+      mimeType: mimeType || 'application/octet-stream',
+      isLive: false, // Will update if we detect changes
+    } as import('./protocol').MediaResponse);
+
+    // Stream initial content
+    const data = await tree.readFileRange(cid, start);
+    let offset = start;
+
+    if (data) {
+      await streamChunksToPort(requestId, data, false); // Don't close yet
+      offset += data.length;
+    }
+
+    // Register for live updates
+    const streamInfo = {
+      requestId,
+      npub,
+      path,
+      offset,
+      cancelled: false,
+    };
+    activeMediaStreams.set(requestId, streamInfo);
+
+    // Set up tree root watcher for this npub
+    // When root changes, we'll check if this file has new data
+    watchTreeRootForStream(npub, treeName, filePath, streamInfo);
+
+  } catch (err) {
+    mediaPort.postMessage({
+      type: 'error',
+      requestId,
+      message: err instanceof Error ? err.message : String(err),
+    } as import('./protocol').MediaResponse);
+  }
+}
+
+// Stream data chunks to media port
+async function streamChunksToPort(requestId: string, data: Uint8Array, sendDone = true) {
+  if (!mediaPort) return;
+
+  const CHUNK_SIZE = 64 * 1024; // 64KB chunks
+  for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
+    const chunk = data.slice(offset, offset + CHUNK_SIZE);
+    mediaPort.postMessage(
+      { type: 'chunk', requestId, data: chunk } as import('./protocol').MediaResponse,
+      [chunk.buffer]
+    );
+  }
+
+  if (sendDone) {
+    mediaPort.postMessage({ type: 'done', requestId } as import('./protocol').MediaResponse);
+  }
+}
+
+// Watch for tree root updates and push new data to stream
+function watchTreeRootForStream(
+  npub: string,
+  treeName: string,
+  filePath: string,
+  streamInfo: { requestId: string; offset: number; cancelled: boolean }
+) {
+  let lastActivity = Date.now();
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  const checkForUpdates = async () => {
+    if (streamInfo.cancelled || !tree || !mediaPort) {
+      cleanup();
+      return;
+    }
+
+    // Check if stream timed out
+    if (Date.now() - lastActivity > LIVE_STREAM_TIMEOUT) {
+      // No updates for a while, close the stream
+      mediaPort.postMessage({ type: 'done', requestId: streamInfo.requestId } as import('./protocol').MediaResponse);
+      cleanup();
+      return;
+    }
+
+    try {
+      // Get current root
+      const cid = await getCachedRoot(npub, treeName);
+      if (!cid) {
+        scheduleNext();
+        return;
+      }
+
+      // Navigate to file
+      let fileCid = cid;
+      if (filePath) {
+        const resolved = await tree.resolvePath(cid, filePath);
+        if (!resolved) {
+          scheduleNext();
+          return;
+        }
+        fileCid = resolved.cid;
+      }
+
+      // Check for new data
+      const totalSize = await tree.getSize(fileCid.hash);
+      if (totalSize > streamInfo.offset) {
+        // New data available!
+        lastActivity = Date.now();
+        const newData = await tree.readFileRange(fileCid, streamInfo.offset);
+        if (newData && newData.length > 0) {
+          await streamChunksToPort(streamInfo.requestId, newData, false);
+          streamInfo.offset += newData.length;
+        }
+      }
+    } catch {
+      // Ignore errors, just try again
+    }
+
+    scheduleNext();
+  };
+
+  const scheduleNext = () => {
+    if (!streamInfo.cancelled) {
+      timeoutId = setTimeout(checkForUpdates, 1000); // Check every second
+    }
+  };
+
+  const cleanup = () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    activeMediaStreams.delete(streamInfo.requestId);
+  };
+
+  // Start watching
+  scheduleNext();
 }
 
 // ============================================================================

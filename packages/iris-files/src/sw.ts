@@ -1,10 +1,13 @@
 /**
- * Service Worker with Media Streaming Support
+ * Service Worker with File Streaming Support
  *
- * Extends VitePWA's workbox service worker with:
- * - Interception of /media/{cidHex}/{path} requests
- * - Range request support for video seeking
- * - MessageChannel communication with hashtree worker
+ * Intercepts file requests and streams data from hashtree worker:
+ * - /{npub}/{treeName}/{path} - Npub-based file access, supports live streaming
+ * - /cid/{cidHex}/{filename} - Direct CID access
+ *
+ * All files (video, images, documents) use the same streaming path.
+ * Browser handles Content-Type appropriately (seeking for video, rendering for images, etc.)
+ * Live streaming works by watching for tree root updates via Nostr.
  */
 
 /// <reference lib="webworker" />
@@ -18,8 +21,8 @@ precacheAndRoute(self.__WB_MANIFEST);
 // MessagePort for communicating with hashtree worker
 let workerPort: MessagePort | null = null;
 
-// Pending media requests waiting for worker responses
-const pendingRequests = new Map<string, {
+// Pending requests waiting for worker responses
+interface PendingRequest {
   resolve: (response: Response) => void;
   reject: (error: Error) => void;
   controller: ReadableStreamDefaultController<Uint8Array> | null;
@@ -27,10 +30,17 @@ const pendingRequests = new Map<string, {
   mimeType: string;
   rangeStart: number;
   rangeEnd: number | undefined;
-}>();
+  isLive: boolean;
+  resolved: boolean;
+}
+
+const pendingRequests = new Map<string, PendingRequest>();
 
 // Request counter for unique IDs
 let requestId = 0;
+
+// npub pattern: npub1 followed by 58 bech32 characters
+const NPUB_PATTERN = /^npub1[a-z0-9]{58}$/;
 
 /**
  * Guess MIME type from file path/extension
@@ -61,13 +71,28 @@ function guessMimeType(path: string): string {
     'gif': 'image/gif',
     'webp': 'image/webp',
     'svg': 'image/svg+xml',
+    'ico': 'image/x-icon',
     // Documents
     'pdf': 'application/pdf',
     'txt': 'text/plain',
+    'md': 'text/markdown',
     'html': 'text/html',
+    'htm': 'text/html',
     'css': 'text/css',
     'js': 'application/javascript',
     'json': 'application/json',
+    'xml': 'application/xml',
+    // Archives
+    'zip': 'application/zip',
+    'tar': 'application/x-tar',
+    'gz': 'application/gzip',
+    // Code
+    'ts': 'text/typescript',
+    'tsx': 'text/typescript',
+    'jsx': 'text/javascript',
+    'py': 'text/x-python',
+    'rs': 'text/x-rust',
+    'go': 'text/x-go',
   };
   return mimeTypes[ext] || 'application/octet-stream';
 }
@@ -82,7 +107,6 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     console.log('[SW] Worker port registered');
   }
 
-  // Respond to service worker version check
   if (event.data?.type === 'GET_VERSION') {
     event.ports[0]?.postMessage({ version: '1.0.0' });
   }
@@ -100,19 +124,18 @@ function setupWorkerPortHandler() {
     const pending = pendingRequests.get(reqId);
 
     if (!pending) {
-      console.warn('[SW] No pending request for id:', reqId);
+      // Could be a late message for cancelled request
       return;
     }
 
     switch (data.type) {
       case 'headers':
-        // Initial response with headers - update pending state
         pending.totalSize = data.totalSize;
-        pending.mimeType = data.mimeType || 'application/octet-stream';
+        pending.mimeType = data.mimeType || pending.mimeType;
+        pending.isLive = data.isLive || false;
         break;
 
       case 'chunk':
-        // Data chunk - enqueue to stream
         if (pending.controller && data.data) {
           try {
             pending.controller.enqueue(new Uint8Array(data.data));
@@ -120,29 +143,29 @@ function setupWorkerPortHandler() {
             console.error('[SW] Error enqueueing chunk:', e);
           }
         }
-        // Check if this is the final chunk
-        if (data.done) {
-          if (pending.controller) {
-            try {
-              pending.controller.close();
-            } catch {
-              // Stream may already be closed
-            }
+        break;
+
+      case 'done':
+        if (pending.controller) {
+          try {
+            pending.controller.close();
+          } catch {
+            // Stream may already be closed
           }
-          pendingRequests.delete(reqId);
         }
+        pendingRequests.delete(reqId);
         break;
 
       case 'error':
-        // Error occurred
-        if (pending.controller) {
+        if (!pending.resolved) {
+          pending.reject(new Error(data.message || 'Unknown error'));
+        } else if (pending.controller) {
           try {
             pending.controller.error(new Error(data.message));
           } catch {
             // Stream may already be closed
           }
         }
-        pending.reject(new Error(data.message || 'Unknown error'));
         pendingRequests.delete(reqId);
         break;
     }
@@ -150,41 +173,26 @@ function setupWorkerPortHandler() {
 }
 
 /**
- * Parse Range header
+ * Create streaming response for npub-based file requests
  */
-function parseRangeHeader(rangeHeader: string | null, totalSize: number): { start: number; end: number } | null {
-  if (!rangeHeader) return null;
-
-  const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
-  if (!match) return null;
-
-  const start = match[1] ? parseInt(match[1], 10) : 0;
-  const end = match[2] ? parseInt(match[2], 10) : totalSize - 1;
-
-  return { start, end };
-}
-
-/**
- * Create a streaming response for media requests
- */
-async function createMediaResponse(
-  cidHex: string,
-  path: string,
+function createNpubFileResponse(
+  npub: string,
+  treeName: string,
+  filePath: string,
   rangeHeader: string | null
 ): Promise<Response> {
   if (!workerPort) {
-    return new Response('Worker not connected', { status: 503 });
+    return Promise.resolve(new Response('Worker not connected', { status: 503 }));
   }
 
-  const id = `media_${++requestId}`;
+  const id = `file_${++requestId}`;
+  const fullPath = filePath ? `${treeName}/${filePath}` : treeName;
+  const mimeType = guessMimeType(filePath || treeName);
 
   return new Promise((resolve, reject) => {
-    // Parse range if provided
     let rangeStart = 0;
     let rangeEnd: number | undefined;
 
-    // We'll get the total size from the worker's headers response
-    // For now, parse what we can from the range header
     if (rangeHeader) {
       const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
       if (match) {
@@ -193,7 +201,6 @@ async function createMediaResponse(
       }
     }
 
-    // Create a readable stream that will receive chunks from the worker
     let streamController: ReadableStreamDefaultController<Uint8Array>;
 
     const stream = new ReadableStream<Uint8Array>({
@@ -202,38 +209,139 @@ async function createMediaResponse(
       },
       cancel() {
         pendingRequests.delete(id);
-        // Could notify worker to stop sending data
+        workerPort?.postMessage({ type: 'cancelMedia', requestId: id });
       }
     });
 
-    // Store pending request
-    const pending = {
+    const pending: PendingRequest = {
       resolve,
       reject,
-      controller: null as ReadableStreamDefaultController<Uint8Array> | null,
+      controller: null,
       totalSize: 0,
-      mimeType: 'application/octet-stream',
+      mimeType,
       rangeStart,
       rangeEnd,
+      isLive: false,
+      resolved: false,
     };
     pendingRequests.set(id, pending);
 
-    // Send request to worker (matches MediaRequest in protocol.ts)
+    // Send request to worker
+    workerPort!.postMessage({
+      type: 'mediaByPath',
+      requestId: id,
+      npub,
+      path: fullPath,
+      start: rangeStart,
+      end: rangeEnd,
+      mimeType,
+    });
+
+    // Wait for headers, then resolve with Response
+    setTimeout(() => {
+      const p = pendingRequests.get(id);
+      if (!p || p.resolved) return;
+      p.resolved = true;
+      p.controller = streamController;
+
+      const headers: Record<string, string> = {
+        'Content-Type': p.mimeType,
+      };
+
+      let status = 200;
+      let statusText = 'OK';
+
+      // For live streams, don't set Content-Length (chunked transfer)
+      if (p.isLive) {
+        headers['Accept-Ranges'] = 'none';
+        headers['Cache-Control'] = 'no-cache, no-store';
+      } else {
+        headers['Accept-Ranges'] = 'bytes';
+        headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+
+        if (p.totalSize > 0 && rangeHeader) {
+          const end = p.rangeEnd !== undefined ? p.rangeEnd : p.totalSize - 1;
+          headers['Content-Range'] = `bytes ${rangeStart}-${end}/${p.totalSize}`;
+          headers['Content-Length'] = String(end - rangeStart + 1);
+          status = 206;
+          statusText = 'Partial Content';
+        } else if (p.totalSize > 0) {
+          headers['Content-Length'] = String(p.totalSize);
+        }
+      }
+
+      resolve(new Response(stream, { status, statusText, headers }));
+    }, 50);
+  });
+}
+
+/**
+ * Create streaming response for direct CID requests
+ */
+function createCidFileResponse(
+  cidHex: string,
+  filename: string,
+  rangeHeader: string | null
+): Promise<Response> {
+  if (!workerPort) {
+    return Promise.resolve(new Response('Worker not connected', { status: 503 }));
+  }
+
+  const id = `file_${++requestId}`;
+  const mimeType = guessMimeType(filename);
+
+  return new Promise((resolve, reject) => {
+    let rangeStart = 0;
+    let rangeEnd: number | undefined;
+
+    if (rangeHeader) {
+      const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+      if (match) {
+        rangeStart = match[1] ? parseInt(match[1], 10) : 0;
+        rangeEnd = match[2] ? parseInt(match[2], 10) : undefined;
+      }
+    }
+
+    let streamController: ReadableStreamDefaultController<Uint8Array>;
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+      },
+      cancel() {
+        pendingRequests.delete(id);
+        workerPort?.postMessage({ type: 'cancelMedia', requestId: id });
+      }
+    });
+
+    const pending: PendingRequest = {
+      resolve,
+      reject,
+      controller: null,
+      totalSize: 0,
+      mimeType,
+      rangeStart,
+      rangeEnd,
+      isLive: false,
+      resolved: false,
+    };
+    pendingRequests.set(id, pending);
+
+    // Send CID-based request
     workerPort!.postMessage({
       type: 'media',
       requestId: id,
       cid: cidHex,
       start: rangeStart,
       end: rangeEnd,
-      mimeType: guessMimeType(path),
+      mimeType,
     });
 
-    // Wait a bit for headers response, then create the Response
-    // The worker should send headers first, then chunks
+    // Wait for headers, then resolve with Response
     setTimeout(() => {
       const p = pendingRequests.get(id);
-      if (!p) return;
-
+      if (!p || p.resolved) return;
+      p.resolved = true;
       p.controller = streamController;
 
       const headers: Record<string, string> = {
@@ -242,30 +350,21 @@ async function createMediaResponse(
         'Cache-Control': 'public, max-age=31536000, immutable',
       };
 
-      const isRangeRequest = rangeHeader !== null;
       let status = 200;
       let statusText = 'OK';
 
-      if (p.totalSize > 0) {
-        if (isRangeRequest) {
-          const end = p.rangeEnd !== undefined ? p.rangeEnd : p.totalSize - 1;
-          headers['Content-Range'] = `bytes ${rangeStart}-${end}/${p.totalSize}`;
-          headers['Content-Length'] = String(end - rangeStart + 1);
-          status = 206;
-          statusText = 'Partial Content';
-        } else {
-          headers['Content-Length'] = String(p.totalSize);
-        }
+      if (p.totalSize > 0 && rangeHeader) {
+        const end = p.rangeEnd !== undefined ? p.rangeEnd : p.totalSize - 1;
+        headers['Content-Range'] = `bytes ${rangeStart}-${end}/${p.totalSize}`;
+        headers['Content-Length'] = String(end - rangeStart + 1);
+        status = 206;
+        statusText = 'Partial Content';
+      } else if (p.totalSize > 0) {
+        headers['Content-Length'] = String(p.totalSize);
       }
 
-      const response = new Response(stream, {
-        status,
-        statusText,
-        headers,
-      });
-
-      resolve(response);
-    }, 50); // Give worker 50ms to send headers
+      resolve(new Response(stream, { status, statusText, headers }));
+    }, 50);
   });
 }
 
@@ -274,21 +373,35 @@ async function createMediaResponse(
  */
 self.addEventListener('fetch', (event: FetchEvent) => {
   const url = new URL(event.request.url);
+  const pathParts = url.pathname.slice(1).split('/'); // Remove leading /
+  const rangeHeader = event.request.headers.get('Range');
 
-  // Check if this is a media request: /media/{cidHex}/{path}
-  if (url.pathname.startsWith('/media/')) {
-    const pathParts = url.pathname.slice('/media/'.length).split('/');
-    if (pathParts.length >= 1) {
-      const cidHex = pathParts[0];
-      const filePath = pathParts.slice(1).join('/') || '';
-      const rangeHeader = event.request.headers.get('Range');
+  // Skip non-GET requests
+  if (event.request.method !== 'GET') return;
 
-      event.respondWith(createMediaResponse(cidHex, filePath, rangeHeader));
+  // /cid/{cidHex}/{filename} - Direct CID access
+  if (pathParts[0] === 'cid' && pathParts.length >= 2 && pathParts[1].length === 64) {
+    const cidHex = pathParts[1];
+    const filename = pathParts.slice(2).join('/') || 'file';
+    event.respondWith(createCidFileResponse(cidHex, filename, rangeHeader));
+    return;
+  }
+
+  // /{npub}/{treeName}/{path...} - Npub-based file access
+  if (pathParts.length >= 2 && NPUB_PATTERN.test(pathParts[0])) {
+    const npub = pathParts[0];
+    const treeName = pathParts[1];
+    const filePath = pathParts.slice(2).join('/');
+
+    // Only intercept if this looks like a file request (has extension or deep path)
+    // Skip root tree views which the app should handle
+    if (filePath || treeName.includes('.')) {
+      event.respondWith(createNpubFileResponse(npub, treeName, filePath, rangeHeader));
       return;
     }
   }
 
-  // For non-media requests, let workbox handle it (precache + runtime caching)
+  // Let workbox handle everything else (static assets, app routes)
 });
 
 // Handle service worker installation

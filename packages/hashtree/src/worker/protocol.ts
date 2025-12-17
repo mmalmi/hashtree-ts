@@ -143,7 +143,8 @@ export interface RelayStats {
 // Service Worker ↔ Worker Messages (via MessagePort)
 // ============================================================================
 
-export interface MediaRequest {
+// Request by direct CID (for cached/known content)
+export interface MediaRequestByCid {
   type: 'media';
   requestId: string;
   cid: string;  // hex encoded CID hash
@@ -152,9 +153,23 @@ export interface MediaRequest {
   mimeType?: string;
 }
 
+// Request by npub/path (supports live streaming via tree root updates)
+export interface MediaRequestByPath {
+  type: 'mediaByPath';
+  requestId: string;
+  npub: string;
+  path: string;  // e.g., "public/video.webm"
+  start: number;
+  end?: number;
+  mimeType?: string;
+}
+
+export type MediaRequest = MediaRequestByCid | MediaRequestByPath;
+
 export type MediaResponse =
-  | { type: 'headers'; requestId: string; totalSize: number; mimeType: string }
-  | { type: 'chunk'; requestId: string; data: Uint8Array; done: boolean }
+  | { type: 'headers'; requestId: string; totalSize: number; mimeType: string; isLive?: boolean }
+  | { type: 'chunk'; requestId: string; data: Uint8Array }
+  | { type: 'done'; requestId: string }
   | { type: 'error'; requestId: string; message: string };
 
 // ============================================================================
