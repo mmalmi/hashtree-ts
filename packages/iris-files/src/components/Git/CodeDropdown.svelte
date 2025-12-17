@@ -12,12 +12,12 @@
   let isOpen = $state(false);
   let copied = $state(false);
 
-  // Build the htree:// clone URL
-  let cloneUrl = $derived(`htree://${npub}/${repoPath}`);
+  // Build the git clone command
+  let cloneCommand = $derived(`git clone htree://${npub}/${repoPath}`);
 
   async function copyToClipboard() {
     try {
-      await navigator.clipboard.writeText(`git clone ${cloneUrl}`);
+      await navigator.clipboard.writeText(cloneCommand);
       copied = true;
       setTimeout(() => { copied = false; }, 2000);
     } catch (e) {
@@ -61,19 +61,18 @@
       <div class="p-3 space-y-3">
         <!-- Clone URL -->
         <div>
-          <label class="text-xs text-text-3 mb-1 block">htree URL</label>
           <div class="flex items-center gap-2">
             <input
               type="text"
               readonly
-              value={cloneUrl}
+              value={cloneCommand}
               class="flex-1 input text-xs font-mono bg-surface-2 px-2 py-1.5"
               onclick={(e) => (e.target as HTMLInputElement).select()}
             />
             <button
               onclick={copyToClipboard}
               class="btn-ghost p-1.5 shrink-0"
-              title="Copy clone command"
+              title="Copy URL"
             >
               {#if copied}
                 <span class="i-lucide-check text-success"></span>
@@ -82,34 +81,10 @@
               {/if}
             </button>
           </div>
-        </div>
-
-        <!-- Instructions -->
-        <div class="text-xs text-text-3 space-y-2">
-          <p class="font-medium text-text-2">To clone this repository:</p>
-          <ol class="list-decimal list-inside space-y-1.5 text-text-3">
-            <li>
-              Install the CLI:
-              <code class="bg-surface-2 px-1 py-0.5 rounded text-text-2">cargo install hashtree-cli</code>
-            </li>
-            <li>
-              Clone the repo:
-              <code class="bg-surface-2 px-1 py-0.5 rounded text-text-2 break-all">git clone {cloneUrl}</code>
-            </li>
-          </ol>
-        </div>
-
-        <!-- Links -->
-        <div class="pt-2 b-t b-surface-3 b-solid">
-          <a
-            href="https://github.com/irislib/hashtree-rs"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-xs text-accent hover:underline flex items-center gap-1"
-          >
-            <span class="i-lucide-external-link"></span>
-            Learn more about hashtree-cli
-          </a>
+          <p class="text-xs text-text-3 mt-2">
+            Requires <a href="#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-rs" class="text-accent hover:underline">hashtree-cli</a>
+          </p>
+          <code class="block text-xs bg-surface-2 px-2 py-1 rounded mt-1 text-text-2">cargo install hashtree</code>
         </div>
       </div>
     </div>
