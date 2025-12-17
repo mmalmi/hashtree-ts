@@ -29,6 +29,7 @@ pnpm run test:e2e # E2E tests
 - Buttons: ALWAYS use `btn-ghost` class (default) or `btn-primary`/`btn-danger`/`btn-success` for colored buttons (defined in uno.config.ts). Never use raw styles like `bg-transparent border-none` on buttons. For clickable elements that shouldn't look like buttons (e.g., avatar links), use `<a>` tags instead.
 
 ## Testing
+- Playwright runs its own dev server - no need to `pnpm run dev` when running tests
 - When tests are failing, increasing timeouts is usually not the solution. The app should work fast
 - Debug failing / flaky tests with console logs, further tests or playwrght screenshots and fix. If you suspect nostr relay issue, debug with local mock or real relay
 - Playwright test in headless mode

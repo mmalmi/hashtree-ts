@@ -12,6 +12,7 @@
 
 import { getTree } from '../store';
 import { getLocalRootCache, getLocalRootKey } from '../treeRootCache';
+import { getTreeRootSync } from '../stores/treeRoot';
 import { fromHex, toHex, type CID } from 'hashtree';
 
 interface FileRequest {
@@ -95,9 +96,20 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       const [treeName, ...pathParts] = path.split('/');
       const filePath = pathParts.join('/');
 
-      // Get tree root from local cache
-      const rootHash = getLocalRootCache(npub, treeName);
-      if (!rootHash) {
+      // Try local write cache first, then subscription cache
+      let rootCid: CID | null = null;
+
+      const localHash = getLocalRootCache(npub, treeName);
+      if (localHash) {
+        const localKey = getLocalRootKey(npub, treeName);
+        rootCid = { hash: localHash, key: localKey };
+      } else {
+        // Fall back to subscription cache (for viewing others' trees)
+        rootCid = getTreeRootSync(npub, treeName);
+      }
+
+      if (!rootCid) {
+        console.error('[SwFileHandler] Tree not found:', npub, treeName);
         port.postMessage({
           status: 404,
           headers: { 'Content-Type': 'text/plain' },
@@ -105,9 +117,6 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
         } as FileResponseHeaders);
         return;
       }
-
-      const rootKey = getLocalRootKey(npub, treeName);
-      const rootCid: CID = { hash: rootHash, key: rootKey };
 
       // Navigate to file
       const tree = getTree();
