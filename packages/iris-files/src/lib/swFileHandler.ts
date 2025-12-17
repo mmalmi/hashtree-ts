@@ -12,7 +12,7 @@
 
 import { getTree } from '../store';
 import { getLocalRootCache, getLocalRootKey } from '../treeRootCache';
-import { getTreeRootSync } from '../stores/treeRoot';
+import { getTreeRootSync, waitForTreeRoot } from '../stores/treeRoot';
 import { nhashDecode, type CID } from 'hashtree';
 
 interface FileRequest {
@@ -97,7 +97,7 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       // Npub-based request - resolve through tree root cache
       const filePath = path;
 
-      // Try local write cache first, then subscription cache
+      // Try local write cache first, then subscription cache, then wait for resolver
       let rootCid: CID | null = null;
 
       const localHash = getLocalRootCache(npub, treeName);
@@ -105,8 +105,14 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
         const localKey = getLocalRootKey(npub, treeName);
         rootCid = { hash: localHash, key: localKey };
       } else {
-        // Fall back to subscription cache (for viewing others' trees)
+        // First try sync cache (for already-resolved trees)
         rootCid = getTreeRootSync(npub, treeName);
+
+        // If not in cache, wait for resolver to fetch from network
+        if (!rootCid) {
+          console.log('[SwFileHandler] Waiting for tree root from resolver:', npub, treeName);
+          rootCid = await waitForTreeRoot(npub, treeName, 10000);
+        }
       }
 
       if (!rootCid) {

@@ -66,4 +66,3 @@ pnpm run test:e2e # E2E tests
   - OPFS stale data - clear OPFS alongside IndexedDB in test setup
   - WebRTC connection not established - wait for specific connection indicators
 - Global timeout is 30s, with `test.slow()` tripling it to 90s
-- Blossom servers require whitelisting for write access - tests cannot use Blossom for sync

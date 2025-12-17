@@ -251,6 +251,43 @@ export function getTreeRootSync(npub: string | null | undefined, treeName: strin
 }
 
 /**
+ * Wait for tree root to be resolved (async version of getTreeRootSync)
+ * Subscribes to the resolver and waits for the first non-null result or timeout
+ */
+export function waitForTreeRoot(
+  npub: string,
+  treeName: string,
+  timeoutMs: number = 10000
+): Promise<CID | null> {
+  return new Promise((resolve) => {
+    // Check cache first
+    const cached = getTreeRootSync(npub, treeName);
+    if (cached) {
+      resolve(cached);
+      return;
+    }
+
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        unsub();
+        resolve(null);
+      }
+    }, timeoutMs);
+
+    const unsub = subscribeToTreeRoot(npub, treeName, (hash, encryptionKey) => {
+      if (!resolved && hash) {
+        resolved = true;
+        clearTimeout(timeout);
+        unsub();
+        resolve(cid(hash, encryptionKey));
+      }
+    });
+  });
+}
+
+/**
  * Invalidate and refresh the cached root CID
  */
 export function invalidateTreeRoot(npub: string | null | undefined, treeName: string | null | undefined): void {
