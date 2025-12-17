@@ -28,12 +28,8 @@
   import { CommentsPanel, AddCommentModal } from '../Comments';
   import EditorToolbar from './EditorToolbar.svelte';
   import {
-    createImageCache,
-    loadImageFromTree,
     saveImageToTree,
-    preloadAttachments,
     generateImageFilename,
-    type ImageCache,
     loadDeltasFromEntries,
     loadCollaboratorDeltas,
     setupCollaboratorSubscriptions,
@@ -59,9 +55,6 @@
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let loading = $state(true);
   let imageFileInput: HTMLInputElement | undefined = $state();
-
-  // Image cache for blob URLs
-  let imageCache: ImageCache = createImageCache();
 
   // Throttled thumbnail capture (captures at most once per 30 seconds)
   const captureThrottled = createThrottledCapture(30000);
@@ -139,19 +132,6 @@
     }
   });
 
-  // Get blob URL for an image (from cache or load from tree)
-  async function getImageUrl(imageName: string): Promise<string | null> {
-    return loadImageFromTree(
-      imageName,
-      route.path,
-      viewedNpub,
-      userNpub,
-      route.treeName,
-      imageCache,
-      collaborators
-    );
-  }
-
   // Save image to attachments/ directory
   async function saveImage(data: Uint8Array, filename: string): Promise<string | null> {
     if (!userNpub || !route.treeName) {
@@ -166,7 +146,6 @@
       userNpub,
       route.treeName,
       isOwnTree,
-      imageCache,
       isOwnTree ? undefined : (visibility as import('hashtree').TreeVisibility)
     );
   }
@@ -232,9 +211,10 @@
     }
   }
 
-  // Load and resolve all images in document content
+  // No longer needed - images are loaded via /htree/ URLs on demand
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function loadDocumentImages(): Promise<void> {
-    await preloadAttachments(route.path, viewedNpub, userNpub, route.treeName, imageCache);
+    // Images are now loaded via SW URLs, no preloading needed
   }
 
   // Subscription cleanup function
@@ -602,15 +582,15 @@
 
     // Set up image URL resolution for attachments:* sources
     // Use MutationObserver to watch for new images and resolve their sources
-    const observer = new MutationObserver(async (mutations) => {
+    const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         for (const node of mutation.addedNodes) {
           if (node instanceof HTMLImageElement) {
-            await resolveImageSrc(node);
+            resolveImageSrc(node);
           } else if (node instanceof HTMLElement) {
             const images = node.querySelectorAll('img');
             for (const img of images) {
-              await resolveImageSrc(img);
+              resolveImageSrc(img as HTMLImageElement);
             }
           }
         }
@@ -622,7 +602,7 @@
     // Resolve existing images
     const existingImages = editorElement.querySelectorAll('img');
     for (const img of existingImages) {
-      await resolveImageSrc(img);
+      resolveImageSrc(img as HTMLImageElement);
     }
 
     // Cleanup observer and comments on destroy
@@ -634,36 +614,33 @@
     };
   });
 
-  // Resolve image src from attachments:filename to blob URL
-  async function resolveImageSrc(img: HTMLImageElement): Promise<void> {
+  // Resolve image src from attachments:filename to /htree/ URL
+  function resolveImageSrc(img: HTMLImageElement): void {
     const src = img.getAttribute('src');
     if (!src || !src.startsWith('attachments:')) return;
 
     const filename = src.replace('attachments:', '');
-    const url = await getImageUrl(filename);
-    if (url) {
-      img.src = url;
-    } else {
-      // Mark as needing retry - will be resolved when collaborator trees are available
+    const npub = viewedNpub || userNpub;
+    const treeName = route.treeName;
+
+    if (!npub || !treeName) {
       img.dataset.pendingResolve = 'true';
+      return;
     }
+
+    // Build /htree/ URL: /htree/{npub}/{treeName}/{path}/attachments/{filename}
+    const pathParts = [...route.path, 'attachments', filename];
+    const encodedPath = pathParts.map(encodeURIComponent).join('/');
+    img.src = `/htree/${npub}/${treeName}/${encodedPath}`;
   }
 
-  // Re-resolve any images that failed to load initially (after collaborator data available)
+  // Re-resolve any images that failed to load initially (after npub/treeName available)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async function _retryPendingImages(): Promise<void> {
+  function _retryPendingImages(): void {
     if (!editorElement) return;
     const pendingImages = editorElement.querySelectorAll('img[data-pending-resolve="true"]');
     for (const img of pendingImages) {
-      const src = img.getAttribute('src');
-      if (!src || !src.startsWith('attachments:')) continue;
-
-      const filename = src.replace('attachments:', '');
-      const url = await getImageUrl(filename);
-      if (url) {
-        (img as HTMLImageElement).src = url;
-        delete (img as HTMLImageElement).dataset.pendingResolve;
-      }
+      resolveImageSrc(img as HTMLImageElement);
     }
   }
 
@@ -674,8 +651,6 @@
       cleanupCollabSubscriptions();
       cleanupCollabSubscriptions = null;
     }
-    // Clean up image blob URLs
-    imageCache.cleanup();
     // Clean up comments store
     commentsStore?.destroy();
     editor?.destroy();
