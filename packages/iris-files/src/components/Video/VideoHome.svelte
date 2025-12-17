@@ -9,7 +9,11 @@
   import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
   import { createTreesStore, createFollowsStore } from '../../stores';
   import { openVideoUploadModal } from '../../stores/modals';
-  import { getFollowDistance } from '../../utils/socialGraph';
+  import { getFollows, socialGraphStore, fetchFollowList } from '../../utils/socialGraph';
+
+  // Default pubkey to use for fallback content (sirius)
+  const DEFAULT_CONTENT_PUBKEY = '4523be58d395b1b196a9b8c82b038b6895cb02b683d0c253a955068dba1facd0';
+  const MIN_FOLLOWS_THRESHOLD = 5;
   import VideoCard from './VideoCard.svelte';
   import type { VideoItem } from './types';
 
@@ -41,6 +45,42 @@
 
   // Get user's follows
   let follows = $state<string[]>([]);
+
+  // Track social graph version to reactively update fallback follows
+  let graphVersion = $derived($socialGraphStore.version);
+
+  // Compute effective follows: user's follows + fallback if < threshold
+  let effectiveFollows = $derived.by(() => {
+    // Track graph version to re-run when social graph updates
+    const _v = graphVersion;
+
+    // If user has enough follows, use them directly
+    if (follows.length >= MIN_FOLLOWS_THRESHOLD) {
+      return follows;
+    }
+
+    // Otherwise, augment with default pubkey + its follows from social graph
+    const fallbackFollows = getFollows(DEFAULT_CONTENT_PUBKEY);
+    const combined = new Set(follows);
+    combined.add(DEFAULT_CONTENT_PUBKEY); // Include the default user itself
+    fallbackFollows.forEach(pk => combined.add(pk));
+
+    console.log('[VideoHome] Using fallback follows, user has', follows.length, ', adding', fallbackFollows.size, 'from default');
+    return Array.from(combined);
+  });
+
+  // Track if we're using fallback content
+  let usingFallback = $derived(follows.length < MIN_FOLLOWS_THRESHOLD);
+
+  // Fetch fallback follow list when needed
+  let fallbackFetched = false;
+  $effect(() => {
+    if (usingFallback && !fallbackFetched) {
+      fallbackFetched = true;
+      console.log('[VideoHome] Fetching fallback follow list for', DEFAULT_CONTENT_PUBKEY);
+      fetchFollowList(DEFAULT_CONTENT_PUBKEY);
+    }
+  });
 
   $effect(() => {
     // Track userPubkey to trigger re-run when it changes
@@ -74,8 +114,10 @@
   let followStoreUnsubscribes: Array<() => void> = [];
 
   $effect(() => {
-    // Track follows to trigger re-run when it changes
-    const currentFollows = follows;
+    // Track effectiveFollows to trigger re-run when it changes (includes fallback)
+    const currentFollows = effectiveFollows;
+    // Also track graphVersion to re-run when social graph updates
+    const _version = graphVersion;
 
     // Clean up previous subscriptions
     untrack(() => {
@@ -83,7 +125,7 @@
       followStoreUnsubscribes = [];
     });
 
-    console.log('[VideoHome] follows effect, count:', currentFollows.length);
+    console.log('[VideoHome] follows effect, count:', currentFollows.length, 'usingFallback:', usingFallback);
 
     if (currentFollows.length === 0) {
       untrack(() => { followedUsersVideos = []; });
@@ -250,10 +292,16 @@
       </section>
     {/if}
 
-    <!-- From Followed Users Section -->
-    {#if isLoggedIn && (followedUsersVideos.length > 0 || followsLoading)}
+    <!-- From Followed Users Section (or Suggested when using fallback) -->
+    {#if followedUsersVideos.length > 0 || followsLoading}
       <section class="mb-8">
-        <h2 class="text-lg font-semibold text-text-1 mb-3">From People You Follow</h2>
+        <h2 class="text-lg font-semibold text-text-1 mb-3">
+          {#if usingFallback || !isLoggedIn}
+            Suggested
+          {:else}
+            From People You Follow
+          {/if}
+        </h2>
         {#if followsLoading && followedUsersVideos.length === 0}
           <div class="flex items-center gap-2 text-text-3 py-4">
             <span class="i-lucide-loader-2 animate-spin"></span>
@@ -308,10 +356,10 @@
       </section>
     {/if}
 
-    <!-- Empty state for logged out users -->
-    {#if !isLoggedIn && recentVideos.length === 0 && feedVideos.length === 0}
+    <!-- Empty state when no content -->
+    {#if recentVideos.length === 0 && feedVideos.length === 0 && followedUsersVideos.length === 0 && !followsLoading}
       <div class="text-center py-12 text-text-3">
-        <p>Sign in to upload videos and see content from people you follow</p>
+        <p>No videos found. {#if !isLoggedIn}Sign in to upload videos.{/if}</p>
       </div>
     {/if}
   </div>

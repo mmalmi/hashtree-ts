@@ -322,7 +322,7 @@ export function getSocialGraph(): { getRoot: () => string } | null {
 
 let sub: NDKSubscription | null = null;
 
-async function fetchOwnFollowList(publicKey: string): Promise<void> {
+export async function fetchFollowList(publicKey: string): Promise<void> {
   log('fetching own follow list for', publicKey);
 
   const events = await ndk.fetchEvents({
@@ -427,7 +427,7 @@ async function setupSubscription(publicKey: string) {
   currentRoot = publicKey;
   await sendToWorker({ type: 'setRoot', pubkey: publicKey });
 
-  await fetchOwnFollowList(publicKey);
+  await fetchFollowList(publicKey);
   queueMicrotask(() => crawlFollowLists(publicKey));
 
   sub?.stop();
