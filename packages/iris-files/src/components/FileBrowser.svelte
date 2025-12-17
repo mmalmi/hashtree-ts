@@ -496,6 +496,12 @@
         {/each}
       {/if}
     </div>
+  {:else if !rootCid && currentTreeName && !isOwnTrees}
+    <!-- Waiting for non-owned tree root to resolve - show loading state -->
+    <div class="flex-1 flex items-center justify-center text-text-3 text-sm">
+      <span class="i-lucide-loader-2 animate-spin mr-2"></span>
+      Loading...
+    </div>
   {:else}
     <!-- File browser view -->
     <!-- Desktop: show user row -->
@@ -546,13 +552,7 @@
         </div>
       {/if}
 
-      {#if !rootCid && currentTreeName}
-        <!-- Waiting for tree root to be resolved -->
-        <div class="p-4 text-center text-text-3 text-sm">
-          <span class="i-lucide-loader-2 animate-spin inline-block mr-2"></span>
-          Loading...
-        </div>
-      {:else if resolvingPath}
+      {#if resolvingPath}
         <!-- Loading state - show minimal placeholder while resolving path -->
         <div class="p-4"></div>
       {:else}

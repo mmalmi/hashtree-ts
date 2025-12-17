@@ -29,7 +29,8 @@ let requestId = 0;
 const NPUB_PATTERN = /^npub1[a-z0-9]{58}$/;
 
 // Timeout for port responses
-const PORT_TIMEOUT = 5000;
+// Must be long enough for: tree resolution + WebRTC peer attempts + Blossom fallback
+const PORT_TIMEOUT = 30000;
 
 /**
  * Guess MIME type from file path/extension
