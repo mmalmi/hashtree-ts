@@ -20,12 +20,20 @@ import type {
   UnsignedEvent,
 } from './protocol';
 import { getNostrManager, closeNostrManager } from './nostr';
+import { getWebRTCManager, closeWebRTCManager } from './webrtc';
+import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
+import type { EventTemplate } from 'nostr-tools';
 
 // Worker state
 let tree: HashTree | null = null;
 let store: OpfsStore | null = null;
 let config: WorkerConfig | null = null;
 let mediaPort: MessagePort | null = null;
+
+// Ephemeral identity for WebRTC signaling (generated fresh each session)
+// This is NOT the user's real identity - just for P2P discovery
+let ephemeralSecretKey: Uint8Array | null = null;
+let ephemeralPubkey: string | null = null;
 
 // Pending NIP-07 requests (waiting for main thread to sign/encrypt)
 const pendingSignRequests = new Map<string, (event: SignedEvent | null, error?: string) => void>();
@@ -162,6 +170,12 @@ async function handleInit(id: string, cfg: WorkerConfig) {
 
     console.log('[Worker] Initialized with store:', storeName);
 
+    // Generate ephemeral identity for WebRTC signaling
+    // This is a throwaway keypair - not the user's real identity
+    ephemeralSecretKey = generateSecretKey();
+    ephemeralPubkey = getPublicKey(ephemeralSecretKey);
+    console.log('[Worker] Generated ephemeral pubkey:', ephemeralPubkey.slice(0, 16) + '...');
+
     // Initialize Nostr relay connections
     if (cfg.relays && cfg.relays.length > 0) {
       const nostr = getNostrManager();
@@ -176,7 +190,10 @@ async function handleInit(id: string, cfg: WorkerConfig) {
       });
     }
 
-    // TODO Phase 3: Initialize WebRTC peer management
+    // Initialize WebRTC peer management with ephemeral identity
+    const webrtc = getWebRTCManager();
+    webrtc.init(store);
+    webrtc.start();
 
     respond({ type: 'ready' });
   } catch (err) {
@@ -186,12 +203,15 @@ async function handleInit(id: string, cfg: WorkerConfig) {
 }
 
 async function handleClose(id: string) {
+  // Close WebRTC connections
+  closeWebRTCManager();
   // Close Nostr connections
   closeNostrManager();
-  // TODO: Close WebRTC connections
   store = null;
   tree = null;
   config = null;
+  ephemeralSecretKey = null;
+  ephemeralPubkey = null;
   respond({ type: 'void', id });
 }
 
@@ -518,8 +538,13 @@ async function handleMediaRequest(req: import('./protocol').MediaRequest) {
 // ============================================================================
 
 async function handleGetPeerStats(id: string) {
-  // TODO Phase 3: Return WebRTC peer stats
-  respond({ type: 'peerStats', id, stats: [] });
+  try {
+    const webrtc = getWebRTCManager();
+    const stats = webrtc.getPeerStats();
+    respond({ type: 'peerStats', id, stats });
+  } catch {
+    respond({ type: 'peerStats', id, stats: [] });
+  }
 }
 
 async function handleGetRelayStats(id: string) {
@@ -561,7 +586,38 @@ function handleDecryptedResponse(id: string, plaintext?: string, error?: string)
 }
 
 // ============================================================================
-// NIP-07 Request Helpers (for use by Nostr/WebRTC code)
+// Ephemeral Signing (for WebRTC signaling - no main thread roundtrip)
+// ============================================================================
+
+/**
+ * Sign an event with the ephemeral key (for WebRTC signaling only)
+ * This does NOT use the user's real identity - just for P2P discovery
+ */
+export function signWithEphemeralKey(template: EventTemplate): SignedEvent {
+  if (!ephemeralSecretKey) {
+    throw new Error('Ephemeral key not initialized');
+  }
+  const event = finalizeEvent(template, ephemeralSecretKey);
+  return {
+    id: event.id,
+    pubkey: event.pubkey,
+    kind: event.kind,
+    content: event.content,
+    tags: event.tags,
+    created_at: event.created_at,
+    sig: event.sig,
+  };
+}
+
+/**
+ * Get the ephemeral pubkey (for WebRTC peer ID)
+ */
+export function getEphemeralPubkey(): string | null {
+  return ephemeralPubkey;
+}
+
+// ============================================================================
+// NIP-07 Request Helpers (for real identity - tree publishing etc)
 // ============================================================================
 
 export async function requestSign(event: UnsignedEvent): Promise<SignedEvent> {
