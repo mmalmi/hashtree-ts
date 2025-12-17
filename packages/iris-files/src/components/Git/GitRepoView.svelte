@@ -473,11 +473,6 @@
     <!-- Spacer -->
     <div class="flex-1"></div>
 
-    <!-- Code dropdown (clone instructions) -->
-    {#if route.npub}
-      <CodeDropdown npub={route.npub} {repoPath} />
-    {/if}
-
     <!-- Shell button -->
     <button
       onclick={() => openGitShellModal(gitCid, canEdit, canEdit ? handleGitChange : undefined)}
@@ -496,6 +491,11 @@
       <span class="i-lucide-history text-text-3"></span>
       <span>{commits.length > 0 ? `${commits.length} commits` : 'Commits'}</span>
     </button>
+
+    <!-- Code dropdown (clone instructions) - rightmost -->
+    {#if route.npub}
+      <CodeDropdown npub={route.npub} {repoPath} />
+    {/if}
   </div>
 
   <!-- Directory listing table - GitHub style -->
