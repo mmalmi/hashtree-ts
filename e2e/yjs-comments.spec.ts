@@ -40,7 +40,7 @@ test.describe('Yjs Document Comments', () => {
     await page.reload();
     await page.waitForTimeout(500);
     await configureBlossomServers(page);
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 30000 });
+    await page.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
     await navigateToPublicFolder(page);
   });
 

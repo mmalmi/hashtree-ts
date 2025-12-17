@@ -25,7 +25,7 @@ test.describe('DOSBox integration', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -75,7 +75,7 @@ test.describe('DOSBox integration', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -130,7 +130,7 @@ test.describe('DOSBox integration', () => {
     await navigateToPublicFolder(page);
 
     // Create folder and upload ZIP
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -179,7 +179,7 @@ test.describe('DOSBox integration', () => {
     await navigateToPublicFolder(page);
 
     // Create folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -221,7 +221,7 @@ test.describe('DOSBox integration', () => {
     await navigateToPublicFolder(page);
 
     // Create folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 

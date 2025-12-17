@@ -8,7 +8,7 @@ test.describe('Directory upload features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -45,7 +45,7 @@ test.describe('Directory upload features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -74,7 +74,7 @@ test.describe('Directory upload features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -114,7 +114,7 @@ test.describe('Directory upload features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 

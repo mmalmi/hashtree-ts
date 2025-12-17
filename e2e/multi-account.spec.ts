@@ -36,7 +36,7 @@ test.describe('Multi-Account Management', () => {
 
     await page.reload();
     await disableOthersPool(page); // Re-apply after reload
-    await expect(page.locator('header span:has-text("hashtree")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('header span:has-text("Iris")')).toBeVisible({ timeout: 5000 });
     await navigateToPublicFolder(page);
   });
 

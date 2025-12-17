@@ -21,13 +21,13 @@ test.describe('Livestream Video Stability', () => {
   }
 
   async function waitForAutoLogin(page: Page) {
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
   }
 
   // Helper to navigate to tree list and create a new tree
   async function createTree(page: Page, name: string) {
     // Navigate to tree list first
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     await page.getByRole('button', { name: 'New Folder' }).click();

@@ -44,7 +44,7 @@ export async function navigateToPublicFolder(page: any) {
  */
 export async function goToTreeList(page: any) {
   // Click the hashtree logo to go home
-  await page.locator('header a:has-text("hashtree")').click();
+  await page.locator('header a:has-text("Iris")').click();
   // Wait for tree list to be visible
   await page.waitForTimeout(500);
 }

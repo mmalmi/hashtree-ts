@@ -1,16 +1,14 @@
 <script lang="ts">
   /**
-   * MediaPlayer - Streaming media player for video and audio
+   * MediaPlayer - On-demand streaming media player for video and audio
    *
-   * Uses MediaSource Extensions to progressively play media as chunks arrive.
-   * For video: Uses MSE when supported, falls back to blob URL
-   * For audio: Uses blob URL (MSE audio codec support is limited)
+   * Uses MediaSource Extensions with on-demand range fetching:
+   * - Fetches only initial data to start playback quickly
+   * - Fetches more data as buffer runs low during playback
+   * - Handles seeks by fetching required ranges
+   * - Supports live streaming with incremental appends
    *
-   * Live streaming features:
-   * - Detects live via ?live=1 hash param
-   * - Watches for CID changes (new data published)
-   * - Uses readFileRange to fetch only NEW bytes
-   * - Appends incrementally to SourceBuffer
+   * All formats use MSE - no blob URL fallback (which required full file load).
    */
   import { getTree } from '../../store';
   import { recentlyChangedFiles } from '../../stores/recentlyChanged';
@@ -20,6 +18,7 @@
   interface Props {
     cid: CID;
     fileName: string;
+    fileSize?: number;
     /** Media type: 'video' or 'audio' */
     type?: 'video' | 'audio';
   }
@@ -28,6 +27,7 @@
   // Derive from props to ensure reactivity
   let cid = $derived(props.cid);
   let fileName = $derived(props.fileName);
+  let fileSize = $derived(props.fileSize ?? 0);
   let mediaType = $derived(props.type ?? 'video');
   let isAudio = $derived(mediaType === 'audio');
 
@@ -46,10 +46,7 @@
   let bytesLoaded = $state(0);
   let lastCidHash = $state<string | null>(null);
 
-  // Track if file has been updated (for blob URL mode - shows "Updated" button instead of auto-reload)
-  let hasUpdate = $state(false);
-
-  // Abort controller for cancelling streaming on unmount
+  // Abort controller for cancelling fetches on unmount
   let abortController: AbortController | null = null;
 
   // Polling interval for live streams
@@ -106,7 +103,6 @@
       streamEndCheckInterval = setInterval(() => {
         const timeSinceLastData = Date.now() - lastDataReceivedTime;
         if (timeSinceLastData > STREAM_TIMEOUT) {
-          // Stream appears to have ended - no new data for STREAM_TIMEOUT
           console.log('[MediaPlayer] Stream timeout - no new data for', STREAM_TIMEOUT, 'ms');
 
           if (streamEndCheckInterval) {
@@ -122,12 +118,10 @@
           // Stop polling
           stopLivePolling();
 
-          // Mark as fully loaded but DON'T close MediaSource
-          // Keep it open so we can append more data if CID changes later
           isFullyLoaded = true;
           isLive = false;
         }
-      }, 2000); // Check every 2 seconds
+      }, 2000);
     }
 
     // Cleanup on unmount or when leaving live mode
@@ -143,34 +137,47 @@
   function getMimeType(filename: string): string {
     const ext = filename.split('.').pop()?.toLowerCase() || '';
     const mimeTypes: Record<string, string> = {
-      // WebM needs codec string for MSE - MediaRecorder uses vp8+opus
+      // WebM - use flexible codec string for MSE
       'webm': 'video/webm;codecs=vp8,opus',
-      'mp4': 'video/mp4',
-      'ogg': 'video/ogg',
-      'ogv': 'video/ogg',
-      'mov': 'video/quicktime',
-      'avi': 'video/x-msvideo',
-      'mkv': 'video/x-matroska',
+      // MP4 - use flexible codec string that works for most h264/aac content
+      'mp4': 'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'm4v': 'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'ogg': 'video/ogg;codecs=theora,vorbis',
+      'ogv': 'video/ogg;codecs=theora,vorbis',
       // Audio
       'mp3': 'audio/mpeg',
       'wav': 'audio/wav',
       'flac': 'audio/flac',
-      'm4a': 'audio/mp4',
+      'm4a': 'audio/mp4;codecs=mp4a.40.2',
       'aac': 'audio/aac',
-      'oga': 'audio/ogg',
+      'oga': 'audio/ogg;codecs=vorbis',
     };
-    return mimeTypes[ext] || (isAudio ? 'audio/mpeg' : 'video/webm');
+    return mimeTypes[ext] || (isAudio ? 'audio/mpeg' : 'video/mp4;codecs=avc1.42E01E,mp4a.40.2');
   }
 
   // Check if MSE is supported for this mime type
   function isMseSupported(mimeType: string): boolean {
-    return 'MediaSource' in window && MediaSource.isTypeSupported(mimeType);
+    if (!('MediaSource' in window)) return false;
+    // Try exact match first
+    if (MediaSource.isTypeSupported(mimeType)) return true;
+    // Try base type without codecs
+    const baseType = mimeType.split(';')[0];
+    return MediaSource.isTypeSupported(baseType);
+  }
+
+  // Get supported MIME type (try with codecs, fall back to base)
+  function getSupportedMimeType(filename: string): string | null {
+    const mimeType = getMimeType(filename);
+    if (MediaSource.isTypeSupported(mimeType)) return mimeType;
+    const baseType = mimeType.split(';')[0];
+    if (MediaSource.isTypeSupported(baseType)) return baseType;
+    return null;
   }
 
   // Append data to source buffer, waiting for it to be ready
-  async function appendToSourceBuffer(data: Uint8Array): Promise<void> {
+  async function appendToSourceBuffer(data: Uint8Array): Promise<boolean> {
     if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
-      return;
+      return false;
     }
 
     // Wait for buffer to be ready (with timeout)
@@ -179,7 +186,8 @@
       await new Promise(r => setTimeout(r, 10));
       waitCount++;
       if (waitCount > 100) {
-        return;
+        console.warn('[MediaPlayer] Timeout waiting for sourceBuffer');
+        return false;
       }
     }
 
@@ -191,8 +199,18 @@
         if (!sourceBuffer!.updating) {
           resolve();
         } else {
-          sourceBuffer!.addEventListener('updateend', () => resolve(), { once: true });
-          sourceBuffer!.addEventListener('error', (e) => reject(e), { once: true });
+          const onUpdate = () => {
+            sourceBuffer!.removeEventListener('updateend', onUpdate);
+            sourceBuffer!.removeEventListener('error', onError);
+            resolve();
+          };
+          const onError = (e: Event) => {
+            sourceBuffer!.removeEventListener('updateend', onUpdate);
+            sourceBuffer!.removeEventListener('error', onError);
+            reject(e);
+          };
+          sourceBuffer!.addEventListener('updateend', onUpdate);
+          sourceBuffer!.addEventListener('error', onError);
         }
       });
 
@@ -200,21 +218,44 @@
       if (sourceBuffer.buffered.length > 0) {
         bufferedEnd = sourceBuffer.buffered.end(sourceBuffer.buffered.length - 1);
       }
+      return true;
     } catch (e) {
       console.error('[MediaPlayer] MSE append error:', e);
-      // Will fall back to blob URL if needed
+      return false;
     }
   }
 
   // Buffer size constants
-  const BUFFER_AHEAD_SIZE = 512 * 1024; // 512KB fetch at a time
-  const BUFFER_THRESHOLD = 5; // Start fetching when buffer < 5 seconds ahead
+  const INITIAL_FETCH_SIZE = 512 * 1024; // 512KB initial fetch for quick start
+  const BUFFER_FETCH_SIZE = 1024 * 1024; // 1MB subsequent fetches
+  const BUFFER_THRESHOLD_SECONDS = 10; // Fetch more when buffer < 10 seconds ahead
+  const BUFFER_THRESHOLD_BYTES = 2 * 1024 * 1024; // Or when < 2MB buffered ahead
 
   // Track if we've loaded all data
   let isFullyLoaded = $state(false);
   let isFetching = $state(false);
 
-  // Fetch more data when buffer runs low
+  // Track pending seek - when user seeks, we need to fetch that range
+  let pendingSeekTime = $state<number | null>(null);
+
+  // Fetch data starting from a specific byte offset
+  async function fetchRange(start: number, size: number): Promise<Uint8Array | null> {
+    if (abortController?.signal.aborted) return null;
+
+    try {
+      const tree = getTree();
+      const end = start + size;
+      const data = await tree.readFileRange(cid, start, end);
+      return data;
+    } catch (e) {
+      if (!abortController?.signal.aborted) {
+        console.error('[MediaPlayer] fetchRange error:', e);
+      }
+      return null;
+    }
+  }
+
+  // Fetch more data for progressive playback
   async function fetchMoreData() {
     if (isFetching || isFullyLoaded || !sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
       return;
@@ -225,8 +266,13 @@
       const bufferedTime = sourceBuffer.buffered.end(sourceBuffer.buffered.length - 1);
       const bufferAhead = bufferedTime - mediaRef.currentTime;
 
-      // Only fetch if buffer is running low (less than threshold seconds ahead)
-      if (bufferAhead > BUFFER_THRESHOLD && !shouldTreatAsLive) {
+      // Calculate bytes buffered ahead (rough estimate)
+      const bytesBufferedAhead = fileSize > 0 && duration > 0
+        ? (bufferAhead / duration) * fileSize
+        : bytesLoaded;
+
+      // Only fetch if buffer is running low
+      if (bufferAhead > BUFFER_THRESHOLD_SECONDS && bytesBufferedAhead > BUFFER_THRESHOLD_BYTES && !shouldTreatAsLive) {
         return;
       }
     }
@@ -234,44 +280,64 @@
     isFetching = true;
 
     try {
-      const tree = getTree();
-      const data = await tree.readFileRange(cid, bytesLoaded, bytesLoaded + BUFFER_AHEAD_SIZE);
+      const data = await fetchRange(bytesLoaded, BUFFER_FETCH_SIZE);
 
       if (!data || data.length === 0) {
-        // No more data currently - but CID might update later, so don't close MediaSource
         isFullyLoaded = true;
+        console.log('[MediaPlayer] Reached end of file at', bytesLoaded, 'bytes');
       } else {
-        await appendToSourceBuffer(data);
-        bytesLoaded += data.length;
+        const success = await appendToSourceBuffer(data);
+        if (success) {
+          bytesLoaded += data.length;
+          lastDataReceivedTime = Date.now();
+          console.log('[MediaPlayer] Fetched', data.length, 'bytes, total:', bytesLoaded);
 
-        // Update duration after new data
-        if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
-          duration = mediaRef.duration;
-        }
+          // Update duration after new data
+          if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
+            duration = mediaRef.duration;
+          }
 
-        // Check if we got less than requested - means we're at the end for now
-        if (data.length < BUFFER_AHEAD_SIZE) {
-          isFullyLoaded = true;
-          // Don't close MediaSource - CID might update with new data later
+          // Check if we got less than requested - means we're at the end
+          if (data.length < BUFFER_FETCH_SIZE) {
+            isFullyLoaded = true;
+            console.log('[MediaPlayer] File fully loaded:', bytesLoaded, 'bytes');
+          }
         }
       }
     } catch (e) {
-      console.error('Error fetching more data:', e);
+      console.error('[MediaPlayer] Error fetching more data:', e);
     } finally {
       isFetching = false;
     }
   }
 
-  // Check if file format supports MSE streaming
-  // MSE requires fragmented formats - regular MP4 won't work
-  function canUseMseForFormat(filename: string): boolean {
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
-    // Only WebM reliably supports MSE streaming
-    // Regular MP4 files are not fragmented and will fail
-    return ext === 'webm';
+  // Handle seek - for now, we don't support seeking backwards in MSE without full file
+  // This is a limitation we can improve later with proper segment-based seeking
+  async function handleSeek() {
+    if (!mediaRef || !sourceBuffer) return;
+
+    const seekTime = mediaRef.currentTime;
+
+    // Check if seek position is within buffered range
+    for (let i = 0; i < sourceBuffer.buffered.length; i++) {
+      if (seekTime >= sourceBuffer.buffered.start(i) && seekTime <= sourceBuffer.buffered.end(i)) {
+        // Seek is within buffered range, nothing to do
+        return;
+      }
+    }
+
+    // Seek is outside buffered range - for now, just fetch more data
+    // Future improvement: calculate byte offset from time and fetch that range
+    console.log('[MediaPlayer] Seek to', seekTime, 'outside buffered range, fetching more data');
+    if (!isFullyLoaded && !isFetching) {
+      fetchMoreData();
+    }
   }
 
-  // Load media using MSE for streaming playback
+  // Track if using blob URL mode (for formats MSE can't handle)
+  let usingBlobUrl = false;
+
+  // Load media - try MSE first, fall back to blob URL for non-fragmented formats
   async function loadMedia() {
     if (!cid?.hash) {
       error = 'No file CID';
@@ -279,21 +345,16 @@
       return;
     }
 
-    const mimeType = getMimeType(fileName);
+    const mimeType = getSupportedMimeType(fileName);
 
-    // Use MSE for supported formats - allows progressive playback and smooth CID updates
-    // Fall back to blob URL for unsupported formats
-    if (canUseMseForFormat(fileName) && isMseSupported(mimeType)) {
-      await loadWithMse();
-    } else {
+    if (!mimeType) {
+      // No MSE support for this format - try blob URL directly
+      console.log('[MediaPlayer] No MSE support, using blob URL');
       await loadWithBlobUrl();
+      return;
     }
-  }
 
-  // MSE-based streaming - allows playback to start before full load
-  async function loadWithMse() {
-    const mimeType = getMimeType(fileName);
-    usingBlobUrl = false; // Explicitly mark as MSE mode
+    console.log('[MediaPlayer] Trying MSE, mime:', mimeType);
 
     try {
       mediaSource = new MediaSource();
@@ -304,23 +365,18 @@
       mediaRef.src = URL.createObjectURL(mediaSource);
 
       abortController = new AbortController();
-      const signal = abortController.signal;
 
       await new Promise<void>((resolve, reject) => {
         mediaSource!.addEventListener('sourceopen', () => resolve(), { once: true });
         mediaSource!.addEventListener('error', (e) => reject(e), { once: true });
       });
 
-      if (signal.aborted) return;
+      if (abortController.signal.aborted) return;
 
       sourceBuffer = mediaSource.addSourceBuffer(mimeType);
       console.log('[MediaPlayer] MSE source buffer created for', mimeType);
 
-      // For MSE streaming, hide loading spinner immediately - video will show its own buffering state
-      loading = false;
-      console.log('[MediaPlayer] Loading spinner hidden, starting to stream chunks');
-
-      // Listen for duration to become available (once header is parsed)
+      // Listen for duration to become available
       if (mediaRef) {
         mediaRef.addEventListener('loadedmetadata', () => {
           if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
@@ -330,68 +386,50 @@
         }, { once: true });
       }
 
-      const tree = getTree();
+      // Fetch initial data - enough to start playback
+      console.log('[MediaPlayer] Fetching initial', INITIAL_FETCH_SIZE, 'bytes');
+      const initialData = await fetchRange(0, INITIAL_FETCH_SIZE);
 
-      // Stream chunks and append immediately as they arrive
-      // Small batches (32KB) for fast initial playback while avoiding too many appendBuffer calls
-      const BATCH_SIZE = 32 * 1024;
-      let currentBatch: Uint8Array[] = [];
-      let currentBatchSize = 0;
-      let hasTriggeredPlay = false;
+      if (abortController.signal.aborted) return;
 
-      for await (const chunk of tree.readFileStream(cid, { prefetch: 3 })) {
-        if (signal.aborted) break;
-
-        currentBatch.push(chunk);
-        currentBatchSize += chunk.length;
-        bytesLoaded += chunk.length;
-
-        // Append batch when it reaches threshold
-        if (currentBatchSize >= BATCH_SIZE) {
-          const merged = new Uint8Array(currentBatchSize);
-          let offset = 0;
-          for (const c of currentBatch) {
-            merged.set(c, offset);
-            offset += c.length;
-          }
-
-          if (mediaSource?.readyState !== 'open') break;
-          await appendToSourceBuffer(merged);
-          console.log('[MediaPlayer] Appended', merged.length, 'bytes, total:', bytesLoaded, 'buffered:', bufferedEnd.toFixed(2) + 's');
-
-          // Try to start playback after first chunk is appended
-          if (!hasTriggeredPlay && mediaRef) {
-            hasTriggeredPlay = true;
-            console.log('[MediaPlayer] Triggering play(), buffered:', sourceBuffer?.buffered.length, 'ranges');
-            mediaRef.play().catch((e) => {
-              console.log('[MediaPlayer] Autoplay blocked:', e.message);
-            });
-          }
-
-          currentBatch = [];
-          currentBatchSize = 0;
-        }
+      if (!initialData || initialData.length === 0) {
+        error = 'Failed to load media data';
+        loading = false;
+        return;
       }
 
-      if (signal.aborted) return;
-
-      // Append any remaining data
-      if (currentBatch.length > 0 && mediaSource?.readyState === 'open') {
-        const merged = new Uint8Array(currentBatchSize);
-        let offset = 0;
-        for (const c of currentBatch) {
-          merged.set(c, offset);
-          offset += c.length;
-        }
-        await appendToSourceBuffer(merged);
+      const success = await appendToSourceBuffer(initialData);
+      if (!success) {
+        // MSE append failed - likely non-fragmented MP4
+        // Fall back to blob URL which browser's native player can handle
+        console.log('[MediaPlayer] MSE append failed, falling back to blob URL');
+        cleanupMse();
+        await loadWithBlobUrl();
+        return;
       }
 
-      loading = false;
-      // Don't mark as fully loaded - CID may change and we'll need to append more
-      isFullyLoaded = false;
+      bytesLoaded = initialData.length;
       lastCidHash = toHex(cid.hash);
       lastDataReceivedTime = Date.now();
 
+      // Check if we got the whole file
+      if (fileSize > 0 && bytesLoaded >= fileSize) {
+        isFullyLoaded = true;
+      } else if (initialData.length < INITIAL_FETCH_SIZE) {
+        isFullyLoaded = true;
+      }
+
+      loading = false;
+      console.log('[MediaPlayer] Initial MSE load complete, loaded:', bytesLoaded, 'bytes, fully loaded:', isFullyLoaded);
+
+      // Try to start playback
+      if (mediaRef) {
+        mediaRef.play().catch((e) => {
+          console.log('[MediaPlayer] Autoplay blocked:', e.message);
+        });
+      }
+
+      // Update duration after initial data
       if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
         duration = mediaRef.duration;
       }
@@ -402,28 +440,49 @@
         isLive = true;
         startLivePolling();
       }
-      // Don't call endOfStream() - keep MediaSource open for potential CID updates
-      console.log('[MediaPlayer] MSE initial load complete, live:', shouldTreatAsLive, 'duration:', duration);
+
     } catch (e) {
-      console.error('[MediaPlayer] MSE failed, falling back to blob URL:', e);
+      console.error('[MediaPlayer] MSE load failed:', e);
+      // Try blob URL as fallback
+      cleanupMse();
       await loadWithBlobUrl();
     }
   }
 
-  // Track if we're using blob URL mode (for live stream reload handling)
-  let usingBlobUrl = $state(false);
+  // Cleanup MSE state
+  function cleanupMse() {
+    if (mediaSource && mediaSource.readyState === 'open') {
+      try {
+        mediaSource.endOfStream();
+      } catch {
+        // Ignore
+      }
+    }
+    if (mediaRef?.src && mediaRef.src.startsWith('blob:')) {
+      URL.revokeObjectURL(mediaRef.src);
+    }
+    mediaSource = null;
+    sourceBuffer = null;
+    bytesLoaded = 0;
+  }
 
-  // Load file as blob URL with progress
+  // Load with blob URL - for formats MSE can't handle (non-fragmented MP4, MOV, etc.)
+  // This requires loading the full file, but browser's native player handles seeking
   async function loadWithBlobUrl() {
     usingBlobUrl = true;
+    console.log('[MediaPlayer] Loading with blob URL (native player)');
+
     try {
       const tree = getTree();
       const chunks: Uint8Array[] = [];
+      let loaded = 0;
 
-      // Stream chunks to show loading progress
+      // Stream chunks with progress
       for await (const chunk of tree.readFileStream(cid, { prefetch: 5 })) {
+        if (abortController?.signal.aborted) return;
         chunks.push(chunk);
-        bytesLoaded += chunk.length;
+        loaded += chunk.length;
+        bytesLoaded = loaded;
       }
 
       if (chunks.length === 0) {
@@ -433,36 +492,31 @@
       }
 
       lastCidHash = toHex(cid.hash);
-      // For live streams in blob URL mode, don't mark as fully loaded
-      // We'll reload when CID changes
-      isFullyLoaded = !shouldTreatAsLive;
       lastDataReceivedTime = Date.now();
+      isFullyLoaded = true;
 
       const mimeType = getMimeType(fileName).split(';')[0];
       const blob = new Blob(chunks, { type: mimeType });
 
       if (mediaRef) {
-        // Clean up previous blob URL
-        if (mediaRef.src && mediaRef.src.startsWith('blob:')) {
-          URL.revokeObjectURL(mediaRef.src);
-        }
         mediaRef.src = URL.createObjectURL(blob);
 
         mediaRef.addEventListener('loadedmetadata', () => {
-          duration = mediaRef!.duration;
-
-          if (shouldTreatAsLive && isFinite(duration) && duration > 5) {
-            mediaRef!.currentTime = Math.max(0, duration - 5);
-            isLive = true;
+          if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
+            duration = mediaRef.duration;
+            console.log('[MediaPlayer] Blob URL duration:', duration);
           }
         }, { once: true });
       }
 
       loading = false;
+      console.log('[MediaPlayer] Blob URL load complete:', bytesLoaded, 'bytes');
 
-      // Start polling for live streams to check for CID changes
-      if (shouldTreatAsLive) {
-        startLivePolling();
+      // Try to start playback
+      if (mediaRef) {
+        mediaRef.play().catch((e) => {
+          console.log('[MediaPlayer] Autoplay blocked:', e.message);
+        });
       }
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load media';
@@ -470,100 +524,29 @@
     }
   }
 
-  // Mark that an update is available (for blob URL mode)
-  // Instead of auto-reloading (which causes visual glitches), we show an "Updated" button
-  function markUpdateAvailable() {
-    if (!usingBlobUrl) return;
-    hasUpdate = true;
-    lastDataReceivedTime = Date.now();
-    console.log('[MediaPlayer] Update available for blob URL mode');
-  }
-
-  // Reload blob URL when user clicks "Updated" button
-  async function reloadBlobUrl() {
-    if (!usingBlobUrl || !mediaRef) return;
-
-    hasUpdate = false;
-    loading = true;
-
-    try {
-      const tree = getTree();
-      const chunks: Uint8Array[] = [];
-
-      for await (const chunk of tree.readFileStream(cid, { prefetch: 5 })) {
-        chunks.push(chunk);
-      }
-
-      if (chunks.length === 0) {
-        loading = false;
-        return;
-      }
-
-      bytesLoaded = chunks.reduce((sum, c) => sum + c.length, 0);
-      lastDataReceivedTime = Date.now();
-
-      const mimeType = getMimeType(fileName).split(';')[0];
-      const blob = new Blob(chunks, { type: mimeType });
-      const newBlobUrl = URL.createObjectURL(blob);
-
-      // Store old URL to revoke after switch
-      const oldUrl = mediaRef.src;
-
-      mediaRef.addEventListener('loadedmetadata', () => {
-        if (mediaRef) {
-          duration = mediaRef.duration;
-          // Seek near end for live streams
-          if (shouldTreatAsLive && isFinite(duration) && duration > 5) {
-            mediaRef.currentTime = Math.max(0, duration - 3);
-          }
-          mediaRef.play().catch(() => {});
-        }
-        loading = false;
-      }, { once: true });
-
-      mediaRef.src = newBlobUrl;
-
-      // Revoke old URL after a delay
-      if (oldUrl && oldUrl.startsWith('blob:')) {
-        setTimeout(() => URL.revokeObjectURL(oldUrl), 1000);
-      }
-
-    } catch (e) {
-      console.error('[MediaPlayer] Error reloading blob URL:', e);
-      loading = false;
-    }
-  }
-
-  // Fetch and append only new data when CID changes (MSE mode)
-  // Called by the CID change effect - lastCidHash is already updated by the caller
+  // Fetch and append only new data when CID changes (live streaming)
   async function fetchNewData() {
-    // Always update lastDataReceivedTime when CID changes - we know new data exists
     lastDataReceivedTime = Date.now();
 
     if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
-      console.log('[MediaPlayer] fetchNewData: MSE not ready, state:', mediaSource?.readyState, 'sourceBuffer:', !!sourceBuffer);
       return;
     }
 
     try {
       const tree = getTree();
-
-      // Fetch only bytes from our current offset onwards
       const newData = await tree.readFileRange(cid, bytesLoaded);
 
       if (newData && newData.length > 0) {
         await appendToSourceBuffer(newData);
         bytesLoaded += newData.length;
-        console.log('[MediaPlayer] MSE appended', newData.length, 'bytes, total:', bytesLoaded);
+        console.log('[MediaPlayer] Live: appended', newData.length, 'bytes, total:', bytesLoaded);
 
-        // Auto-detect live stream: if CID updates with new data, treat as live
         if (!isLive) {
           console.log('[MediaPlayer] Auto-detected live stream from CID update');
           isLive = true;
           startLivePolling();
         }
 
-        // Update duration
         if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
           duration = mediaRef.duration;
         }
@@ -573,35 +556,14 @@
     }
   }
 
-  // Track if we're currently polling (to avoid overlapping polls)
+  // Track if we're currently polling
   let isPolling = false;
 
-  // Poll for new data at the current CID (for live streams)
-  // This handles cases where:
-  // 1. The CID prop updated but we need to fetch data from peers
-  // 2. The stream is growing but CID updates haven't arrived yet
+  // Poll for new data (live streams)
   async function pollForNewData() {
-    // Avoid overlapping polls
-    if (isPolling) return;
+    if (isPolling || !shouldTreatAsLive || loading) return;
 
-    // Skip if we're not in live mode or still loading
-    if (!shouldTreatAsLive || loading) {
-      return;
-    }
-
-    // For blob URL mode, check if CID changed and mark update available
-    if (usingBlobUrl) {
-      const currentCidHash = toHex(cid.hash);
-      if (currentCidHash !== lastCidHash) {
-        lastCidHash = currentCidHash;
-        markUpdateAvailable();
-      }
-      return;
-    }
-
-    // MSE mode - try to fetch new data
     if (!sourceBuffer || !mediaSource || mediaSource.readyState !== 'open') {
-      // MSE not ready yet, but don't give up - keep polling
       return;
     }
 
@@ -610,50 +572,36 @@
     try {
       const tree = getTree();
       const currentCidHash = toHex(cid.hash);
-
-      // Try to fetch more data from the current (or updated) CID
       const newData = await tree.readFileRange(cid, bytesLoaded);
 
       if (newData && newData.length > 0) {
         await appendToSourceBuffer(newData);
         bytesLoaded += newData.length;
         lastDataReceivedTime = Date.now();
-        console.log('[MediaPlayer] Poll: appended', newData.length, 'bytes, total:', bytesLoaded);
+        console.log('[MediaPlayer] Poll: appended', newData.length, 'bytes');
 
-        // Update duration
         if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
           duration = mediaRef.duration;
         }
-
-        // Update last CID hash to track that we've processed this version
         lastCidHash = currentCidHash;
       } else if (currentCidHash !== lastCidHash) {
-        // CID changed but no new data yet - still consider stream active
         lastDataReceivedTime = Date.now();
         lastCidHash = currentCidHash;
       }
     } catch {
-      // Silently ignore errors during polling - data might not be available yet
-      // This is expected when the viewer hasn't synced the latest chunks
+      // Silently ignore polling errors
     } finally {
       isPolling = false;
     }
   }
 
-  // Start polling for new data in live mode
   function startLivePolling() {
-    // Clear any existing interval
     if (livePollingInterval) {
       clearInterval(livePollingInterval);
     }
-
-    // Start polling
-    livePollingInterval = setInterval(() => {
-      pollForNewData();
-    }, LIVE_POLL_INTERVAL);
+    livePollingInterval = setInterval(() => pollForNewData(), LIVE_POLL_INTERVAL);
   }
 
-  // Stop polling
   function stopLivePolling() {
     if (livePollingInterval) {
       clearInterval(livePollingInterval);
@@ -661,8 +609,7 @@
     }
   }
 
-  // Watch for CID changes - handles both live streams and file updates
-  // Access cid.hash directly to ensure reactivity
+  // Watch for CID changes
   let currentCidHashReactive = $derived(cid?.hash ? toHex(cid.hash) : null);
 
   $effect(() => {
@@ -670,32 +617,23 @@
 
     const currentCidHash = currentCidHashReactive;
     if (currentCidHash && currentCidHash !== lastCidHash) {
-      // Update lastCidHash immediately to prevent effect from re-triggering
       lastCidHash = currentCidHash;
-
-      // For MSE mode (WebM), append new data incrementally - smooth live streaming
-      // For blob URL mode, show "Updated" button instead of auto-reloading
-      if (usingBlobUrl) {
-        markUpdateAvailable();
-      } else {
-        fetchNewData();
-      }
+      fetchNewData();
     }
   });
 
-  // Update current time and check if we need more buffer
+  // Update current time and check buffer
   function handleTimeUpdate() {
     if (mediaRef) {
       currentTime = mediaRef.currentTime;
 
-      // Check if we need to fetch more data (buffered loading)
+      // Check if we need to fetch more data
       if (!isFullyLoaded && !isFetching) {
         fetchMoreData();
       }
     }
   }
 
-  // Track play/pause state
   function handlePlay() {
     paused = false;
   }
@@ -705,15 +643,16 @@
   }
 
   // Handle video waiting (stalled due to buffering)
-  // For live streams, try to fetch more data immediately
   function handleWaiting() {
+    console.log('[MediaPlayer] Buffering...');
+    if (!isFullyLoaded && !isFetching) {
+      fetchMoreData();
+    }
     if (shouldTreatAsLive && !isPolling) {
-      // Immediately poll for new data when video stalls
       pollForNewData();
     }
   }
 
-  // Toggle play/pause
   function togglePlay() {
     if (!mediaRef) return;
     if (mediaRef.paused) {
@@ -723,14 +662,12 @@
     }
   }
 
-  // Update duration when video metadata changes (new data appended)
   function handleDurationChange() {
     if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
       duration = mediaRef.duration;
     }
   }
 
-  // Format time as mm:ss
   function formatTime(seconds: number): string {
     if (!isFinite(seconds)) return '--:--';
     const m = Math.floor(seconds / 60);
@@ -738,13 +675,11 @@
     return `${m}:${s.toString().padStart(2, '0')}`;
   }
 
-  // Cleanup on destroy
+  // Cleanup
   $effect(() => {
     return () => {
-      // Stop live polling
       stopLivePolling();
 
-      // Abort any ongoing streaming
       if (abortController) {
         abortController.abort();
         abortController = null;
@@ -753,7 +688,7 @@
         try {
           mediaSource.endOfStream();
         } catch {
-          // Ignore errors during cleanup
+          // Ignore
         }
       }
       if (mediaRef?.src) {
@@ -811,18 +746,6 @@
       </div>
     {/if}
 
-    <!-- Updated button (blob URL mode only) - shown when file has been updated -->
-    {#if hasUpdate && !loading && !error}
-      <button
-        type="button"
-        onclick={reloadBlobUrl}
-        class="absolute top-3 right-3 z-10 flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded shadow-lg transition-colors"
-      >
-        <span class="i-lucide-refresh-cw w-4 h-4"></span>
-        Updated
-      </button>
-    {/if}
-
     {#if isAudio}
       <!-- Audio visual placeholder -->
       <div class="w-full max-w-md flex flex-col items-center gap-4">
@@ -843,6 +766,7 @@
           onplay={handlePlay}
           onpause={handlePause}
           onwaiting={handleWaiting}
+          onseeked={handleSeek}
         >
           Your browser does not support the audio tag.
         </audio>
@@ -861,6 +785,7 @@
         onplay={handlePlay}
         onpause={handlePause}
         onwaiting={handleWaiting}
+        onseeked={handleSeek}
       >
         Your browser does not support the video tag.
       </video>

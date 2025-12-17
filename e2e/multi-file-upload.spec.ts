@@ -40,7 +40,7 @@ test.describe('Multi-file upload', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list first, then create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Click New Folder to create a folder/tree
@@ -76,7 +76,7 @@ test.describe('Multi-file upload', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list first, then create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Click New Folder to create a folder/tree

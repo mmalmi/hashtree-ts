@@ -7,7 +7,7 @@ test.describe('Permalink Navigation', () => {
     await disableOthersPool(page); // Prevent WebRTC cross-talk from parallel tests
 
     // Wait for app to load
-    await expect(page.locator('header span:has-text("hashtree")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('header span:has-text("Iris")')).toBeVisible({ timeout: 5000 });
 
     // Login with new user
     await page.getByRole('button', { name: /New/i }).click();

@@ -51,7 +51,7 @@ test.describe('Viewer Actions', () => {
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await page.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
     await navigateToPublicFolder(page);
   });
 

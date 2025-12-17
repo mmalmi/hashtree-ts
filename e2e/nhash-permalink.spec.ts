@@ -56,7 +56,7 @@ async function navigateToPublicFolder(page: Page) {
 // Helper to create tree via modal and navigate into it
 async function createAndEnterTree(page: Page, name: string) {
   // Go to user's tree list first
-  await page.locator('header a:has-text("hashtree")').click();
+  await page.locator('header a:has-text("Iris")').click();
   await page.waitForTimeout(300);
 
   await page.getByRole('button', { name: 'New Folder' }).click();
@@ -80,7 +80,7 @@ test.describe('nhash file permalinks', () => {
     await clearStorageAndReload(page1);
 
     // Wait for app to initialize
-    await page1.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await page1.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
 
     // Wait for new user redirect to public folder
     await navigateToPublicFolder(page1);
@@ -138,7 +138,7 @@ test.describe('nhash file permalinks', () => {
     await page2.goto(permalinkUrl);
 
     // Wait for app to initialize
-    await page2.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await page2.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
 
     // Wait for WebRTC peer connection between browser 1 and browser 2
     // The connectivity indicator shows:
@@ -203,7 +203,7 @@ test.describe('nhash file permalinks', () => {
     await clearStorageAndReload(page1);
 
     // Wait for app to initialize
-    await page1.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await page1.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
 
     // Wait for new user redirect to public folder
     await navigateToPublicFolder(page1);

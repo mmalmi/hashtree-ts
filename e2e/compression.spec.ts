@@ -10,7 +10,7 @@ test.describe('Compression features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -39,7 +39,7 @@ test.describe('Compression features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -67,7 +67,7 @@ test.describe('Compression features', () => {
     await navigateToPublicFolder(page);
 
     // Navigate to tree list and create a folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -92,7 +92,7 @@ test.describe('Compression features', () => {
     await navigateToPublicFolder(page);
 
     // Create a top-level folder first
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -126,7 +126,7 @@ test.describe('Compression features', () => {
     await expect(page).toHaveURL(/my-forked-folder/, { timeout: 10000 });
 
     // Navigate back to tree list and verify the forked folder exists as top-level
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
     // my-forked-folder should appear in the tree list
@@ -139,7 +139,7 @@ test.describe('Compression features', () => {
     await navigateToPublicFolder(page);
 
     // Create a top-level folder first
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -192,7 +192,7 @@ test.describe('Compression features', () => {
     await navigateToPublicFolder(page);
 
     // Create first top-level folder
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -247,7 +247,7 @@ test.describe('Compression features', () => {
     await navigateToPublicFolder(page);
 
     // Create a folder with a file to ZIP
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'New Folder' }).click();
 

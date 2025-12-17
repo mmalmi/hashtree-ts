@@ -47,7 +47,7 @@ test.describe('Recently Visited', () => {
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 30000 });
+    await page.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
     await navigateToPublicFolder(page);
   });
 

@@ -48,7 +48,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await configureBlossomServers(page);
 
     // App auto-generates key on first visit, wait for header to appear
-    await expect(page.locator('header span:has-text("hashtree")')).toBeVisible({ timeout: 30000 });
+    await expect(page.locator('header span:has-text("Iris")')).toBeVisible({ timeout: 30000 });
 
     // New users get auto-redirected to their public folder - wait for that
     await navigateToPublicFolder(page);
@@ -56,7 +56,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
   test('should create unlisted tree with ?k= param in URL', async ({ page }) => {
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 30000 });
@@ -91,7 +91,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
   test('should show link icon for unlisted tree in tree list', async ({ page }) => {
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
@@ -102,7 +102,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(1000);
 
     // Go back to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
     // Find the unlisted-icons tree row and check for link icon (use file-list to avoid matching recent folders)
@@ -116,7 +116,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
   test('should show link icon inside unlisted tree view', async ({ page }) => {
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
@@ -137,7 +137,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
   test('should preserve ?k= param when navigating within unlisted tree', async ({ page }) => {
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
@@ -181,7 +181,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
   test('should include ?k= param when clicking unlisted tree in tree list', async ({ page }) => {
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
@@ -196,7 +196,7 @@ test.describe('Unlisted Tree Visibility', () => {
     expect(kParam).toBeTruthy();
 
     // Go back to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
     // There are two links - one in file-list (already has ?k=) and one in RecentsView (shows "Just now")
@@ -217,7 +217,7 @@ test.describe('Unlisted Tree Visibility', () => {
   test('should create file in unlisted tree and read it back', async ({ page }) => {
     test.slow(); // File operations can be slow under parallel load
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
@@ -260,7 +260,7 @@ test.describe('Unlisted Tree Visibility', () => {
     });
 
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
 
     // Create an unlisted tree
     await page.getByRole('button', { name: 'New Folder' }).click();
@@ -318,7 +318,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page2.goto('http://localhost:5173');
     await disableOthersPool(page2);
     await configureBlossomServers(page2);
-    await page2.waitForSelector('header span:has-text("hashtree")', { timeout: 30000 });
+    await page2.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
 
     // Get page2's npub by clicking into their public folder
     const publicLink2 = page2.getByRole('link', { name: 'public' }).first();
@@ -386,7 +386,7 @@ test.describe('Unlisted Tree Visibility', () => {
   test('non-owner sees "Link Required" message when accessing unlisted tree without ?k= param', { timeout: 60000 }, async ({ page, browser }) => {
 
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
@@ -425,7 +425,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
   test('owner can access unlisted tree without ?k= param (via selfEncryptedKey)', async ({ page }) => {
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
@@ -454,7 +454,7 @@ test.describe('Unlisted Tree Visibility', () => {
   test('should preserve ?k= param after creating file in unlisted tree', async ({ page }) => {
     test.slow(); // File operations can be slow under parallel load
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
@@ -497,7 +497,7 @@ test.describe('Unlisted Tree Visibility', () => {
   test('should preserve ?k= param after drag-and-drop upload to unlisted tree', async ({ page }) => {
     test.slow(); // Upload operations can be slow under parallel load
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
@@ -550,7 +550,7 @@ test.describe('Unlisted Tree Visibility', () => {
     // autosaveIfOwn not preserving visibility)
 
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create an unlisted tree
@@ -587,7 +587,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(500);
 
     // Go back to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
     // CRITICAL: Verify the tree still has link icon (unlisted), NOT globe icon (public)
@@ -610,7 +610,7 @@ test.describe('Unlisted Tree Visibility', () => {
   test('should show correct visibility icons for different tree types', async ({ page }) => {
     test.slow(); // Creates multiple trees, can be slow under parallel load
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
     // Create a public tree
@@ -621,7 +621,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(1000);
 
     // Go back to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
     // Create an unlisted tree
@@ -632,7 +632,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(1000);
 
     // Go back to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
     // Create a private tree
@@ -643,7 +643,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(1000);
 
     // Go back to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(1000);
 
     // Verify icons for each tree type (use file-list testid to avoid matching recent folders)
@@ -671,7 +671,7 @@ test.describe('Unlisted Tree Visibility', () => {
     // and have CHK (Content Hash Key) in the permalink
 
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
 
     // Create an unlisted tree
     await page.getByRole('button', { name: 'New Folder' }).click();
@@ -736,7 +736,7 @@ test.describe('Unlisted Tree Visibility', () => {
   test('owner can create and write to private folder', { timeout: 60000 }, async ({ page }) => {
     test.slow(); // File operations can be slow under parallel load
     // Go to user's tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
     // Create a private tree
@@ -773,7 +773,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(page.locator('pre')).toHaveText('My secret content', { timeout: 30000 });
 
     // Navigate away and back to verify persistence
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
     // Click on the private tree

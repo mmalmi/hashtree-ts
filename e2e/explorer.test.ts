@@ -59,7 +59,7 @@ test.describe('Hashtree Explorer', () => {
     await page.waitForTimeout(500);
 
     // App auto-generates key on first visit, wait for header to appear
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await page.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
 
     // New users get auto-redirected to their public folder - wait for that
     await navigateToPublicFolder(page);

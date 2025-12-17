@@ -29,13 +29,13 @@ test.describe('Subdirectory Creation', () => {
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 5000 });
+    await page.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
     await navigateToPublicFolder(page);
   });
 
   test('subdirectory in public tree should show as folder with folder icon', async ({ page }) => {
     // Go to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
@@ -71,7 +71,7 @@ test.describe('Subdirectory Creation', () => {
 
   test('clicking subdirectory in public tree should navigate into it', async ({ page }) => {
     // Go to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
@@ -107,7 +107,7 @@ test.describe('Subdirectory Creation', () => {
 
   test('nested subdirectories in public tree should all show as folders', async ({ page }) => {
     // Go to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
@@ -165,7 +165,7 @@ test.describe('Subdirectory Creation', () => {
 
   test('File/Folder buttons visible inside subdirectory of public tree', async ({ page }) => {
     // Go to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
@@ -194,7 +194,7 @@ test.describe('Subdirectory Creation', () => {
 
   test('subdirectory in unlisted tree should show as folder', async ({ page }) => {
     // Go to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });
@@ -228,7 +228,7 @@ test.describe('Subdirectory Creation', () => {
 
   test('subdirectory in private tree should show as folder', async ({ page }) => {
     // Go to tree list
-    await page.locator('header a:has-text("hashtree")').click();
+    await page.locator('header a:has-text("Iris")').click();
 
     // Wait for tree list to load with New Folder button
     await expect(page.getByRole('button', { name: 'New Folder' })).toBeVisible({ timeout: 10000 });

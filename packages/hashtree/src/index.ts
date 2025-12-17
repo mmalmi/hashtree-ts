@@ -166,3 +166,20 @@ export {
   hex as visibilityHex,
   type TreeVisibility,
 } from './visibility.js';
+
+// Worker protocol types (for main thread ↔ worker communication)
+export type {
+  WorkerRequest,
+  WorkerResponse,
+  WorkerConfig,
+  NostrFilter as WorkerNostrFilter,
+  UnsignedEvent as WorkerUnsignedEvent,
+  SignedEvent as WorkerSignedEvent,
+  PeerStats as WorkerPeerStats,
+  RelayStats as WorkerRelayStats,
+  DirEntry as WorkerDirEntry,
+  MediaRequest,
+  MediaResponse,
+} from './worker/protocol.js';
+
+export { generateRequestId } from './worker/protocol.js';

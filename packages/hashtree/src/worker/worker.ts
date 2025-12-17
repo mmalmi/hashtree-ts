@@ -1,0 +1,629 @@
+/**
+ * Hashtree Worker
+ *
+ * Dedicated worker that owns:
+ * - HashTree + OpfsStore (storage)
+ * - WebRTC peer connections (P2P data transfer)
+ * - Nostr relay connections (signaling + tree roots)
+ *
+ * Main thread communicates via postMessage.
+ * NIP-07 signing/encryption delegated back to main thread.
+ */
+
+import { HashTree } from '../hashtree';
+import { OpfsStore } from '../store/opfs';
+import type {
+  WorkerRequest,
+  WorkerResponse,
+  WorkerConfig,
+  SignedEvent,
+  UnsignedEvent,
+} from './protocol';
+import { getNostrManager, closeNostrManager } from './nostr';
+
+// Worker state
+let tree: HashTree | null = null;
+let store: OpfsStore | null = null;
+let config: WorkerConfig | null = null;
+let mediaPort: MessagePort | null = null;
+
+// Pending NIP-07 requests (waiting for main thread to sign/encrypt)
+const pendingSignRequests = new Map<string, (event: SignedEvent | null, error?: string) => void>();
+const pendingEncryptRequests = new Map<string, (ciphertext: string | null, error?: string) => void>();
+const pendingDecryptRequests = new Map<string, (plaintext: string | null, error?: string) => void>();
+
+// ============================================================================
+// Message Handler
+// ============================================================================
+
+self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
+  const msg = e.data;
+
+  try {
+    switch (msg.type) {
+      // Lifecycle
+      case 'init':
+        await handleInit(msg.id, msg.config);
+        break;
+      case 'close':
+        await handleClose(msg.id);
+        break;
+
+      // Store operations
+      case 'get':
+        await handleGet(msg.id, msg.hash);
+        break;
+      case 'put':
+        await handlePut(msg.id, msg.hash, msg.data);
+        break;
+      case 'has':
+        await handleHas(msg.id, msg.hash);
+        break;
+      case 'delete':
+        await handleDelete(msg.id, msg.hash);
+        break;
+
+      // Tree operations
+      case 'readFile':
+        await handleReadFile(msg.id, msg.cid);
+        break;
+      case 'readFileRange':
+        await handleReadFileRange(msg.id, msg.cid, msg.start, msg.end);
+        break;
+      case 'readFileStream':
+        await handleReadFileStream(msg.id, msg.cid);
+        break;
+      case 'writeFile':
+        await handleWriteFile(msg.id, msg.parentCid, msg.path, msg.data);
+        break;
+      case 'deleteFile':
+        await handleDeleteFile(msg.id, msg.parentCid, msg.path);
+        break;
+      case 'listDir':
+        await handleListDir(msg.id, msg.cid);
+        break;
+      case 'resolveRoot':
+        await handleResolveRoot(msg.id, msg.npub, msg.path);
+        break;
+
+      // Nostr (TODO: Phase 2)
+      case 'subscribe':
+        await handleSubscribe(msg.id, msg.filters);
+        break;
+      case 'unsubscribe':
+        await handleUnsubscribe(msg.id, msg.subId);
+        break;
+      case 'publish':
+        await handlePublish(msg.id, msg.event);
+        break;
+
+      // Media streaming
+      case 'registerMediaPort':
+        handleRegisterMediaPort(msg.port);
+        break;
+
+      // Stats
+      case 'getPeerStats':
+        await handleGetPeerStats(msg.id);
+        break;
+      case 'getRelayStats':
+        await handleGetRelayStats(msg.id);
+        break;
+
+      // NIP-07 responses from main thread
+      case 'signed':
+        handleSignedResponse(msg.id, msg.event, msg.error);
+        break;
+      case 'encrypted':
+        handleEncryptedResponse(msg.id, msg.ciphertext, msg.error);
+        break;
+      case 'decrypted':
+        handleDecryptedResponse(msg.id, msg.plaintext, msg.error);
+        break;
+
+      default:
+        console.warn('[Worker] Unknown message type:', (msg as { type: string }).type);
+    }
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.error('[Worker] Error handling message:', error);
+    respond({ type: 'error', id: (msg as { id?: string }).id, error });
+  }
+};
+
+// ============================================================================
+// Response Helper
+// ============================================================================
+
+function respond(msg: WorkerResponse) {
+  self.postMessage(msg);
+}
+
+function respondWithTransfer(msg: WorkerResponse, transfer: Transferable[]) {
+  // Worker scope postMessage takes options object with transfer property
+  self.postMessage(msg, { transfer });
+}
+
+// ============================================================================
+// Lifecycle Handlers
+// ============================================================================
+
+async function handleInit(id: string, cfg: WorkerConfig) {
+  try {
+    config = cfg;
+
+    // Initialize OPFS store
+    const storeName = cfg.storeName || 'hashtree';
+    store = new OpfsStore(storeName);
+    // OpfsStore self-initializes on first operation
+
+    // Initialize HashTree with the store
+    tree = new HashTree({ store });
+
+    console.log('[Worker] Initialized with store:', storeName);
+
+    // Initialize Nostr relay connections
+    if (cfg.relays && cfg.relays.length > 0) {
+      const nostr = getNostrManager();
+      nostr.init(cfg.relays);
+
+      // Wire up event callbacks to forward to main thread
+      nostr.setOnEvent((subId, event) => {
+        respond({ type: 'event', subId, event });
+      });
+      nostr.setOnEose((subId) => {
+        respond({ type: 'eose', subId });
+      });
+    }
+
+    // TODO Phase 3: Initialize WebRTC peer management
+
+    respond({ type: 'ready' });
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    respond({ type: 'error', id, error });
+  }
+}
+
+async function handleClose(id: string) {
+  // Close Nostr connections
+  closeNostrManager();
+  // TODO: Close WebRTC connections
+  store = null;
+  tree = null;
+  config = null;
+  respond({ type: 'void', id });
+}
+
+// ============================================================================
+// Store Handlers (low-level)
+// ============================================================================
+
+async function handleGet(id: string, hash: Uint8Array) {
+  if (!store) {
+    respond({ type: 'result', id, error: 'Store not initialized' });
+    return;
+  }
+
+  const data = await store.get(hash);
+  if (data) {
+    // Transfer the ArrayBuffer to avoid copying
+    respondWithTransfer({ type: 'result', id, data }, [data.buffer]);
+  } else {
+    respond({ type: 'result', id, data: undefined });
+  }
+}
+
+async function handlePut(id: string, hash: Uint8Array, data: Uint8Array) {
+  if (!store) {
+    respond({ type: 'bool', id, value: false, error: 'Store not initialized' });
+    return;
+  }
+
+  const success = await store.put(hash, data);
+  respond({ type: 'bool', id, value: success });
+}
+
+async function handleHas(id: string, hash: Uint8Array) {
+  if (!store) {
+    respond({ type: 'bool', id, value: false, error: 'Store not initialized' });
+    return;
+  }
+
+  const exists = await store.has(hash);
+  respond({ type: 'bool', id, value: exists });
+}
+
+async function handleDelete(id: string, hash: Uint8Array) {
+  if (!store) {
+    respond({ type: 'bool', id, value: false, error: 'Store not initialized' });
+    return;
+  }
+
+  const success = await store.delete(hash);
+  respond({ type: 'bool', id, value: success });
+}
+
+// ============================================================================
+// Tree Handlers (high-level)
+// ============================================================================
+
+async function handleReadFile(id: string, cid: import('../types').CID) {
+  if (!tree) {
+    respond({ type: 'result', id, error: 'Tree not initialized' });
+    return;
+  }
+
+  try {
+    const data = await tree.readFile(cid);
+    if (data) {
+      respondWithTransfer({ type: 'result', id, data }, [data.buffer]);
+    } else {
+      respond({ type: 'result', id, error: 'File not found' });
+    }
+  } catch (err) {
+    respond({ type: 'result', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+async function handleReadFileRange(
+  id: string,
+  cid: import('../types').CID,
+  start: number,
+  end?: number
+) {
+  if (!tree) {
+    respond({ type: 'result', id, error: 'Tree not initialized' });
+    return;
+  }
+
+  try {
+    const data = await tree.readFileRange(cid, start, end);
+    if (data) {
+      respondWithTransfer({ type: 'result', id, data }, [data.buffer]);
+    } else {
+      respond({ type: 'result', id, error: 'File not found' });
+    }
+  } catch (err) {
+    respond({ type: 'result', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+async function handleReadFileStream(id: string, cid: import('../types').CID) {
+  if (!tree) {
+    respond({ type: 'streamChunk', id, chunk: new Uint8Array(0), done: true });
+    return;
+  }
+
+  try {
+    for await (const chunk of tree.readFileStream(cid)) {
+      // Send each chunk, transferring ownership
+      respondWithTransfer(
+        { type: 'streamChunk', id, chunk, done: false },
+        [chunk.buffer]
+      );
+    }
+    // Signal completion
+    respond({ type: 'streamChunk', id, chunk: new Uint8Array(0), done: true });
+  } catch (err) {
+    respond({ type: 'error', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+async function handleWriteFile(
+  id: string,
+  parentCid: import('../types').CID | null,
+  path: string,
+  data: Uint8Array
+) {
+  if (!tree) {
+    respond({ type: 'cid', id, error: 'Tree not initialized' });
+    return;
+  }
+
+  try {
+    // Parse path to get directory path and filename
+    const parts = path.split('/').filter(Boolean);
+    const fileName = parts.pop();
+    if (!fileName) {
+      respond({ type: 'cid', id, error: 'Invalid path' });
+      return;
+    }
+
+    // First, create a file CID from the data
+    const fileResult = await tree.putFile(data);
+    const fileCid = fileResult.cid;
+
+    // If no parent, just return the file CID (no directory structure)
+    if (!parentCid) {
+      respond({ type: 'cid', id, cid: fileCid });
+      return;
+    }
+
+    // Add the file to the parent directory
+    const newRootCid = await tree.setEntry(
+      parentCid,
+      parts,
+      fileName,
+      fileCid,
+      data.length,
+      1 // LinkType.File
+    );
+    respond({ type: 'cid', id, cid: newRootCid });
+  } catch (err) {
+    respond({ type: 'cid', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+async function handleDeleteFile(
+  id: string,
+  parentCid: import('../types').CID,
+  path: string
+) {
+  if (!tree) {
+    respond({ type: 'cid', id, error: 'Tree not initialized' });
+    return;
+  }
+
+  try {
+    // Parse path to get directory path and filename
+    const parts = path.split('/').filter(Boolean);
+    const fileName = parts.pop();
+    if (!fileName) {
+      respond({ type: 'cid', id, error: 'Invalid path' });
+      return;
+    }
+
+    const newCid = await tree.removeEntry(parentCid, parts, fileName);
+    respond({ type: 'cid', id, cid: newCid });
+  } catch (err) {
+    respond({ type: 'cid', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+async function handleListDir(id: string, cidArg: import('../types').CID) {
+  if (!tree) {
+    respond({ type: 'dirListing', id, error: 'Tree not initialized' });
+    return;
+  }
+
+  try {
+    const entries = await tree.listDirectory(cidArg);
+
+    const dirEntries = entries.map((entry) => ({
+      name: entry.name,
+      isDir: entry.type === 2, // LinkType.Dir
+      size: entry.size,
+      cid: entry.cid,
+    }));
+
+    respond({ type: 'dirListing', id, entries: dirEntries });
+  } catch (err) {
+    respond({ type: 'dirListing', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+async function handleResolveRoot(id: string, npub: string, path?: string) {
+  // TODO Phase 4: Implement tree root cache lookup
+  respond({ type: 'cid', id, error: 'Not implemented yet' });
+}
+
+// ============================================================================
+// Nostr Handlers
+// ============================================================================
+
+async function handleSubscribe(id: string, filters: import('./protocol').NostrFilter[]) {
+  try {
+    const nostr = getNostrManager();
+    // Use the request id as the subscription id
+    nostr.subscribe(id, filters);
+    respond({ type: 'void', id });
+  } catch (err) {
+    respond({ type: 'void', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+async function handleUnsubscribe(id: string, subId: string) {
+  try {
+    const nostr = getNostrManager();
+    nostr.unsubscribe(subId);
+    respond({ type: 'void', id });
+  } catch (err) {
+    respond({ type: 'void', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+async function handlePublish(id: string, event: SignedEvent) {
+  try {
+    const nostr = getNostrManager();
+    await nostr.publish(event);
+    respond({ type: 'void', id });
+  } catch (err) {
+    respond({ type: 'void', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+// ============================================================================
+// Media Port Handler
+// ============================================================================
+
+function handleRegisterMediaPort(port: MessagePort) {
+  mediaPort = port;
+
+  port.onmessage = async (e: MessageEvent<import('./protocol').MediaRequest>) => {
+    const req = e.data;
+    if (req.type !== 'media') return;
+
+    await handleMediaRequest(req);
+  };
+
+  console.log('[Worker] Media port registered');
+}
+
+async function handleMediaRequest(req: import('./protocol').MediaRequest) {
+  if (!tree || !mediaPort) return;
+
+  const { requestId, cid: cidHex, start, end, mimeType } = req;
+
+  try {
+    // Convert hex CID to proper CID object
+    const hash = new Uint8Array(cidHex.length / 2);
+    for (let i = 0; i < hash.length; i++) {
+      hash[i] = parseInt(cidHex.substr(i * 2, 2), 16);
+    }
+    const cid = { hash };
+
+    // Get file size first
+    const totalSize = await tree.getSize(hash);
+
+    // Send headers
+    mediaPort.postMessage({
+      type: 'headers',
+      requestId,
+      totalSize,
+      mimeType: mimeType || 'application/octet-stream',
+    } as import('./protocol').MediaResponse);
+
+    // Read range and stream chunks
+    const data = await tree.readFileRange(cid, start, end);
+    if (data) {
+      // Send in chunks for large files
+      const CHUNK_SIZE = 64 * 1024; // 64KB chunks
+      for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
+        const chunk = data.slice(offset, offset + CHUNK_SIZE);
+        const done = offset + CHUNK_SIZE >= data.length;
+        mediaPort.postMessage(
+          { type: 'chunk', requestId, data: chunk, done } as import('./protocol').MediaResponse,
+          [chunk.buffer]
+        );
+      }
+    } else {
+      mediaPort.postMessage({
+        type: 'error',
+        requestId,
+        message: 'File not found',
+      } as import('./protocol').MediaResponse);
+    }
+  } catch (err) {
+    mediaPort.postMessage({
+      type: 'error',
+      requestId,
+      message: err instanceof Error ? err.message : String(err),
+    } as import('./protocol').MediaResponse);
+  }
+}
+
+// ============================================================================
+// Stats Handlers
+// ============================================================================
+
+async function handleGetPeerStats(id: string) {
+  // TODO Phase 3: Return WebRTC peer stats
+  respond({ type: 'peerStats', id, stats: [] });
+}
+
+async function handleGetRelayStats(id: string) {
+  try {
+    const nostr = getNostrManager();
+    const stats = nostr.getRelayStats();
+    respond({ type: 'relayStats', id, stats });
+  } catch {
+    respond({ type: 'relayStats', id, stats: [] });
+  }
+}
+
+// ============================================================================
+// NIP-07 Response Handlers
+// ============================================================================
+
+function handleSignedResponse(id: string, event?: SignedEvent, error?: string) {
+  const resolver = pendingSignRequests.get(id);
+  if (resolver) {
+    pendingSignRequests.delete(id);
+    resolver(event || null, error);
+  }
+}
+
+function handleEncryptedResponse(id: string, ciphertext?: string, error?: string) {
+  const resolver = pendingEncryptRequests.get(id);
+  if (resolver) {
+    pendingEncryptRequests.delete(id);
+    resolver(ciphertext || null, error);
+  }
+}
+
+function handleDecryptedResponse(id: string, plaintext?: string, error?: string) {
+  const resolver = pendingDecryptRequests.get(id);
+  if (resolver) {
+    pendingDecryptRequests.delete(id);
+    resolver(plaintext || null, error);
+  }
+}
+
+// ============================================================================
+// NIP-07 Request Helpers (for use by Nostr/WebRTC code)
+// ============================================================================
+
+export async function requestSign(event: UnsignedEvent): Promise<SignedEvent> {
+  const id = `sign_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  return new Promise((resolve, reject) => {
+    pendingSignRequests.set(id, (signed, error) => {
+      if (error) reject(new Error(error));
+      else if (signed) resolve(signed);
+      else reject(new Error('Signing failed'));
+    });
+
+    respond({ type: 'signEvent', id, event });
+
+    // Timeout after 60 seconds
+    setTimeout(() => {
+      if (pendingSignRequests.has(id)) {
+        pendingSignRequests.delete(id);
+        reject(new Error('Signing timeout'));
+      }
+    }, 60000);
+  });
+}
+
+export async function requestEncrypt(pubkey: string, plaintext: string): Promise<string> {
+  const id = `enc_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  return new Promise((resolve, reject) => {
+    pendingEncryptRequests.set(id, (ciphertext, error) => {
+      if (error) reject(new Error(error));
+      else if (ciphertext) resolve(ciphertext);
+      else reject(new Error('Encryption failed'));
+    });
+
+    respond({ type: 'nip44Encrypt', id, pubkey, plaintext });
+
+    setTimeout(() => {
+      if (pendingEncryptRequests.has(id)) {
+        pendingEncryptRequests.delete(id);
+        reject(new Error('Encryption timeout'));
+      }
+    }, 30000);
+  });
+}
+
+export async function requestDecrypt(pubkey: string, ciphertext: string): Promise<string> {
+  const id = `dec_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  return new Promise((resolve, reject) => {
+    pendingDecryptRequests.set(id, (plaintext, error) => {
+      if (error) reject(new Error(error));
+      else if (plaintext) resolve(plaintext);
+      else reject(new Error('Decryption failed'));
+    });
+
+    respond({ type: 'nip44Decrypt', id, pubkey, ciphertext });
+
+    setTimeout(() => {
+      if (pendingDecryptRequests.has(id)) {
+        pendingDecryptRequests.delete(id);
+        reject(new Error('Decryption timeout'));
+      }
+    }, 30000);
+  });
+}

@@ -5,6 +5,9 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
 
+// Worker entry point
+const workerEntry = resolve(__dirname, '../hashtree/src/worker/worker.ts');
+
 export default defineConfig({
   define: {
     'import.meta.env.VITE_BUILD_TIME': JSON.stringify(new Date().toISOString()),
@@ -173,4 +176,12 @@ export default defineConfig({
     exclude: ['wasm-git'], // Don't pre-bundle wasm-git, let it load its own wasm
   },
   assetsInclude: ['**/*.wasm'], // Treat wasm files as assets
+  worker: {
+    format: 'es',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+      },
+    },
+  },
 });

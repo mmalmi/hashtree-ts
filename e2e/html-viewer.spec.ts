@@ -59,7 +59,7 @@ h1 {
       fs.writeFileSync(htmlPath, htmlContent);
 
       // Create a folder for our HTML site
-      await page.locator('header a:has-text("hashtree")').click();
+      await page.locator('header a:has-text("Iris")').click();
       await page.waitForTimeout(300);
       await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -148,7 +148,7 @@ window.onload = function() {
       fs.writeFileSync(htmlPath, htmlContent);
 
       // Create a folder
-      await page.locator('header a:has-text("hashtree")').click();
+      await page.locator('header a:has-text("Iris")').click();
       await page.waitForTimeout(300);
       await page.getByRole('button', { name: 'New Folder' }).click();
 
@@ -220,7 +220,7 @@ h1 { color: rgb(0, 255, 255); }
       fs.writeFileSync(htmlPath, htmlContent);
 
       // Create main folder
-      await page.locator('header a:has-text("hashtree")').click();
+      await page.locator('header a:has-text("Iris")').click();
       await page.waitForTimeout(300);
       await page.getByRole('button', { name: 'New Folder' }).click();
 

@@ -23,7 +23,7 @@ test.describe('Tree Deletion', () => {
     await disableOthersPool(page);
 
     // Wait for app to load
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
 
     // Go to tree list
     await goToTreeList(page);
@@ -117,7 +117,7 @@ test.describe('Tree Deletion', () => {
     await page.goto('/');
     await disableOthersPool(page);
 
-    await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
 
     // Navigate to the public folder (default tree)
     await navigateToPublicFolder(page);

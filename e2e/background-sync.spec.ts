@@ -51,7 +51,7 @@ async function setupFreshUser(page: Page, options?: { enableOthersPool?: boolean
     await disableOthersPool(page); // Re-apply after reload
   }
   await configureBlossomServers(page);
-  await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+  await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
 
   // Wait for the public folder link to appear
   const publicLink = page.getByRole('link', { name: 'public' }).first();
@@ -505,7 +505,7 @@ test.describe('Background Sync', () => {
 
       // Load app once (it will auto-generate a key), then clear and set our nsec
       await page2.goto('http://localhost:5173');
-      await page2.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+      await page2.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
 
       // Clear all storage and set only our nsec
       console.log('Device 2: Setting up nsec login...');
@@ -529,7 +529,7 @@ test.describe('Background Sync', () => {
       // Reload - app should auto-login with our nsec and have correct pool settings
       console.log('Device 2: Reloading with nsec...');
       await page2.reload();
-      await page2.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+      await page2.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
 
       // Enable others pool (belt and suspenders - also updates the running WebRTC store)
       await enableOthersPool(page2);

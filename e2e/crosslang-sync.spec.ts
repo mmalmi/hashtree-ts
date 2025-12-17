@@ -108,7 +108,7 @@ test.describe('Cross-Language Sync', () => {
       console.log('[TS] Starting app...');
       await page.goto('http://localhost:5173');
 
-      await page.waitForSelector('header span:has-text("hashtree")', { timeout: 10000 });
+      await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
 
       // Wait for app to fully initialize (pubkey exists)
       await expect(page.getByRole('link', { name: 'public' }).first()).toBeVisible({ timeout: 20000 });
