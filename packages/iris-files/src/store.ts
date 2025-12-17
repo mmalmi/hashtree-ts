@@ -11,7 +11,7 @@ import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, GiftWrapp
 
 // Re-export LinkType for e2e tests that can't import 'hashtree' directly
 export { LinkType };
-import { getSocialGraph, socialGraphStore, getFollows, getFollowers } from './utils/socialGraph';
+import { socialGraphStore, getFollows, getFollowers, isFollowing } from './utils/socialGraph';
 import { settingsStore, DEFAULT_POOL_SETTINGS, DEFAULT_NETWORK_SETTINGS } from './stores/settings';
 import { nostrStore } from './nostr';
 import { blossomLogStore } from './stores/blossomLog';
@@ -292,15 +292,14 @@ export function decodeAsText(data: Uint8Array): string | null {
  */
 function createPeerClassifier(): PeerClassifier {
   return (pubkey: string) => {
-    const graph = getSocialGraph();
     const myPubkey = get(nostrStore).pubkey;
-    if (!graph || !myPubkey) {
+    if (!myPubkey) {
       return 'other';
     }
 
-    // Check if we follow them OR they follow us (immediate, no recalc needed)
-    const weFollowThem = graph.isFollowing(myPubkey, pubkey);
-    const theyFollowUs = graph.isFollowing(pubkey, myPubkey);
+    // Check if we follow them OR they follow us (sync, uses cache)
+    const weFollowThem = isFollowing(myPubkey, pubkey);
+    const theyFollowUs = isFollowing(pubkey, myPubkey);
 
     if (weFollowThem || theyFollowUs) {
       return 'follows';
