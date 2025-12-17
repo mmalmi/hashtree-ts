@@ -17,7 +17,7 @@ const TEST_VIDEO = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.
 
 // Blossom server domains to monitor
 const BLOSSOM_DOMAINS = [
-  'files.iris.to',
+  'cdn.iris.to',
   'blossom.iris.to',
 ];
 

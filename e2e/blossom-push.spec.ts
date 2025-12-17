@@ -60,8 +60,8 @@ test.describe('Blossom Push', () => {
     // hashtree.iris.to should be visible and checked by default
     await expect(modal.locator('text=hashtree.iris.to')).toBeVisible();
 
-    // files.iris.to should also be available (but may be unchecked)
-    await expect(modal.locator('text=files.iris.to')).toBeVisible();
+    // cdn.iris.to should also be available (but may be unchecked)
+    await expect(modal.locator('text=cdn.iris.to')).toBeVisible();
 
     // Close modal
     await modal.locator('button', { hasText: 'Cancel' }).click();
