@@ -4,9 +4,9 @@
  * Generates URLs for streaming files through the service worker.
  * The SW intercepts these URLs and streams data from the hashtree worker.
  *
- * URL formats:
- * - /{npub}/{treeName}/{path} - Npub-based, supports live streaming
- * - /cid/{cidHex}/{filename} - Direct CID access
+ * URL formats (namespaced under /htree/ for reusability):
+ * - /htree/npub/{npub}/{treeName}/{path} - Npub-based file access
+ * - /htree/cid/{cidHex}/{filename} - Direct CID access
  */
 
 import { toHex, type CID } from 'hashtree';
@@ -17,11 +17,11 @@ import { toHex, type CID } from 'hashtree';
  * @param npub - The npub of the user
  * @param treeName - The tree name (e.g., 'public')
  * @param path - File path within the tree
- * @returns URL string like /npub1.../public/video.mp4
+ * @returns URL string like /htree/npub/npub1.../public/video.mp4
  */
 export function getNpubFileUrl(npub: string, treeName: string, path: string): string {
   const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-  return `/${npub}/${treeName}/${encodedPath}`;
+  return `/htree/npub/${npub}/${treeName}/${encodedPath}`;
 }
 
 /**
@@ -29,11 +29,11 @@ export function getNpubFileUrl(npub: string, treeName: string, path: string): st
  *
  * @param cid - The content ID
  * @param filename - Filename (for MIME type detection)
- * @returns URL string like /cid/abc123/video.mp4
+ * @returns URL string like /htree/cid/abc123/video.mp4
  */
 export function getCidFileUrl(cid: CID, filename: string = 'file'): string {
   const cidHex = toHex(cid.hash);
-  return `/cid/${cidHex}/${encodeURIComponent(filename)}`;
+  return `/htree/cid/${cidHex}/${encodeURIComponent(filename)}`;
 }
 
 /**

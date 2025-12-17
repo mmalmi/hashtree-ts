@@ -211,8 +211,8 @@ test.describe('Video Streaming', () => {
 
     // Navigate back to public folder
     const publicLink = page.getByRole('link', { name: 'public' }).first();
+    await expect(publicLink).toBeVisible({ timeout: 10000 });
     await publicLink.click();
-    await page.waitForTimeout(1000);
 
     // Look for the recorded video file
     console.log('Looking for recorded video file...');
@@ -229,12 +229,12 @@ test.describe('Video Streaming', () => {
     const videoElement = page.locator('video');
     await expect(videoElement).toBeAttached({ timeout: 10000 });
 
-    // Wait for video to have a source (blob URL indicates MSE was initialized)
+    // Wait for video to have a source (SW URL for hashtree files)
     await page.waitForFunction(() => {
       const video = document.querySelector('video');
       if (!video) return false;
-      // Video should have a blob src (MSE was initialized)
-      return video.src !== '' && video.src.startsWith('blob:');
+      // Video should have a /htree/ URL (served via service worker)
+      return video.src !== '' && video.src.includes('/htree/');
     }, { timeout: 15000 });
 
     // Get video state
@@ -252,12 +252,9 @@ test.describe('Video Streaming', () => {
 
     console.log('Video state:', JSON.stringify(videoState, null, 2));
 
-    // Verify video element exists with blob URL (proves file was fetched and MSE initialized)
-    // NOTE: MSE playback will fail because the mock feeds MP4 data labeled as webm.
-    // Real MediaRecorder produces actual webm data that plays correctly.
-    // The test verifies the recording/saving flow works; real webm plays fine.
+    // Verify video element exists with SW URL (proves file was found and served via SW)
     expect(videoState).not.toBeNull();
-    expect(videoState!.src).toMatch(/^blob:/);
+    expect(videoState!.src).toContain('/htree/');
 
     console.log('=== Streaming Video Playback Test Passed ===');
   });

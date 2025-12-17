@@ -2,14 +2,16 @@
  * Service Worker with File Streaming Support
  *
  * Intercepts file requests and streams data from main thread:
- * - /{npub}/{treeName}/{path} - Npub-based file access, supports live streaming
- * - /cid/{cidHex}/{filename} - Direct CID access
+ * - /htree/npub/{npub}/{treeName}/{path} - Npub-based file access
+ * - /htree/cid/{cidHex}/{filename} - Direct CID access
  *
  * Uses WebTorrent-style per-request MessageChannel pattern:
  * - SW creates MessageChannel for each request
  * - Posts request to all clients (windows)
  * - First client to respond wins
  * - Client streams chunks back through the port
+ *
+ * Routes are namespaced under /htree/ for reusability across apps.
  */
 
 /// <reference lib="webworker" />
@@ -285,26 +287,24 @@ self.addEventListener('fetch', (event: FetchEvent) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
-  // /cid/{cidHex}/{filename} - Direct CID access
-  if (pathParts[0] === 'cid' && pathParts.length >= 2 && pathParts[1].length === 64) {
-    const cidHex = pathParts[1];
-    const filename = pathParts.slice(2).join('/') || 'file';
+  // All hashtree routes start with /htree/
+  if (pathParts[0] !== 'htree') return;
+
+  // /htree/cid/{cidHex}/{filename} - Direct CID access
+  if (pathParts[1] === 'cid' && pathParts.length >= 3 && pathParts[2].length === 64) {
+    const cidHex = pathParts[2];
+    const filename = pathParts.slice(3).join('/') || 'file';
     event.respondWith(createCidFileResponse(cidHex, filename, rangeHeader));
     return;
   }
 
-  // /{npub}/{treeName}/{path...} - Npub-based file access
-  if (pathParts.length >= 2 && NPUB_PATTERN.test(pathParts[0])) {
-    const npub = pathParts[0];
-    const treeName = pathParts[1];
-    const filePath = pathParts.slice(2).join('/');
-
-    // Only intercept if this looks like a file request (has extension or deep path)
-    // Skip root tree views which the app should handle
-    if (filePath || treeName.includes('.')) {
-      event.respondWith(createNpubFileResponse(npub, treeName, filePath, rangeHeader));
-      return;
-    }
+  // /htree/npub/{npub}/{treeName}/{path...} - Npub-based file access
+  if (pathParts[1] === 'npub' && pathParts.length >= 4 && NPUB_PATTERN.test(pathParts[2])) {
+    const npub = pathParts[2];
+    const treeName = pathParts[3];
+    const filePath = pathParts.slice(4).join('/');
+    event.respondWith(createNpubFileResponse(npub, treeName, filePath, rangeHeader));
+    return;
   }
 
   // Let workbox handle everything else (static assets, app routes)
