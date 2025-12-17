@@ -18,7 +18,7 @@
   // Build the git clone command
   let cloneCommand = $derived(`git clone htree://${npub}/${repoPath}`);
   const rustCommand = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh";
-  const cargoCommand = "cargo install git-remote-htree";
+  const cargoCommand = "cargo install hashtree-cli";
 
   function handleClickOutside(event: MouseEvent) {
     const target = event.target as HTMLElement;
@@ -98,7 +98,7 @@
         <!-- Requirements -->
         <div class="space-y-2">
           <p class="text-xs text-text-3">
-            Requires <a href="https://rustup.rs" target="_blank" rel="noopener" class="text-accent hover:underline">Rust</a> and <a href="#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-rs" class="text-accent hover:underline">git-remote-htree</a>
+            Requires <a href="https://rustup.rs" target="_blank" rel="noopener" class="text-accent hover:underline">Rust</a> and <a href="#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-rs" class="text-accent hover:underline">hashtree-cli</a>
           </p>
           <CopyInput text={rustCommand} />
           <CopyInput text={cargoCommand} />
