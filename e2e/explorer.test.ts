@@ -67,7 +67,7 @@ test.describe('Hashtree Explorer', () => {
 
   test('should display header and initial state', async ({ page }) => {
     // Header shows app name "Hashtree"
-    await expect(page.locator('header').getByText('Hashtree').first()).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('header').getByText('Iris').first()).toBeVisible({ timeout: 5000 });
     // New users are redirected to their public folder - shows "Empty directory" or folder actions
     await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 5000 });
   });
@@ -202,7 +202,7 @@ test.describe('Hashtree Explorer', () => {
     await expect(page.locator('pre')).toHaveText('Updated content');
 
     // Navigate to homepage
-    await page.getByRole('link', { name: 'hashtree' }).click();
+    await page.getByRole('link', { name: 'Iris' }).click();
     await page.waitForTimeout(500);
 
     // Navigate back to the tree

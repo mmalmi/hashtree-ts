@@ -53,7 +53,7 @@ dist/
 
   test('shows gitignore modal when uploading directory with .gitignore', async ({ page }) => {
     // Wait for app to load - header appears when ready
-    await expect(page.locator('header').getByText('Hashtree').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('header').getByText('Iris').first()).toBeVisible({ timeout: 10000 });
 
     // We can't easily simulate a directory upload in Playwright without complex workarounds
     // Instead, let's test the gitignore parsing logic directly in the browser
@@ -112,7 +112,7 @@ dist/
 
   test('gitignore patterns work correctly with filterByGitignore', async ({ page }) => {
     // Wait for app to load - header appears when ready
-    await expect(page.locator('header').getByText('Hashtree').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('header').getByText('Iris').first()).toBeVisible({ timeout: 10000 });
 
     const result = await page.evaluate(async () => {
       const { parseGitignore, filterByGitignore } = await import('/src/utils/gitignore.ts');

@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  */
 async function ensureLoggedIn(page: any) {
   // Check if already logged in (Upload button visible)
-  const uploadBtn = page.locator('button:has-text("Upload")');
+  const uploadBtn = page.locator('button:has-text("Create")');
   const isVisible = await uploadBtn.isVisible().catch(() => false);
 
   if (!isVisible) {
@@ -48,7 +48,7 @@ test.describe('Iris Video App', () => {
     await ensureLoggedIn(page);
 
     // Wait for Upload button
-    const uploadBtn = page.locator('button:has-text("Upload")');
+    const uploadBtn = page.locator('button:has-text("Create")');
     await expect(uploadBtn).toBeVisible({ timeout: 15000 });
 
     // Close any open modal first (press Escape)
@@ -76,7 +76,7 @@ test.describe('Iris Video App', () => {
     await ensureLoggedIn(page);
 
     // Wait for Upload button
-    const uploadBtn = page.locator('button:has-text("Upload")');
+    const uploadBtn = page.locator('button:has-text("Create")');
     await expect(uploadBtn).toBeVisible({ timeout: 15000 });
 
     // Close any modal and click Upload
@@ -140,7 +140,7 @@ test.describe('Iris Video App', () => {
     await disableOthersPool(page);
     await ensureLoggedIn(page);
 
-    const uploadBtn = page.locator('button:has-text("Upload")');
+    const uploadBtn = page.locator('button:has-text("Create")');
     await expect(uploadBtn).toBeVisible({ timeout: 15000 });
 
     // Get the user's npub
@@ -187,7 +187,7 @@ test.describe('Iris Video App', () => {
     await disableOthersPool(page);
     await ensureLoggedIn(page);
 
-    const uploadBtn = page.locator('button:has-text("Upload")');
+    const uploadBtn = page.locator('button:has-text("Create")');
     await expect(uploadBtn).toBeVisible({ timeout: 15000 });
 
     // Upload a video first
