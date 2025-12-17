@@ -6,7 +6,7 @@
   import { nostrStore } from '../nostr';
   import { createFollowsStore, followPubkey, unfollowPubkey } from '../stores/follows';
   import { getFollowers, socialGraphStore } from '../utils/socialGraph';
-  import { Avatar, Name, Badge, FollowedBy } from './User';
+  import { Avatar, Name, Badge } from './User';
   import { BackButton } from './ui';
 
   interface Props {
@@ -126,7 +126,9 @@
                 >
                   <Name pubkey={followerPubkey} />
                 </a>
-                <FollowedBy pubkey={followerPubkey} class="text-xs" />
+                {#if amFollowing}
+                  <div class="text-xs text-accent">Following</div>
+                {/if}
               </div>
 
               <!-- Follow/Unfollow button -->

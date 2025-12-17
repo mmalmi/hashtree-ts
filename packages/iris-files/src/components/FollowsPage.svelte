@@ -6,7 +6,7 @@
   import { nostrStore } from '../nostr';
   import { createFollowsStore, followPubkey, unfollowPubkey } from '../stores/follows';
   import { getFollowsMe, socialGraphStore } from '../utils/socialGraph';
-  import { Avatar, Name, Badge, FollowedBy } from './User';
+  import { Avatar, Name, Badge } from './User';
   import { BackButton } from './ui';
 
   interface Props {
@@ -147,13 +147,9 @@
                 >
                   <Name pubkey={followedPubkey} />
                 </a>
-                <div class="text-xs text-text-3">
-                  {#if theyFollowMe}
-                    <span class="text-accent">Follows you</span>
-                  {:else if !isOwnProfile && followedPubkey !== pubkeyHex}
-                    <FollowedBy pubkey={followedPubkey} />
-                  {/if}
-                </div>
+                {#if theyFollowMe}
+                  <div class="text-xs text-accent">Follows you</div>
+                {/if}
               </div>
 
               <!-- Follow/Unfollow button -->
