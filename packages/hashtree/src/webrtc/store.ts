@@ -946,7 +946,6 @@ export class WebRTCStore implements Store {
     const hashHex = toHex(hash);
     const pendingGet = this.pendingGets.get(hashHex);
     if (pendingGet) {
-      this.log('Deduplicating get for hash:', hashHex.slice(0, 16));
       return pendingGet;
     }
 
