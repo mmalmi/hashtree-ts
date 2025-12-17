@@ -17,6 +17,7 @@
   import { BackButton } from '../ui';
   import VisibilityIcon from '../VisibilityIcon.svelte';
   import VideoComments from './VideoComments.svelte';
+  import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
   import type { CID, LinkType } from 'hashtree';
   import { toHex } from 'hashtree';
 
@@ -60,6 +61,13 @@
   // Current user
   let currentUserNpub = $derived($nostrStore.npub);
   let isOwner = $derived(npub === currentUserNpub);
+
+  // Social graph for known followers (like YouTube subscriber count)
+  let graphVersion = $derived($socialGraphStore.version);
+  let knownFollowers = $derived.by(() => {
+    graphVersion; // Subscribe to changes
+    return ownerPubkey ? getFollowers(ownerPubkey) : new Set();
+  });
 
   // Get root CID from treeRootStore (handles linkKey decryption)
   let rootCid = $derived($treeRootStore);
@@ -398,6 +406,8 @@
                 <Name pubkey={ownerPubkey} />
               </a>
               <div class="flex items-center gap-2 text-sm text-text-3">
+                <span>{knownFollowers.size} known follower{knownFollowers.size !== 1 ? 's' : ''}</span>
+                <span>·</span>
                 <VisibilityIcon visibility={videoVisibility} class="text-xs" />
               </div>
             </div>
