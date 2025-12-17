@@ -264,14 +264,11 @@ test.describe('Document Image Collaboration', () => {
       const imageA = editorA.locator('img');
       await expect(imageA).toBeVisible({ timeout: 10000 });
 
-      // User A (the inserter) sees a blob URL for immediate display
-      // This is expected - the blob URL is used until the tree syncs
+      // User A sees /htree/ URL - SW waits for tree root
       const srcA = await imageA.getAttribute('src');
       console.log(`User A image src: ${srcA}`);
-      // Inserter should see blob URL (immediate display) not attachments:
+      expect(srcA).toContain('/htree/');
       expect(srcA).not.toContain('attachments:');
-      // Blob URL is fine for the inserter
-      expect(srcA?.startsWith('blob:') || srcA?.includes('/htree/')).toBe(true);
 
       // Wait for sync to propagate
       console.log('Waiting for sync to propagate...');

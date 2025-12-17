@@ -5,9 +5,6 @@ export {
   preloadAttachments,
   generateImageFilename,
   getMimeType,
-  registerPendingImage,
-  getPendingImageUrl,
-  cleanupPendingImages,
   type ImageCache,
 } from './imageAttachments';
 

@@ -30,9 +30,6 @@
   import {
     saveImageToTree,
     generateImageFilename,
-    registerPendingImage,
-    getPendingImageUrl,
-    cleanupPendingImages,
     loadDeltasFromEntries,
     loadCollaboratorDeltas,
     setupCollaboratorSubscriptions,
@@ -160,16 +157,10 @@
     const data = new Uint8Array(await file.arrayBuffer());
     const filename = generateImageFilename(file);
 
-    // Create blob URL and register for immediate display
-    // This is revoked on component destroy
-    const blob = new Blob([data], { type: file.type });
-    const blobUrl = URL.createObjectURL(blob);
-    registerPendingImage(filename, blobUrl);
-
     // Save to tree (updates the root cache)
     const savedFilename = await saveImage(data, filename);
     if (savedFilename && editor) {
-      // Insert with attachments: src - the MutationObserver will resolve to blob URL
+      // Insert with attachments: src - MutationObserver resolves to /htree/ URL
       editor.chain().focus().setImage({ src: `attachments:${savedFilename}` }).run();
     }
   }
@@ -623,20 +614,12 @@
     };
   });
 
-  // Resolve image src from attachments:filename to /htree/ URL or blob URL
+  // Resolve image src from attachments:filename to /htree/ URL
   function resolveImageSrc(img: HTMLImageElement): void {
     const src = img.getAttribute('src');
     if (!src || !src.startsWith('attachments:')) return;
 
     const filename = src.replace('attachments:', '');
-
-    // Check pending cache first (for freshly uploaded images)
-    // This handles the race condition where tree root isn't synced yet
-    const cachedBlobUrl = getPendingImageUrl(filename);
-    if (cachedBlobUrl) {
-      img.src = cachedBlobUrl;
-      return;
-    }
 
     const npub = viewedNpub || userNpub;
     const treeName = route.treeName;
@@ -646,49 +629,12 @@
       return;
     }
 
-    // Store the attachment reference for retry
-    img.dataset.attachmentRef = `attachments:${filename}`;
-
     // Build /htree/ URL: /htree/{npub}/{treeName}/{path}/attachments/{filename}
     // treeName must be URL-encoded (may contain slashes like "docs/docname")
     const encodedTreeName = encodeURIComponent(treeName);
     const pathParts = [...route.path, 'attachments', filename];
     const encodedPath = pathParts.map(encodeURIComponent).join('/');
-    const htreeUrl = `/htree/${npub}/${encodedTreeName}/${encodedPath}`;
-
-    // Add error handler to retry when tree root becomes available
-    img.onerror = (e) => {
-      console.error('[YjsDoc] Image error:', htreeUrl, e);
-      // Only retry once to avoid infinite loops
-      if (img.dataset.retried) return;
-      img.dataset.retried = 'true';
-
-      console.log('[YjsDoc] Image failed to load, subscribing for retry:', htreeUrl);
-
-      // Subscribe to tree root updates and retry when available
-      import('../../stores').then(({ subscribeToTreeRoot }) => {
-        let unsub: (() => void) | null = null;
-        let resolved = false;
-
-        unsub = subscribeToTreeRoot(npub, treeName, (hash) => {
-          if (hash && !resolved) {
-            resolved = true;
-            console.log('[YjsDoc] Tree root available, retrying image:', htreeUrl);
-            // Force reload by appending cache-buster
-            img.src = `${htreeUrl}?t=${Date.now()}`;
-            if (unsub) unsub();
-          }
-        });
-
-        // Clean up subscription after 30 seconds if still not loaded
-        setTimeout(() => {
-          if (unsub && !resolved) unsub();
-        }, 30000);
-      });
-    };
-
-    console.log('[YjsDoc] Setting image src:', htreeUrl);
-    img.src = htreeUrl;
+    img.src = `/htree/${npub}/${encodedTreeName}/${encodedPath}`;
   }
 
   // Re-resolve any images that failed to load initially (after npub/treeName available)
@@ -708,8 +654,6 @@
       cleanupCollabSubscriptions();
       cleanupCollabSubscriptions = null;
     }
-    // Clean up pending image blob URLs
-    cleanupPendingImages();
     // Clean up comments store
     commentsStore?.destroy();
     editor?.destroy();
