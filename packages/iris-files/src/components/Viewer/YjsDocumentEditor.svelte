@@ -125,6 +125,33 @@
     }
   });
 
+  // Track previous entries CIDs to detect changes from FileBrowser updates
+  let prevEntriesCids = '';
+
+  // Reactively reload deltas when entries change (e.g., FileBrowser detects new delta files)
+  $effect(() => {
+    // Create a key from delta-related entries (deltas folder and state.yjs)
+    const deltasEntry = entries.find(e => e.name === 'deltas' && e.type === LinkType.Dir);
+    const stateEntry = entries.find(e => e.name === 'state.yjs' && e.type !== LinkType.Dir);
+    const currentCids = [
+      deltasEntry ? toHex(deltasEntry.cid.hash) : '',
+      stateEntry ? toHex(stateEntry.cid.hash) : ''
+    ].join(',');
+
+    if (currentCids !== prevEntriesCids && ydoc && prevEntriesCids !== '') {
+      // Entries changed after initial load - reload deltas
+      prevEntriesCids = currentCids;
+      loadDeltasFromEntries(entries).then(deltas => {
+        for (const delta of deltas) {
+          Y.applyUpdate(ydoc!, delta, 'remote');
+        }
+      });
+    } else if (prevEntriesCids === '') {
+      // Initial load - just set the key
+      prevEntriesCids = currentCids;
+    }
+  });
+
   // Reactively update editor's editable state when canEdit changes
   $effect(() => {
     if (editor && editor.isEditable !== canEdit) {
