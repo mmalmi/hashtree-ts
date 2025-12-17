@@ -44,7 +44,7 @@
   </button>
 
   {#if isOpen}
-    <div class="absolute right-0 top-full mt-1 w-[500px] max-w-[90vw] bg-surface-1 b-1 b-surface-3 b-solid rounded-lg shadow-lg z-50 overflow-hidden">
+    <div class="absolute right-0 top-full mt-1 w-[420px] max-w-[90vw] bg-surface-1 b-1 b-surface-3 b-solid rounded-lg shadow-lg z-50 overflow-hidden">
       <!-- Header -->
       <div class="px-3 py-2 bg-surface-2 b-b b-surface-3 b-solid">
         <span class="text-sm font-medium text-text-1">Clone</span>
