@@ -546,7 +546,13 @@
         </div>
       {/if}
 
-      {#if resolvingPath}
+      {#if !rootCid && currentTreeName}
+        <!-- Waiting for tree root to be resolved -->
+        <div class="p-4 text-center text-text-3 text-sm">
+          <span class="i-lucide-loader-2 animate-spin inline-block mr-2"></span>
+          Loading...
+        </div>
+      {:else if resolvingPath}
         <!-- Loading state - show minimal placeholder while resolving path -->
         <div class="p-4"></div>
       {:else}
