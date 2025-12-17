@@ -222,13 +222,13 @@
     <div class="flex gap-4 mt-4 text-sm">
       <a
         href="#/{npub}/follows"
-        class="text-text-2 hover:text-text-1"
+        class="text-text-3 hover:text-text-1 no-underline"
       >
         <span class="font-bold text-text-1">{profileFollows.length}</span> Following
       </a>
       <a
         href="#/{npub}/followers"
-        class="text-text-2 hover:text-text-1"
+        class="text-text-3 hover:text-text-1 no-underline"
       >
         <span class="font-bold text-text-1">{knownFollowers.size}</span> Known Followers
       </a>

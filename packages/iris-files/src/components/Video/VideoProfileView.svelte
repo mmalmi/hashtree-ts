@@ -159,11 +159,11 @@
           <p class="text-text-3 text-sm mt-1 line-clamp-2">{profile.about}</p>
         {/if}
         <div class="flex items-center gap-4 mt-1 text-sm text-text-3">
-          <span>{videos.length} video{videos.length !== 1 ? 's' : ''}</span>
-          <a href={`#/${npub}/follows`} class="hover:text-text-1">
+          <span><span class="font-bold text-text-2">{videos.length}</span> video{videos.length !== 1 ? 's' : ''}</span>
+          <a href={`#/${npub}/follows`} class="text-text-3 hover:text-text-1 no-underline">
             <span class="font-bold text-text-2">{profileFollows.length}</span> Following
           </a>
-          <a href={`#/${npub}/followers`} class="hover:text-text-1">
+          <a href={`#/${npub}/followers`} class="text-text-3 hover:text-text-1 no-underline">
             <span class="font-bold text-text-2">{knownFollowers.size}</span> Known Followers
           </a>
         </div>
