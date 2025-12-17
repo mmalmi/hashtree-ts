@@ -13,13 +13,13 @@
 import { getTree } from '../store';
 import { getLocalRootCache, getLocalRootKey } from '../treeRootCache';
 import { getTreeRootSync } from '../stores/treeRoot';
-import { fromHex, toHex, type CID } from 'hashtree';
+import { nhashDecode, type CID } from 'hashtree';
 
 interface FileRequest {
   type: 'hashtree-file';
   requestId: string;
   npub?: string;
-  cidHex?: string;
+  nhash?: string;
   path: string;
   start: number;
   end?: number;
@@ -80,17 +80,17 @@ function handleSwMessage(event: MessageEvent): void {
  * Handle a file request from the service worker
  */
 async function handleFileRequest(request: FileRequest, port: MessagePort): Promise<void> {
-  const { npub, cidHex, path, start, end, mimeType } = request;
+  const { npub, nhash, path, start, end, mimeType } = request;
 
-  console.log('[SwFileHandler] File request:', { npub, cidHex, path, start, end });
+  console.log('[SwFileHandler] File request:', { npub, nhash, path, start, end });
 
   try {
     // Resolve the CID
     let cid: CID | null = null;
 
-    if (cidHex) {
-      // Direct CID request
-      cid = { hash: fromHex(cidHex) };
+    if (nhash) {
+      // Direct nhash request - decode to CID
+      cid = nhashDecode(nhash);
     } else if (npub && path) {
       // Npub-based request - resolve through tree root cache
       const [treeName, ...pathParts] = path.split('/');

@@ -2,8 +2,8 @@
  * Service Worker with File Streaming Support
  *
  * Intercepts file requests and streams data from main thread:
- * - /htree/npub/{npub}/{treeName}/{path} - Npub-based file access
- * - /htree/cid/{cidHex}/{filename} - Direct CID access
+ * - /htree/{npub}/{treeName}/{path} - Npub-based file access
+ * - /htree/{nhash}/{filename} - Direct nhash access (content-addressed)
  *
  * Uses WebTorrent-style per-request MessageChannel pattern:
  * - SW creates MessageChannel for each request
@@ -90,7 +90,7 @@ interface FileRequest {
   type: 'hashtree-file';
   requestId: string;
   npub?: string;
-  cidHex?: string;
+  nhash?: string;
   path: string;
   start: number;
   end?: number;
@@ -239,10 +239,10 @@ function createNpubFileResponse(
 }
 
 /**
- * Create file request for CID-based paths
+ * Create file request for nhash-based paths (content-addressed)
  */
-function createCidFileResponse(
-  cidHex: string,
+function createNhashFileResponse(
+  nhash: string,
   filename: string,
   rangeHeader: string | null
 ): Promise<Response> {
@@ -263,7 +263,7 @@ function createCidFileResponse(
   const request: FileRequest = {
     type: 'hashtree-file',
     requestId: id,
-    cidHex,
+    nhash,
     path: filename,
     start,
     end,
@@ -290,19 +290,19 @@ self.addEventListener('fetch', (event: FetchEvent) => {
   // All hashtree routes start with /htree/
   if (pathParts[0] !== 'htree') return;
 
-  // /htree/cid/{cidHex}/{filename} - Direct CID access
-  if (pathParts[1] === 'cid' && pathParts.length >= 3 && pathParts[2].length === 64) {
-    const cidHex = pathParts[2];
-    const filename = pathParts.slice(3).join('/') || 'file';
-    event.respondWith(createCidFileResponse(cidHex, filename, rangeHeader));
+  // /htree/{nhash}/{filename} - Direct nhash access (content-addressed)
+  if (pathParts.length >= 2 && pathParts[1].startsWith('nhash1')) {
+    const nhash = pathParts[1];
+    const filename = pathParts.slice(2).join('/') || 'file';
+    event.respondWith(createNhashFileResponse(nhash, filename, rangeHeader));
     return;
   }
 
-  // /htree/npub/{npub}/{treeName}/{path...} - Npub-based file access
-  if (pathParts[1] === 'npub' && pathParts.length >= 4 && NPUB_PATTERN.test(pathParts[2])) {
-    const npub = pathParts[2];
-    const treeName = pathParts[3];
-    const filePath = pathParts.slice(4).join('/');
+  // /htree/{npub}/{treeName}/{path...} - Npub-based file access
+  if (pathParts.length >= 3 && NPUB_PATTERN.test(pathParts[1])) {
+    const npub = pathParts[1];
+    const treeName = pathParts[2];
+    const filePath = pathParts.slice(3).join('/');
     event.respondWith(createNpubFileResponse(npub, treeName, filePath, rangeHeader));
     return;
   }

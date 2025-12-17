@@ -9,6 +9,7 @@
   import { nostrStore, npubToPubkey } from '../../nostr';
   import { deleteEntry } from '../../actions';
   import { openRenameModal, openShareModal, openBlossomPushModal } from '../../stores/modals';
+  import { getNhashFileUrl } from '../../lib/mediaUrl';
   import DirectoryActions from './DirectoryActions.svelte';
   import FileEditor from './FileEditor.svelte';
   import HtmlViewer from './HtmlViewer.svelte';
@@ -746,12 +747,12 @@
       {#key cidKey}
         <HtmlViewer content={fileContent} fileName={urlFileName} />
       {/key}
-    {:else if isImage && blobUrl}
-      <!-- Image viewer - keyed by CID to prevent flash on dir updates -->
+    {:else if isImage && entryFromStore?.cid}
+      <!-- Image viewer - uses SW URL for caching, keyed by CID -->
       {#key cidKey}
         <div class="flex-1 flex items-center justify-center overflow-auto bg-surface-0 p-4">
           <img
-            src={blobUrl}
+            src={getNhashFileUrl(entryFromStore.cid, urlFileName || 'image')}
             alt={urlFileName}
             class="max-w-full max-h-full object-contain"
             data-testid="image-viewer"
@@ -770,11 +771,11 @@
           path={urlPath.join('/')}
         />
       {/key}
-    {:else if isPdf && blobUrl}
-      <!-- PDF viewer - keyed by CID -->
+    {:else if isPdf && entryFromStore?.cid}
+      <!-- PDF viewer - uses SW URL for caching, keyed by CID -->
       {#key cidKey}
         <iframe
-          src={blobUrl}
+          src={getNhashFileUrl(entryFromStore.cid, urlFileName || 'document.pdf')}
           class="flex-1 w-full border-none"
           title={urlFileName}
         />

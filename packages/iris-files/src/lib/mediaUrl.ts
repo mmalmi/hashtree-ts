@@ -5,11 +5,11 @@
  * The SW intercepts these URLs and streams data from the hashtree worker.
  *
  * URL formats (namespaced under /htree/ for reusability):
- * - /htree/npub/{npub}/{treeName}/{path} - Npub-based file access
- * - /htree/cid/{cidHex}/{filename} - Direct CID access
+ * - /htree/{npub}/{treeName}/{path} - Npub-based file access (mutable)
+ * - /htree/{nhash}/{filename} - Direct nhash access (content-addressed, immutable)
  */
 
-import { toHex, type CID } from 'hashtree';
+import { nhashEncode, type CID } from 'hashtree';
 
 /**
  * Generate a file URL for npub-based access
@@ -17,30 +17,37 @@ import { toHex, type CID } from 'hashtree';
  * @param npub - The npub of the user
  * @param treeName - The tree name (e.g., 'public')
  * @param path - File path within the tree
- * @returns URL string like /htree/npub/npub1.../public/video.mp4
+ * @returns URL string like /htree/npub1.../public/video.mp4
  */
 export function getNpubFileUrl(npub: string, treeName: string, path: string): string {
   const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-  return `/htree/npub/${npub}/${treeName}/${encodedPath}`;
+  return `/htree/${npub}/${treeName}/${encodedPath}`;
 }
 
 /**
- * Generate a file URL for direct CID access
+ * Generate a file URL for direct nhash access (content-addressed)
  *
  * @param cid - The content ID
  * @param filename - Filename (for MIME type detection)
- * @returns URL string like /htree/cid/abc123/video.mp4
+ * @returns URL string like /htree/nhash1.../video.mp4
  */
-export function getCidFileUrl(cid: CID, filename: string = 'file'): string {
-  const cidHex = toHex(cid.hash);
-  return `/htree/cid/${cidHex}/${encodeURIComponent(filename)}`;
+export function getNhashFileUrl(cid: CID, filename: string = 'file'): string {
+  const nhash = nhashEncode(cid);
+  return `/htree/${nhash}/${encodeURIComponent(filename)}`;
 }
 
 /**
- * Legacy alias for getCidFileUrl (backwards compatibility)
+ * Legacy alias for getNhashFileUrl (backwards compatibility)
+ */
+export function getCidFileUrl(cid: CID, filename: string = 'file'): string {
+  return getNhashFileUrl(cid, filename);
+}
+
+/**
+ * Legacy alias for getNhashFileUrl (backwards compatibility)
  */
 export function getMediaUrl(cid: CID, path: string = ''): string {
-  return getCidFileUrl(cid, path);
+  return getNhashFileUrl(cid, path);
 }
 
 /**
