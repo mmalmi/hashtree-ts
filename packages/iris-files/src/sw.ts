@@ -1,13 +1,15 @@
 /**
  * Service Worker with File Streaming Support
  *
- * Intercepts file requests and streams data from hashtree worker:
+ * Intercepts file requests and streams data from main thread:
  * - /{npub}/{treeName}/{path} - Npub-based file access, supports live streaming
  * - /cid/{cidHex}/{filename} - Direct CID access
  *
- * All files (video, images, documents) use the same streaming path.
- * Browser handles Content-Type appropriately (seeking for video, rendering for images, etc.)
- * Live streaming works by watching for tree root updates via Nostr.
+ * Uses WebTorrent-style per-request MessageChannel pattern:
+ * - SW creates MessageChannel for each request
+ * - Posts request to all clients (windows)
+ * - First client to respond wins
+ * - Client streams chunks back through the port
  */
 
 /// <reference lib="webworker" />
@@ -18,29 +20,14 @@ declare let self: ServiceWorkerGlobalScope;
 // Precache static assets (injected by VitePWA)
 precacheAndRoute(self.__WB_MANIFEST);
 
-// MessagePort for communicating with hashtree worker
-let workerPort: MessagePort | null = null;
-
-// Pending requests waiting for worker responses
-interface PendingRequest {
-  resolve: (response: Response) => void;
-  reject: (error: Error) => void;
-  controller: ReadableStreamDefaultController<Uint8Array> | null;
-  totalSize: number;
-  mimeType: string;
-  rangeStart: number;
-  rangeEnd: number | undefined;
-  isLive: boolean;
-  resolved: boolean;
-}
-
-const pendingRequests = new Map<string, PendingRequest>();
-
 // Request counter for unique IDs
 let requestId = 0;
 
 // npub pattern: npub1 followed by 58 bech32 characters
 const NPUB_PATTERN = /^npub1[a-z0-9]{58}$/;
+
+// Timeout for port responses
+const PORT_TIMEOUT = 5000;
 
 /**
  * Guess MIME type from file path/extension
@@ -97,83 +84,120 @@ function guessMimeType(path: string): string {
   return mimeTypes[ext] || 'application/octet-stream';
 }
 
-/**
- * Handle messages from main thread
- */
-self.addEventListener('message', (event: ExtendableMessageEvent) => {
-  if (event.data?.type === 'REGISTER_WORKER_PORT') {
-    workerPort = event.data.port;
-    setupWorkerPortHandler();
-    console.log('[SW] Worker port registered');
-  }
+interface FileRequest {
+  type: 'hashtree-file';
+  requestId: string;
+  npub?: string;
+  cidHex?: string;
+  path: string;
+  start: number;
+  end?: number;
+  mimeType: string;
+}
 
-  if (event.data?.type === 'GET_VERSION') {
-    event.ports[0]?.postMessage({ version: '1.0.0' });
-  }
-});
-
-/**
- * Setup message handler for worker port
- */
-function setupWorkerPortHandler() {
-  if (!workerPort) return;
-
-  workerPort.onmessage = (event: MessageEvent) => {
-    const data = event.data;
-    const reqId = data.requestId;
-    const pending = pendingRequests.get(reqId);
-
-    if (!pending) {
-      // Could be a late message for cancelled request
-      return;
-    }
-
-    switch (data.type) {
-      case 'headers':
-        pending.totalSize = data.totalSize;
-        pending.mimeType = data.mimeType || pending.mimeType;
-        pending.isLive = data.isLive || false;
-        break;
-
-      case 'chunk':
-        if (pending.controller && data.data) {
-          try {
-            pending.controller.enqueue(new Uint8Array(data.data));
-          } catch (e) {
-            console.error('[SW] Error enqueueing chunk:', e);
-          }
-        }
-        break;
-
-      case 'done':
-        if (pending.controller) {
-          try {
-            pending.controller.close();
-          } catch {
-            // Stream may already be closed
-          }
-        }
-        pendingRequests.delete(reqId);
-        break;
-
-      case 'error':
-        if (!pending.resolved) {
-          pending.reject(new Error(data.message || 'Unknown error'));
-        } else if (pending.controller) {
-          try {
-            pending.controller.error(new Error(data.message));
-          } catch {
-            // Stream may already be closed
-          }
-        }
-        pendingRequests.delete(reqId);
-        break;
-    }
-  };
+interface FileResponseHeaders {
+  status: number;
+  headers: Record<string, string>;
+  body: 'STREAM' | string | null;
+  totalSize?: number;
 }
 
 /**
- * Create streaming response for npub-based file requests
+ * Request file from main thread via per-request MessageChannel
+ * Based on WebTorrent's worker-server.js pattern
+ */
+async function serveFile(request: FileRequest): Promise<Response> {
+  const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+
+  if (clientList.length === 0) {
+    return new Response('No clients available', { status: 503 });
+  }
+
+  // Create MessageChannel and broadcast to all clients - first to respond wins
+  const [data, port] = await new Promise<[FileResponseHeaders, MessagePort]>((resolve, reject) => {
+    let resolved = false;
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        reject(new Error('Timeout waiting for client response'));
+      }
+    }, PORT_TIMEOUT);
+
+    for (const client of clientList) {
+      const messageChannel = new MessageChannel();
+      const { port1, port2 } = messageChannel;
+
+      port1.onmessage = ({ data }) => {
+        if (!resolved) {
+          resolved = true;
+          clearTimeout(timeout);
+          resolve([data, port1]);
+        }
+      };
+
+      client.postMessage(request, [port2]);
+    }
+  });
+
+  const cleanup = () => {
+    port.postMessage(false); // Signal cancel
+    port.onmessage = null;
+  };
+
+  // Non-streaming response
+  if (data.body !== 'STREAM') {
+    cleanup();
+    return new Response(data.body, {
+      status: data.status,
+      headers: data.headers,
+    });
+  }
+
+  // Streaming response
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  const stream = new ReadableStream({
+    pull(controller) {
+      return new Promise<void>((resolve) => {
+        port.onmessage = ({ data: chunk }) => {
+          if (chunk) {
+            controller.enqueue(new Uint8Array(chunk));
+          } else {
+            cleanup();
+            controller.close();
+          }
+          resolve();
+        };
+
+        // Clear any previous timeout
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
+
+        // Timeout for inactive streams (Firefox doesn't support cancel)
+        timeoutHandle = setTimeout(() => {
+          cleanup();
+          resolve();
+        }, PORT_TIMEOUT);
+
+        // Request next chunk
+        port.postMessage(true);
+      });
+    },
+    cancel() {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+      cleanup();
+    },
+  });
+
+  return new Response(stream, {
+    status: data.status,
+    headers: data.headers,
+  });
+}
+
+/**
+ * Create file request for npub-based paths
  */
 function createNpubFileResponse(
   npub: string,
@@ -181,190 +205,72 @@ function createNpubFileResponse(
   filePath: string,
   rangeHeader: string | null
 ): Promise<Response> {
-  if (!workerPort) {
-    return Promise.resolve(new Response('Worker not connected', { status: 503 }));
-  }
-
   const id = `file_${++requestId}`;
   const fullPath = filePath ? `${treeName}/${filePath}` : treeName;
   const mimeType = guessMimeType(filePath || treeName);
 
-  return new Promise((resolve, reject) => {
-    let rangeStart = 0;
-    let rangeEnd: number | undefined;
+  let start = 0;
+  let end: number | undefined;
 
-    if (rangeHeader) {
-      const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
-      if (match) {
-        rangeStart = match[1] ? parseInt(match[1], 10) : 0;
-        rangeEnd = match[2] ? parseInt(match[2], 10) : undefined;
-      }
+  if (rangeHeader) {
+    const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+    if (match) {
+      start = match[1] ? parseInt(match[1], 10) : 0;
+      end = match[2] ? parseInt(match[2], 10) : undefined;
     }
+  }
 
-    let streamController: ReadableStreamDefaultController<Uint8Array>;
+  const request: FileRequest = {
+    type: 'hashtree-file',
+    requestId: id,
+    npub,
+    path: fullPath,
+    start,
+    end,
+    mimeType,
+  };
 
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        streamController = controller;
-      },
-      cancel() {
-        pendingRequests.delete(id);
-        workerPort?.postMessage({ type: 'cancelMedia', requestId: id });
-      }
-    });
-
-    const pending: PendingRequest = {
-      resolve,
-      reject,
-      controller: null,
-      totalSize: 0,
-      mimeType,
-      rangeStart,
-      rangeEnd,
-      isLive: false,
-      resolved: false,
-    };
-    pendingRequests.set(id, pending);
-
-    // Send request to worker
-    workerPort!.postMessage({
-      type: 'mediaByPath',
-      requestId: id,
-      npub,
-      path: fullPath,
-      start: rangeStart,
-      end: rangeEnd,
-      mimeType,
-    });
-
-    // Wait for headers, then resolve with Response
-    setTimeout(() => {
-      const p = pendingRequests.get(id);
-      if (!p || p.resolved) return;
-      p.resolved = true;
-      p.controller = streamController;
-
-      const headers: Record<string, string> = {
-        'Content-Type': p.mimeType,
-      };
-
-      let status = 200;
-      let statusText = 'OK';
-
-      // For live streams, don't set Content-Length (chunked transfer)
-      if (p.isLive) {
-        headers['Accept-Ranges'] = 'none';
-        headers['Cache-Control'] = 'no-cache, no-store';
-      } else {
-        headers['Accept-Ranges'] = 'bytes';
-        headers['Cache-Control'] = 'public, max-age=31536000, immutable';
-
-        if (p.totalSize > 0 && rangeHeader) {
-          const end = p.rangeEnd !== undefined ? p.rangeEnd : p.totalSize - 1;
-          headers['Content-Range'] = `bytes ${rangeStart}-${end}/${p.totalSize}`;
-          headers['Content-Length'] = String(end - rangeStart + 1);
-          status = 206;
-          statusText = 'Partial Content';
-        } else if (p.totalSize > 0) {
-          headers['Content-Length'] = String(p.totalSize);
-        }
-      }
-
-      resolve(new Response(stream, { status, statusText, headers }));
-    }, 50);
+  return serveFile(request).catch((error) => {
+    console.error('[SW] File request failed:', error);
+    return new Response(`File request failed: ${error.message}`, { status: 500 });
   });
 }
 
 /**
- * Create streaming response for direct CID requests
+ * Create file request for CID-based paths
  */
 function createCidFileResponse(
   cidHex: string,
   filename: string,
   rangeHeader: string | null
 ): Promise<Response> {
-  if (!workerPort) {
-    return Promise.resolve(new Response('Worker not connected', { status: 503 }));
-  }
-
   const id = `file_${++requestId}`;
   const mimeType = guessMimeType(filename);
 
-  return new Promise((resolve, reject) => {
-    let rangeStart = 0;
-    let rangeEnd: number | undefined;
+  let start = 0;
+  let end: number | undefined;
 
-    if (rangeHeader) {
-      const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
-      if (match) {
-        rangeStart = match[1] ? parseInt(match[1], 10) : 0;
-        rangeEnd = match[2] ? parseInt(match[2], 10) : undefined;
-      }
+  if (rangeHeader) {
+    const match = rangeHeader.match(/bytes=(\d*)-(\d*)/);
+    if (match) {
+      start = match[1] ? parseInt(match[1], 10) : 0;
+      end = match[2] ? parseInt(match[2], 10) : undefined;
     }
+  }
 
-    let streamController: ReadableStreamDefaultController<Uint8Array>;
+  const request: FileRequest = {
+    type: 'hashtree-file',
+    requestId: id,
+    cidHex,
+    path: filename,
+    start,
+    end,
+    mimeType,
+  };
 
-    const stream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        streamController = controller;
-      },
-      cancel() {
-        pendingRequests.delete(id);
-        workerPort?.postMessage({ type: 'cancelMedia', requestId: id });
-      }
-    });
-
-    const pending: PendingRequest = {
-      resolve,
-      reject,
-      controller: null,
-      totalSize: 0,
-      mimeType,
-      rangeStart,
-      rangeEnd,
-      isLive: false,
-      resolved: false,
-    };
-    pendingRequests.set(id, pending);
-
-    // Send CID-based request
-    workerPort!.postMessage({
-      type: 'media',
-      requestId: id,
-      cid: cidHex,
-      start: rangeStart,
-      end: rangeEnd,
-      mimeType,
-    });
-
-    // Wait for headers, then resolve with Response
-    setTimeout(() => {
-      const p = pendingRequests.get(id);
-      if (!p || p.resolved) return;
-      p.resolved = true;
-      p.controller = streamController;
-
-      const headers: Record<string, string> = {
-        'Content-Type': p.mimeType,
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'public, max-age=31536000, immutable',
-      };
-
-      let status = 200;
-      let statusText = 'OK';
-
-      if (p.totalSize > 0 && rangeHeader) {
-        const end = p.rangeEnd !== undefined ? p.rangeEnd : p.totalSize - 1;
-        headers['Content-Range'] = `bytes ${rangeStart}-${end}/${p.totalSize}`;
-        headers['Content-Length'] = String(end - rangeStart + 1);
-        status = 206;
-        statusText = 'Partial Content';
-      } else if (p.totalSize > 0) {
-        headers['Content-Length'] = String(p.totalSize);
-      }
-
-      resolve(new Response(stream, { status, statusText, headers }));
-    }, 50);
+  return serveFile(request).catch((error) => {
+    console.error('[SW] File request failed:', error);
+    return new Response(`File request failed: ${error.message}`, { status: 500 });
   });
 }
 

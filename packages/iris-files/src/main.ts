@@ -7,6 +7,8 @@ import type { followPubkey as FollowPubkeyType } from './stores/follows';
 import type { webrtcStore as WebRTCStoreType, localStore as LocalStoreType } from './store';
 import type { getSocialGraph as GetSocialGraphType } from './utils/socialGraph';
 import type { settingsStore as SettingsStoreType, PoolSettings } from './stores/settings';
+import { registerSW } from 'virtual:pwa-register';
+import { setupSwFileHandler } from './lib/swFileHandler';
 
 // Extend window type for test helpers
 declare global {
@@ -27,6 +29,21 @@ declare global {
     __disableFallbackStores?: () => void;
   }
 }
+
+// Register service worker for PWA and file streaming
+const updateSW = registerSW({
+  immediate: true,
+  onRegisteredSW(swUrl) {
+    console.log('[SW] Registered:', swUrl);
+  },
+  onRegisterError(error) {
+    console.error('[SW] Registration error:', error);
+  },
+});
+
+// Setup file request handler - listens for SW file requests
+// No need to wait for SW activation - just needs to be listening
+setupSwFileHandler();
 
 const app = mount(App, {
   target: document.getElementById('app')!,

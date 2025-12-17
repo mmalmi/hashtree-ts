@@ -21,6 +21,10 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.ts',
       includeAssets: ['iris-favicon.png', 'apple-touch-icon.png'],
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
       manifest: {
         name: 'Iris Files',
         short_name: 'Iris Files',

@@ -2,10 +2,10 @@
   /**
    * MediaPlayer - Streaming media player for video and audio
    *
-   * Uses Service Worker streaming for all content:
+   * Uses Service Worker streaming:
    * - /{npub}/{treeName}/{path} URLs intercepted by service worker
-   * - Service worker streams data from hashtree worker
-   * - Supports live streaming (worker watches for tree root updates)
+   * - Service worker requests data from main thread via MessageChannel
+   * - Main thread streams data from hashtree
    * - Browser handles seeking, buffering, range requests natively
    *
    * No MSE needed - the browser handles everything!
@@ -14,7 +14,6 @@
   import { currentHash } from '../../stores';
   import { toHex, type CID } from 'hashtree';
   import { getCidFileUrl, getNpubFileUrl } from '../../lib/mediaUrl';
-  import { isMediaStreamingSetup, setupMediaStreaming } from '../../lib/mediaStreamingSetup';
 
   interface Props {
     cid: CID;
@@ -80,14 +79,6 @@
   async function loadMedia() {
     if (!cid?.hash || !mediaRef) {
       error = 'No file CID or media element';
-      loading = false;
-      return;
-    }
-
-    // Ensure media streaming is set up
-    const isSetup = isMediaStreamingSetup() || await setupMediaStreaming();
-    if (!isSetup) {
-      error = 'Service worker not available';
       loading = false;
       return;
     }

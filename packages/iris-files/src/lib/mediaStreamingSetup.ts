@@ -35,12 +35,38 @@ async function doSetup(): Promise<boolean> {
   }
 
   try {
-    // Wait for service worker to be ready
-    const registration = await navigator.serviceWorker.ready;
-    if (!registration.active) {
-      console.warn('[MediaStreaming] No active service worker');
+    // Get current registration status
+    const currentReg = await navigator.serviceWorker.getRegistration();
+    console.log('[MediaStreaming] Current registration:', currentReg?.scope, 'active:', !!currentReg?.active);
+
+    // If no registration, wait for it with retries
+    let registration: ServiceWorkerRegistration | null = null;
+    for (let i = 0; i < 10; i++) {
+      registration = await navigator.serviceWorker.getRegistration();
+      if (registration?.active) {
+        break;
+      }
+      console.log('[MediaStreaming] Waiting for SW activation, attempt', i + 1);
+      await new Promise((r) => setTimeout(r, 500));
+    }
+
+    if (!registration?.active) {
+      // Try navigator.serviceWorker.ready as last resort
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), 3000);
+      });
+      registration = (await Promise.race([
+        navigator.serviceWorker.ready,
+        timeoutPromise,
+      ])) as ServiceWorkerRegistration | null;
+    }
+
+    if (!registration?.active) {
+      console.warn('[MediaStreaming] No active service worker after retries');
       return false;
     }
+
+    console.log('[MediaStreaming] SW active:', registration.scope);
 
     // Get the worker adapter
     const adapter = getWorkerAdapter();
