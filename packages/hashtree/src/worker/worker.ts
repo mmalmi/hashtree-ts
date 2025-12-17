@@ -21,6 +21,7 @@ import type {
 } from './protocol';
 import { getNostrManager, closeNostrManager } from './nostr';
 import { getWebRTCManager, closeWebRTCManager } from './webrtc';
+import { initTreeRootCache, getCachedRoot, clearMemoryCache } from './treeRootCache';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
 import type { EventTemplate } from 'nostr-tools';
 
@@ -168,6 +169,9 @@ async function handleInit(id: string, cfg: WorkerConfig) {
     // Initialize HashTree with the store
     tree = new HashTree({ store });
 
+    // Initialize tree root cache
+    initTreeRootCache(store);
+
     console.log('[Worker] Initialized with store:', storeName);
 
     // Generate ephemeral identity for WebRTC signaling
@@ -207,6 +211,8 @@ async function handleClose(id: string) {
   closeWebRTCManager();
   // Close Nostr connections
   closeNostrManager();
+  // Clear caches
+  clearMemoryCache();
   store = null;
   tree = null;
   config = null;
@@ -424,8 +430,22 @@ async function handleListDir(id: string, cidArg: import('../types').CID) {
 }
 
 async function handleResolveRoot(id: string, npub: string, path?: string) {
-  // TODO Phase 4: Implement tree root cache lookup
-  respond({ type: 'cid', id, error: 'Not implemented yet' });
+  try {
+    // Parse path to get tree name (first segment)
+    const pathParts = path?.split('/').filter(Boolean) ?? [];
+    const treeName = pathParts[0] || 'public'; // Default to 'public' tree
+
+    // Look up in cache
+    const cachedCid = await getCachedRoot(npub, treeName);
+    if (cachedCid) {
+      respond({ type: 'cid', id, cid: cachedCid });
+    } else {
+      // Not in cache - main thread should subscribe via Nostr
+      respond({ type: 'cid', id, cid: undefined });
+    }
+  } catch (err) {
+    respond({ type: 'cid', id, error: err instanceof Error ? err.message : String(err) });
+  }
 }
 
 // ============================================================================
