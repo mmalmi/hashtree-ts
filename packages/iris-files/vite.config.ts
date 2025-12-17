@@ -17,6 +17,9 @@ export default defineConfig({
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['iris-favicon.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'Iris Files',
@@ -44,25 +47,9 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,wasm}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB for wasm files
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/.*\.blossom\..*\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'blossom-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 days
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
-          },
-        ],
       },
     }),
     visualizer({

@@ -53,6 +53,8 @@
     "yjs": "^13.6.27"
   },
   "devDependencies": {
+    "@iconify-json/lucide": "^1.2.75",
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@tauri-apps/api": "^2.5.0",
     "@tauri-apps/cli": "^2.6.0",
     "@tauri-apps/plugin-autostart": "^2",
@@ -60,8 +62,6 @@
     "@tauri-apps/plugin-notification": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-os": "^2",
-    "@iconify-json/lucide": "^1.2.75",
-    "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@tsconfig/svelte": "^5.0.4",
     "@types/qrcode": "^1.5.6",
     "@unocss/preset-icons": "^66.5.9",
@@ -74,6 +74,7 @@
     "typescript": "^5.3.0",
     "unocss": "^66.5.9",
     "vite": "^6.0.0",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "workbox-precaching": "^7.4.0"
   }
 }
