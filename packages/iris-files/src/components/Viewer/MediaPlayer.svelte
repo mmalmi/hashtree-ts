@@ -2,18 +2,21 @@
   /**
    * MediaPlayer - On-demand streaming media player for video and audio
    *
-   * Uses MediaSource Extensions with on-demand range fetching:
-   * - Fetches only initial data to start playback quickly
-   * - Fetches more data as buffer runs low during playback
-   * - Handles seeks by fetching required ranges
-   * - Supports live streaming with incremental appends
+   * Primary mode: Service Worker streaming
+   * - Uses /media/{cidHex}/{path} URLs intercepted by service worker
+   * - Service worker streams data from hashtree worker
+   * - Browser handles seeking, buffering, range requests natively
    *
-   * All formats use MSE - no blob URL fallback (which required full file load).
+   * Fallback mode: MSE with direct fetching
+   * - Used when service worker not available
+   * - Uses MediaSource Extensions with on-demand range fetching
    */
   import { getTree } from '../../store';
   import { recentlyChangedFiles } from '../../stores/recentlyChanged';
   import { currentHash } from '../../stores';
   import { toHex, type CID } from 'hashtree';
+  import { getMediaUrl } from '../../lib/mediaUrl';
+  import { isMediaStreamingSetup, setupMediaStreaming } from '../../lib/mediaStreamingSetup';
 
   interface Props {
     cid: CID;
@@ -41,6 +44,9 @@
   let currentTime = $state(0);
   let bufferedEnd = $state(0);
   let paused = $state(true);
+
+  // Service worker streaming mode
+  let usingSWStreaming = $state(false);
 
   // Track bytes loaded for incremental fetching
   let bytesLoaded = $state(0);
@@ -337,7 +343,58 @@
   // Track if using blob URL mode (for formats MSE can't handle)
   let usingBlobUrl = false;
 
-  // Load media - try MSE first, fall back to blob URL for non-fragmented formats
+  // Load with service worker streaming - simplest approach, browser handles everything
+  async function loadWithSWStreaming() {
+    if (!cid?.hash || !mediaRef) {
+      error = 'No file CID or media element';
+      loading = false;
+      return;
+    }
+
+    // Ensure media streaming is set up
+    const isSetup = isMediaStreamingSetup() || await setupMediaStreaming();
+    if (!isSetup) {
+      console.log('[MediaPlayer] SW streaming not available, falling back to MSE');
+      return false;
+    }
+
+    const url = getMediaUrl(cid, fileName);
+    console.log('[MediaPlayer] Using SW streaming:', url);
+
+    usingSWStreaming = true;
+    mediaRef.src = url;
+
+    // Listen for events
+    mediaRef.addEventListener('loadedmetadata', () => {
+      if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
+        duration = mediaRef.duration;
+        console.log('[MediaPlayer] Duration from SW streaming:', duration);
+      }
+    }, { once: true });
+
+    mediaRef.addEventListener('canplay', () => {
+      loading = false;
+      console.log('[MediaPlayer] SW streaming ready to play');
+    }, { once: true });
+
+    mediaRef.addEventListener('error', (e) => {
+      console.error('[MediaPlayer] SW streaming error:', e);
+      // Could fall back to MSE here, but for now just show error
+      error = 'Failed to load media';
+      loading = false;
+    }, { once: true });
+
+    // Try to start playback
+    try {
+      await mediaRef.play();
+    } catch (e) {
+      console.log('[MediaPlayer] Autoplay blocked:', (e as Error).message);
+    }
+
+    return true;
+  }
+
+  // Load media - try SW streaming first, then MSE, then blob URL
   async function loadMedia() {
     if (!cid?.hash) {
       error = 'No file CID';
@@ -345,6 +402,14 @@
       return;
     }
 
+    // Try service worker streaming first (simplest, best seeking support)
+    // Skip for live streams which need MSE for dynamic content appending
+    if (!shouldTreatAsLive && mediaRef) {
+      const success = await loadWithSWStreaming();
+      if (success) return;
+    }
+
+    // Fall back to MSE for live streams or when SW streaming fails
     const mimeType = getSupportedMimeType(fileName);
 
     if (!mimeType) {
@@ -691,7 +756,8 @@
           // Ignore
         }
       }
-      if (mediaRef?.src) {
+      // Only revoke blob URLs, not SW streaming URLs
+      if (mediaRef?.src && mediaRef.src.startsWith('blob:')) {
         URL.revokeObjectURL(mediaRef.src);
       }
     };
