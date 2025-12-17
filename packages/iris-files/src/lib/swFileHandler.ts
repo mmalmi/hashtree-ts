@@ -112,7 +112,7 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
         // If not in cache, wait for resolver to fetch from network
         if (!rootCid) {
           console.log('[SwFileHandler] Waiting for tree root from resolver:', npub.slice(0, 20), treeName);
-          rootCid = await waitForTreeRoot(npub, treeName, 10000);
+          rootCid = await waitForTreeRoot(npub, treeName, 30000);
         }
       }
 
