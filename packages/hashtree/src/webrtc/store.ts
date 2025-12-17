@@ -294,9 +294,7 @@ export class WebRTCStore implements Store {
       onevent: (event: Event) => {
         this.handleSignalingEvent(event);
       },
-      oneose: () => {
-        this.log('Subscription EOSE received');
-      },
+      oneose: () => {},
     };
 
     // 1. Subscribe to hello messages based on pool configuration
@@ -398,15 +396,12 @@ export class WebRTCStore implements Store {
         !followedPubkeys.every(pk => currentAuthors.includes(pk));
 
       if (changed) {
-        this.log('Follows list changed, updating hello subscription');
         const since = Math.floor((Date.now() - this.config.messageTimeout) / 1000);
         const subHandler = {
           onevent: (event: Event) => {
             this.handleSignalingEvent(event);
           },
-          oneose: () => {
-            this.log('Subscription EOSE received');
-          },
+          oneose: () => {},
         };
         this.setupHelloSubscription(since, subHandler);
       }
@@ -414,11 +409,9 @@ export class WebRTCStore implements Store {
   }
 
   private async handleSignalingEvent(event: Event): Promise<void> {
-    this.log('Received signaling event kind:', event.kind, 'from:', event.pubkey?.slice(0,8));
     // Filter out old events (created more than messageTimeout ago)
     const eventAge = Date.now() / 1000 - (event.created_at ?? 0);
     if (eventAge > this.config.messageTimeout / 1000) {
-      this.log('Ignoring old event, age:', eventAge);
       return;
     }
 
@@ -481,17 +474,14 @@ export class WebRTCStore implements Store {
 
   private async handleHello(peerUuid: string, senderPubkey: string): Promise<void> {
     const peerId = new PeerId(senderPubkey, peerUuid);
-    this.log('handleHello from', peerId.short());
 
     // Skip self (exact same peerId = same session)
     if (peerId.toString() === this.myPeerId.toString()) {
-      this.log('Skipping self');
       return;
     }
 
     // Check if we already have this peer
     if (this.peers.has(peerId.toString())) {
-      this.log('Already have this peer');
       return;
     }
 
@@ -499,7 +489,6 @@ export class WebRTCStore implements Store {
     let pool: 'follows' | 'other';
     try {
       pool = this.peerClassifier(senderPubkey);
-      this.log('Classified peer', peerId.short(), 'as pool:', pool);
     } catch (e) {
       this.log('Error classifying peer:', e);
       pool = 'other';
@@ -507,11 +496,8 @@ export class WebRTCStore implements Store {
 
     // Check if we can accept this peer in their pool
     if (!this.canAcceptPeer(pool)) {
-      this.log('Ignoring hello from', peerId.short(), '- pool', pool, 'is full');
       return;
     }
-
-    this.log('Received hello from', peerId.short(), 'pool:', pool);
 
     // Tie-breaking: lower UUID initiates
     if (this.myPeerId.uuid < peerUuid) {
@@ -719,14 +705,9 @@ export class WebRTCStore implements Store {
     const otherSatisfied = this.isPoolSatisfied('other');
 
     if (followsSatisfied && otherSatisfied) {
-      const counts = this.getPoolCounts();
-      this.log('Satisfied - follows:', counts.follows.connected, 'other:', counts.other.connected);
       return;
     }
 
-    const counts = this.getPoolCounts();
-    this.log('Sending hello - follows:', counts.follows.connected, '/', this.pools.follows.satisfiedConnections,
-             'other:', counts.other.connected, '/', this.pools.other.satisfiedConnections);
     this.sendSignaling({
       type: 'hello',
       peerId: this.myPeerId.uuid,
@@ -821,15 +802,12 @@ export class WebRTCStore implements Store {
       (oldFollowsMax === 0) !== (newFollowsMax === 0);
 
     if (subscriptionModeChanged && this.running) {
-      this.log('Subscription mode changed, updating hello subscription');
       const since = Math.floor((Date.now() - this.config.messageTimeout) / 1000);
       const subHandler = {
         onevent: (event: Event) => {
           this.handleSignalingEvent(event);
         },
-        oneose: () => {
-          this.log('Subscription EOSE received');
-        },
+        oneose: () => {},
       };
       this.setupHelloSubscription(since, subHandler);
     }
