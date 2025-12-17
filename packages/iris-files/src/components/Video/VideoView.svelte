@@ -107,83 +107,93 @@
   async function loadVideo(rootCidParam: CID) {
     if (!npub || !treeName) return;
 
-    loading = true;
     error = null;
 
-    try {
-      const rootCid = rootCidParam;
+    const tree = getTree();
 
-      const tree = getTree();
-
-      // Load title.txt
+    // Try common video filenames immediately (don't wait for directory listing)
+    const commonNames = ['video.webm', 'video.mp4', 'video.mov'];
+    for (const name of commonNames) {
       try {
-        const titleResult = await tree.resolvePath(rootCid, 'title.txt');
-        if (titleResult) {
-          const titleData = await tree.readFile(titleResult.cid);
-          if (titleData) {
-            videoTitle = new TextDecoder().decode(titleData);
-          }
+        const result = await tree.resolvePath(rootCidParam, name);
+        if (result) {
+          videoCid = result.cid;
+          videoFileName = name;
+          videoSrc = getNpubFileUrl(npub, treeName, name);
+          loading = false;
+          break;
         }
       } catch {}
-
-      // Load description.txt
-      try {
-        const descResult = await tree.resolvePath(rootCid, 'description.txt');
-        if (descResult) {
-          const descData = await tree.readFile(descResult.cid);
-          if (descData) {
-            videoDescription = new TextDecoder().decode(descData);
-          }
-        }
-      } catch {}
-
-      // Find video file (video.webm, video.mp4, etc.)
-      const dir = await tree.listDirectory(rootCid);
-      const videoEntry = dir?.find(e =>
-        e.name.startsWith('video.') ||
-        e.name.endsWith('.webm') ||
-        e.name.endsWith('.mp4') ||
-        e.name.endsWith('.mov')
-      );
-
-      if (!videoEntry) {
-        error = 'Video file not found';
-        loading = false;
-        return;
-      }
-
-      // Resolve video file
-      const videoResult = await tree.resolvePath(rootCid, videoEntry.name);
-      if (!videoResult) {
-        error = 'Failed to resolve video';
-        loading = false;
-        return;
-      }
-
-      videoCid = videoResult.cid;
-      videoFileName = videoEntry.name;
-
-      // Use Service Worker URL instead of blob URL
-      // This streams data on-demand via the SW, no need to load entire file into memory
-      videoSrc = getNpubFileUrl(npub, treeName, videoEntry.name);
-      console.log('[VideoView] Using SW URL:', videoSrc);
-      loading = false;
-
-      // Add to recents
-      if (npub && treeName) {
-        addRecent({
-          type: 'tree',
-          path: `/${npub}/${treeName}`,
-          label: videoTitle || videoName || 'Video',
-          npub,
-          treeName,
-          visibility: videoVisibility,
-        });
-      }
-    } catch (e) {
-      error = e instanceof Error ? e.message : 'Failed to load video';
-      loading = false;
     }
+
+    // If common names didn't work, list directory to find video
+    if (!videoSrc) {
+      try {
+        const dir = await tree.listDirectory(rootCidParam);
+        const videoEntry = dir?.find(e =>
+          e.name.startsWith('video.') ||
+          e.name.endsWith('.webm') ||
+          e.name.endsWith('.mp4') ||
+          e.name.endsWith('.mov')
+        );
+
+        if (videoEntry) {
+          const videoResult = await tree.resolvePath(rootCidParam, videoEntry.name);
+          if (videoResult) {
+            videoCid = videoResult.cid;
+            videoFileName = videoEntry.name;
+            videoSrc = getNpubFileUrl(npub, treeName, videoEntry.name);
+            loading = false;
+          }
+        }
+      } catch {}
+    }
+
+    if (!videoSrc) {
+      error = 'Video file not found';
+      loading = false;
+      return;
+    }
+
+    // Load metadata in background (don't block video playback)
+    loadMetadata(rootCidParam, tree);
+
+    // Add to recents
+    if (npub && treeName) {
+      addRecent({
+        type: 'tree',
+        path: `/${npub}/${treeName}`,
+        label: videoTitle || videoName || 'Video',
+        npub,
+        treeName,
+        visibility: videoVisibility,
+      });
+    }
+  }
+
+  /** Load title and description in background */
+  async function loadMetadata(rootCid: CID, tree: ReturnType<typeof getTree>) {
+    // Load title.txt
+    try {
+      const titleResult = await tree.resolvePath(rootCid, 'title.txt');
+      if (titleResult) {
+        const titleData = await tree.readFile(titleResult.cid);
+        if (titleData) {
+          videoTitle = new TextDecoder().decode(titleData);
+        }
+      }
+    } catch {}
+
+    // Load description.txt
+    try {
+      const descResult = await tree.resolvePath(rootCid, 'description.txt');
+      if (descResult) {
+        const descData = await tree.readFile(descResult.cid);
+        if (descData) {
+          videoDescription = new TextDecoder().decode(descData);
+        }
+      }
+    } catch {}
   }
 
   function handleShare() {
