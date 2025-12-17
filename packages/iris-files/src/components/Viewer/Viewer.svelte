@@ -578,22 +578,14 @@
       }
     }
 
-    // Fallback: buffer entire file (required for browsers without File System Access API)
-    let data = fileData;
-    if (!data) {
-      data = await tree.readFile(entryFromStore.cid);
-    }
-    if (!data) return;
-
-    const blob = new Blob([data], { type: mimeType });
-    const url = URL.createObjectURL(blob);
+    // Fallback: use Service Worker URL for download (no blob URL needed)
+    const swUrl = getNhashFileUrl(entryFromStore.cid, fileName);
     const a = document.createElement('a');
-    a.href = url;
+    a.href = swUrl;
     a.download = fileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   }
 
   // Share handler
