@@ -301,8 +301,7 @@
   <!-- Video Player - full width, sensible height like YouTube -->
   <div class="w-full max-w-full bg-black overflow-hidden mx-auto" style="height: min(calc(100vh - 48px - 180px), 80vh); aspect-ratio: 16/9;">
     {#if loading}
-      <div class="w-full h-full flex items-center justify-center text-white">
-        <span class="i-lucide-loader-2 animate-spin mr-2"></span>
+      <div class="w-full h-full flex items-center justify-center text-white text-sm">
         Loading video...
       </div>
     {:else if error}
