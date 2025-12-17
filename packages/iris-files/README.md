@@ -12,6 +12,10 @@ Content-addressed file storage on Nostr. A web app built on [hashtree](../hashtr
 - Cashu wallet integration
 - Offline-first architecture
 
+## URL Format
+
+Routes use `/#/{npub}/{treeName}/{path...}` where treeName is URL-encoded (e.g. `my%20doc` for `my doc`).
+
 ## Web App
 
 ```bash
