@@ -42,7 +42,38 @@ export function generateImageFilename(file: File): string {
 }
 
 /**
+ * Pending image cache for freshly uploaded images
+ * Maps filename -> blob URL for immediate display before tree sync
+ */
+const pendingImageCache = new Map<string, string>();
+
+/**
+ * Register a pending image blob URL for immediate display
+ */
+export function registerPendingImage(filename: string, blobUrl: string): void {
+  pendingImageCache.set(filename, blobUrl);
+}
+
+/**
+ * Get a pending image blob URL if available
+ */
+export function getPendingImageUrl(filename: string): string | undefined {
+  return pendingImageCache.get(filename);
+}
+
+/**
+ * Clean up all pending image blob URLs
+ */
+export function cleanupPendingImages(): void {
+  for (const url of pendingImageCache.values()) {
+    URL.revokeObjectURL(url);
+  }
+  pendingImageCache.clear();
+}
+
+/**
  * Image cache manager for blob URLs
+ * @deprecated Use registerPendingImage/getPendingImageUrl instead
  */
 export function createImageCache() {
   const cache = new Map<string, string>();

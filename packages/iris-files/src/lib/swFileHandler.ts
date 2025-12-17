@@ -104,19 +104,20 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       if (localHash) {
         const localKey = getLocalRootKey(npub, treeName);
         rootCid = { hash: localHash, key: localKey };
+        console.log('[SwFileHandler] Using local cache for', npub.slice(0, 20), treeName);
       } else {
         // First try sync cache (for already-resolved trees)
         rootCid = getTreeRootSync(npub, treeName);
 
         // If not in cache, wait for resolver to fetch from network
         if (!rootCid) {
-          console.log('[SwFileHandler] Waiting for tree root from resolver:', npub, treeName);
+          console.log('[SwFileHandler] Waiting for tree root from resolver:', npub.slice(0, 20), treeName);
           rootCid = await waitForTreeRoot(npub, treeName, 10000);
         }
       }
 
       if (!rootCid) {
-        console.error('[SwFileHandler] Tree not found:', npub, treeName);
+        console.error('[SwFileHandler] Tree not found:', npub, treeName, '- no local or subscription cache');
         port.postMessage({
           status: 404,
           headers: { 'Content-Type': 'text/plain' },
