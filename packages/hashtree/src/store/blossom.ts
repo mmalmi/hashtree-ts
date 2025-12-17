@@ -11,6 +11,8 @@ import { sha256 } from '../hash.js';
  */
 export interface BlossomServer {
   url: string;
+  /** Whether this server accepts reads (defaults to true) */
+  read?: boolean;
   /** Whether this server accepts writes */
   write?: boolean;
 }
@@ -289,8 +291,12 @@ export class BlossomStore implements StoreWithMeta {
   async get(hash: Hash): Promise<Uint8Array | null> {
     const hashHex = toHex(hash);
 
-    // Try each server until success, respecting backoff
+    // Try each read-enabled server until success, respecting backoff
     for (const server of this.servers) {
+      // Skip write-only servers (read defaults to true if not specified)
+      if (server.read === false) {
+        continue;
+      }
       // Skip servers in backoff
       if (this.isServerInBackoff(server.url)) {
         continue;
@@ -331,6 +337,10 @@ export class BlossomStore implements StoreWithMeta {
     const hashHex = toHex(hash);
 
     for (const server of this.servers) {
+      // Skip write-only servers (read defaults to true if not specified)
+      if (server.read === false) {
+        continue;
+      }
       // Skip servers in backoff
       if (this.isServerInBackoff(server.url)) {
         continue;

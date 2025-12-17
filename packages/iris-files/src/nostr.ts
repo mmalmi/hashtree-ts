@@ -190,10 +190,17 @@ export function getNsec(): string | null {
 // NDK instance with Dexie cache
 const cacheAdapter = new NDKCacheAdapterDexie({ dbName: 'hashtree-ndk-cache' });
 
+// Block ws:// relays when on HTTPS page (browser blocks mixed content anyway)
+const isSecurePage = typeof window !== 'undefined' && window.location.protocol === 'https:';
+const relayConnectionFilter = isSecurePage
+  ? (url: string) => url.startsWith('wss://')
+  : undefined;
+
 export const ndk = new NDK({
   explicitRelayUrls: DEFAULT_NETWORK_SETTINGS.relays,
   // @ts-expect-error - NDK cache adapter version mismatch
   cacheAdapter,
+  relayConnectionFilter,
 });
 
 // Expose NDK on window for debugging
