@@ -9,9 +9,10 @@ import {
   isNPath,
   NHashTypeGuard,
   BECH32_REGEX,
+  toHex,
   type NHashData,
   type NPathData,
-} from '../src/nhash.js';
+} from '../src/index.js';
 
 // Test vectors
 const TEST_HASH = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'; // SHA256('')
@@ -28,8 +29,8 @@ describe('nhash - permalink', () => {
       expect(isNHash(encoded)).toBe(true);
 
       const decoded = nhashDecode(encoded);
-      expect(decoded.hash).toBe(TEST_HASH);
-      expect(decoded.decryptKey).toBeUndefined();
+      expect(toHex(decoded.hash)).toBe(TEST_HASH);
+      expect(decoded.key).toBeUndefined();
     });
 
     it('should accept Uint8Array hash', () => {
@@ -39,15 +40,15 @@ describe('nhash - permalink', () => {
       expect(encoded).toMatch(/^nhash1[a-z0-9]+$/);
 
       const decoded = nhashDecode(encoded);
-      expect(decoded.hash).toBe('ab'.repeat(32));
+      expect(toHex(decoded.hash)).toBe('ab'.repeat(32));
     });
 
     it('should encode NHashData with only hash', () => {
       const encoded = nhashEncode({ hash: TEST_HASH });
       const decoded = nhashDecode(encoded);
 
-      expect(decoded.hash).toBe(TEST_HASH);
-      expect(decoded.decryptKey).toBeUndefined();
+      expect(toHex(decoded.hash)).toBe(TEST_HASH);
+      expect(decoded.key).toBeUndefined();
     });
 
     it('should encode and decode hash with decrypt key', () => {
@@ -60,8 +61,8 @@ describe('nhash - permalink', () => {
       expect(encoded).toMatch(/^nhash1[a-z0-9]+$/);
 
       const decoded = nhashDecode(encoded);
-      expect(decoded.hash).toBe(TEST_HASH);
-      expect(decoded.decryptKey).toBe(TEST_DECRYPT_KEY);
+      expect(toHex(decoded.hash)).toBe(TEST_HASH);
+      expect(decoded.key ? toHex(decoded.key) : undefined).toBe(TEST_DECRYPT_KEY);
     });
 
     it('should throw on invalid hash length', () => {
@@ -84,7 +85,7 @@ describe('nhash - permalink', () => {
     it('should strip hashtree: URI prefix', () => {
       const encoded = nhashEncode(TEST_HASH);
       const decoded = nhashDecode(`hashtree:${encoded}`);
-      expect(decoded.hash).toBe(TEST_HASH);
+      expect(toHex(decoded.hash)).toBe(TEST_HASH);
     });
 
     it('should throw on wrong prefix', () => {
@@ -241,7 +242,7 @@ describe('generic decode', () => {
 
     expect(result.type).toBe('nhash');
     if (result.type === 'nhash') {
-      expect(result.data.hash).toBe(TEST_HASH);
+      expect(toHex(result.data.hash)).toBe(TEST_HASH);
     }
   });
 

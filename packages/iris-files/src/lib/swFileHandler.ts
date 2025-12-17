@@ -20,6 +20,7 @@ interface FileRequest {
   requestId: string;
   npub?: string;
   nhash?: string;
+  treeName?: string;
   path: string;
   start: number;
   end?: number;
@@ -80,9 +81,9 @@ function handleSwMessage(event: MessageEvent): void {
  * Handle a file request from the service worker
  */
 async function handleFileRequest(request: FileRequest, port: MessagePort): Promise<void> {
-  const { npub, nhash, path, start, end, mimeType } = request;
+  const { npub, nhash, treeName, path, start, end, mimeType } = request;
 
-  console.log('[SwFileHandler] File request:', { npub, nhash, path, start, end });
+  console.log('[SwFileHandler] File request:', { npub, nhash, treeName, path, start, end });
 
   try {
     // Resolve the CID
@@ -91,10 +92,9 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
     if (nhash) {
       // Direct nhash request - decode to CID
       cid = nhashDecode(nhash);
-    } else if (npub && path) {
+    } else if (npub && treeName) {
       // Npub-based request - resolve through tree root cache
-      const [treeName, ...pathParts] = path.split('/');
-      const filePath = pathParts.join('/');
+      const filePath = path;
 
       // Try local write cache first, then subscription cache
       let rootCid: CID | null = null;

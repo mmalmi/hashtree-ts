@@ -72,14 +72,14 @@ export function parseRoute(): RouteInfo {
 
   // nhash route: #/nhash1.../path...
   if (parts[0]?.startsWith('nhash1')) {
-    // Decode nhash to extract hash and optional decrypt key
+    // Decode nhash to extract CID (hash and optional key as Uint8Array)
     try {
       const { nhashDecode } = require('hashtree');
-      const decoded = nhashDecode(parts[0]);
+      const cid = nhashDecode(parts[0]);
       return {
         npub: null,
         treeName: null,
-        cid: { hash: decoded.hash, key: decoded.decryptKey },
+        cid,
         path: parts.slice(1),
         isPermalink: true,
         linkKey,

@@ -77,8 +77,8 @@ test.describe('Image Viewer', () => {
     await expect(page.getByText('Unable to display file content')).not.toBeVisible();
   });
 
-  test('should display image with blob URL as src', async ({ page }) => {
-    await createAndEnterTree(page, 'image-blob-test');
+  test('should display image with SW URL as src', async ({ page }) => {
+    await createAndEnterTree(page, 'image-sw-test');
 
     // Wait for test helper to be available
     await page.waitForFunction(() => (window as any).__testHelpers?.uploadSingleFile, { timeout: 5000 });
@@ -86,25 +86,25 @@ test.describe('Image Viewer', () => {
     // Add image file directly via the exposed test helper
     await page.evaluate(async (pngBytes) => {
       const data = new Uint8Array(pngBytes);
-      await (window as any).__testHelpers.uploadSingleFile('blob-test.png', data);
+      await (window as any).__testHelpers.uploadSingleFile('sw-test.png', data);
     }, PNG_BYTES);
 
     await page.waitForTimeout(1500);
 
     const fileList = page.getByTestId('file-list');
-    await expect(fileList.locator('a').filter({ hasText: 'blob-test.png' }).first()).toBeVisible({ timeout: 10000 });
+    await expect(fileList.locator('a').filter({ hasText: 'sw-test.png' }).first()).toBeVisible({ timeout: 10000 });
 
-    await fileList.locator('a').filter({ hasText: 'blob-test.png' }).first().click();
+    await fileList.locator('a').filter({ hasText: 'sw-test.png' }).first().click();
     await page.waitForTimeout(1000);
 
-    // Verify the image has a blob URL as src
+    // Verify the image has a service worker URL as src (no blob URLs!)
     const img = page.getByTestId('image-viewer');
     await expect(img).toBeVisible({ timeout: 5000 });
 
     const src = await img.getAttribute('src');
     expect(src).toBeTruthy();
-    // Blob URLs start with "blob:"
-    expect(src?.startsWith('blob:')).toBe(true);
+    // SW URLs use /htree/nhash... format (content-addressed)
+    expect(src).toContain('/htree/nhash');
   });
 
   test('should not flash "Unable to display" while loading image', async ({ page }) => {

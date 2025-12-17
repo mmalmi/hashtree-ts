@@ -11,7 +11,7 @@
 
 import { bech32 } from '@scure/base';
 import { bytesToHex, hexToBytes, concatBytes } from '@noble/hashes/utils.js';
-import type { Hash } from './types.js';
+import type { Hash, CID } from './types.js';
 
 const BECH32_MAX_SIZE = 5000;
 const utf8Encoder = new TextEncoder();
@@ -57,7 +57,7 @@ export interface NPathData {
 }
 
 export type DecodeResult =
-  | { type: 'nhash'; data: NHashData }
+  | { type: 'nhash'; data: CID }
   | { type: 'npath'; data: NPathData };
 
 /**
@@ -127,6 +127,18 @@ function encodeBech32(prefix: string, data: Uint8Array): string {
 // ============================================================================
 
 /**
+ * Check if object is a CID (has hash as Uint8Array)
+ */
+function isCID(data: unknown): data is CID {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'hash' in data &&
+    (data as CID).hash instanceof Uint8Array
+  );
+}
+
+/**
  * Encode an nhash permalink
  *
  * Path is kept in URL segments, not encoded in nhash.
@@ -135,12 +147,17 @@ function encodeBech32(prefix: string, data: Uint8Array): string {
  * @example
  * // Simple hash
  * const encoded = nhashEncode('abc123...');
+ * const encoded = nhashEncode(hashBytes);
  *
  * @example
- * // Hash with decrypt key
+ * // Hash with decrypt key (hex strings)
  * const encoded = nhashEncode({ hash: 'abc123...', decryptKey: 'key...' });
+ *
+ * @example
+ * // CID with Uint8Array fields
+ * const encoded = nhashEncode({ hash: hashBytes, key: keyBytes });
  */
-export function nhashEncode(data: string | Hash | NHashData): string {
+export function nhashEncode(data: string | Hash | NHashData | CID): string {
   // Simple hash-only case
   if (typeof data === 'string' || data instanceof Uint8Array) {
     const hashBytes = typeof data === 'string' ? hexToBytes(data) : data;
@@ -150,7 +167,32 @@ export function nhashEncode(data: string | Hash | NHashData): string {
     return encodeBech32('nhash', hashBytes);
   }
 
-  // Full data object
+  // CID type (Uint8Array fields)
+  if (isCID(data)) {
+    const hashBytes = data.hash;
+    if (hashBytes.length !== 32) {
+      throw new Error(`Hash must be 32 bytes, got ${hashBytes.length}`);
+    }
+
+    // No key - simple encoding
+    if (!data.key) {
+      return encodeBech32('nhash', hashBytes);
+    }
+
+    // Has key - use TLV
+    const tlv: Record<number, Uint8Array[]> = {
+      [TLV.HASH]: [hashBytes],
+    };
+
+    if (data.key.length !== 32) {
+      throw new Error(`Decrypt key must be 32 bytes, got ${data.key.length}`);
+    }
+    tlv[TLV.DECRYPT_KEY] = [data.key];
+
+    return encodeBech32('nhash', encodeTLV(tlv));
+  }
+
+  // NHashData type (hex string fields)
   const hashBytes = hexToBytes(data.hash);
   if (hashBytes.length !== 32) {
     throw new Error(`Hash must be 32 bytes, got ${hashBytes.length}`);
@@ -176,11 +218,11 @@ export function nhashEncode(data: string | Hash | NHashData): string {
 }
 
 /**
- * Decode an nhash string
+ * Decode an nhash string to CID (Uint8Array fields)
  *
  * Path is kept in URL segments, not encoded in nhash.
  */
-export function nhashDecode(code: string): NHashData {
+export function nhashDecode(code: string): CID {
   if (code.startsWith('hashtree:')) {
     code = code.substring(9);
   }
@@ -195,7 +237,7 @@ export function nhashDecode(code: string): NHashData {
 
   // Simple 32-byte hash (no TLV)
   if (data.length === 32) {
-    return { hash: bytesToHex(data) };
+    return { hash: data };
   }
 
   // Parse TLV
@@ -205,15 +247,15 @@ export function nhashDecode(code: string): NHashData {
     throw new Error('nhash: missing or invalid hash');
   }
 
-  const result: NHashData = {
-    hash: bytesToHex(tlv[TLV.HASH][0]),
+  const result: CID = {
+    hash: tlv[TLV.HASH][0],
   };
 
   if (tlv[TLV.DECRYPT_KEY]?.[0]) {
     if (tlv[TLV.DECRYPT_KEY][0].length !== 32) {
       throw new Error('nhash: decrypt key must be 32 bytes');
     }
-    result.decryptKey = bytesToHex(tlv[TLV.DECRYPT_KEY][0]);
+    result.key = tlv[TLV.DECRYPT_KEY][0];
   }
 
   return result;

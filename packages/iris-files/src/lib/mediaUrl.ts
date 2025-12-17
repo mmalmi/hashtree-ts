@@ -15,23 +15,26 @@ import { nhashEncode, type CID } from 'hashtree';
  * Generate a file URL for npub-based access
  *
  * @param npub - The npub of the user
- * @param treeName - The tree name (e.g., 'public')
+ * @param treeName - The tree name (e.g., 'public' or 'videos/My Video')
  * @param path - File path within the tree
  * @returns URL string like /htree/npub1.../public/video.mp4
  */
 export function getNpubFileUrl(npub: string, treeName: string, path: string): string {
+  // Encode treeName as a single path segment (replace / with encoded form)
+  const encodedTreeName = encodeURIComponent(treeName);
   const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-  return `/htree/${npub}/${treeName}/${encodedPath}`;
+  return `/htree/${npub}/${encodedTreeName}/${encodedPath}`;
 }
 
 /**
  * Generate a file URL for direct nhash access (content-addressed)
  *
- * @param cid - The content ID
+ * @param cid - The content ID (with Uint8Array fields)
  * @param filename - Filename (for MIME type detection)
  * @returns URL string like /htree/nhash1.../video.mp4
  */
 export function getNhashFileUrl(cid: CID, filename: string = 'file'): string {
+  // nhashEncode now accepts CID directly with Uint8Array fields
   const nhash = nhashEncode(cid);
   return `/htree/${nhash}/${encodeURIComponent(filename)}`;
 }

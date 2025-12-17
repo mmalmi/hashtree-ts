@@ -2,8 +2,10 @@
   /**
    * VideoView - Video player page
    * Shows video player, metadata, owner info, and comments
+   *
+   * Uses Service Worker streaming via /htree/ URLs (no blob URLs!)
    */
-  import { onMount, untrack } from 'svelte';
+  import { untrack } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { getTree } from '../../store';
   import { nostrStore } from '../../nostr';
@@ -20,6 +22,7 @@
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
   import type { CID, LinkType } from 'hashtree';
   import { toHex } from 'hashtree';
+  import { getNpubFileUrl, getNhashFileUrl } from '../../lib/mediaUrl';
 
   let deleting = $state(false);
   let editing = $state(false);
@@ -37,7 +40,8 @@
   // Full tree name is videos/{videoName}
   let treeName = $derived(videoName ? `videos/${videoName}` : undefined);
 
-  let videoSrc = $state<string>('');
+  let videoSrc = $state<string>('');  // SW URL (not blob!)
+  let videoFileName = $state<string>('');  // For MIME type detection
   let loading = $state(true);
   let error = $state<string | null>(null);
   let videoTitle = $state<string>('');
@@ -98,11 +102,7 @@
     }
   });
 
-  onMount(() => {
-    return () => {
-      if (videoSrc) URL.revokeObjectURL(videoSrc);
-    };
-  });
+  // No blob URL cleanup needed - using SW URLs
 
   async function loadVideo(rootCidParam: CID) {
     if (!npub || !treeName) return;
@@ -161,31 +161,12 @@
       }
 
       videoCid = videoResult.cid;
+      videoFileName = videoEntry.name;
 
-      // Read video data
-      const videoData = await tree.readFile(videoResult.cid);
-      if (!videoData) {
-        error = 'Failed to load video data';
-        loading = false;
-        return;
-      }
-
-      // Determine MIME type
-      const ext = videoEntry.name.split('.').pop()?.toLowerCase() || 'webm';
-      const mimeTypes: Record<string, string> = {
-        'mp4': 'video/mp4',
-        'webm': 'video/webm',
-        'ogg': 'video/ogg',
-        'mov': 'video/quicktime',
-      };
-      const mimeType = mimeTypes[ext] || 'video/webm';
-
-      // Revoke old blob URL
-      if (videoSrc) URL.revokeObjectURL(videoSrc);
-
-      // Create new blob URL
-      const blob = new Blob([videoData], { type: mimeType });
-      videoSrc = URL.createObjectURL(blob);
+      // Use Service Worker URL instead of blob URL
+      // This streams data on-demand via the SW, no need to load entire file into memory
+      videoSrc = getNpubFileUrl(npub, treeName, videoEntry.name);
+      console.log('[VideoView] Using SW URL:', videoSrc);
       loading = false;
 
       // Add to recents

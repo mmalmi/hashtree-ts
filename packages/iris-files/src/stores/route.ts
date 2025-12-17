@@ -58,11 +58,11 @@ export function parseRouteFromHash(hash: string): RouteInfo {
   // nhash route: /nhash1.../path...
   if (parts[0] && isNHash(parts[0])) {
     try {
-      const decoded = nhashDecode(parts[0]);
+      const cid = nhashDecode(parts[0]);  // Returns CID with Uint8Array fields
       return {
         npub: null,
         treeName: null,
-        cid: { hash: decoded.hash, key: decoded.decryptKey },
+        cid,
         path: parts.slice(1),
         isPermalink: true,
         linkKey,

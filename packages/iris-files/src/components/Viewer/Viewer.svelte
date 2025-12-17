@@ -150,10 +150,6 @@
   let loadingTimer: ReturnType<typeof setTimeout> | null = null;
   // Track bytes loaded for progress display
   let bytesLoaded = $state(0);
-  // Blob URL for binary content (images, etc)
-  let blobUrl = $state<string | null>(null);
-  // Track current blob URL outside of reactive system for cleanup
-  let currentBlobUrl: string | null = null;
 
   // Fullscreen mode - check URL param
   let isFullscreen = $derived.by(() => {
@@ -210,14 +206,6 @@
     return ext ? mimeTypes[ext] || null : null;
   }
 
-  // Helper to clean up blob URL
-  function cleanupBlobUrl() {
-    if (currentBlobUrl) {
-      URL.revokeObjectURL(currentBlobUrl);
-      currentBlobUrl = null;
-    }
-  }
-
   // Track previous entry CID to avoid reloading when only dir listing changed
   let prevEntryCidHash: string | null = null;
 
@@ -232,9 +220,6 @@
     }
     prevEntryCidHash = entryCidHash;
 
-    // Clean up previous blob URL (use non-reactive variable)
-    cleanupBlobUrl();
-
     // Clear loading timer
     if (loadingTimer) {
       clearTimeout(loadingTimer);
@@ -243,16 +228,15 @@
 
     fileData = null;
     fileContent = null;
-    blobUrl = null;
     loading = false;
     showLoading = false;
     bytesLoaded = 0;
 
     if (!entry) return;
 
-    // Skip loading for video/audio files - they stream separately via MediaPlayer
+    // Skip loading for video/audio/image/pdf files - they stream via SW URLs
     // Skip loading for DOS executables - they use their own loader
-    if (isVideo || isAudio || isDos) return;
+    if (isVideo || isAudio || isImage || isPdf || isDos) return;
 
     loading = true;
     let cancelled = false;
@@ -288,20 +272,9 @@
         }
 
         fileData = data;
-        // Try to decode as text
-        const text = decodeAsText(data);
-        fileContent = text;
-
-        // If not text, create blob URL for binary viewing
-        if (text === null && urlFileName) {
-          const mimeType = getMimeType(urlFileName);
-          if (mimeType) {
-            const blob = new Blob([data], { type: mimeType });
-            const newUrl = URL.createObjectURL(blob);
-            currentBlobUrl = newUrl;
-            blobUrl = newUrl;
-          }
-        }
+        // Try to decode as text (for code/text files)
+        fileContent = decodeAsText(data);
+        // Note: Images, videos, audio, PDFs all use SW URLs (no blob URLs needed)
       } catch {
         // Ignore errors
       } finally {
@@ -316,7 +289,6 @@
 
     return () => {
       cancelled = true;
-      cleanupBlobUrl();
       if (loadingTimer) {
         clearTimeout(loadingTimer);
         loadingTimer = null;

@@ -91,6 +91,7 @@ interface FileRequest {
   requestId: string;
   npub?: string;
   nhash?: string;
+  treeName?: string;
   path: string;
   start: number;
   end?: number;
@@ -226,7 +227,8 @@ function createNpubFileResponse(
     type: 'hashtree-file',
     requestId: id,
     npub,
-    path: fullPath,
+    treeName,
+    path: filePath,
     start,
     end,
     mimeType,
@@ -299,10 +301,11 @@ self.addEventListener('fetch', (event: FetchEvent) => {
   }
 
   // /htree/{npub}/{treeName}/{path...} - Npub-based file access
+  // treeName is URL-encoded (may contain %2F for slashes)
   if (pathParts.length >= 3 && NPUB_PATTERN.test(pathParts[1])) {
     const npub = pathParts[1];
-    const treeName = pathParts[2];
-    const filePath = pathParts.slice(3).join('/');
+    const treeName = decodeURIComponent(pathParts[2]);
+    const filePath = pathParts.slice(3).map(decodeURIComponent).join('/');
     event.respondWith(createNpubFileResponse(npub, treeName, filePath, rangeHeader));
     return;
   }
