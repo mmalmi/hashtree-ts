@@ -14,6 +14,7 @@
   import FileTable from './FileTable.svelte';
   import type { GitStatusResult } from '../../utils/wasmGit';
   import type { CommitInfo } from '../../stores/git';
+  import CodeDropdown from './CodeDropdown.svelte';
 
   interface Props {
     dirCid: CID;
@@ -471,6 +472,11 @@
 
     <!-- Spacer -->
     <div class="flex-1"></div>
+
+    <!-- Code dropdown (clone instructions) -->
+    {#if route.npub}
+      <CodeDropdown npub={route.npub} {repoPath} />
+    {/if}
 
     <!-- Shell button -->
     <button
