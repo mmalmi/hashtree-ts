@@ -11,6 +11,11 @@
   import { openCreateModal } from '../../stores/modals';
   import DocCard from './DocCard.svelte';
 
+  /** Encode tree name for use in URL path */
+  function encodeTreeNameForUrl(treeName: string): string {
+    return encodeURIComponent(treeName);
+  }
+
   // Get current user
   let userNpub = $derived($nostrStore.npub);
   let userPubkey = $derived($nostrStore.pubkey);
@@ -54,7 +59,7 @@
         ownerNpub: userNpub,
         treeName: t.name,
         visibility: t.visibility,
-        href: `#/${userNpub}/${t.name}${t.linkKey ? `?k=${t.linkKey}` : ''}`,
+        href: `#/${userNpub}/${encodeTreeNameForUrl(t.name)}${t.linkKey ? `?k=${t.linkKey}` : ''}`,
         timestamp: 0, // Own docs don't have timestamp, will be sorted after recents
       }))
   );

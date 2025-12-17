@@ -287,7 +287,11 @@ function createNhashFileResponse(
  */
 self.addEventListener('fetch', (event: FetchEvent) => {
   const url = new URL(event.request.url);
-  const pathParts = url.pathname.slice(1).split('/'); // Remove leading /
+  // Use href to preserve encoded characters (pathname auto-decodes %2F)
+  // Extract path from URL without decoding: /htree/npub/videos%2FName/file.mp4
+  const pathMatch = url.href.match(/^[^:]+:\/\/[^/]+(.*)$/);
+  const rawPath = pathMatch ? pathMatch[1].split('?')[0] : url.pathname;
+  const pathParts = rawPath.slice(1).split('/'); // Remove leading /
   const rangeHeader = event.request.headers.get('Range');
 
   // Skip non-GET requests

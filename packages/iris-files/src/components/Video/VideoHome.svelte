@@ -17,6 +17,11 @@
   import VideoCard from './VideoCard.svelte';
   import type { VideoItem } from './types';
 
+  /** Encode tree name for use in URL path */
+  function encodeTreeNameForUrl(treeName: string): string {
+    return encodeURIComponent(treeName);
+  }
+
   // Get current user
   let userNpub = $derived($nostrStore.npub);
   let userPubkey = $derived($nostrStore.pubkey);
@@ -144,7 +149,6 @@
 
       const store = createTreesStore(followNpub);
       const unsub = store.subscribe(trees => {
-        console.log('[VideoHome] Got trees for', followNpub.slice(0, 15), ':', trees.length, 'trees');
         const videos = trees
           .filter(t => t.name.startsWith('videos/') && t.visibility === 'public')
           .map(t => ({
@@ -154,11 +158,10 @@
             ownerNpub: followNpub,
             treeName: t.name,
             visibility: t.visibility,
-            href: `#/${followNpub}/${t.name}`,
+            href: `#/${followNpub}/${encodeTreeNameForUrl(t.name)}`,
             timestamp: t.createdAt || 0,
           } as VideoItem));
 
-        console.log('[VideoHome] Found', videos.length, 'videos for', followNpub.slice(0, 15));
         videosByUser.set(followPubkey, videos);
 
         // Aggregate all videos and sort by timestamp
@@ -166,7 +169,6 @@
         videosByUser.forEach(vids => allVideos.push(...vids));
         allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         untrack(() => { followedUsersVideos = allVideos; });
-        console.log('[VideoHome] Total followedUsersVideos:', allVideos.length);
       });
 
       untrack(() => { followStoreUnsubscribes.push(unsub); });

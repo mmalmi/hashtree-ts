@@ -14,6 +14,11 @@
   import type { VideoItem } from './types';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
 
+  /** Encode tree name for use in URL path */
+  function encodeTreeNameForUrl(treeName: string): string {
+    return encodeURIComponent(treeName);
+  }
+
   interface Props {
     npub?: string;
   }
@@ -70,7 +75,7 @@
         ownerNpub: npub,
         treeName: t.name,
         visibility: t.visibility,
-        href: `#/${npub}/${t.name}${t.linkKey ? `?k=${t.linkKey}` : ''}`,
+        href: `#/${npub}/${encodeTreeNameForUrl(t.name)}${t.linkKey ? `?k=${t.linkKey}` : ''}`,
       } as VideoItem))
   );
 

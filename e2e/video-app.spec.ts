@@ -132,8 +132,8 @@ test.describe('Iris Video App', () => {
     await expect(page.locator('text=Processing...').or(page.locator('text=Preparing'))).toBeVisible({ timeout: 5000 });
 
     // Wait for upload to complete and navigate to video page
-    // URL should contain videos/ prefix
-    await page.waitForURL(/\/video\.html#\/npub.*\/videos\//, { timeout: 60000 });
+    // URL should contain videos%2F (encoded slash since treeName includes 'videos/')
+    await page.waitForURL(/\/video\.html#\/npub.*\/videos%2F/, { timeout: 60000 });
 
     // Modal should auto-close after navigation
     await expect(page.getByRole('heading', { name: 'Upload Video' })).not.toBeVisible({ timeout: 10000 });
@@ -206,7 +206,7 @@ test.describe('Iris Video App', () => {
     await page.locator('.fixed button:has-text("Upload")').click();
 
     // Wait for navigation to video page
-    await page.waitForURL(/\/video\.html#\/npub.*\/videos\//, { timeout: 60000 });
+    await page.waitForURL(/\/video\.html#\/npub.*\/videos%2F/, { timeout: 60000 });
 
     // Verify we're on the video page
     await expect(page.locator(`text=${videoTitle}`)).toBeVisible({ timeout: 10000 });
@@ -251,7 +251,7 @@ test.describe('Iris Video App', () => {
     await page.locator('.fixed button:has-text("Upload")').click();
 
     // Wait for video page
-    await page.waitForURL(/\/video\.html#\/npub.*\/videos\//, { timeout: 60000 });
+    await page.waitForURL(/\/video\.html#\/npub.*\/videos%2F/, { timeout: 60000 });
 
     // Modal should auto-close
     await expect(page.getByRole('heading', { name: 'Upload Video' })).not.toBeVisible({ timeout: 10000 });
@@ -294,7 +294,7 @@ test.describe('Iris Video App', () => {
     await page.locator('.fixed button:has-text("Upload")').click();
 
     // Wait for video page
-    await page.waitForURL(/\/video\.html#\/npub.*\/videos\//, { timeout: 60000 });
+    await page.waitForURL(/\/video\.html#\/npub.*\/videos%2F/, { timeout: 60000 });
 
     // Modal should auto-close
     await expect(page.getByRole('heading', { name: 'Upload Video' })).not.toBeVisible({ timeout: 10000 });

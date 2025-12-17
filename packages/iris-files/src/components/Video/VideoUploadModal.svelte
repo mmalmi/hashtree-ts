@@ -234,7 +234,8 @@
       // Navigate to the video and close modal
       uploading = false;
       progressMessage = '';
-      const videoUrl = result.linkKey ? `#/${userNpub}/${treeName}?k=${result.linkKey}` : `#/${userNpub}/${treeName}`;
+      const encodedTreeName = encodeURIComponent(treeName);
+      const videoUrl = result.linkKey ? `#/${userNpub}/${encodedTreeName}?k=${result.linkKey}` : `#/${userNpub}/${encodedTreeName}`;
       window.location.hash = videoUrl;
       handleClose();
     } catch (e) {

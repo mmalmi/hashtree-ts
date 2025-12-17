@@ -80,8 +80,10 @@ export interface RouteMatch {
 
 // Match a path against a pattern (e.g., '/user/:npub' matches '/user/npub123')
 export function matchRoute(pattern: string, path: string): RouteMatch {
+  // Decode %2F (encoded slashes) before splitting - tree names can contain slashes
+  const decodedPath = path.replace(/%2F/gi, '/');
   const patternParts = pattern.split('/').filter(Boolean);
-  const pathParts = path.split('/').filter(Boolean);
+  const pathParts = decodedPath.split('/').filter(Boolean);
 
   // Handle query string (should already be stripped, but just in case)
   const queryIndex = pathParts[pathParts.length - 1]?.indexOf('?');
