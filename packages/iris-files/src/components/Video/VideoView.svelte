@@ -201,6 +201,17 @@
     openShareModal(url);
   }
 
+  function handleDownload() {
+    if (!videoCid || !videoFileName) return;
+    const swUrl = getNhashFileUrl(videoCid, videoFileName);
+    const a = document.createElement('a');
+    a.href = swUrl;
+    a.download = videoFileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+
   function handleBlossomPush() {
     if (!rootCid) return;
     openBlossomPushModal(rootCid, title, true);
@@ -365,6 +376,9 @@
           <div class="flex items-center gap-1 shrink-0">
             <button onclick={handleShare} class="btn-ghost p-2" title="Share">
               <span class="i-lucide-share text-lg"></span>
+            </button>
+            <button onclick={handleDownload} class="btn-ghost p-2" title="Download" disabled={!videoCid}>
+              <span class="i-lucide-download text-lg"></span>
             </button>
             {#if isOwner}
               <button onclick={handleBlossomPush} class="btn-ghost p-2" title="Push to file servers">
