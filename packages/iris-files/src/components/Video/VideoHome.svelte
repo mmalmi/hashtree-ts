@@ -6,7 +6,7 @@
   import { onMount, untrack } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../../nostr';
-  import { recentsStore, type RecentItem } from '../../stores/recents';
+  import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
   import { createTreesStore, createFollowsStore } from '../../stores';
   import { openVideoUploadModal } from '../../stores/modals';
   import { getFollowDistance } from '../../utils/socialGraph';
@@ -223,7 +223,15 @@
     <!-- Recent Videos Section -->
     {#if recentVideos.length > 0}
       <section class="mb-8">
-        <h2 class="text-lg font-semibold text-text-1 mb-3">Recent</h2>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-text-1">Recent</h2>
+          <button
+            class="btn-ghost text-xs text-text-3 hover:text-text-2"
+            onclick={() => clearRecentsByPrefix('videos/')}
+          >
+            Clear
+          </button>
+        </div>
         <div class="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin">
           {#each recentVideos as video (video.href)}
             <div class="shrink-0 w-48 md:w-56">

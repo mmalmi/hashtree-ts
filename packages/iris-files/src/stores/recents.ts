@@ -119,6 +119,17 @@ export function clearRecents() {
 }
 
 /**
+ * Clear recents by tree name prefix (e.g., 'docs/' or 'videos/')
+ */
+export function clearRecentsByPrefix(prefix: string) {
+  recentsStore.update(current => {
+    const filtered = current.filter(item => !item.treeName?.startsWith(prefix));
+    saveRecents(filtered);
+    return filtered;
+  });
+}
+
+/**
  * Get current recents synchronously
  */
 export function getRecentsSync(): RecentItem[] {

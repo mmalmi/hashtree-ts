@@ -6,7 +6,7 @@
    */
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../../nostr';
-  import { recentsStore, type RecentItem } from '../../stores/recents';
+  import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
   import { createTreesStore } from '../../stores';
   import { openCreateModal } from '../../stores/modals';
   import DocCard from './DocCard.svelte';
@@ -112,6 +112,19 @@
 
 <div class="flex-1 overflow-auto">
   <div class="max-w-4xl mx-auto p-6">
+    <!-- Header with clear button when there are recent docs -->
+    {#if recentDocs.length > 0}
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-text-1">Recent Documents</h2>
+        <button
+          class="btn-ghost text-xs text-text-3 hover:text-text-2"
+          onclick={() => clearRecentsByPrefix('docs/')}
+        >
+          Clear Recent
+        </button>
+      </div>
+    {/if}
+
     <!-- Documents grid with A4 aspect ratio cards -->
     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
       <!-- New Document card (only when logged in) -->
