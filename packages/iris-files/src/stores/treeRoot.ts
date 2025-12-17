@@ -171,10 +171,9 @@ let activeResolverKey: string | null = null;
 export function createTreeRootStore(): Readable<CID | null> {
   // Subscribe to route changes
   routeStore.subscribe(async (route) => {
-    // For permalinks, use CID from route
+    // For permalinks, use CID from route (already Uint8Array from nhashDecode)
     if (route.isPermalink && route.cid) {
-      const key = route.cid.key ? fromHex(route.cid.key) : undefined;
-      treeRootStore.set(cid(fromHex(route.cid.hash), key));
+      treeRootStore.set(route.cid);
 
       // Cleanup any active subscription
       if (activeUnsubscribe) {
@@ -303,8 +302,8 @@ function initializePermalink(): void {
 
   const route = parseRouteFromHash(window.location.hash);
   if (route.isPermalink && route.cid) {
-    const key = route.cid.key ? fromHex(route.cid.key) : undefined;
-    treeRootStore.set(cid(fromHex(route.cid.hash), key));
+    // route.cid is already a CID with Uint8Array fields from nhashDecode
+    treeRootStore.set(route.cid);
   }
 }
 
