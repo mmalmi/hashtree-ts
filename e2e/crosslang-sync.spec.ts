@@ -277,11 +277,21 @@ test.describe('Cross-Language Sync', () => {
       // ===== STEP 5: Request content via WebRTC =====
       console.log(`[TS] Requesting content: ${contentHash!.slice(0, 16)}...`);
 
-      const content = await page.evaluate(async (hash) => {
+      const content = await page.evaluate(async (hashHex) => {
         // Use window-exposed getter to get the actual store instance
         const getWebRTCStore = (window as any).__getWebRTCStore;
         const webrtcStore = getWebRTCStore?.();
         if (!webrtcStore?.get) return null;
+
+        // Convert hex string to Uint8Array
+        const hexToBytes = (hex: string): Uint8Array => {
+          const bytes = new Uint8Array(hex.length / 2);
+          for (let i = 0; i < bytes.length; i++) {
+            bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+          }
+          return bytes;
+        };
+        const hash = hexToBytes(hashHex);
 
         try {
           const result = await Promise.race([
