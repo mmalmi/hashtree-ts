@@ -160,6 +160,51 @@ test.describe('Iris Video App', () => {
     await page.screenshot({ path: 'e2e/screenshots/video-player-loaded.png' });
   });
 
+  test('can delete uploaded video', async ({ page }) => {
+    test.slow();
+
+    await page.goto('/video.html#/');
+    await disableOthersPool(page);
+    await ensureLoggedIn(page);
+
+    // Upload a video first
+    const uploadBtn = page.locator('button:has-text("Create")');
+    await expect(uploadBtn).toBeVisible({ timeout: 15000 });
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await uploadBtn.click();
+
+    await expect(page.getByRole('heading', { name: 'Upload Video' })).toBeVisible({ timeout: 30000 });
+
+    const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
+    const fileInput = page.locator('input[type="file"]');
+    await fileInput.setInputFiles(testVideoPath);
+
+    const videoTitle = `Delete Test ${Date.now()}`;
+    const titleInput = page.locator('input[placeholder="Video title"]');
+    await titleInput.fill(videoTitle);
+
+    await page.locator('.fixed button:has-text("Upload")').click();
+
+    // Wait for navigation to video page
+    await page.waitForURL(/\/video\.html#\/npub.*\/videos\//, { timeout: 60000 });
+
+    // Verify we're on the video page
+    await expect(page.locator(`text=${videoTitle}`)).toBeVisible({ timeout: 10000 });
+
+    // Click delete button
+    page.on('dialog', dialog => dialog.accept()); // Accept the confirm dialog
+    const deleteBtn = page.locator('button[title="Delete video"]');
+    await expect(deleteBtn).toBeVisible({ timeout: 5000 });
+    await deleteBtn.click();
+
+    // Should navigate back to home
+    await page.waitForURL('/video.html#/', { timeout: 10000 });
+
+    // Video should no longer appear in list
+    await expect(page.locator(`text=${videoTitle}`)).not.toBeVisible({ timeout: 5000 });
+  });
+
   test('profile page shows uploaded videos', async ({ page }) => {
     test.slow();
 
