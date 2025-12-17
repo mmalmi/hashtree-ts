@@ -249,7 +249,11 @@
   }
 
   function buildRecentHref(item: RecentItem): string {
-    const base = `#${item.path}`;
+    // Encode treeName in path: /npub/treeName -> /npub/encodedTreeName
+    const encodedPath = item.treeName
+      ? `/${item.npub}/${encodeURIComponent(item.treeName)}`
+      : item.path;
+    const base = `#${encodedPath}`;
     return item.linkKey ? `${base}?k=${item.linkKey}` : base;
   }
 
