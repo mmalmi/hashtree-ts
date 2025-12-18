@@ -242,6 +242,7 @@
         bind:this={mediaRef}
         controls
         autoplay
+        playsinline
         class="max-w-full max-h-full object-contain"
         class:invisible={loading || error}
         preload="metadata"

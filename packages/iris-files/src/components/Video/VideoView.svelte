@@ -323,6 +323,7 @@
         src={videoSrc}
         controls
         autoplay
+        playsinline
         class="w-full h-full"
         preload="metadata"
       >
