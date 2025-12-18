@@ -12,7 +12,7 @@
    */
   import { recentlyChangedFiles } from '../../stores/recentlyChanged';
   import { currentHash } from '../../stores';
-  import { toHex, type CID } from 'hashtree';
+  import type { CID } from 'hashtree';
   import { getCidFileUrl, getNpubFileUrl } from '../../lib/mediaUrl';
 
   interface Props {

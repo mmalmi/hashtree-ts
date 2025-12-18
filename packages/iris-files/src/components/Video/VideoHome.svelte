@@ -8,7 +8,6 @@
   import { ndk, nostrStore } from '../../nostr';
   import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
   import { createFollowsStore } from '../../stores';
-  import { openVideoUploadModal } from '../../stores/modals';
 
   // Default pubkey to use for fallback content (sirius)
   const DEFAULT_CONTENT_PUBKEY = '4523be58d395b1b196a9b8c82b038b6895cb02b683d0c253a955068dba1facd0';
@@ -22,7 +21,6 @@
   }
 
   // Get current user
-  let userNpub = $derived($nostrStore.npub);
   let userPubkey = $derived($nostrStore.pubkey);
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
 
@@ -60,7 +58,7 @@
   // Compute effective follows: user's follows + fallback if < threshold
   let effectiveFollows = $derived.by(() => {
     // Track fallbackVersion to force re-computation when fallback is fetched
-    const _v = fallbackVersion;
+    void fallbackVersion;
 
     // If user has enough follows, use them directly
     if (follows.length >= MIN_FOLLOWS_THRESHOLD) {
@@ -225,8 +223,9 @@
     };
   });
 
-  // Social graph feed - videos from users within follow distance
-  let socialGraphVideos = $state<VideoItem[]>([]);
+  // Social graph feed - videos from users within follow distance (reserved for future use)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for social graph expansion
+  let _socialGraphVideos = $state<VideoItem[]>([]);
   let feedPage = $state(0);
   let loadingMore = $state(false);
   const FEED_PAGE_SIZE = 12;
@@ -305,14 +304,7 @@
     return item.linkKey ? `${base}?k=${item.linkKey}` : base;
   }
 
-  function uploadVideo() {
-    if (!userNpub) {
-      alert('Please sign in to upload a video');
-      return;
-    }
-    openVideoUploadModal();
-  }
-</script>
+  </script>
 
 <div class="flex-1 overflow-auto">
   <div class="max-w-7xl mx-auto p-4 md:p-6">

@@ -31,7 +31,7 @@ declare global {
 }
 
 // Register service worker for PWA and file streaming
-const updateSW = registerSW({
+registerSW({
   immediate: true,
   onRegisteredSW(swUrl) {
     console.log('[SW] Registered:', swUrl);

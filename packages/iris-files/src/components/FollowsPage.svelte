@@ -31,7 +31,8 @@
     }
   });
 
-  let isOwnProfile = $derived(myPubkey === pubkeyHex);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for own-profile-specific UI
+  let _isOwnProfile = $derived(myPubkey === pubkeyHex);
 
   // Follows store for the viewed profile
   let profileFollowsStore = $derived(pubkeyHex ? createFollowsStore(pubkeyHex) : null);

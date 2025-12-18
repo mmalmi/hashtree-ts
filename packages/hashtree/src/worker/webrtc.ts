@@ -10,7 +10,7 @@
  */
 
 import type { Store, Hash } from '../types';
-import { toHex, fromHex } from '../types';
+import { toHex } from '../types';
 import { encode, decode } from '@msgpack/msgpack';
 import { getNostrManager } from './nostr';
 import { signWithEphemeralKey, getEphemeralPubkey } from './worker';
@@ -193,8 +193,6 @@ export class WebRTCManager {
    * Request data from peers
    */
   async get(hash: Hash): Promise<Uint8Array | null> {
-    const hashHex = toHex(hash);
-
     // Try connected peers
     for (const [, peer] of this.peers) {
       if (peer.connected && peer.dataChannel?.readyState === 'open') {

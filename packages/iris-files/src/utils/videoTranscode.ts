@@ -16,7 +16,7 @@ export function isTranscodingSupported(): boolean {
 /**
  * Check if a file can be transcoded
  */
-export function canTranscode(file: File): { ok: boolean; reason?: string } {
+export function canTranscode(_file: File): { ok: boolean; reason?: string } {
   if (!isTranscodingSupported()) {
     return { ok: false, reason: 'SharedArrayBuffer not available (requires cross-origin isolation)' };
   }

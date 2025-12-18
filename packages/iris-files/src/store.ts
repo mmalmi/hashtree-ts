@@ -88,7 +88,7 @@ function loadLifetimeStats(): LifetimeStats {
   };
 }
 
-let lifetimeStats = loadLifetimeStats();
+const lifetimeStats = loadLifetimeStats();
 
 function saveLifetimeStats(): void {
   try {

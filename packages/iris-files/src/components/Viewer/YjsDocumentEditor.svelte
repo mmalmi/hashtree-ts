@@ -239,7 +239,7 @@
   }
 
   // No longer needed - images are loaded via /htree/ URLs on demand
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   async function loadDocumentImages(): Promise<void> {
     // Images are now loaded via SW URLs, no preloading needed
   }

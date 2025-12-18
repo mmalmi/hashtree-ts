@@ -211,7 +211,6 @@ function createNpubFileResponse(
   rangeHeader: string | null
 ): Promise<Response> {
   const id = `file_${++requestId}`;
-  const fullPath = filePath ? `${treeName}/${filePath}` : treeName;
   const mimeType = guessMimeType(filePath || treeName);
 
   let start = 0;

@@ -5,7 +5,7 @@
    *
    * Uses Service Worker streaming via /htree/ URLs (no blob URLs!)
    */
-  import { onMount, untrack } from 'svelte';
+  import { untrack } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { getTree } from '../../store';
   import { ndk, nostrStore } from '../../nostr';
@@ -16,14 +16,14 @@
   import { updateLocalRootCacheHex } from '../../treeRootCache';
   import { addRecent } from '../../stores/recents';
   import { Avatar, Name } from '../User';
-  import { BackButton, Truncate } from '../ui';
+  import { Truncate } from '../ui';
   import VisibilityIcon from '../VisibilityIcon.svelte';
   import VideoComments from './VideoComments.svelte';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
   import type { CID, LinkType } from 'hashtree';
   import { toHex, nhashEncode } from 'hashtree';
   import { getNpubFileUrl, getNhashFileUrl } from '../../lib/mediaUrl';
-  import { NDKEvent, type NDKFilter, type NDKSubscription } from '@nostr-dev-kit/ndk';
+  import { NDKEvent, type NDKFilter } from '@nostr-dev-kit/ndk';
 
   let deleting = $state(false);
   let editing = $state(false);
@@ -312,16 +312,7 @@
     }
   }
 
-  function formatDuration(seconds: number): string {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    if (h > 0) {
-      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    }
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  }
-
+  
   // Video identifier for reactions (npub/treeName format)
   let videoIdentifier = $derived(npub && treeName ? `${npub}/${treeName}` : null);
 

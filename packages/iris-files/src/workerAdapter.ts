@@ -176,7 +176,7 @@ export class WorkerAdapter {
     this.worker = null;
 
     // Reject all pending requests
-    for (const [id, pending] of this.pendingRequests) {
+    for (const pending of this.pendingRequests.values()) {
       pending.reject(new Error('Worker crashed'));
     }
     this.pendingRequests.clear();
@@ -410,7 +410,6 @@ export class WorkerAdapter {
     const id = generateRequestId();
     const chunks: Uint8Array[] = [];
     let done = false;
-    let error: Error | null = null;
     let resolveNext: (() => void) | null = null;
 
     this.streamCallbacks.set(id, (chunk, isDone) => {
@@ -423,7 +422,7 @@ export class WorkerAdapter {
 
     this.postMessage({ type: 'readFileStream', id, cid });
 
-    while (!done && !error) {
+    while (!done) {
       if (chunks.length > 0) {
         yield chunks.shift()!;
       } else {

@@ -38,7 +38,6 @@
   }: Props = $props();
 
   let hasError = $state(false);
-  let isLoading = $state(true);
 
   // Get imgproxy config from settings
   let imgproxySettings = $derived($settingsStore.imgproxy);

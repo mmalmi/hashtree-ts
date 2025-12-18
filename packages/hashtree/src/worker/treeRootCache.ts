@@ -10,7 +10,7 @@
  * - Value: MessagePack { hash, key?, visibility, updatedAt }
  */
 
-import type { CID, Hash } from '../types';
+import type { CID } from '../types';
 import { sha256 } from '../hash';
 import { encode, decode } from '@msgpack/msgpack';
 import type { OpfsStore } from '../store/opfs';

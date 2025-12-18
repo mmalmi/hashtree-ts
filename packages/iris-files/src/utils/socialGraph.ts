@@ -122,7 +122,6 @@ export const useSocialGraphStore = socialGraphStore;
 // Initialization
 // ============================================================================
 
-let isInitialized = false;
 let resolveLoaded: ((value: boolean) => void) | null = null;
 
 export const socialGraphLoaded = new Promise<boolean>((resolve) => {
@@ -296,7 +295,7 @@ export function getGraphSize(): number {
 /**
  * Get users at a specific follow distance
  */
-export function getUsersByFollowDistance(distance: number): Set<string> {
+export function getUsersByFollowDistance(_distance: number): Set<string> {
   // This is rarely used in hot paths, return empty and let caller handle async if needed
   return new Set();
 }

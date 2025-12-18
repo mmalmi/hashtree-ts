@@ -3,8 +3,7 @@
    * VideoUploadModal - Upload video files with metadata
    * Transcodes non-webm/mp4 files to WebM using FFmpeg WASM (lazy-loaded)
    */
-  import { onMount } from 'svelte';
-  import { modalsStore, closeVideoUploadModal } from '../../stores/modals';
+    import { modalsStore, closeVideoUploadModal } from '../../stores/modals';
   import { nostrStore, saveHashtree } from '../../nostr';
   import { toHex } from 'hashtree';
   import { getTree } from '../../store';
@@ -142,7 +141,7 @@
       const treeName = `videos/${title.trim()}`;
 
       let videoFileName: string;
-      let mimeType: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- CID type from hashtree
       let videoResult: { cid: any; size: number };
 
       // Public: content is unencrypted (anyone with hash can read)
@@ -205,7 +204,6 @@
 
         const ext = selectedFile.name.split('.').pop()?.toLowerCase() || 'webm';
         videoFileName = `video.${ext}`;
-        mimeType = selectedFile.type || `video/${ext}`;
         progress = 70;
       }
 

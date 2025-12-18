@@ -28,7 +28,8 @@ import type { EventTemplate } from 'nostr-tools';
 // Worker state
 let tree: HashTree | null = null;
 let store: OpfsStore | null = null;
-let config: WorkerConfig | null = null;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- stored for future config access
+let _config: WorkerConfig | null = null;
 let mediaPort: MessagePort | null = null;
 
 // Ephemeral identity for WebRTC signaling (generated fresh each session)
@@ -159,7 +160,7 @@ function respondWithTransfer(msg: WorkerResponse, transfer: Transferable[]) {
 
 async function handleInit(id: string, cfg: WorkerConfig) {
   try {
-    config = cfg;
+    _config = cfg;
 
     // Initialize OPFS store
     const storeName = cfg.storeName || 'hashtree';
@@ -215,7 +216,7 @@ async function handleClose(id: string) {
   clearMemoryCache();
   store = null;
   tree = null;
-  config = null;
+  _config = null;
   ephemeralSecretKey = null;
   ephemeralPubkey = null;
   respond({ type: 'void', id });
