@@ -117,7 +117,28 @@
 
     mediaRef.addEventListener('error', (e) => {
       console.error('[MediaPlayer] Error:', e);
-      error = 'Failed to load media';
+      // Get more specific error message from MediaError
+      const mediaError = mediaRef?.error;
+      if (mediaError) {
+        switch (mediaError.code) {
+          case MediaError.MEDIA_ERR_ABORTED:
+            error = 'Playback aborted';
+            break;
+          case MediaError.MEDIA_ERR_NETWORK:
+            error = 'Network error while loading media';
+            break;
+          case MediaError.MEDIA_ERR_DECODE:
+            error = 'Unable to play: codec not supported by your browser';
+            break;
+          case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+            error = 'Media format not supported by your browser';
+            break;
+          default:
+            error = mediaError.message || 'Failed to load media';
+        }
+      } else {
+        error = 'Failed to load media';
+      }
       loading = false;
     }, { once: true });
 

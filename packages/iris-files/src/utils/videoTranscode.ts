@@ -24,12 +24,142 @@ export function canTranscode(file: File): { ok: boolean; reason?: string } {
 }
 
 /**
- * Check if a file needs transcoding (non-webm/mp4)
+ * Formats that browsers can generally play natively
+ * Note: Even mp4 can contain unsupported codecs (HEVC on some browsers)
+ */
+const BROWSER_PLAYABLE_EXTENSIONS = new Set(['mp4', 'webm', 'm4v']);
+
+/**
+ * Formats that definitely need transcoding
+ */
+const NEEDS_TRANSCODING_EXTENSIONS = new Set([
+  'mov',    // QuickTime - often contains HEVC or ProRes
+  'mkv',    // Matroska - no browser support
+  'avi',    // AVI - no browser support
+  'wmv',    // Windows Media - no browser support
+  'flv',    // Flash Video - no browser support
+  'ogv',    // Ogg Video - limited support
+  '3gp',    // 3GPP - limited support
+  'ts',     // MPEG Transport Stream
+  'mts',    // AVCHD
+  'm2ts',   // Blu-ray
+  'vob',    // DVD
+  'divx',   // DivX
+  'xvid',   // XviD
+  'asf',    // Advanced Systems Format
+  'rm',     // RealMedia
+  'rmvb',   // RealMedia Variable Bitrate
+]);
+
+/**
+ * Check if a file needs transcoding based on extension
+ * Returns true for formats browsers can't play natively
  */
 export function needsTranscoding(file: File): boolean {
   const ext = file.name.split('.').pop()?.toLowerCase();
-  if (ext === 'webm' || ext === 'mp4') return false;
+
+  // No extension or unknown - needs transcoding to be safe
+  if (!ext) return true;
+
+  // Known problematic formats - definitely need transcoding
+  if (NEEDS_TRANSCODING_EXTENSIONS.has(ext)) return true;
+
+  // Known playable formats - no transcoding needed
+  if (BROWSER_PLAYABLE_EXTENSIONS.has(ext)) return false;
+
+  // Unknown extension - assume needs transcoding
   return true;
+}
+
+/**
+ * Get human-readable info about why a format might not play
+ */
+export function getFormatInfo(fileName: string): { playable: boolean; reason?: string } {
+  const ext = fileName.split('.').pop()?.toLowerCase();
+
+  if (!ext) {
+    return { playable: false, reason: 'Unknown format (no file extension)' };
+  }
+
+  if (NEEDS_TRANSCODING_EXTENSIONS.has(ext)) {
+    const formatNames: Record<string, string> = {
+      mov: 'QuickTime',
+      mkv: 'Matroska',
+      avi: 'AVI',
+      wmv: 'Windows Media',
+      flv: 'Flash Video',
+    };
+    return {
+      playable: false,
+      reason: `${formatNames[ext] || ext.toUpperCase()} format is not supported by browsers`
+    };
+  }
+
+  if (BROWSER_PLAYABLE_EXTENSIONS.has(ext)) {
+    return { playable: true };
+  }
+
+  return { playable: false, reason: `Unknown format (.${ext})` };
+}
+
+/**
+ * Codecs that browsers generally cannot play
+ */
+const UNSUPPORTED_CODECS = new Set([
+  'hevc', 'h265',     // HEVC/H.265 - limited Safari support, no Chrome/Firefox
+  'vp9',              // VP9 in mp4 - Safari doesn't support
+  'av1',              // AV1 - limited support
+  'prores',           // ProRes - Apple professional codec
+  'dnxhd', 'dnxhr',   // Avid DNx codecs
+  'mjpeg',            // Motion JPEG
+  'mpeg2video',       // MPEG-2
+  'mpeg4',            // MPEG-4 Part 2 (DivX/XviD)
+  'msmpeg4v3',        // MS MPEG-4
+  'wmv1', 'wmv2', 'wmv3', // Windows Media Video
+  'rv10', 'rv20', 'rv30', 'rv40', // RealVideo
+]);
+
+/**
+ * Probe video file to detect codec
+ * Returns codec info without full transcoding
+ */
+export async function probeVideoCodec(file: File): Promise<{
+  videoCodec?: string;
+  audioCodec?: string;
+  needsTranscoding: boolean;
+  reason?: string;
+}> {
+  // Quick extension check first
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  if (ext && NEEDS_TRANSCODING_EXTENSIONS.has(ext)) {
+    return {
+      needsTranscoding: true,
+      reason: `${ext.toUpperCase()} format needs transcoding`
+    };
+  }
+
+  // For mp4/webm, we could probe codec but it requires loading FFmpeg
+  // For now, return based on extension - codec probe is expensive
+  if (ext && BROWSER_PLAYABLE_EXTENSIONS.has(ext)) {
+    return { needsTranscoding: false };
+  }
+
+  return {
+    needsTranscoding: true,
+    reason: 'Unknown format'
+  };
+}
+
+/**
+ * Check if a video codec is browser-playable
+ */
+export function isCodecSupported(codec: string): boolean {
+  const normalized = codec.toLowerCase();
+  if (UNSUPPORTED_CODECS.has(normalized)) return false;
+
+  // Known supported codecs
+  const supported = ['h264', 'avc1', 'vp8', 'aac', 'mp3', 'opus', 'vorbis'];
+  return supported.some(s => normalized.includes(s));
 }
 
 /**
