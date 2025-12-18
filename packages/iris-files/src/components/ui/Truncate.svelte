@@ -18,6 +18,9 @@
   let lines = $derived(text.split('\n'));
   let needsTruncation = $derived(lines.length > maxLines || text.length > maxChars);
 
+  // Show top button when expanded and content is really long
+  let showTopButton = $derived(expanded && (lines.length > maxLines * 2 || text.length > maxChars * 2));
+
   // Truncated text
   let displayText = $derived.by(() => {
     if (expanded || !needsTruncation) return text;
@@ -42,6 +45,14 @@
 </script>
 
 <div class={className}>
+  {#if showTopButton}
+    <button
+      onclick={() => expanded = false}
+      class="text-accent hover:underline text-sm mb-2"
+    >
+      Show less
+    </button>
+  {/if}
   <p class="whitespace-pre-wrap break-words">{displayText}{#if isTruncated}...{/if}</p>
   {#if needsTruncation}
     <button
