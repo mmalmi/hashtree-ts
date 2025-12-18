@@ -16,7 +16,7 @@
   import { updateLocalRootCacheHex } from '../../treeRootCache';
   import { addRecent } from '../../stores/recents';
   import { Avatar, Name } from '../User';
-  import { BackButton } from '../ui';
+  import { BackButton, Truncate } from '../ui';
   import VisibilityIcon from '../VisibilityIcon.svelte';
   import VideoComments from './VideoComments.svelte';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
@@ -543,8 +543,8 @@
 
         <!-- Description -->
         {#if videoDescription}
-          <div class="bg-surface-1 rounded-lg p-4 text-text-2 text-sm whitespace-pre-wrap">
-            {videoDescription}
+          <div class="bg-surface-1 rounded-lg p-4 text-text-2 text-sm">
+            <Truncate text={videoDescription} maxLines={4} maxChars={400} />
           </div>
         {/if}
       {/if}
