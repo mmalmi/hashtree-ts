@@ -82,11 +82,8 @@ function handleSwMessage(event: MessageEvent): void {
  * Handle a file request from the service worker
  */
 async function handleFileRequest(request: FileRequest, port: MessagePort): Promise<void> {
-  const { npub, nhash, treeName, path, start, end, mimeType, download } = request;
-
-  console.log('[SwFileHandler] File request:', { npub, nhash, treeName, path, start, end });
-
   try {
+    const { npub, nhash, treeName, path, start, end, mimeType, download } = request;
     // Resolve the CID
     let cid: CID | null = null;
 
@@ -104,20 +101,17 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       if (localHash) {
         const localKey = getLocalRootKey(npub, treeName);
         rootCid = { hash: localHash, key: localKey };
-        console.log('[SwFileHandler] Using local cache for', npub.slice(0, 20), treeName);
       } else {
         // First try sync cache (for already-resolved trees)
         rootCid = getTreeRootSync(npub, treeName);
 
         // If not in cache, wait for resolver to fetch from network
         if (!rootCid) {
-          console.log('[SwFileHandler] Waiting for tree root from resolver:', npub.slice(0, 20), treeName);
           rootCid = await waitForTreeRoot(npub, treeName, 30000);
         }
       }
 
       if (!rootCid) {
-        console.error('[SwFileHandler] Tree not found:', npub, treeName, '- no local or subscription cache');
         port.postMessage({
           status: 404,
           headers: { 'Content-Type': 'text/plain' },
@@ -181,8 +175,11 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       headers['Content-Disposition'] = `attachment; filename="${filename}"`;
     }
 
+    // Safari requires 206 Partial Content for ANY range request, not just start > 0
+    // If end is specified (even bytes=0-1), it's a range request
     let status = 200;
-    if (start !== undefined && start > 0) {
+    const isRangeRequest = end !== undefined || (start !== undefined && start > 0);
+    if (isRangeRequest) {
       status = 206;
       headers['Content-Range'] = `bytes ${rangeStart}-${rangeEnd}/${totalSize}`;
     }

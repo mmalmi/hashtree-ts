@@ -8,11 +8,22 @@ import { setupSwFileHandler } from './lib/swFileHandler';
 registerSW({
   immediate: true,
   onRegistered(r) {
-    console.log('SW registered:', r);
+    console.log('[SW] registered:', r);
+    // Log SW controller status for debugging iOS Safari
+    if (navigator.serviceWorker.controller) {
+      console.log('[SW] Controller active:', navigator.serviceWorker.controller.state);
+    } else {
+      console.warn('[SW] No controller yet - page may need reload for SW to control it');
+    }
   },
   onRegisterError(error) {
-    console.error('SW registration error:', error);
+    console.error('[SW] registration error:', error);
   },
+});
+
+// Monitor SW controller changes
+navigator.serviceWorker?.addEventListener('controllerchange', () => {
+  console.log('[SW] Controller changed, new controller:', navigator.serviceWorker.controller?.state);
 });
 
 // Set up handler for SW file requests
