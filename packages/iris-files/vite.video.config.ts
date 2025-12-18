@@ -153,7 +153,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ['wasm-git'],
+    exclude: ['wasm-git', '@ffmpeg/ffmpeg', '@ffmpeg/util'],
   },
   assetsInclude: ['**/*.wasm'],
 });

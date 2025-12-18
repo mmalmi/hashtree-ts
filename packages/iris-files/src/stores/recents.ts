@@ -68,17 +68,25 @@ export const recentsStore = writable<RecentItem[]>(loadRecents());
 
 /**
  * Add or update a recent item
- * Moves existing items to top, deduplicates by path
+ * Moves existing items to top, deduplicates by normalized path
  */
 export function addRecent(item: Omit<RecentItem, 'timestamp'>) {
-  const newItem: RecentItem = { ...item, timestamp: Date.now() };
+  // Normalize Unicode to avoid duplicates from different representations (e.g., ä vs a+combining)
+  const normalizedItem: RecentItem = {
+    ...item,
+    path: item.path.normalize('NFC'),
+    treeName: item.treeName?.normalize('NFC'),
+    label: item.label.normalize('NFC'),
+    timestamp: Date.now(),
+  };
 
   recentsStore.update(current => {
-    // Remove existing item with same path
-    const filtered = current.filter(r => r.path !== item.path);
+    // Remove existing item with same normalized path
+    const normalizedPath = normalizedItem.path;
+    const filtered = current.filter(r => r.path.normalize('NFC') !== normalizedPath);
 
     // Add to front, trim to max
-    const updated = [newItem, ...filtered].slice(0, MAX_RECENTS);
+    const updated = [normalizedItem, ...filtered].slice(0, MAX_RECENTS);
     saveRecents(updated);
     return updated;
   });

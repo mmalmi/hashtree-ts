@@ -29,7 +29,7 @@
   // Track loading state for follows
   let followsLoading = $state(true);
 
-  // Get recents and filter to only videos
+  // Get recents and filter to only videos, deduped by normalized href
   let recents = $derived($recentsStore);
   let recentVideos = $derived(
     recents
@@ -44,6 +44,7 @@
         href: buildRecentHref(r),
         timestamp: r.timestamp,
       } as VideoItem))
+      .filter((v, i, arr) => arr.findIndex(x => x.href.normalize('NFC') === v.href.normalize('NFC')) === i)
       .slice(0, 10)
   );
 
@@ -295,8 +296,10 @@
 
   function buildRecentHref(item: RecentItem): string {
     // Encode treeName in path: /npub/treeName -> /npub/encodedTreeName
-    const encodedPath = item.treeName
-      ? `/${item.npub}/${encodeURIComponent(item.treeName)}`
+    // Normalize Unicode to avoid duplicates from different representations (e.g., ä vs a+combining)
+    const normalizedTreeName = item.treeName?.normalize('NFC');
+    const encodedPath = normalizedTreeName
+      ? `/${item.npub}/${encodeURIComponent(normalizedTreeName)}`
       : item.path;
     const base = `#${encodedPath}`;
     return item.linkKey ? `${base}?k=${item.linkKey}` : base;

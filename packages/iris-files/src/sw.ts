@@ -283,6 +283,27 @@ function createNhashFileResponse(
 }
 
 /**
+ * Add COOP/COEP headers to enable SharedArrayBuffer for FFmpeg WASM
+ * Uses 'credentialless' COEP mode to allow cross-origin images without CORP headers
+ */
+function addCrossOriginHeaders(response: Response): Response {
+  // Don't modify opaque responses or redirects
+  if (response.type === 'opaque' || response.type === 'opaqueredirect') {
+    return response;
+  }
+
+  const newHeaders = new Headers(response.headers);
+  newHeaders.set('Cross-Origin-Embedder-Policy', 'credentialless');
+  newHeaders.set('Cross-Origin-Opener-Policy', 'same-origin');
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
+}
+
+/**
  * Intercept fetch requests
  */
 self.addEventListener('fetch', (event: FetchEvent) => {
@@ -296,6 +317,23 @@ self.addEventListener('fetch', (event: FetchEvent) => {
 
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
+
+  // For same-origin requests, add COOP/COEP headers
+  // This enables SharedArrayBuffer for FFmpeg WASM transcoding
+  // Apply to navigation (HTML) and same-origin workers/scripts
+  if (url.origin === self.location.origin) {
+    // Navigation and workers need headers for cross-origin isolation
+    const needsHeaders = event.request.mode === 'navigate' ||
+      event.request.destination === 'worker' ||
+      event.request.destination === 'sharedworker';
+
+    if (needsHeaders) {
+      event.respondWith(
+        fetch(event.request).then(addCrossOriginHeaders)
+      );
+      return;
+    }
+  }
 
   // All hashtree routes start with /htree/
   if (pathParts[0] !== 'htree') return;

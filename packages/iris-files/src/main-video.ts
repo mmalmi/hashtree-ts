@@ -46,6 +46,24 @@ async function init() {
         return;
       }
     }
+
+    // Check if cross-origin isolated (needed for SharedArrayBuffer/FFmpeg)
+    // SW adds COOP/COEP headers, but we need to reload for them to take effect
+    // Only reload once to avoid infinite loop if SW headers don't work
+    const coiReloadKey = 'coi-reload-attempted';
+    if (navigator.serviceWorker.controller && !self.crossOriginIsolated) {
+      if (!sessionStorage.getItem(coiReloadKey)) {
+        sessionStorage.setItem(coiReloadKey, '1');
+        console.log('[SW] Not cross-origin isolated, reloading for COOP/COEP headers...');
+        window.location.reload();
+        return;
+      } else {
+        console.log('[SW] Cross-origin isolation not available after reload - FFmpeg transcoding disabled');
+      }
+    } else if (self.crossOriginIsolated) {
+      // Clear the flag if we successfully got isolation
+      sessionStorage.removeItem(coiReloadKey);
+    }
   }
 
   // Set up handler for SW file requests

@@ -267,19 +267,21 @@ export function waitForTreeRoot(
     }
 
     let resolved = false;
+    let unsub: (() => void) | null = null;
+
     const timeout = setTimeout(() => {
       if (!resolved) {
         resolved = true;
-        unsub();
+        unsub?.();
         resolve(null);
       }
     }, timeoutMs);
 
-    const unsub = subscribeToTreeRoot(npub, treeName, (hash, encryptionKey) => {
+    unsub = subscribeToTreeRoot(npub, treeName, (hash, encryptionKey) => {
       if (!resolved && hash) {
         resolved = true;
         clearTimeout(timeout);
-        unsub();
+        unsub?.();
         resolve(cid(hash, encryptionKey));
       }
     });

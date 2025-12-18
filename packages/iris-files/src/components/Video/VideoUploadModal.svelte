@@ -10,7 +10,7 @@
   import { getTree } from '../../store';
   import { addRecent } from '../../stores/recents';
   import { storeLinkKey } from '../../stores/trees';
-  import { needsTranscoding, transcodeToWebM, isTranscodingSupported, type TranscodeProgress } from '../../utils/videoTranscode';
+  import { needsTranscoding, transcodeToMP4Streaming, isTranscodingSupported, canTranscode, type TranscodeProgress } from '../../utils/videoTranscode';
 
   let showModal = $derived($modalsStore.showVideoUploadModal);
 
@@ -40,6 +40,7 @@
   let thumbnailBlob = $state<Blob | null>(null);
   let willTranscode = $state(false);
   let transcodeSupported = $state(true);
+  let transcodeError = $state<string | null>(null);
   let visibility = $state<'public' | 'unlisted' | 'private'>('public');
 
   function handleFileSelect(e: Event) {
@@ -50,6 +51,14 @@
     selectedFile = file;
     willTranscode = needsTranscoding(file);
     transcodeSupported = isTranscodingSupported();
+
+    // Check if transcoding is possible (size limits, etc.)
+    if (willTranscode) {
+      const check = canTranscode(file);
+      transcodeError = check.ok ? null : (check.reason || 'Cannot transcode');
+    } else {
+      transcodeError = null;
+    }
 
     // Default title from filename (without extension)
     if (!title) {
@@ -132,49 +141,75 @@
       const tree = getTree();
       const treeName = `videos/${title.trim()}`;
 
-      let videoData: Uint8Array;
       let videoFileName: string;
       let mimeType: string;
+      let videoResult: { cid: any; size: number };
+
+      // Public: content is unencrypted (anyone with hash can read)
+      // Unlisted/Private: content is encrypted (key needed to read)
+      const isPublic = visibility === 'public';
 
       // Check if transcoding is needed
       if (willTranscode) {
         progressMessage = 'Loading encoder...';
         progress = 5;
 
-        const result = await transcodeToWebM(selectedFile, (p: TranscodeProgress) => {
-          progressMessage = p.message;
-          if (p.percent !== undefined) {
-            // Transcoding is 5-50% of total progress
-            progress = 5 + Math.round(p.percent * 0.45);
-          }
-        });
+        // Use streaming transcode - writes chunks directly to hashtree
+        const streamWriter = tree.createStream({ public: isPublic });
 
-        videoData = result.data;
+        const result = await transcodeToMP4Streaming(
+          selectedFile,
+          async (chunk: Uint8Array) => {
+            await streamWriter.append(chunk);
+          },
+          (p: TranscodeProgress) => {
+            progressMessage = p.message;
+            if (p.percent !== undefined) {
+              // Transcoding is 5-70% of total progress
+              progress = 5 + Math.round(p.percent * 0.65);
+            }
+          }
+        );
+
+        const finalResult = await streamWriter.finalize();
+        videoResult = {
+          cid: { hash: finalResult.hash, key: finalResult.key },
+          size: finalResult.size
+        };
         videoFileName = `video.${result.extension}`;
         mimeType = result.mimeType;
-        progress = 50;
+        progress = 75;
       } else {
         progressMessage = 'Reading file...';
         progress = 10;
-        videoData = new Uint8Array(await selectedFile.arrayBuffer());
+
+        // For non-transcoded files, use streaming upload in chunks
+        const streamWriter = tree.createStream({ public: isPublic });
+        const chunkSize = 1024 * 1024; // 1MB chunks
+
+        for (let offset = 0; offset < selectedFile.size; offset += chunkSize) {
+          const chunk = selectedFile.slice(offset, Math.min(offset + chunkSize, selectedFile.size));
+          const data = new Uint8Array(await chunk.arrayBuffer());
+          await streamWriter.append(data);
+
+          const pct = Math.round((offset / selectedFile.size) * 100);
+          progressMessage = `Uploading: ${Math.round(offset / 1024 / 1024)}MB / ${Math.round(selectedFile.size / 1024 / 1024)}MB`;
+          progress = 10 + Math.round(pct * 0.55); // 10-65%
+        }
+
+        const finalResult = await streamWriter.finalize();
+        videoResult = {
+          cid: { hash: finalResult.hash, key: finalResult.key },
+          size: finalResult.size
+        };
+
         const ext = selectedFile.name.split('.').pop()?.toLowerCase() || 'webm';
         videoFileName = `video.${ext}`;
         mimeType = selectedFile.type || `video/${ext}`;
-        progress = 50;
+        progress = 70;
       }
 
-      progressMessage = 'Uploading video...';
-      progress = 55;
-
-      // Public: content is unencrypted (anyone with hash can read)
-      // Unlisted/Private: content is encrypted (key needed to read)
-      // The difference between unlisted and private is how the key is shared in Nostr:
-      // - Unlisted: key is encrypted with a link key (shareable link)
-      // - Private: key is encrypted to self only
-      const isPublic = visibility === 'public';
-
-      // Upload video file
-      const videoResult = await tree.putFile(videoData, { public: isPublic });
+      progressMessage = 'Saving metadata...';
       progress = 75;
 
       // Prepare directory entries
