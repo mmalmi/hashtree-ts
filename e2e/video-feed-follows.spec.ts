@@ -30,6 +30,8 @@ test.describe('Video Feed - Sirius Follows', () => {
     // Fallback follows are now fetched directly from nostr kind 3 events.
     await page.goto('/video.html#/');
     await disableOthersPool(page);
+    // Wait for SW to initialize and potential COI reload to complete
+    await page.waitForTimeout(3000);
 
     // Login as new user (no follows - will trigger fallback to sirius)
     const newBtn = page.getByRole('button', { name: /New/i });
@@ -248,6 +250,8 @@ test.describe('Video Feed - Sirius Follows', () => {
     // from nostr events, not via the social graph worker
     await page.goto('/video.html#/');
     await disableOthersPool(page);
+    // Wait for SW to initialize and potential COI reload to complete
+    await page.waitForTimeout(3000);
 
     // Login as new user
     const newBtn = page.getByRole('button', { name: /New/i });
@@ -291,6 +295,8 @@ test.describe('Video Feed - Sirius Follows', () => {
   test('debug: trace follow list fetching', async ({ page }) => {
     // Add console logging to trace the issue
     await page.goto('/video.html#/');
+    // Wait for SW to initialize and potential COI reload to complete
+    await page.waitForTimeout(3000);
 
     // Capture console logs
     const logs: string[] = [];
