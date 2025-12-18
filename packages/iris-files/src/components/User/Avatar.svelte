@@ -3,6 +3,7 @@
   import { animalName } from '../../utils/animalName';
   import Minidenticon from './Minidenticon.svelte';
   import Badge from './Badge.svelte';
+  import ProxyImg from '../ProxyImg.svelte';
 
   interface Props {
     pubkey: string;
@@ -34,19 +35,22 @@
 
   let badgeSize = $derived(getBadgeSize(size));
   let hasPicture = $derived(profile?.picture && !imgError);
+  // Request 2x size for retina displays
+  let proxySize = $derived(size * 2);
 </script>
 
 {#if showBadge}
   <div class="relative inline-block">
     {#if hasPicture}
-      <img
+      <ProxyImg
         src={profile!.picture}
         alt={name}
-        title={name}
-        width={size}
-        height={size}
+        width={proxySize}
+        height={proxySize}
+        square={true}
         class="rounded-full object-cover {className}"
         onerror={() => (imgError = true)}
+        style="width: {size}px; height: {size}px;"
       />
     {:else}
       <div title={name}>
@@ -60,14 +64,15 @@
     />
   </div>
 {:else if hasPicture}
-  <img
+  <ProxyImg
     src={profile!.picture}
     alt={name}
-    title={name}
-    width={size}
-    height={size}
+    width={proxySize}
+    height={proxySize}
+    square={true}
     class="rounded-full object-cover {className}"
     onerror={() => (imgError = true)}
+    style="width: {size}px; height: {size}px;"
   />
 {:else}
   <div title={name}>

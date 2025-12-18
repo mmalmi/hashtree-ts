@@ -9,7 +9,7 @@
   import { appStore, formatBytes, formatBandwidth, updateStorageStats, refreshWebRTCStats, getLifetimeStats } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { syncedStorageStore, refreshSyncedStorage } from '../stores/chunkMetadata';
-  import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../stores/settings';
+  import { settingsStore, DEFAULT_NETWORK_SETTINGS, DEFAULT_IMGPROXY_SETTINGS } from '../stores/settings';
   import { blossomLogStore } from '../stores/blossomLog';
   import { BackButton } from './ui';
   import { UserRow } from './User';
@@ -75,6 +75,10 @@
   let newBlossomUrl = $state('');
   let editingRelays = $state(false);
   let editingBlossom = $state(false);
+  let editingImgproxy = $state(false);
+
+  // Imgproxy settings
+  let imgproxySettings = $derived($settingsStore.imgproxy);
 
   // Pool settings
   let poolSettings = $derived($settingsStore.pools);
@@ -442,6 +446,98 @@
             {/each}
           </div>
         </div>
+      {/if}
+    </div>
+
+    <!-- Image Proxy -->
+    <div>
+      <div class="flex items-center justify-between mb-1">
+        <h3 class="text-xs font-medium text-muted uppercase tracking-wide">
+          Image Proxy
+        </h3>
+        <button
+          onclick={() => editingImgproxy = !editingImgproxy}
+          class="btn-ghost text-xs text-accent"
+        >
+          {editingImgproxy ? 'Done' : 'Edit'}
+        </button>
+      </div>
+      <p class="text-xs text-text-3 mb-3">Proxy external images for privacy and performance</p>
+      <div class="bg-surface-2 rounded divide-y divide-surface-3">
+        <!-- Enabled toggle -->
+        <div class="flex items-center justify-between p-3">
+          <span class="text-sm text-text-1">Enabled</span>
+          <button
+            onclick={() => settingsStore.setImgproxySettings({ enabled: !imgproxySettings.enabled })}
+            class="relative w-11 h-6 rounded-full transition-colors {imgproxySettings.enabled ? 'bg-accent' : 'bg-surface-3'}"
+            aria-checked={imgproxySettings.enabled}
+            role="switch"
+          >
+            <span
+              class="absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform shadow-sm {imgproxySettings.enabled ? 'translate-x-5' : 'translate-x-0'}"
+            ></span>
+          </button>
+        </div>
+        {#if editingImgproxy}
+          <!-- URL -->
+          <div class="p-3">
+            <label class="flex flex-col gap-1">
+              <span class="text-xs text-text-3">Proxy URL</span>
+              <input
+                type="url"
+                value={imgproxySettings.url}
+                oninput={(e) => settingsStore.setImgproxySettings({ url: e.currentTarget.value })}
+                placeholder={DEFAULT_IMGPROXY_SETTINGS.url}
+                class="input text-sm"
+              />
+            </label>
+          </div>
+          <!-- Key -->
+          <div class="p-3">
+            <label class="flex flex-col gap-1">
+              <span class="text-xs text-text-3">Key (hex)</span>
+              <input
+                type="text"
+                value={imgproxySettings.key}
+                oninput={(e) => settingsStore.setImgproxySettings({ key: e.currentTarget.value })}
+                placeholder={DEFAULT_IMGPROXY_SETTINGS.key.slice(0, 16) + '...'}
+                class="input text-sm font-mono"
+              />
+            </label>
+          </div>
+          <!-- Salt -->
+          <div class="p-3">
+            <label class="flex flex-col gap-1">
+              <span class="text-xs text-text-3">Salt (hex)</span>
+              <input
+                type="text"
+                value={imgproxySettings.salt}
+                oninput={(e) => settingsStore.setImgproxySettings({ salt: e.currentTarget.value })}
+                placeholder={DEFAULT_IMGPROXY_SETTINGS.salt.slice(0, 16) + '...'}
+                class="input text-sm font-mono"
+              />
+            </label>
+          </div>
+        {:else}
+          <!-- Show current settings when not editing -->
+          <div class="p-3 text-sm">
+            <span class="text-text-3">URL: </span>
+            <span class="text-text-1">{imgproxySettings.url}</span>
+          </div>
+          <div class="p-3 text-sm">
+            <span class="text-text-3">Key: </span>
+            <span class="text-text-1 font-mono text-xs">{imgproxySettings.key.slice(0, 16)}...</span>
+          </div>
+          <div class="p-3 text-sm">
+            <span class="text-text-3">Salt: </span>
+            <span class="text-text-1 font-mono text-xs">{imgproxySettings.salt.slice(0, 16)}...</span>
+          </div>
+        {/if}
+      </div>
+      {#if editingImgproxy}
+        <button onclick={() => { settingsStore.resetImgproxySettings(); editingImgproxy = false; }} class="btn-ghost mt-2 text-xs text-text-3">
+          Reset to defaults
+        </button>
       {/if}
     </div>
 

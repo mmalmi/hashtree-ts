@@ -11,6 +11,7 @@
   import { openShareModal } from '../../stores/modals';
   import { Avatar, Name } from '../User';
   import VideoCard from './VideoCard.svelte';
+  import ProxyImg from '../ProxyImg.svelte';
   import type { VideoItem } from './types';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
 
@@ -139,7 +140,13 @@
   <!-- Banner -->
   <div class="h-32 md:h-48 bg-surface-2">
     {#if profile?.banner}
-      <img src={profile.banner} alt="" class="w-full h-full object-cover" />
+      <ProxyImg
+        src={profile.banner}
+        alt=""
+        width={1200}
+        height={384}
+        class="w-full h-full object-cover"
+      />
     {/if}
   </div>
 

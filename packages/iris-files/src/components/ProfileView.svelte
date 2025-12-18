@@ -10,6 +10,7 @@
   import { openShareModal } from '../stores/modals';
   import { Avatar, Name, Badge, FollowedBy } from './User';
   import CopyText from './CopyText.svelte';
+  import ProxyImg from './ProxyImg.svelte';
   import { getFollowsMe, getFollowers, socialGraphStore } from '../utils/socialGraph';
 
   interface Props {
@@ -122,9 +123,11 @@
   <!-- Banner -->
   <div class="h-32 md:h-40 bg-surface-2 relative shrink-0">
     {#if profile?.banner && !bannerError}
-      <img
+      <ProxyImg
         src={profile.banner}
         alt=""
+        width={1200}
+        height={320}
         class="w-full h-full object-cover"
         onerror={() => bannerError = true}
       />

@@ -55,6 +55,26 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   autoSave: true,
 };
 
+// Imgproxy settings
+export interface ImgproxySettings {
+  /** Whether imgproxy is enabled */
+  enabled: boolean;
+  /** Imgproxy server URL */
+  url: string;
+  /** HMAC key (hex) */
+  key: string;
+  /** HMAC salt (hex) */
+  salt: string;
+}
+
+// Default imgproxy settings (uses iris imgproxy - same as iris-client)
+export const DEFAULT_IMGPROXY_SETTINGS: ImgproxySettings = {
+  enabled: true,
+  url: 'https://imgproxy.iris.to',
+  key: 'f66233cb160ea07078ff28099bfa3e3e654bc10aa4a745e12176c433d79b8996',
+  salt: '5e608e60945dcd2a787e8465d76ba34149894765061d39287609fb9d776caa0c',
+};
+
 // Sync settings for background data synchronization
 export interface SyncSettings {
   /** Master toggle for background sync */
@@ -134,11 +154,13 @@ export interface SettingsState {
   // Legacy settings (kept for compatibility)
   appearance: Record<string, unknown>;
   content: Record<string, unknown>;
-  imgproxy: Record<string, unknown>;
   notifications: Record<string, unknown>;
   desktop: Record<string, unknown>;
   debug: Record<string, unknown>;
   legal: Record<string, unknown>;
+
+  // Imgproxy settings
+  imgproxy: ImgproxySettings;
 
   // Pool settings
   pools: PoolSettings;
@@ -163,11 +185,13 @@ function createSettingsStore() {
     // Legacy settings
     appearance: {},
     content: {},
-    imgproxy: {},
     notifications: {},
     desktop: {},
     debug: {},
     legal: {},
+
+    // Imgproxy settings
+    imgproxy: DEFAULT_IMGPROXY_SETTINGS,
 
     // Pool settings
     pools: DEFAULT_POOL_SETTINGS,
@@ -237,6 +261,21 @@ function createSettingsStore() {
       });
     },
 
+    setImgproxySettings: (imgproxy: Partial<ImgproxySettings>) => {
+      update(state => {
+        const updated = { ...state.imgproxy, ...imgproxy };
+        db.settings.put({ key: 'imgproxy', value: updated }).catch(console.error);
+        return { ...state, imgproxy: updated };
+      });
+    },
+
+    resetImgproxySettings: () => {
+      update(state => {
+        db.settings.put({ key: 'imgproxy', value: DEFAULT_IMGPROXY_SETTINGS }).catch(console.error);
+        return { ...state, imgproxy: DEFAULT_IMGPROXY_SETTINGS };
+      });
+    },
+
     setNetworkSettings: (network: Partial<NetworkSettings>) => {
       update(state => {
         const updated = { ...state.network, ...network };
@@ -270,12 +309,13 @@ export const useSettingsStore = settingsStore;
 // Load settings from Dexie on startup
 async function loadSettings() {
   try {
-    const [poolsRow, uploadRow, editorRow, syncRow, networkRow] = await Promise.all([
+    const [poolsRow, uploadRow, editorRow, syncRow, networkRow, imgproxyRow] = await Promise.all([
       db.settings.get('pools'),
       db.settings.get('upload'),
       db.settings.get('editor'),
       db.settings.get('sync'),
       db.settings.get('network'),
+      db.settings.get('imgproxy'),
     ]);
 
     const updates: Partial<SettingsState> = { poolsLoaded: true, networkLoaded: true };
@@ -335,6 +375,16 @@ async function loadSettings() {
           negentropyEnabled: network.negentropyEnabled ?? DEFAULT_NETWORK_SETTINGS.negentropyEnabled,
         };
       }
+    }
+
+    if (imgproxyRow?.value) {
+      const imgproxy = imgproxyRow.value as ImgproxySettings;
+      updates.imgproxy = {
+        enabled: imgproxy.enabled ?? DEFAULT_IMGPROXY_SETTINGS.enabled,
+        url: imgproxy.url ?? DEFAULT_IMGPROXY_SETTINGS.url,
+        key: imgproxy.key ?? DEFAULT_IMGPROXY_SETTINGS.key,
+        salt: imgproxy.salt ?? DEFAULT_IMGPROXY_SETTINGS.salt,
+      };
     }
 
     settingsStore.setState(updates);
