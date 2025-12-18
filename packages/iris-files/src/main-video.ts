@@ -13,7 +13,7 @@ registerSW({
     if (navigator.serviceWorker.controller) {
       console.log('[SW] Controller active:', navigator.serviceWorker.controller.state);
     } else {
-      console.warn('[SW] No controller yet - page may need reload for SW to control it');
+      console.warn('[SW] No controller yet - waiting for controllerchange');
     }
   },
   onRegisterError(error) {
@@ -21,10 +21,14 @@ registerSW({
   },
 });
 
-// Monitor SW controller changes
-navigator.serviceWorker?.addEventListener('controllerchange', () => {
-  console.log('[SW] Controller changed, new controller:', navigator.serviceWorker.controller?.state);
-});
+// On first visit, SW won't control the page until reload.
+// Wait for controller to become available and reload once.
+if (navigator.serviceWorker && !navigator.serviceWorker.controller) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    console.log('[SW] Controller now available, reloading for SW to take control');
+    window.location.reload();
+  });
+}
 
 // Set up handler for SW file requests
 setupSwFileHandler();
