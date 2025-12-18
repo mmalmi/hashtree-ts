@@ -162,8 +162,13 @@ export function isCodecSupported(codec: string): boolean {
   return supported.some(s => normalized.includes(s));
 }
 
+// FFmpeg core version to use from CDN
+const FFMPEG_CORE_VERSION = '0.12.6';
+const FFMPEG_CDN_BASE = `https://unpkg.com/@ffmpeg/core@${FFMPEG_CORE_VERSION}/dist/esm`;
+
 /**
- * Lazy load FFmpeg WASM from local files in public folder
+ * Lazy load FFmpeg WASM from CDN
+ * Using unpkg CDN to avoid bundling 30MB+ WASM file
  */
 async function loadFFmpeg(): Promise<any> {
   if (ffmpegInstance) return ffmpegInstance;
@@ -175,10 +180,9 @@ async function loadFFmpeg(): Promise<any> {
 
     const ffmpeg = new FFmpeg();
 
-    // Load from local public folder (files copied from @ffmpeg/core)
-    // toBlobURL fetches the file and creates a blob URL, which FFmpeg requires
-    const coreURL = await toBlobURL('/ffmpeg-core.js', 'text/javascript');
-    const wasmURL = await toBlobURL('/ffmpeg-core.wasm', 'application/wasm');
+    // Load from CDN - toBlobURL fetches and creates blob URLs which FFmpeg requires
+    const coreURL = await toBlobURL(`${FFMPEG_CDN_BASE}/ffmpeg-core.js`, 'text/javascript');
+    const wasmURL = await toBlobURL(`${FFMPEG_CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm');
 
     await ffmpeg.load({ coreURL, wasmURL });
     ffmpegInstance = ffmpeg;
