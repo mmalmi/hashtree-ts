@@ -58,7 +58,6 @@
   $effect(() => {
     src; // Track src changes
     hasError = false;
-    isLoading = true;
   });
 
   // Generate the current src URL
@@ -81,12 +80,10 @@
       // Fallback to original URL on proxy error
       hasError = true;
     }
-    isLoading = false;
     onerror?.();
   }
 
   function handleLoad() {
-    isLoading = false;
     onload?.();
   }
 </script>
