@@ -22,18 +22,29 @@ async function init() {
     // Wait for SW to be active and controlling this page
     if (!navigator.serviceWorker.controller) {
       console.log('[SW] Waiting for controller...');
-      await new Promise<void>((resolve) => {
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          console.log('[SW] Controller now active');
-          resolve();
-        });
-        // Also resolve if ready fires (fallback)
-        navigator.serviceWorker.ready.then(() => {
-          if (navigator.serviceWorker.controller) {
-            resolve();
-          }
-        });
-      });
+
+      // Wait for controller with timeout
+      const gotController = await Promise.race([
+        new Promise<boolean>((resolve) => {
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            console.log('[SW] Controller now active');
+            resolve(true);
+          });
+          navigator.serviceWorker.ready.then(() => {
+            if (navigator.serviceWorker.controller) {
+              resolve(true);
+            }
+          });
+        }),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 2000)),
+      ]);
+
+      // If no controller after timeout (hard refresh), reload to let SW take control
+      if (!gotController && !navigator.serviceWorker.controller) {
+        console.log('[SW] No controller after timeout, reloading...');
+        window.location.reload();
+        return;
+      }
     }
   }
 
