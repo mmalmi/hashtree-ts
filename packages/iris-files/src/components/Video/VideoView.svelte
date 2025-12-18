@@ -21,7 +21,7 @@
   import VideoComments from './VideoComments.svelte';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
   import type { CID, LinkType } from 'hashtree';
-  import { toHex } from 'hashtree';
+  import { toHex, nhashEncode } from 'hashtree';
   import { getNpubFileUrl, getNhashFileUrl } from '../../lib/mediaUrl';
   import { NDKEvent, type NDKFilter, type NDKSubscription } from '@nostr-dev-kit/ndk';
 
@@ -206,6 +206,16 @@
 
   function handleShare() {
     const url = window.location.href;
+    openShareModal(url);
+  }
+
+  function handlePermalink() {
+    if (!rootCid) return;
+    const nhash = nhashEncode({
+      hash: toHex(rootCid.hash),
+      decryptKey: rootCid.key ? toHex(rootCid.key) : undefined,
+    });
+    const url = `${window.location.origin}${window.location.pathname}#/${nhash}`;
     openShareModal(url);
   }
 
@@ -467,8 +477,8 @@
         </div>
       {:else}
         <div class="flex items-start justify-between gap-4 mb-3">
-          <h1 class="text-xl font-semibold text-text-1">{title}</h1>
-          <div class="flex items-center gap-1 shrink-0">
+          <h1 class="text-xl font-semibold text-text-1 break-words min-w-0">{title}</h1>
+          <div class="flex items-center gap-1 shrink-0 flex-wrap justify-end">
             <!-- Like button -->
             {#if videoIdentifier}
               <button
@@ -486,6 +496,9 @@
             {/if}
             <button onclick={handleShare} class="btn-ghost p-2" title="Share">
               <span class="i-lucide-share text-lg"></span>
+            </button>
+            <button onclick={handlePermalink} class="btn-ghost p-2" title="Permalink (content-addressed)" disabled={!rootCid}>
+              <span class="i-lucide-link text-lg"></span>
             </button>
             <button onclick={handleDownload} class="btn-ghost p-2" title="Download" disabled={!videoCid}>
               <span class="i-lucide-download text-lg"></span>
