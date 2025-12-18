@@ -5,6 +5,7 @@
    * - / : Home (recent videos, followed users' videos)
    * - /settings : Settings page
    * - /users : User list (switch user)
+   * - /:nhash : Permalink to video (content-addressed)
    * - /:npub/edit : Edit profile page
    * - /:npub/profile : Profile page (alias)
    * - /:npub/follows : Following list
@@ -13,9 +14,11 @@
    * - /:npub : Profile with videos (channel)
    */
   import { matchRoute } from '../../lib/router.svelte';
+  import { isNHash } from 'hashtree';
   import VideoHome from './VideoHome.svelte';
   import VideoProfileView from './VideoProfileView.svelte';
   import VideoView from './VideoView.svelte';
+  import VideoNHashView from './VideoNHashView.svelte';
   import SettingsPage from '../SettingsPage.svelte';
   import EditProfilePage from '../EditProfilePage.svelte';
   import UsersPage from '../UsersPage.svelte';
@@ -42,6 +45,12 @@
 
   // Match route
   let matchedRoute = $derived.by(() => {
+    // Check for nhash first (content-addressed permalink)
+    const parts = currentPath.split('/').filter(Boolean);
+    if (parts[0] && isNHash(parts[0])) {
+      return { component: VideoNHashView, params: { nhash: parts[0] } };
+    }
+
     for (const route of routePatterns) {
       const match = matchRoute(route.pattern, currentPath);
       if (match.matched) {

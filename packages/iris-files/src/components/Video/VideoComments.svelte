@@ -4,7 +4,7 @@
    * Subscribes to comments from Nostr relays and shows them as they arrive
    * Filter to social graph (users with follow distance) on by default, toggleable
    */
-  import { onMount } from 'svelte';
+  import { untrack } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { ndk, nostrStore } from '../../nostr';
   import { Avatar, Name } from '../User';
@@ -13,10 +13,11 @@
 
   interface Props {
     npub?: string;  // Optional - may not be available for nhash paths
-    treeName: string;
+    treeName?: string;
+    nhash?: string;  // For content-addressed permalinks
   }
 
-  let { npub, treeName }: Props = $props();
+  let { npub, treeName, nhash }: Props = $props();
 
   // Derive owner pubkey from npub if available
   let ownerPubkey = $derived.by(() => {
@@ -57,22 +58,39 @@
 
   let unknownCount = $derived(allComments.length - allComments.filter(c => getFollowDistance(c.authorPubkey) < 1000).length);
 
-  onMount(() => {
-    subscribeToComments();
+  // Comment identifiers - we may have both npub/treeName and nhash for cross-linking
+  // Using 'i' tag per NIP-22 for the identifier of the thing being commented on
+  // Format matches likes: ${npub}/${treeName} for npub routes, nhash for permalinks
+  let npubId = $derived(npub && treeName ? `${npub}/${treeName}` : null);
+  let nhashId = $derived(nhash || null);
+
+  // Primary identifier for subscribing
+  // On nhash routes (no npub), use nhash. On npub routes, use npubId (nhash is just for writing)
+  let primaryId = $derived(npubId || nhashId);
+
+  // Subscribe to comments when primaryId changes
+  $effect(() => {
+    const id = primaryId;
+    if (!id) return;
+
+    untrack(() => subscribeToComments(id));
 
     return () => {
-      // Cleanup subscription on unmount
       if (subscription) {
         subscription.stop();
       }
     };
   });
 
-  function subscribeToComments() {
+  function subscribeToComments(id: string) {
+    // Reset state for new identifier
+    allComments = [];
+    seenIds.clear();
+
     // Subscribe to NIP-22 comments (kind 1111) for this video
     const filter: NDKFilter = {
       kinds: [1111 as number], // NIP-22 GenericReply
-      '#t': [`video:${npub}:${treeName}`], // Custom tag for video comments
+      '#i': [id],
     };
 
     subscription = ndk.subscribe(filter, { closeOnEose: false });
@@ -99,11 +117,8 @@
     });
   }
 
-  // Video identifier for comments (same as reactions)
-  let videoIdentifier = $derived(npub ? `${npub}/${treeName}` : null);
-
   async function submitComment() {
-    if (!newComment.trim() || !isLoggedIn || submitting || !videoIdentifier) return;
+    if (!newComment.trim() || !isLoggedIn || submitting || !primaryId) return;
 
     submitting = true;
     try {
@@ -111,10 +126,10 @@
       event.kind = 1111; // NIP-22 GenericReply
       event.content = newComment.trim();
 
-      // Build tags
-      const tags: string[][] = [
-        ['t', `video:${npub}:${treeName}`], // Tag for finding comments
-      ];
+      // Build tags - i for identifier, p for author
+      const tags: string[][] = [];
+      if (nhashId) tags.push(['i', nhashId]);
+      if (npubId) tags.push(['i', npubId]);
 
       // Add p tag only if we know the owner
       if (ownerPubkey) {
@@ -169,7 +184,7 @@
   }
 </script>
 
-<div class="border-t border-surface-3 pt-6">
+<div class="border-t border-surface-3 pt-6 pb-12">
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-semibold text-text-1">
       Comments {#if allComments.length > 0}<span class="text-text-3 font-normal">({allComments.length})</span>{/if}

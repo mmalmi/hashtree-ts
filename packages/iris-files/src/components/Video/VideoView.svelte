@@ -111,6 +111,15 @@
   // Get root CID from treeRootStore (handles linkKey decryption)
   let rootCid = $derived($treeRootStore);
 
+  // Generate nhash for comments cross-linking
+  let videoNhash = $derived.by(() => {
+    if (!rootCid) return undefined;
+    return nhashEncode({
+      hash: toHex(rootCid.hash),
+      decryptKey: rootCid.key ? toHex(rootCid.key) : undefined,
+    });
+  });
+
   // Subscribe to trees store to get visibility
   $effect(() => {
     const currentNpub = npub;
@@ -242,8 +251,8 @@
       hash: toHex(rootCid.hash),
       decryptKey: rootCid.key ? toHex(rootCid.key) : undefined,
     });
-    const url = `${window.location.origin}${window.location.pathname}#/${nhash}`;
-    openShareModal(url);
+    // Navigate to the nhash permalink
+    window.location.hash = `#/${nhash}`;
   }
 
   function handleDownload() {
@@ -574,7 +583,9 @@
 
     <!-- Comments -->
     {#if npub && treeName}
-      <VideoComments {npub} {treeName} />
+      {#key `${npub}/${treeName}`}
+        <VideoComments {npub} {treeName} nhash={videoNhash} />
+      {/key}
     {/if}
   </div>
 </div>
