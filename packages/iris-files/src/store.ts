@@ -15,10 +15,11 @@ import { socialGraphStore, getFollows, getFollowers, isFollowing } from './utils
 import { settingsStore, DEFAULT_POOL_SETTINGS, DEFAULT_NETWORK_SETTINGS } from './stores/settings';
 import { nostrStore } from './nostr';
 import { blossomLogStore } from './stores/blossomLog';
-import { BlossomStore, OpfsStore } from 'hashtree';
+import { BlossomStore } from 'hashtree';
+import { DexieStore } from 'hashtree-dexie';
 
-// Store instances - using OPFS for file storage
-export const localStore = new OpfsStore({ dirName: 'hashtree-explorer' });
+// Store instances - using Dexie/IndexedDB for file storage (better iOS Safari support)
+export const localStore = new DexieStore('hashtree-explorer');
 
 // HashTree instance - single class for all tree operations
 let _tree = new HashTree({ store: localStore });
