@@ -5,11 +5,10 @@
    */
   import { onMount, untrack } from 'svelte';
   import { nip19 } from 'nostr-tools';
-  import { nostrStore } from '../../nostr';
+  import { ndk, nostrStore } from '../../nostr';
   import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
-  import { createTreesStore, createFollowsStore } from '../../stores';
+  import { createFollowsStore } from '../../stores';
   import { openVideoUploadModal } from '../../stores/modals';
-  import { getFollows, socialGraphStore, fetchFollowList } from '../../utils/socialGraph';
 
   // Default pubkey to use for fallback content (sirius)
   const DEFAULT_CONTENT_PUBKEY = '4523be58d395b1b196a9b8c82b038b6895cb02b683d0c253a955068dba1facd0';
@@ -51,21 +50,23 @@
   // Get user's follows
   let follows = $state<string[]>([]);
 
-  // Track social graph version to reactively update fallback follows
-  let graphVersion = $derived($socialGraphStore.version);
+  // Fallback follows from default content pubkey (fetched directly, not via social graph)
+  // Use a version counter to force reactivity
+  let fallbackFollows = $state<string[]>([]);
+  let fallbackVersion = $state(0);
+  let fallbackFetched = false;
 
   // Compute effective follows: user's follows + fallback if < threshold
   let effectiveFollows = $derived.by(() => {
-    // Track graph version to re-run when social graph updates
-    const _v = graphVersion;
+    // Track fallbackVersion to force re-computation when fallback is fetched
+    const _v = fallbackVersion;
 
     // If user has enough follows, use them directly
     if (follows.length >= MIN_FOLLOWS_THRESHOLD) {
       return follows;
     }
 
-    // Otherwise, augment with default pubkey + its follows from social graph
-    const fallbackFollows = getFollows(DEFAULT_CONTENT_PUBKEY);
+    // Otherwise, augment with default pubkey + its follows
     const combined = new Set(follows);
     combined.add(DEFAULT_CONTENT_PUBKEY); // Include the default user itself
     fallbackFollows.forEach(pk => combined.add(pk));
@@ -76,12 +77,30 @@
   // Track if we're using fallback content
   let usingFallback = $derived(follows.length < MIN_FOLLOWS_THRESHOLD);
 
-  // Fetch fallback follow list when needed
-  let fallbackFetched = false;
+  // Fetch fallback follow list when needed (directly from nostr, not via social graph)
   $effect(() => {
     if (usingFallback && !fallbackFetched) {
       fallbackFetched = true;
-      fetchFollowList(DEFAULT_CONTENT_PUBKEY);
+      // Fetch kind 3 (contacts) event for default content pubkey directly
+      ndk.fetchEvents({
+        kinds: [3],
+        authors: [DEFAULT_CONTENT_PUBKEY],
+        limit: 1,
+      }).then(events => {
+        const eventsArray = Array.from(events);
+        if (eventsArray.length > 0) {
+          // Sort by created_at to get the latest
+          const event = eventsArray.sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0];
+          const followPubkeys = event.tags
+            .filter(t => t[0] === 'p' && t[1])
+            .map(t => t[1]);
+          // Update both the data and version to ensure reactivity
+          fallbackFollows = followPubkeys;
+          fallbackVersion++;
+        }
+      }).catch(err => {
+        console.error('[VideoHome] Failed to fetch fallback follows:', err);
+      });
     }
   });
 
@@ -109,22 +128,22 @@
     return unsub;
   });
 
-  // Videos from followed users - aggregate from multiple stores
+  // Videos from followed users - single multi-author subscription
   let followedUsersVideos = $state<VideoItem[]>([]);
-  let followStoreUnsubscribes: Array<() => void> = [];
+  let videoSubUnsub: (() => void) | null = null;
 
   $effect(() => {
     // Track effectiveFollows to trigger re-run when it changes (includes fallback)
     const currentFollows = effectiveFollows;
-    // Also track graphVersion to re-run when social graph updates
-    const _version = graphVersion;
     // Track userPubkey to include own videos
     const myPubkey = userPubkey;
 
-    // Clean up previous subscriptions
+    // Clean up previous subscription
     untrack(() => {
-      followStoreUnsubscribes.forEach(unsub => unsub());
-      followStoreUnsubscribes = [];
+      if (videoSubUnsub) {
+        videoSubUnsub();
+        videoSubUnsub = null;
+      }
     });
 
     // Include self + follows (deduplicated)
@@ -138,50 +157,70 @@
       return;
     }
 
-    const videosByUser = new Map<string, VideoItem[]>();
+    // Convert to array of pubkeys (no limit - single subscription handles all)
+    const authors = Array.from(pubkeysToCheck);
 
-    // Subscribe to trees for each user (limit to avoid too many subscriptions)
-    const followsToCheck = Array.from(pubkeysToCheck).slice(0, 20);
+    // Track videos by d-tag (treeName) to handle updates
+    const videosByKey = new Map<string, VideoItem>();
 
-    for (const followPubkey of followsToCheck) {
-      const followNpub = pubkeyToNpub(followPubkey);
-      if (!followNpub) continue;
+    // Single subscription for all authors' hashtree events
+    const sub = ndk.subscribe({
+      kinds: [30078],
+      authors,
+      '#l': ['hashtree'],
+    }, { closeOnEose: false });
 
-      const store = createTreesStore(followNpub);
-      const unsub = store.subscribe(trees => {
-        const videos = trees
-          .filter(t => t.name.startsWith('videos/') && t.visibility === 'public')
-          .map(t => ({
-            key: `/${followNpub}/${t.name}`,
-            title: t.name.slice(7),
-            ownerPubkey: followPubkey,
-            ownerNpub: followNpub,
-            treeName: t.name,
-            visibility: t.visibility,
-            href: `#/${followNpub}/${encodeTreeNameForUrl(t.name)}`,
-            timestamp: t.createdAt || 0,
-          } as VideoItem));
+    sub.on('event', (event) => {
+      const dTag = event.tags.find(t => t[0] === 'd')?.[1];
+      if (!dTag || !dTag.startsWith('videos/')) return;
 
-        videosByUser.set(followPubkey, videos);
+      // Parse visibility from tags
+      const hashTag = event.tags.find(t => t[0] === 'hash')?.[1];
+      if (!hashTag) return; // Deleted tree
 
-        // Aggregate all videos and sort by timestamp
-        const allVideos: VideoItem[] = [];
-        videosByUser.forEach(vids => allVideos.push(...vids));
-        allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      const hasEncryptedKey = event.tags.some(t => t[0] === 'encryptedKey');
+      const hasSelfEncryptedKey = event.tags.some(t => t[0] === 'selfEncryptedKey');
+      const visibility = hasEncryptedKey ? 'unlisted' : (hasSelfEncryptedKey ? 'private' : 'public');
 
-        // Only update if content actually changed (avoid flicker from same data)
-        const newKeys = allVideos.map(v => v.key).join(',');
-        const oldKeys = untrack(() => followedUsersVideos.map(v => v.key).join(','));
-        if (newKeys !== oldKeys) {
-          untrack(() => { followedUsersVideos = allVideos; });
-        }
+      // Only include public videos
+      if (visibility !== 'public') return;
+
+      const ownerPubkey = event.pubkey;
+      const ownerNpub = pubkeyToNpub(ownerPubkey);
+      if (!ownerNpub) return;
+
+      const key = `${ownerNpub}/${dTag}`;
+      const existing = videosByKey.get(key);
+
+      // Only update if newer
+      if (existing && existing.timestamp && existing.timestamp >= (event.created_at || 0)) {
+        return;
+      }
+
+      videosByKey.set(key, {
+        key,
+        title: dTag.slice(7), // Remove 'videos/' prefix
+        ownerPubkey,
+        ownerNpub,
+        treeName: dTag,
+        visibility,
+        href: `#/${ownerNpub}/${encodeTreeNameForUrl(dTag)}`,
+        timestamp: event.created_at || 0,
       });
 
-      untrack(() => { followStoreUnsubscribes.push(unsub); });
-    }
+      // Update video list
+      const allVideos = Array.from(videosByKey.values());
+      allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+      untrack(() => { followedUsersVideos = allVideos; });
+    });
+
+    untrack(() => {
+      videoSubUnsub = () => sub.stop();
+    });
 
     return () => {
-      followStoreUnsubscribes.forEach(unsub => unsub());
+      sub.stop();
     };
   });
 
