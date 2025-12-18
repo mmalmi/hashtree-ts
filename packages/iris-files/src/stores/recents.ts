@@ -74,17 +74,23 @@ export const recentsStore = writable<RecentItem[]>(loadRecents());
  */
 export function addRecent(item: Omit<RecentItem, 'timestamp'>) {
   // Normalize Unicode to avoid duplicates from different representations (e.g., ä vs a+combining)
-  const normalizedItem: RecentItem = {
-    ...item,
-    path: item.path.normalize('NFC'),
-    treeName: item.treeName?.normalize('NFC'),
-    label: item.label.normalize('NFC'),
-    timestamp: Date.now(),
-  };
+  const normalizedPath = item.path.normalize('NFC');
 
   recentsStore.update(current => {
+    // Find existing item to preserve videoPosition
+    const existing = current.find(r => r.path.normalize('NFC') === normalizedPath);
+
+    const normalizedItem: RecentItem = {
+      ...item,
+      path: normalizedPath,
+      treeName: item.treeName?.normalize('NFC'),
+      label: item.label.normalize('NFC'),
+      timestamp: Date.now(),
+      // Preserve video position from existing item
+      videoPosition: existing?.videoPosition,
+    };
+
     // Remove existing item with same normalized path
-    const normalizedPath = normalizedItem.path;
     const filtered = current.filter(r => r.path.normalize('NFC') !== normalizedPath);
 
     // Add to front, trim to max
