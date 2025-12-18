@@ -522,7 +522,7 @@ export class HashTree {
   }
 
   /**
-   * Move an entry to a different directory (public trees only)
+   * Move an entry to a different directory
    * @param root - Root CID of the tree
    * @param sourcePath - Path to the source directory
    * @param name - Name of the entry to move
@@ -536,7 +536,15 @@ export class HashTree {
     targetPath: string[]
   ): Promise<CID> {
     if (root.key) {
-      throw new Error('moveEntry not yet implemented for encrypted trees');
+      const result = await editEncrypted.moveEntryEncrypted(
+        this.config,
+        root.hash,
+        root.key,
+        sourcePath,
+        name,
+        targetPath
+      );
+      return cid(result.hash, result.key);
     }
     const hash = await edit.moveEntry(this.config, root.hash, sourcePath, name, targetPath);
     return { hash };

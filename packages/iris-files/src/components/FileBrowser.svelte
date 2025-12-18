@@ -5,7 +5,7 @@
    */
   import { toHex, nhashEncode, LinkType, type TreeEntry as HashTreeEntry } from 'hashtree';
   import { formatBytes } from '../store';
-  import { deleteEntry } from '../actions';
+  import { deleteEntry, moveEntry, moveToParent } from '../actions';
   import { openCreateModal, openShareModal } from '../stores/modals';
   import { uploadFiles, uploadDirectory } from '../stores/upload';
   import { recentlyChangedFiles } from '../stores/recentlyChanged';
@@ -219,6 +219,66 @@
     ) {
       isDraggingOver = false;
     }
+  }
+
+  // Internal drag-drop for moving files between folders
+  let draggingEntry = $state<string | null>(null);
+  let dropTargetDir = $state<string | null>(null);
+
+  function handleEntryDragStart(e: DragEvent, entryName: string) {
+    if (!canEdit) {
+      e.preventDefault();
+      return;
+    }
+    draggingEntry = entryName;
+    e.dataTransfer!.effectAllowed = 'move';
+    e.dataTransfer!.setData('text/plain', entryName);
+  }
+
+  function handleEntryDragEnd() {
+    draggingEntry = null;
+    dropTargetDir = null;
+  }
+
+  function handleDirDragOver(e: DragEvent, dirName: string) {
+    if (!canEdit || !draggingEntry || draggingEntry === dirName) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = 'move';
+    dropTargetDir = dirName;
+  }
+
+  function handleDirDragLeave() {
+    dropTargetDir = null;
+  }
+
+  async function handleDirDrop(e: DragEvent, dirName: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    dropTargetDir = null;
+
+    if (!canEdit || !draggingEntry || draggingEntry === dirName) return;
+
+    await moveEntry(draggingEntry, dirName);
+    draggingEntry = null;
+  }
+
+  // Handle drop on parent directory (..)
+  async function handleParentDrop(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dropTargetDir = null;
+
+    if (!canEdit || !draggingEntry) return;
+
+    await moveToParent(draggingEntry);
+    draggingEntry = null;
+  }
+
+  function handleParentDragOver(e: DragEvent) {
+    if (!canEdit || !draggingEntry) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = 'move';
+    dropTargetDir = '..';
   }
 
   function buildDirHref(path: string[]): string {
@@ -560,7 +620,10 @@
         {#if hasParent}
           <a
             href={currentPath.length > 0 ? buildDirHref(currentPath.slice(0, -1)) : buildRootHref()}
-            class="p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {focusedIndex === 0 ? 'ring-2 ring-inset ring-accent' : ''}"
+            class="p-3 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {focusedIndex === 0 ? 'ring-2 ring-inset ring-accent' : ''} {dropTargetDir === '..' ? 'bg-accent/20' : ''}"
+            ondragover={(e) => handleParentDragOver(e)}
+            ondragleave={handleDirDragLeave}
+            ondrop={(e) => handleParentDrop(e)}
           >
             <span class="i-lucide-folder text-warning shrink-0"></span>
             <span class="truncate">..</span>
@@ -636,7 +699,13 @@
           {#each entries as entry, idx (entry.name)}
             <a
               href={buildEntryHref(entry, currentNpub, currentTreeName, currentPath, rootCid, linkKey, effectiveGitRoot)}
-              class="p-3 pl-9 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {selectedEntry?.name === entry.name && focusedIndex < 0 ? 'bg-surface-2' : ''} {focusedIndex === idx + specialItemCount ? 'ring-2 ring-inset ring-accent' : ''} {recentlyChanged.has(entry.name) && selectedEntry?.name !== entry.name ? 'animate-pulse-live' : ''}"
+              class="p-3 pl-9 border-b border-surface-2 flex items-center gap-3 no-underline text-text-1 hover:bg-surface-2/50 {selectedEntry?.name === entry.name && focusedIndex < 0 ? 'bg-surface-2' : ''} {focusedIndex === idx + specialItemCount ? 'ring-2 ring-inset ring-accent' : ''} {recentlyChanged.has(entry.name) && selectedEntry?.name !== entry.name ? 'animate-pulse-live' : ''} {draggingEntry === entry.name ? 'opacity-50' : ''} {dropTargetDir === entry.name ? 'bg-accent/20' : ''}"
+              draggable={canEdit}
+              ondragstart={(e) => handleEntryDragStart(e, entry.name)}
+              ondragend={handleEntryDragEnd}
+              ondragover={entry.type === LinkType.Dir ? (e) => handleDirDragOver(e, entry.name) : undefined}
+              ondragleave={entry.type === LinkType.Dir ? handleDirDragLeave : undefined}
+              ondrop={entry.type === LinkType.Dir ? (e) => handleDirDrop(e, entry.name) : undefined}
             >
               <span class="shrink-0 {entry.type === LinkType.Dir ? 'i-lucide-folder text-warning' : `${getFileIcon(entry.name)} text-text-2`}"></span>
               <span class="truncate flex-1 min-w-0" title={entry.name}>{entry.name}</span>

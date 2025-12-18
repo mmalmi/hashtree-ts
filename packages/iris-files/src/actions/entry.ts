@@ -109,12 +109,6 @@ export async function moveEntry(sourceName: string, targetDirName: string) {
   if (!rootCid) return;
   if (sourceName === targetDirName) return;
 
-  // Move not yet supported for encrypted trees
-  if (rootCid.key) {
-    alert('Move not yet supported for encrypted trees');
-    return;
-  }
-
   const tree = getTree();
   const currentPath = getCurrentPathFromUrl();
 
@@ -150,12 +144,6 @@ export async function moveEntry(sourceName: string, targetDirName: string) {
 export async function moveToParent(sourceName: string) {
   const rootCid = getCurrentRootCid();
   if (!rootCid) return;
-
-  // Move not yet supported for encrypted trees
-  if (rootCid.key) {
-    alert('Move not yet supported for encrypted trees');
-    return;
-  }
 
   const currentPath = getCurrentPathFromUrl();
   if (currentPath.length === 0) return; // Already at root

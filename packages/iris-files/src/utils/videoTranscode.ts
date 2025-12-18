@@ -162,13 +162,13 @@ export function isCodecSupported(codec: string): boolean {
   return supported.some(s => normalized.includes(s));
 }
 
-// FFmpeg core version to use from CDN
-const FFMPEG_CORE_VERSION = '0.12.6';
-const FFMPEG_CDN_BASE = `https://unpkg.com/@ffmpeg/core@${FFMPEG_CORE_VERSION}/dist/esm`;
+// FFmpeg core files hosted on hashtree (content-addressed, immutable)
+// Service worker handles /htree/{nhash}/{filename} paths
+const FFMPEG_NHASH = 'nhash1qqs0297vyhmzhu6nq6xuynxwtrfgsqrrttll0utaeykat7gxrtkf2hg9ypelsumyf9d09ndhnd9de5usvzp50y6sfq0cpm8fu2997g884lfm562m4rw';
 
 /**
- * Lazy load FFmpeg WASM from CDN
- * Using unpkg CDN to avoid bundling 30MB+ WASM file
+ * Lazy load FFmpeg WASM from hashtree via service worker
+ * Content-addressed storage ensures integrity and enables caching
  */
 async function loadFFmpeg(): Promise<any> {
   if (ffmpegInstance) return ffmpegInstance;
@@ -176,15 +176,14 @@ async function loadFFmpeg(): Promise<any> {
 
   loadingPromise = (async () => {
     const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-    const { toBlobURL } = await import('@ffmpeg/util');
 
     const ffmpeg = new FFmpeg();
 
-    // Load from CDN - toBlobURL fetches and creates blob URLs which FFmpeg requires
-    const coreURL = await toBlobURL(`${FFMPEG_CDN_BASE}/ffmpeg-core.js`, 'text/javascript');
-    const wasmURL = await toBlobURL(`${FFMPEG_CDN_BASE}/ffmpeg-core.wasm`, 'application/wasm');
-
-    await ffmpeg.load({ coreURL, wasmURL });
+    // Load via service worker which resolves /htree/nhash paths through hashtree
+    await ffmpeg.load({
+      coreURL: `/htree/${FFMPEG_NHASH}/ffmpeg-core.js`,
+      wasmURL: `/htree/${FFMPEG_NHASH}/ffmpeg-core.wasm`,
+    });
     ffmpegInstance = ffmpeg;
     return ffmpeg;
   })();
@@ -206,15 +205,21 @@ export interface TranscodeProgress {
  * But we can stream the output to hashtree in chunks after encoding finishes.
  *
  * @param onChunk - Called with output chunks after transcoding
+ * @param signal - Optional AbortSignal to cancel transcoding
  */
 export async function transcodeToMP4Streaming(
   file: File,
   onChunk: (chunk: Uint8Array) => Promise<void>,
-  onProgress?: (progress: TranscodeProgress) => void
+  onProgress?: (progress: TranscodeProgress) => void,
+  signal?: AbortSignal
 ): Promise<{ mimeType: string; extension: string }> {
   const check = canTranscode(file);
   if (!check.ok) {
     throw new Error(check.reason);
+  }
+
+  if (signal?.aborted) {
+    throw new Error('Cancelled');
   }
 
   onProgress?.({ stage: 'loading', message: 'Loading video encoder...' });
@@ -224,6 +229,10 @@ export async function transcodeToMP4Streaming(
     ffmpeg = await loadFFmpeg();
   } catch (e) {
     throw new Error(`Failed to load video encoder: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  if (signal?.aborted) {
+    throw new Error('Cancelled');
   }
 
   const inputName = 'input' + getExtension(file.name);
@@ -239,6 +248,11 @@ export async function transcodeToMP4Streaming(
     throw new Error(`Failed to read video file: ${e instanceof Error ? e.message : String(e)}`);
   }
 
+  if (signal?.aborted) {
+    try { await ffmpeg.deleteFile(inputName); } catch {}
+    throw new Error('Cancelled');
+  }
+
   onProgress?.({ stage: 'transcoding', message: 'Starting transcode...', percent: 5 });
 
   // Set up progress handler
@@ -251,6 +265,15 @@ export async function transcodeToMP4Streaming(
       percent
     });
   });
+
+  // Set up abort handler - terminate FFmpeg on cancel
+  const abortHandler = () => {
+    ffmpeg.terminate();
+    // Reset instance so next transcode creates fresh one
+    ffmpegInstance = null;
+    loadingPromise = null;
+  };
+  signal?.addEventListener('abort', abortHandler);
 
   // Transcode to MP4 with H.264
   try {
@@ -266,8 +289,20 @@ export async function transcodeToMP4Streaming(
       outputName
     ]);
   } catch (e) {
+    signal?.removeEventListener('abort', abortHandler);
     try { await ffmpeg.deleteFile(inputName); } catch {}
+    if (signal?.aborted) {
+      throw new Error('Cancelled');
+    }
     throw new Error(`Transcoding failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  signal?.removeEventListener('abort', abortHandler);
+
+  if (signal?.aborted) {
+    try { await ffmpeg.deleteFile(inputName); } catch {}
+    try { await ffmpeg.deleteFile(outputName); } catch {}
+    throw new Error('Cancelled');
   }
 
   // Delete input immediately to free memory before reading output
@@ -283,6 +318,9 @@ export async function transcodeToMP4Streaming(
     // Stream output in 1MB chunks
     const chunkSize = 1024 * 1024;
     for (let i = 0; i < outputData.length; i += chunkSize) {
+      if (signal?.aborted) {
+        throw new Error('Cancelled');
+      }
       const chunk = outputData.slice(i, Math.min(i + chunkSize, outputData.length));
       await onChunk(chunk);
 
@@ -294,6 +332,9 @@ export async function transcodeToMP4Streaming(
       });
     }
   } catch (e) {
+    if (signal?.aborted) {
+      throw new Error('Cancelled');
+    }
     throw new Error(`Failed to read transcoded video: ${e instanceof Error ? e.message : String(e)}`);
   }
 

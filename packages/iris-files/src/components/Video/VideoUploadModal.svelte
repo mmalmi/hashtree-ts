@@ -41,6 +41,7 @@
   let transcodeSupported = $state(true);
   let transcodeError = $state<string | null>(null);
   let visibility = $state<'public' | 'unlisted' | 'private'>('public');
+  let abortController = $state<AbortController | null>(null);
 
   function handleFileSelect(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -135,6 +136,7 @@
     uploading = true;
     progress = 0;
     progressMessage = 'Preparing...';
+    abortController = new AbortController();
 
     try {
       const tree = getTree();
@@ -167,7 +169,8 @@
               // Transcoding is 5-70% of total progress
               progress = 5 + Math.round(p.percent * 0.65);
             }
-          }
+          },
+          abortController.signal
         );
 
         const finalResult = await streamWriter.finalize();
@@ -176,7 +179,6 @@
           size: finalResult.size
         };
         videoFileName = `video.${result.extension}`;
-        mimeType = result.mimeType;
         progress = 75;
       } else {
         progressMessage = 'Reading file...';
@@ -275,14 +277,30 @@
       handleClose();
     } catch (e) {
       console.error('Upload failed:', e);
-      alert('Failed to upload video: ' + (e instanceof Error ? e.message : 'Unknown error'));
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      // Don't show alert for user-initiated cancellation
+      if (message !== 'Cancelled') {
+        alert('Failed to upload video: ' + message);
+      }
       uploading = false;
       progressMessage = '';
+      abortController = null;
     }
   }
 
+  function handleCancel() {
+    if (abortController) {
+      abortController.abort();
+      abortController = null;
+    }
+    uploading = false;
+    progressMessage = '';
+  }
+
   function handleClose() {
-    if (uploading) return;
+    if (uploading) {
+      handleCancel();
+    }
     selectedFile = null;
     title = '';
     description = '';
@@ -290,6 +308,7 @@
     progressMessage = '';
     willTranscode = false;
     visibility = 'public';
+    abortController = null;
     if (thumbnailUrl) {
       URL.revokeObjectURL(thumbnailUrl);
       thumbnailUrl = null;
@@ -454,8 +473,8 @@
 
       <!-- Footer -->
       <div class="flex justify-end gap-2 p-4 border-t border-surface-3">
-        <button onclick={handleClose} class="btn-ghost px-4 py-2" disabled={uploading}>
-          Cancel
+        <button onclick={uploading ? handleCancel : handleClose} class="btn-ghost px-4 py-2">
+          {uploading ? 'Cancel' : 'Close'}
         </button>
         <button
           onclick={handleUpload}

@@ -89,7 +89,24 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
 
     if (nhash) {
       // Direct nhash request - decode to CID
-      cid = nhashDecode(nhash);
+      const rootCid = nhashDecode(nhash);
+
+      // If path provided, navigate to file within the nhash directory
+      if (path) {
+        const tree = getTree();
+        const entry = await tree.resolvePath(rootCid, path);
+        if (!entry) {
+          port.postMessage({
+            status: 404,
+            headers: { 'Content-Type': 'text/plain' },
+            body: `File not found: ${path}`,
+          } as FileResponseHeaders);
+          return;
+        }
+        cid = entry.cid;
+      } else {
+        cid = rootCid;
+      }
     } else if (npub && treeName) {
       // Npub-based request - resolve through tree root cache
       const filePath = path;

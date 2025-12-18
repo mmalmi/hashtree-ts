@@ -240,6 +240,80 @@ export async function renameEntryEncrypted(
 }
 
 /**
+ * Move an entry from one directory to another in an encrypted tree
+ */
+export async function moveEntryEncrypted(
+  config: EncryptedEditConfig,
+  rootHash: Hash,
+  rootKey: EncryptionKey,
+  sourcePath: string[],
+  name: string,
+  targetPath: string[]
+): Promise<EncryptedEditResult> {
+  const { store } = config;
+
+  // Resolve source directory
+  const sourceResolved = await resolvePathAndCollectKeys(store, rootHash, rootKey, sourcePath);
+  if (!sourceResolved) {
+    throw new Error(`Source path not found: ${sourcePath.join('/')}`);
+  }
+
+  // Get the entry to move
+  const sourceEntries = await listDirectoryEncrypted(store, sourceResolved.dirHash, sourceResolved.dirKey);
+  const entryToMove = sourceEntries.find(e => e.name === name);
+  if (!entryToMove) {
+    throw new Error(`Entry not found: ${name}`);
+  }
+
+  // Remove from source
+  const afterRemove = await removeEntryEncrypted(config, rootHash, rootKey, sourcePath, name);
+
+  // Resolve target directory in the modified tree
+  const targetResolved = await resolvePathAndCollectKeys(store, afterRemove.hash, afterRemove.key, targetPath);
+  if (!targetResolved) {
+    throw new Error(`Target path not found: ${targetPath.join('/')}`);
+  }
+
+  // Add to target
+  const targetEntries = await listDirectoryEncrypted(store, targetResolved.dirHash, targetResolved.dirKey);
+
+  // Check for name collision
+  if (targetEntries.some(e => e.name === name)) {
+    throw new Error(`Entry already exists in target: ${name}`);
+  }
+
+  const newTargetEntries: EncryptedDirEntry[] = targetEntries.map(e => ({
+    name: e.name,
+    hash: e.hash,
+    size: e.size,
+    key: e.key,
+    type: e.type,
+    meta: e.meta,
+  }));
+
+  newTargetEntries.push({
+    name: entryToMove.name,
+    hash: entryToMove.hash,
+    size: entryToMove.size,
+    key: entryToMove.key,
+    type: entryToMove.type,
+    meta: entryToMove.meta,
+  });
+
+  const newTargetDir = await putDirectoryEncrypted(config, newTargetEntries);
+
+  return rebuildPathEncrypted(
+    config,
+    afterRemove.hash,
+    afterRemove.key,
+    targetPath,
+    targetResolved.pathKeys,
+    newTargetDir.hash,
+    newTargetDir.key
+  );
+}
+
+/**
  * Rebuild the path from a modified child up to the root
  */
 async function rebuildPathEncrypted(
