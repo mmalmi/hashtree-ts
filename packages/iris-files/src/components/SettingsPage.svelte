@@ -894,7 +894,9 @@
           </span>
         </div>
         <a
-          href="#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-ts"
+          href="https://files.iris.to/#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-ts"
+          target="_blank"
+          rel="noopener noreferrer"
           class="btn-ghost w-full flex items-center justify-center gap-2 no-underline"
         >
           <span class="i-lucide-code text-sm"></span>
@@ -902,7 +904,9 @@
           <span class="text-text-3 text-xs no-underline">(TypeScript library & this app)</span>
         </a>
         <a
-          href="#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-rs"
+          href="https://files.iris.to/#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/hashtree-rs"
+          target="_blank"
+          rel="noopener noreferrer"
           class="btn-ghost w-full flex items-center justify-center gap-2 no-underline"
         >
           <span class="i-lucide-terminal text-sm"></span>
