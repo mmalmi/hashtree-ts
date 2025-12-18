@@ -320,20 +320,24 @@
             Clear
           </button>
         </div>
-        <div class="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin">
-          {#each recentVideos as video (video.href)}
-            <div class="shrink-0 w-48 md:w-56">
-              <VideoCard
-                href={video.href}
-                title={video.title}
-                duration={video.duration}
-                ownerPubkey={video.ownerPubkey}
-                ownerNpub={video.ownerNpub}
-                treeName={video.treeName}
-                visibility={video.visibility}
-              />
-            </div>
-          {/each}
+        <div class="relative -mx-4">
+          <div class="flex gap-3 overflow-x-auto pb-2 px-4 scrollbar-thin">
+            {#each recentVideos as video (video.href)}
+              <div class="shrink-0 w-48 md:w-56">
+                <VideoCard
+                  href={video.href}
+                  title={video.title}
+                  duration={video.duration}
+                  ownerPubkey={video.ownerPubkey}
+                  ownerNpub={video.ownerNpub}
+                  treeName={video.treeName}
+                  visibility={video.visibility}
+                />
+              </div>
+            {/each}
+          </div>
+          <!-- Scroll fade indicator (right side only) -->
+          <div class="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-surface-0 via-surface-0/80 to-transparent"></div>
         </div>
       </section>
     {/if}
