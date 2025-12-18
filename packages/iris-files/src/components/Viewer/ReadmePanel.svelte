@@ -3,6 +3,7 @@
    * ReadmePanel - Bordered panel for displaying README.md content
    */
   import { marked } from 'marked';
+  import DOMPurify from 'dompurify';
   import { LinkType, type TreeEntry } from 'hashtree';
   import { routeStore } from '../../stores';
 
@@ -15,8 +16,8 @@
   let { content, entries, canEdit }: Props = $props();
   let route = $derived($routeStore);
 
-  // Convert markdown to HTML
-  let htmlContent = $derived(marked.parse(content, { async: false }) as string);
+  // Convert markdown to HTML and sanitize to prevent XSS
+  let htmlContent = $derived(DOMPurify.sanitize(marked.parse(content, { async: false }) as string));
 
   function handleEdit() {
     const readmeEntry = entries.find(
