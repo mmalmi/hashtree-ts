@@ -70,7 +70,6 @@
     combined.add(DEFAULT_CONTENT_PUBKEY); // Include the default user itself
     fallbackFollows.forEach(pk => combined.add(pk));
 
-    console.log('[VideoHome] Using fallback follows, user has', follows.length, ', adding', fallbackFollows.size, 'from default');
     return Array.from(combined);
   });
 
@@ -82,7 +81,6 @@
   $effect(() => {
     if (usingFallback && !fallbackFetched) {
       fallbackFetched = true;
-      console.log('[VideoHome] Fetching fallback follow list for', DEFAULT_CONTENT_PUBKEY);
       fetchFollowList(DEFAULT_CONTENT_PUBKEY);
     }
   });
@@ -97,15 +95,12 @@
         follows = [];
         followsLoading = false;
       });
-      console.log('[VideoHome] No userPubkey, skipping follows');
       return;
     }
 
-    console.log('[VideoHome] Fetching follows for', pk);
     untrack(() => { followsLoading = true; });
     const store = createFollowsStore(pk);
     const unsub = store.subscribe(value => {
-      console.log('[VideoHome] Got follows:', value?.follows?.length || 0);
       untrack(() => {
         follows = value?.follows || [];
         followsLoading = false;
@@ -132,8 +127,6 @@
       followStoreUnsubscribes = [];
     });
 
-    console.log('[VideoHome] follows effect, count:', currentFollows.length, 'usingFallback:', usingFallback);
-
     // Include self + follows (deduplicated)
     const pubkeysToCheck = new Set(currentFollows);
     if (myPubkey) {
@@ -149,7 +142,6 @@
 
     // Subscribe to trees for each user (limit to avoid too many subscriptions)
     const followsToCheck = Array.from(pubkeysToCheck).slice(0, 20);
-    console.log('[VideoHome] Checking trees for', followsToCheck.length, 'users (includes self)');
 
     for (const followPubkey of followsToCheck) {
       const followNpub = pubkeyToNpub(followPubkey);
