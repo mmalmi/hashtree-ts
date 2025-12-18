@@ -306,6 +306,7 @@
             <span class="i-lucide-file-diff text-text-3"></span>
             <span class="text-sm font-medium">Diff</span>
           </div>
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- colorizeDiff escapes HTML -->
           <pre class="p-4 text-xs font-mono overflow-x-auto whitespace-pre">{@html colorizeDiff(commitData.diff)}</pre>
         </div>
       {/if}

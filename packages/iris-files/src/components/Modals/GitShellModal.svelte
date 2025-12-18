@@ -299,6 +299,7 @@ Not supported:
               {#if result.error}
                 <pre class="text-error mt-1 whitespace-pre-wrap">{result.error}</pre>
               {:else if result.output}
+                <!-- eslint-disable-next-line svelte/no-at-html-tags -- colorizeOutput escapes HTML -->
                 <pre class="text-text-2 mt-1 whitespace-pre-wrap">{@html colorizeOutput(result.output, result.command)}</pre>
               {:else}
                 <div class="text-text-3 mt-1">(no output)</div>

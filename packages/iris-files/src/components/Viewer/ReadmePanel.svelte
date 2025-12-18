@@ -50,6 +50,7 @@
     {/if}
   </div>
   <div class="p-4 lg:p-6 prose prose-sm max-w-none text-text-1">
+    <!-- eslint-disable-next-line svelte/no-at-html-tags -- sanitized with DOMPurify -->
     {@html htmlContent}
   </div>
 </div>
