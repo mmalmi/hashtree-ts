@@ -787,6 +787,14 @@ export async function saveHashtree(
     ['hash', rootHash],
   ];
 
+  // Add directory prefix labels for discoverability
+  // e.g. "docs/travel/doc1" -> ["l", "docs"], ["l", "docs/travel"]
+  const parts = name.split('/');
+  for (let i = 1; i < parts.length; i++) {
+    const prefix = parts.slice(0, i).join('/');
+    event.tags.push(['l', prefix]);
+  }
+
   // Add extra labels if provided
   if (options.labels) {
     for (const label of options.labels) {
