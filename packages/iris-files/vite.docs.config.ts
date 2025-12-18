@@ -76,6 +76,7 @@ export default defineConfig({
       },
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,wasm}'],
+        globIgnores: ['**/ffmpeg-core.*'], // FFmpeg is 32MB, don't precache
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
     }),
