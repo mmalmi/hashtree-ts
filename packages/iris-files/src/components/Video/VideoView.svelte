@@ -400,7 +400,7 @@
       // Build tags - include both npub path and nhash for discoverability
       const tags: string[][] = [
         ['i', videoIdentifier],
-        ['k', 'web'],
+        ['k', 'video'],
       ];
 
       // Add nhash identifier for permalink reactions (uses video file CID, not directory)

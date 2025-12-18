@@ -451,4 +451,102 @@ test.describe('Iris Video App', () => {
     // Take final screenshot
     await page.screenshot({ path: 'e2e/screenshots/video-permalink-loaded.png' });
   });
+
+  test('liked video appears in follower feed', async ({ browser }) => {
+    test.slow(); // Multi-browser test with Nostr sync
+
+    // Create two browser contexts
+    const context1 = await browser.newContext();
+    const context2 = await browser.newContext();
+
+    const page1 = await context1.newPage();
+    const page2 = await context2.newPage();
+
+    setupPageErrorHandler(page1);
+    setupPageErrorHandler(page2);
+
+    // === Setup page1 (uploader who will like their own video) ===
+    await page1.goto('/video.html#/');
+    await disableOthersPool(page1);
+
+    // Login page1
+    const newBtn1 = page1.getByRole('button', { name: /New/i });
+    if (await newBtn1.isVisible().catch(() => false)) {
+      await newBtn1.click();
+      await expect(page1.locator('button:has-text("Create")')).toBeVisible({ timeout: 15000 });
+    }
+
+    // Upload a video on page1 (this will navigate to video page with npub in URL)
+    const uploadBtn1 = page1.locator('button:has-text("Create")');
+    await expect(uploadBtn1).toBeVisible({ timeout: 15000 });
+    await page1.keyboard.press('Escape');
+    await page1.waitForTimeout(200);
+    await uploadBtn1.click();
+
+    const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
+    await page1.locator('input[type="file"]').setInputFiles(testVideoPath);
+
+    const videoTitle = `Social Feed Test ${Date.now()}`;
+    await page1.locator('input[placeholder="Video title"]').fill(videoTitle);
+    await page1.locator('.fixed button:has-text("Upload")').click();
+
+    // Wait for video page (this URL will contain the npub)
+    await page1.waitForURL(/\/video\.html#\/npub.*\/videos%2F/, { timeout: 60000 });
+    await expect(page1.getByRole('heading', { name: 'Upload Video' })).not.toBeVisible({ timeout: 10000 });
+
+    // Get page1's npub from the current URL
+    const page1Url = page1.url();
+    const page1NpubMatch = page1Url.match(/npub1[a-z0-9]+/);
+    expect(page1NpubMatch).toBeTruthy();
+    const page1Npub = page1NpubMatch![0];
+    console.log(`Page1 npub: ${page1Npub.slice(0, 20)}...`);
+
+    // Like the video
+    const likeBtn = page1.locator('button[title="Like"]');
+    await expect(likeBtn).toBeVisible({ timeout: 10000 });
+    await likeBtn.click();
+    await expect(page1.locator('button[title="Liked"]')).toBeVisible({ timeout: 10000 });
+    console.log('Video uploaded and liked');
+
+    // Wait for like to propagate to relays
+    await page1.waitForTimeout(3000);
+
+    // === Setup page2 (follower) ===
+    await page2.goto('/video.html#/');
+    await disableOthersPool(page2);
+
+    // Login page2
+    const newBtn2 = page2.getByRole('button', { name: /New/i });
+    if (await newBtn2.isVisible().catch(() => false)) {
+      await newBtn2.click();
+      await expect(page2.locator('button:has-text("Create")')).toBeVisible({ timeout: 15000 });
+    }
+
+    // Page2 follows page1
+    await page2.goto(`/video.html#/${page1Npub}`);
+    const followBtn = page2.getByRole('button', { name: 'Follow', exact: true });
+    await expect(followBtn).toBeVisible({ timeout: 30000 });
+    await followBtn.click();
+    console.log('Page2 now follows page1');
+
+    // Wait for follow to propagate
+    await page2.waitForTimeout(2000);
+
+    // Go to home page and check feed
+    await page2.goto('/video.html#/');
+
+    // Wait for Feed section heading to appear
+    await expect(page2.getByRole('heading', { name: 'Feed', exact: true })).toBeVisible({ timeout: 30000 });
+
+    // The liked video should appear in page2's feed
+    await expect(page2.locator(`text=${videoTitle}`)).toBeVisible({ timeout: 30000 });
+    console.log('Liked video appears in follower feed!');
+
+    // Take screenshot
+    await page2.screenshot({ path: 'e2e/screenshots/video-social-feed.png' });
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
 });

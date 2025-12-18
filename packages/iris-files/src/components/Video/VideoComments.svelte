@@ -129,10 +129,12 @@
       event.kind = 1111; // NIP-22 GenericReply
       event.content = newComment.trim();
 
-      // Build tags - i for identifier, p for author
+      // Build tags - i for identifier, k for content type, p for author
       // Always: nhash (content-addressed file CID)
       // Plus one of: npubId (on npub routes) OR nhashFileId (on nhash routes)
-      const tags: string[][] = [];
+      const tags: string[][] = [
+        ['k', 'video'],
+      ];
       if (nhashId) tags.push(['i', nhashId]);
       if (nhashFileId) tags.push(['i', nhashFileId]);  // Only set on nhash routes
       if (npubId) tags.push(['i', npubId]);  // Only set on npub routes

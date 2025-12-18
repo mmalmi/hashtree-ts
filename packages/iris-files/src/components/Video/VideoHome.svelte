@@ -131,6 +131,10 @@
   let followedUsersVideos = $state<VideoItem[]>([]);
   let videoSubUnsub: (() => void) | null = null;
 
+  // Videos liked or commented by followed users
+  let socialVideos = $state<VideoItem[]>([]);
+  let socialSubUnsub: (() => void) | null = null;
+
   $effect(() => {
     // Track effectiveFollows to trigger re-run when it changes (includes fallback)
     const currentFollows = effectiveFollows;
@@ -223,9 +227,139 @@
     };
   });
 
-  // Social graph feed - videos from users within follow distance (reserved for future use)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- reserved for social graph expansion
-  let _socialGraphVideos = $state<VideoItem[]>([]);
+  // Subscribe to followed users' liked and commented videos
+  $effect(() => {
+    const currentFollows = effectiveFollows;
+
+    // Clean up previous subscription
+    untrack(() => {
+      if (socialSubUnsub) {
+        socialSubUnsub();
+        socialSubUnsub = null;
+      }
+    });
+
+    if (currentFollows.length === 0) {
+      untrack(() => { socialVideos = []; });
+      return;
+    }
+
+    const authors = currentFollows;
+
+    // Track videos by identifier to dedupe
+    const videosByKey = new Map<string, VideoItem>();
+    // Track seen event IDs
+    const seenEventIds = new Set<string>();
+
+    // Parse video identifier from 'i' tag and create VideoItem
+    // Format: "npub.../videos%2FVideoName" or just "nhash..."
+    function parseVideoFromIdentifier(identifier: string, reactorPubkey: string, timestamp: number): VideoItem | null {
+      // Skip nhash-only identifiers for now (no profile info)
+      if (identifier.startsWith('nhash')) return null;
+
+      // Try to parse npub/treeName format
+      const match = identifier.match(/^(npub1[a-z0-9]+)\/(.+)$/);
+      if (!match) return null;
+
+      const [, ownerNpub, encodedTreeName] = match;
+      let treeName: string;
+      try {
+        treeName = decodeURIComponent(encodedTreeName);
+      } catch {
+        treeName = encodedTreeName;
+      }
+
+      if (!treeName.startsWith('videos/')) return null;
+
+      const ownerPubkey = npubToPubkey(ownerNpub);
+      if (!ownerPubkey) return null;
+
+      const key = `${ownerNpub}/${treeName}`;
+      return {
+        key,
+        title: treeName.slice(7), // Remove 'videos/' prefix
+        ownerPubkey,
+        ownerNpub,
+        treeName,
+        visibility: 'public',
+        href: `#/${ownerNpub}/${encodeTreeNameForUrl(treeName)}`,
+        timestamp,
+        // Track who reacted for potential UI display
+        reactorPubkey,
+      };
+    }
+
+    // Subscribe to kind 17 (reactions/likes) with k=video tag
+    const likesSub = ndk.subscribe({
+      kinds: [17 as number],
+      authors,
+      '#k': ['video'],
+    }, { closeOnEose: false });
+
+    likesSub.on('event', (event) => {
+      if (!event.id || seenEventIds.has(event.id)) return;
+      seenEventIds.add(event.id);
+
+      // Find 'i' tag with video identifier
+      const iTag = event.tags.find(t => t[0] === 'i')?.[1];
+      if (!iTag) return;
+
+      const video = parseVideoFromIdentifier(iTag, event.pubkey, event.created_at || 0);
+      if (!video) return;
+
+      const existing = videosByKey.get(video.key);
+      // Keep the most recent interaction timestamp
+      if (!existing || (video.timestamp && video.timestamp > (existing.timestamp || 0))) {
+        videosByKey.set(video.key, video);
+        updateSocialVideos();
+      }
+    });
+
+    // Subscribe to kind 1111 (NIP-22 comments) with k=video tag
+    const commentsSub = ndk.subscribe({
+      kinds: [1111 as number],
+      authors,
+      '#k': ['video'],
+    }, { closeOnEose: false });
+
+    commentsSub.on('event', (event) => {
+      if (!event.id || seenEventIds.has(event.id)) return;
+      seenEventIds.add(event.id);
+
+      // Find 'i' tag with video identifier
+      const iTag = event.tags.find(t => t[0] === 'i')?.[1];
+      if (!iTag) return;
+
+      const video = parseVideoFromIdentifier(iTag, event.pubkey, event.created_at || 0);
+      if (!video) return;
+
+      const existing = videosByKey.get(video.key);
+      // Keep the most recent interaction timestamp
+      if (!existing || (video.timestamp && video.timestamp > (existing.timestamp || 0))) {
+        videosByKey.set(video.key, video);
+        updateSocialVideos();
+      }
+    });
+
+    function updateSocialVideos() {
+      const allVideos = Array.from(videosByKey.values());
+      allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      untrack(() => { socialVideos = allVideos; });
+    }
+
+    untrack(() => {
+      socialSubUnsub = () => {
+        likesSub.stop();
+        commentsSub.stop();
+      };
+    });
+
+    return () => {
+      likesSub.stop();
+      commentsSub.stop();
+    };
+  });
+
   let feedPage = $state(0);
   let loadingMore = $state(false);
   const FEED_PAGE_SIZE = 12;
@@ -237,6 +371,15 @@
 
     // Add followed users' videos first
     for (const video of followedUsersVideos) {
+      const key = `${video.ownerNpub}/${video.treeName}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(video);
+      }
+    }
+
+    // Add videos liked/commented by followed users
+    for (const video of socialVideos) {
       const key = `${video.ownerNpub}/${video.treeName}`;
       if (!seen.has(key)) {
         seen.add(key);
@@ -259,10 +402,13 @@
   // Infinite scroll observer
   let feedEndRef: HTMLDivElement;
 
+  // Total available videos from all sources (for infinite scroll check)
+  let totalAvailableVideos = $derived(followedUsersVideos.length + socialVideos.length);
+
   onMount(() => {
     const observer = new IntersectionObserver(
       entries => {
-        if (entries[0].isIntersecting && followedUsersVideos.length > feedVideos.length) {
+        if (entries[0].isIntersecting && totalAvailableVideos > feedVideos.length) {
           loadMoreFeed();
         }
       },

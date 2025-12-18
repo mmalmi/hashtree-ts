@@ -26,4 +26,6 @@ export interface VideoItem {
   visibility?: string;
   href: string;
   timestamp?: number;
+  /** Pubkey of user who reacted/commented (for social feed items) */
+  reactorPubkey?: string;
 }
