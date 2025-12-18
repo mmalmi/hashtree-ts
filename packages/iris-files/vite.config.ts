@@ -162,6 +162,11 @@ export default defineConfig({
       // Ensure HMR websocket connection is stable
       overlay: true,
     },
+    headers: {
+      // Required for SharedArrayBuffer (FFmpeg WASM transcoding)
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
   },
   optimizeDeps: {
     exclude: ['wasm-git'], // Don't pre-bundle wasm-git, let it load its own wasm

@@ -10,7 +10,7 @@
   import { getTree } from '../../store';
   import { addRecent } from '../../stores/recents';
   import { storeLinkKey } from '../../stores/trees';
-  import { needsTranscoding, transcodeToWebM, type TranscodeProgress } from '../../utils/videoTranscode';
+  import { needsTranscoding, transcodeToWebM, isTranscodingSupported, type TranscodeProgress } from '../../utils/videoTranscode';
 
   let showModal = $derived($modalsStore.showVideoUploadModal);
 
@@ -39,6 +39,7 @@
   let thumbnailUrl = $state<string | null>(null);
   let thumbnailBlob = $state<Blob | null>(null);
   let willTranscode = $state(false);
+  let transcodeSupported = $state(true);
   let visibility = $state<'public' | 'unlisted' | 'private'>('public');
 
   function handleFileSelect(e: Event) {
@@ -48,6 +49,7 @@
 
     selectedFile = file;
     willTranscode = needsTranscoding(file);
+    transcodeSupported = isTranscodingSupported();
 
     // Default title from filename (without extension)
     if (!title) {
@@ -324,10 +326,16 @@
             </div>
 
             <!-- File info -->
-            <div class="text-sm text-text-3 flex items-center gap-2">
+            <div class="text-sm text-text-3 flex flex-col gap-1">
               <span>{selectedFile.name} ({formatSize(selectedFile.size)})</span>
               {#if willTranscode}
-                <span class="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded">Will convert to WebM</span>
+                {#if transcodeSupported}
+                  <span class="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded w-fit">Will convert to WebM</span>
+                {:else}
+                  <span class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded w-fit">
+                    Cannot convert: SharedArrayBuffer not available. Use Chrome/Edge or upload MP4/WebM.
+                  </span>
+                {/if}
               {/if}
             </div>
 
@@ -426,7 +434,7 @@
           <button
             onclick={handleUpload}
             class="btn-primary px-4 py-2"
-            disabled={!title.trim() || uploading}
+            disabled={!title.trim() || uploading || (willTranscode && !transcodeSupported)}
           >
             {uploading ? 'Processing...' : 'Upload'}
           </button>

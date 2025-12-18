@@ -7,6 +7,13 @@ let ffmpegInstance: any = null;
 let loadingPromise: Promise<any> | null = null;
 
 /**
+ * Check if transcoding is supported (requires SharedArrayBuffer)
+ */
+export function isTranscodingSupported(): boolean {
+  return typeof SharedArrayBuffer !== 'undefined';
+}
+
+/**
  * Check if a file needs transcoding (non-webm/mp4)
  */
 export function needsTranscoding(file: File): boolean {
@@ -33,12 +40,14 @@ async function loadFFmpeg(onProgress?: (msg: string) => void): Promise<any> {
 
     const ffmpeg = new FFmpeg();
 
-    // Load FFmpeg core from CDN (smaller initial bundle)
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
+    // Load FFmpeg core from CDN
+    // Use mt (multi-threaded) version for better performance
+    const baseURL = 'https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/esm';
 
     await ffmpeg.load({
       coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
       wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
     });
 
     ffmpegInstance = ffmpeg;
@@ -67,9 +76,19 @@ export async function transcodeToWebM(
   file: File,
   onProgress?: (progress: TranscodeProgress) => void
 ): Promise<TranscodeResult> {
+  // Check SharedArrayBuffer support
+  if (!isTranscodingSupported()) {
+    throw new Error('Video transcoding requires SharedArrayBuffer. Please use Chrome/Edge or enable cross-origin isolation.');
+  }
+
   onProgress?.({ stage: 'loading', message: 'Loading video encoder...' });
 
-  const ffmpeg = await loadFFmpeg();
+  let ffmpeg;
+  try {
+    ffmpeg = await loadFFmpeg();
+  } catch (e) {
+    throw new Error(`Failed to load video encoder: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   const inputName = 'input' + getExtension(file.name);
   const outputName = 'output.webm';
@@ -77,8 +96,12 @@ export async function transcodeToWebM(
   // Write input file
   onProgress?.({ stage: 'transcoding', message: 'Preparing video...', percent: 0 });
 
-  const { fetchFile } = await import('@ffmpeg/util');
-  await ffmpeg.writeFile(inputName, await fetchFile(file));
+  try {
+    const { fetchFile } = await import('@ffmpeg/util');
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+  } catch (e) {
+    throw new Error(`Failed to read video file: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   // Set up progress handler
   ffmpeg.on('progress', ({ progress }: { progress: number }) => {
@@ -92,28 +115,41 @@ export async function transcodeToWebM(
 
   // Transcode to WebM with VP9 video and Opus audio
   // Using reasonable quality settings for web
-  await ffmpeg.exec([
-    '-i', inputName,
-    '-c:v', 'libvpx-vp9',   // VP9 video codec
-    '-crf', '30',            // Quality (lower = better, 30 is decent for web)
-    '-b:v', '0',             // Variable bitrate
-    '-c:a', 'libopus',       // Opus audio codec
-    '-b:a', '128k',          // Audio bitrate
-    '-vf', 'scale=-2:720',   // Scale to 720p max, maintain aspect
-    outputName
-  ]);
+  try {
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-c:v', 'libvpx-vp9',   // VP9 video codec
+      '-crf', '30',            // Quality (lower = better, 30 is decent for web)
+      '-b:v', '0',             // Variable bitrate
+      '-c:a', 'libopus',       // Opus audio codec
+      '-b:a', '128k',          // Audio bitrate
+      '-vf', 'scale=-2:720',   // Scale to 720p max, maintain aspect
+      outputName
+    ]);
+  } catch (e) {
+    throw new Error(`Transcoding failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   // Read output
-  const data = await ffmpeg.readFile(outputName);
+  let data: Uint8Array;
+  try {
+    data = await ffmpeg.readFile(outputName) as Uint8Array;
+  } catch (e) {
+    throw new Error(`Failed to read transcoded video: ${e instanceof Error ? e.message : String(e)}`);
+  }
 
   // Cleanup
-  await ffmpeg.deleteFile(inputName);
-  await ffmpeg.deleteFile(outputName);
+  try {
+    await ffmpeg.deleteFile(inputName);
+    await ffmpeg.deleteFile(outputName);
+  } catch {
+    // Ignore cleanup errors
+  }
 
   onProgress?.({ stage: 'done', message: 'Transcoding complete', percent: 100 });
 
   return {
-    data: data as Uint8Array,
+    data,
     mimeType: 'video/webm',
     extension: 'webm'
   };
