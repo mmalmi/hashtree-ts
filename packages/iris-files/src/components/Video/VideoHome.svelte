@@ -123,6 +123,8 @@
     const currentFollows = effectiveFollows;
     // Also track graphVersion to re-run when social graph updates
     const _version = graphVersion;
+    // Track userPubkey to include own videos
+    const myPubkey = userPubkey;
 
     // Clean up previous subscriptions
     untrack(() => {
@@ -132,16 +134,22 @@
 
     console.log('[VideoHome] follows effect, count:', currentFollows.length, 'usingFallback:', usingFallback);
 
-    if (currentFollows.length === 0) {
+    // Include self + follows (deduplicated)
+    const pubkeysToCheck = new Set(currentFollows);
+    if (myPubkey) {
+      pubkeysToCheck.add(myPubkey);
+    }
+
+    if (pubkeysToCheck.size === 0) {
       untrack(() => { followedUsersVideos = []; });
       return;
     }
 
     const videosByUser = new Map<string, VideoItem[]>();
 
-    // Subscribe to trees for each followed user (limit to avoid too many subscriptions)
-    const followsToCheck = currentFollows.slice(0, 20);
-    console.log('[VideoHome] Checking trees for', followsToCheck.length, 'follows');
+    // Subscribe to trees for each user (limit to avoid too many subscriptions)
+    const followsToCheck = Array.from(pubkeysToCheck).slice(0, 20);
+    console.log('[VideoHome] Checking trees for', followsToCheck.length, 'users (includes self)');
 
     for (const followPubkey of followsToCheck) {
       const followNpub = pubkeyToNpub(followPubkey);
