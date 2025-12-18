@@ -15,9 +15,10 @@
     npub?: string;  // Optional - may not be available for nhash paths
     treeName?: string;
     nhash?: string;  // For content-addressed permalinks
+    filename?: string;  // Optional filename for nhash/filename tagging
   }
 
-  let { npub, treeName, nhash }: Props = $props();
+  let { npub, treeName, nhash, filename }: Props = $props();
 
   // Derive owner pubkey from npub if available
   let ownerPubkey = $derived.by(() => {
@@ -60,9 +61,11 @@
 
   // Comment identifiers - we may have both npub/treeName and nhash for cross-linking
   // Using 'i' tag per NIP-22 for the identifier of the thing being commented on
-  // Format matches likes: ${npub}/${treeName} for npub routes, nhash for permalinks
+  // Tags: nhash (always), plus npub/treeName OR nhash/filename
   let npubId = $derived(npub && treeName ? `${npub}/${treeName}` : null);
   let nhashId = $derived(nhash || null);
+  // nhash/filename only when on nhash route (no npub) - identifies file within potential directory
+  let nhashFileId = $derived(!npub && nhash && filename ? `${nhash}/${filename}` : null);
 
   // Primary identifier for subscribing
   // On nhash routes (no npub), use nhash. On npub routes, use npubId (nhash is just for writing)
@@ -127,9 +130,12 @@
       event.content = newComment.trim();
 
       // Build tags - i for identifier, p for author
+      // Always: nhash (content-addressed file CID)
+      // Plus one of: npubId (on npub routes) OR nhashFileId (on nhash routes)
       const tags: string[][] = [];
       if (nhashId) tags.push(['i', nhashId]);
-      if (npubId) tags.push(['i', npubId]);
+      if (nhashFileId) tags.push(['i', nhashFileId]);  // Only set on nhash routes
+      if (npubId) tags.push(['i', npubId]);  // Only set on npub routes
 
       // Add p tag only if we know the owner
       if (ownerPubkey) {

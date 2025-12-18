@@ -24,9 +24,11 @@
   // Decode nhash to CID - nhashDecode returns CID with Uint8Array fields directly
   let decodedCid = $derived.by(() => {
     try {
-      return nhashDecode(nhash);
+      const result = nhashDecode(nhash);
+      console.log('[VideoNHashView] Decoded nhash:', nhash, result);
+      return result;
     } catch (e) {
-      console.error('Failed to decode nhash:', e);
+      console.error('[VideoNHashView] Failed to decode nhash:', nhash, e);
       return null;
     }
   });
@@ -34,6 +36,7 @@
   // Load video when nhash changes
   $effect(() => {
     const cid = decodedCid;
+    console.log('[VideoNHashView] Effect running, cid:', cid);
     if (cid) {
       untrack(() => loadVideo(cid));
     } else {
@@ -43,13 +46,18 @@
   });
 
   async function loadVideo(cidParam: CID) {
+    console.log('[VideoNHashView] loadVideo called with CID:', cidParam);
     error = null;
     loading = true;
     videoSrc = '';
 
-    // nhash points directly to video file blob, not a directory
+    // nhash points directly to video file blob
+    // Filename is a hint for MIME type - if nhash is a directory, SW looks up the file;
+    // if nhash is a file CID, SW uses the filename just for Content-Type
     videoCid = cidParam;
-    videoSrc = getNhashFileUrl(cidParam);
+    const url = getNhashFileUrl(cidParam, 'video.mp4');
+    console.log('[VideoNHashView] Setting videoSrc to:', url);
+    videoSrc = url;
     loading = false;
   }
 
@@ -67,17 +75,17 @@
 
 <div class="flex-1 overflow-auto">
   <!-- Video Player - full width, sensible height like YouTube -->
-  <div class="w-full max-w-full bg-black overflow-hidden mx-auto" style="height: min(calc(100vh - 48px - 180px), 80vh); aspect-ratio: 16/9;">
+  <div class="w-full max-w-full bg-black overflow-hidden mx-auto" style="height: min(calc(100vh - 48px - 180px), 80vh); aspect-ratio: 16/9;" data-testid="video-container">
     {#if loading}
-      <div class="w-full h-full flex items-center justify-center text-white text-sm">
+      <div class="w-full h-full flex items-center justify-center text-white text-sm" data-testid="video-loading">
         <span class="i-lucide-loader-2 text-4xl text-text-3 animate-spin"></span>
       </div>
     {:else if error}
-      <div class="w-full h-full flex items-center justify-center text-red-400">
+      <div class="w-full h-full flex items-center justify-center text-red-400" data-testid="video-error">
         <span class="i-lucide-alert-circle mr-2"></span>
         {error}
       </div>
-    {:else if videoSrc}
+    {:else}
       <!-- svelte-ignore a11y_media_has_caption -->
       <video
         bind:this={videoRef}
@@ -86,6 +94,7 @@
         controls
         autoplay
         playsinline
+        data-testid="video-player"
       />
     {/if}
   </div>
@@ -110,6 +119,6 @@
     </div>
 
     <!-- Comments -->
-    <VideoComments {nhash} />
+    <VideoComments {nhash} filename="video.mp4" />
   </div>
 </div>

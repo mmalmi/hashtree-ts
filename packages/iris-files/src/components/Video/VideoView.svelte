@@ -342,7 +342,7 @@
   }
 
   
-  // Video identifier for reactions (npub/treeName format)
+  // Video identifier for reactions (npub/treeName format - path to video directory)
   let videoIdentifier = $derived(npub && treeName ? `${npub}/${treeName}` : null);
 
   // Subscribe to likes for this video
@@ -404,6 +404,7 @@
       ];
 
       // Add nhash identifier for permalink reactions (uses video file CID, not directory)
+      // Plain nhash is sufficient since it points directly to the file content
       if (videoNhash) {
         tags.push(['i', videoNhash]);
       }
@@ -576,7 +577,7 @@
     <!-- Comments -->
     {#if npub && treeName}
       {#key `${npub}/${treeName}`}
-        <VideoComments {npub} {treeName} nhash={videoNhash} />
+        <VideoComments {npub} {treeName} nhash={videoNhash} filename={videoFileName} />
       {/key}
     {/if}
   </div>

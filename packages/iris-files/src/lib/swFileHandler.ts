@@ -90,10 +90,11 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
     if (nhash) {
       // Direct nhash request - decode to CID
       const rootCid = nhashDecode(nhash);
+      const tree = getTree();
 
-      // If path provided, navigate to file within the nhash directory
-      if (path) {
-        const tree = getTree();
+      // If path provided AND it contains a slash, navigate within the nhash directory
+      // Single filename without slashes is just a hint for MIME type - use rootCid directly
+      if (path && path.includes('/')) {
         const entry = await tree.resolvePath(rootCid, path);
         if (!entry) {
           port.postMessage({
@@ -105,7 +106,20 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
         }
         cid = entry.cid;
       } else {
-        cid = rootCid;
+        // Path is either empty or just a filename hint - use rootCid directly
+        // Check if rootCid is a directory and path is a single filename
+        if (path && !path.includes('/')) {
+          // Try to resolve as file within directory first
+          const entry = await tree.resolvePath(rootCid, path);
+          if (entry) {
+            cid = entry.cid;
+          } else {
+            // Not a directory with this file - use rootCid directly as file CID
+            cid = rootCid;
+          }
+        } else {
+          cid = rootCid;
+        }
       }
     } else if (npub && treeName) {
       // Npub-based request - resolve through tree root cache
