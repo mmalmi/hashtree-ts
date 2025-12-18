@@ -1,13 +1,11 @@
 <script lang="ts">
   /**
    * DocCard - A4 aspect ratio document card for docs grid
-   * Shows thumbnail preview if available
+   * Shows thumbnail preview if available via Service Worker URL
    */
-  import { onMount } from 'svelte';
   import VisibilityIcon from '../VisibilityIcon.svelte';
   import { Avatar } from '../User';
-  import { getTree } from '../../store';
-  import { getTreeRootSync, subscribeToTreeRoot } from '../../stores';
+  import { getNpubFileUrl } from '../../lib/mediaUrl';
   import { getThumbnailFilename } from '../../lib/yjs/thumbnail';
 
   interface Props {
@@ -21,56 +19,12 @@
 
   let { href, displayName, ownerPubkey, ownerNpub, treeName, visibility }: Props = $props();
 
-  let thumbnailUrl = $state<string | null>(null);
+  // Use SW URL for thumbnail - browser caches this automatically
+  let thumbnailUrl = $derived(
+    ownerNpub && treeName ? getNpubFileUrl(ownerNpub, treeName, getThumbnailFilename()) : null
+  );
 
-  // Subscribe to tree root updates and load thumbnail when available
-  onMount(() => {
-    if (!ownerNpub || !treeName) return;
-
-    // Try loading immediately if cached
-    loadThumbnail();
-
-    // Subscribe to resolver for updates (handles first load case)
-    const unsubscribe = subscribeToTreeRoot(ownerNpub, treeName, (hash) => {
-      if (hash && !thumbnailUrl) {
-        loadThumbnail();
-      }
-    });
-
-    return () => {
-      unsubscribe();
-      // Revoke blob URL on unmount
-      if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl);
-    };
-  });
-
-  async function loadThumbnail() {
-    if (!ownerNpub || !treeName || thumbnailUrl) return;
-
-    try {
-      const rootCid = getTreeRootSync(ownerNpub, treeName);
-      if (!rootCid) return;
-
-      const tree = getTree();
-
-      // Thumbnail is at .thumbnail.jpg in the tree root
-      const thumbPath = getThumbnailFilename();
-
-      // Resolve thumbnail path from tree root
-      const result = await tree.resolvePath(rootCid, thumbPath);
-      if (!result) return;
-
-      // Read thumbnail data
-      const data = await tree.readFile(result.cid);
-      if (!data) return;
-
-      // Create blob URL
-      const blob = new Blob([data], { type: 'image/jpeg' });
-      thumbnailUrl = URL.createObjectURL(blob);
-    } catch {
-      // Thumbnail not available - that's fine
-    }
-  }
+  let thumbnailError = $state(false);
 </script>
 
 <a
@@ -78,8 +32,13 @@
   class="aspect-[1/1.414] bg-surface-1 rounded-lg b-1 b-solid b-surface-3 hover:b-accent hover:shadow-md transition-all no-underline flex flex-col overflow-hidden"
 >
   <div class="flex-1 flex items-center justify-center overflow-hidden">
-    {#if thumbnailUrl}
-      <img src={thumbnailUrl} alt="" class="w-full h-full object-cover object-top" />
+    {#if thumbnailUrl && !thumbnailError}
+      <img
+        src={thumbnailUrl}
+        alt=""
+        class="w-full h-full object-cover object-top"
+        onerror={() => thumbnailError = true}
+      />
     {:else}
       <span class="i-lucide-file-text text-4xl text-accent"></span>
     {/if}
