@@ -12,11 +12,21 @@
   import { getFollowDistance } from '../../utils/socialGraph';
 
   interface Props {
-    npub: string;
+    npub?: string;  // Optional - may not be available for nhash paths
     treeName: string;
   }
 
   let { npub, treeName }: Props = $props();
+
+  // Derive owner pubkey from npub if available
+  let ownerPubkey = $derived.by(() => {
+    if (!npub) return null;
+    try {
+      const decoded = nip19.decode(npub);
+      if (decoded.type === 'npub') return decoded.data as string;
+    } catch {}
+    return null;
+  });
 
   interface Comment {
     id: string;
@@ -89,18 +99,29 @@
     });
   }
 
+  // Video identifier for comments (same as reactions)
+  let videoIdentifier = $derived(npub ? `${npub}/${treeName}` : null);
+
   async function submitComment() {
-    if (!newComment.trim() || !isLoggedIn || submitting) return;
+    if (!newComment.trim() || !isLoggedIn || submitting || !videoIdentifier) return;
 
     submitting = true;
     try {
       const event = new NDKEvent(ndk);
       event.kind = 1111; // NIP-22 GenericReply
       event.content = newComment.trim();
-      event.tags = [
+
+      // Build tags
+      const tags: string[][] = [
         ['t', `video:${npub}:${treeName}`], // Tag for finding comments
-        ['p', npubToPubkey(npub) || ''], // Tag video owner
       ];
+
+      // Add p tag only if we know the owner
+      if (ownerPubkey) {
+        tags.push(['p', ownerPubkey]);
+      }
+
+      event.tags = tags;
 
       // Sign first to get the event ID before publishing
       await event.sign();
@@ -127,14 +148,6 @@
     } finally {
       submitting = false;
     }
-  }
-
-  function npubToPubkey(npub: string): string | null {
-    try {
-      const decoded = nip19.decode(npub);
-      if (decoded.type === 'npub') return decoded.data as string;
-    } catch {}
-    return null;
   }
 
   function formatTime(timestamp: number): string {

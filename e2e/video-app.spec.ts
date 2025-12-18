@@ -318,4 +318,52 @@ test.describe('Iris Video App', () => {
     // Take screenshot of video with comment
     await page.screenshot({ path: 'e2e/screenshots/video-with-comment.png' });
   });
+
+  test('can like a video', async ({ page }) => {
+    test.slow();
+
+    await page.goto('/video.html#/');
+    await disableOthersPool(page);
+    await ensureLoggedIn(page);
+
+    const uploadBtn = page.locator('button:has-text("Create")');
+    await expect(uploadBtn).toBeVisible({ timeout: 15000 });
+
+    // Upload a video first
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await uploadBtn.click();
+
+    const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
+    await page.locator('input[type="file"]').setInputFiles(testVideoPath);
+
+    const videoTitle = `Like Test ${Date.now()}`;
+    await page.locator('input[placeholder="Video title"]').fill(videoTitle);
+    await page.locator('.fixed button:has-text("Upload")').click();
+
+    // Wait for video page
+    await page.waitForURL(/\/video\.html#\/npub.*\/videos%2F/, { timeout: 60000 });
+
+    // Modal should auto-close
+    await expect(page.getByRole('heading', { name: 'Upload Video' })).not.toBeVisible({ timeout: 10000 });
+
+    // Wait for video title in the main content area (h1 heading)
+    await expect(page.locator('h1', { hasText: videoTitle })).toBeVisible({ timeout: 30000 });
+
+    // Find and click the like button (heart icon)
+    const likeBtn = page.locator('button[title="Like"]');
+    await expect(likeBtn).toBeVisible({ timeout: 10000 });
+
+    // Click like button
+    await likeBtn.click();
+
+    // Wait for like to register - button should change to "Liked" and show count
+    await expect(page.locator('button[title="Liked"]')).toBeVisible({ timeout: 10000 });
+
+    // Like count should show "1"
+    await expect(page.locator('button[title="Liked"]').locator('text=1')).toBeVisible({ timeout: 5000 });
+
+    // Take screenshot of liked video
+    await page.screenshot({ path: 'e2e/screenshots/video-liked.png' });
+  });
 });

@@ -5,10 +5,10 @@
    *
    * Uses Service Worker streaming via /htree/ URLs (no blob URLs!)
    */
-  import { untrack } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { getTree } from '../../store';
-  import { nostrStore } from '../../nostr';
+  import { ndk, nostrStore } from '../../nostr';
   import { treeRootStore, createTreesStore } from '../../stores';
   import { openShareModal, openBlossomPushModal } from '../../stores/modals';
   import type { TreeVisibility } from 'hashtree';
@@ -23,12 +23,18 @@
   import type { CID, LinkType } from 'hashtree';
   import { toHex } from 'hashtree';
   import { getNpubFileUrl, getNhashFileUrl } from '../../lib/mediaUrl';
+  import { NDKEvent, type NDKFilter, type NDKSubscription } from '@nostr-dev-kit/ndk';
 
   let deleting = $state(false);
   let editing = $state(false);
   let saving = $state(false);
   let editTitle = $state('');
   let editDescription = $state('');
+
+  // Like state
+  let likes = $state<Set<string>>(new Set()); // Set of pubkeys who liked
+  let userLiked = $state(false);
+  let liking = $state(false);
 
   interface Props {
     npub?: string;
@@ -64,6 +70,8 @@
 
   // Current user
   let currentUserNpub = $derived($nostrStore.npub);
+  let userPubkey = $derived($nostrStore.pubkey);
+  let isLoggedIn = $derived($nostrStore.isLoggedIn);
   let isOwner = $derived(npub === currentUserNpub);
 
   // Social graph for known followers (like YouTube subscriber count)
@@ -303,6 +311,89 @@
     }
     return `${m}:${s.toString().padStart(2, '0')}`;
   }
+
+  // Video identifier for reactions (npub/treeName format)
+  let videoIdentifier = $derived(npub && treeName ? `${npub}/${treeName}` : null);
+
+  // Subscribe to likes for this video
+  $effect(() => {
+    const identifier = videoIdentifier;
+    const currentUserPubkey = userPubkey; // Capture for callback
+    if (!identifier) return;
+
+    // Reset state
+    untrack(() => {
+      likes = new Set();
+      userLiked = false;
+    });
+
+    // Subscribe to kind 17 reactions with our identifier
+    const filter: NDKFilter = {
+      kinds: [17 as number],
+      '#i': [identifier],
+    };
+
+    const sub = ndk.subscribe(filter, { closeOnEose: false });
+
+    sub.on('event', (event: NDKEvent) => {
+      if (!event.pubkey) return;
+
+      // Check if it's a like (+ or empty content)
+      const content = event.content?.trim() || '+';
+      if (content === '+' || content === '') {
+        untrack(() => {
+          likes = new Set([...likes, event.pubkey]);
+
+          // Check if current user liked
+          if (event.pubkey === currentUserPubkey) {
+            userLiked = true;
+          }
+        });
+      }
+    });
+
+    return () => {
+      sub.stop();
+    };
+  });
+
+  // Toggle like
+  async function toggleLike() {
+    if (!videoIdentifier || !isLoggedIn || liking) return;
+
+    liking = true;
+    try {
+      const event = new NDKEvent(ndk);
+      event.kind = 17; // External content reaction
+      event.content = userLiked ? '' : '+'; // Toggle (note: can't really "unlike" in Nostr, but we track locally)
+
+      // Build tags
+      const tags: string[][] = [
+        ['i', videoIdentifier, `https://video.iris.to/#/${videoIdentifier}`],
+        ['k', 'web'],
+      ];
+
+      // Add p tag if we know the owner
+      if (ownerPubkey) {
+        tags.push(['p', ownerPubkey]);
+      }
+
+      event.tags = tags;
+
+      await event.sign();
+      await event.publish();
+
+      // Update local state optimistically
+      if (!userLiked) {
+        likes = new Set([...likes, userPubkey!]);
+        userLiked = true;
+      }
+    } catch (e) {
+      console.error('Failed to like video:', e);
+    } finally {
+      liking = false;
+    }
+  }
 </script>
 
 <div class="flex-1 overflow-auto">
@@ -372,6 +463,21 @@
         <div class="flex items-start justify-between gap-4 mb-3">
           <h1 class="text-xl font-semibold text-text-1">{title}</h1>
           <div class="flex items-center gap-1 shrink-0">
+            <!-- Like button -->
+            {#if videoIdentifier}
+              <button
+                onclick={toggleLike}
+                class="btn-ghost p-2 flex items-center gap-1"
+                class:text-accent={userLiked}
+                title={userLiked ? 'Liked' : 'Like'}
+                disabled={!isLoggedIn || liking}
+              >
+                <span class={userLiked ? 'i-lucide-heart text-lg' : 'i-lucide-heart text-lg'} class:fill-current={userLiked}></span>
+                {#if likes.size > 0}
+                  <span class="text-sm">{likes.size}</span>
+                {/if}
+              </button>
+            {/if}
             <button onclick={handleShare} class="btn-ghost p-2" title="Share">
               <span class="i-lucide-share text-lg"></span>
             </button>
