@@ -75,7 +75,7 @@
 
 <div class="flex-1 overflow-auto">
   <!-- Video Player - full width, sensible height like YouTube -->
-  <div class="w-full max-w-full bg-black overflow-hidden mx-auto" style="height: min(calc(100vh - 48px - 180px), 80vh); aspect-ratio: 16/9;" data-testid="video-container">
+  <div class="w-full max-w-full bg-black overflow-hidden mx-auto" style="height: min(calc(100vh - 48px - 80px), 90vh); aspect-ratio: 16/9;" data-testid="video-container">
     {#if loading}
       <div class="w-full h-full flex items-center justify-center text-white text-sm" data-testid="video-loading">
         <span class="i-lucide-loader-2 text-4xl text-text-3 animate-spin"></span>
