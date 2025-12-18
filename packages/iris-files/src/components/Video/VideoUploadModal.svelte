@@ -331,131 +331,125 @@
 
       <!-- Content -->
       <div class="p-4 space-y-4">
-        {#if !selectedFile}
-          <!-- File selection -->
-          <div
-            class="border-2 border-dashed border-surface-3 rounded-lg p-8 text-center hover:border-accent transition-colors cursor-pointer"
-            onclick={() => fileInput?.click()}
-          >
-            <span class="i-lucide-upload text-4xl text-accent mb-2 block"></span>
-            <p class="text-text-2">Click to select a video file</p>
-            <p class="text-text-3 text-sm mt-1">MP4, WebM, MOV, AVI, MKV supported</p>
-          </div>
-          <input
-            bind:this={fileInput}
-            type="file"
-            accept="video/*"
-            class="hidden"
-            onchange={handleFileSelect}
-          />
-        {:else}
-          <!-- Preview and metadata -->
-          <div class="space-y-4">
-            <!-- Thumbnail preview -->
-            <div class="aspect-video bg-surface-2 rounded-lg overflow-hidden flex items-center justify-center">
-              {#if thumbnailUrl}
-                <img src={thumbnailUrl} alt="Thumbnail" class="w-full h-full object-cover" />
+        <!-- File selection / preview area -->
+        <div
+          class="aspect-video bg-surface-2 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer hover:bg-surface-3 transition-colors {uploading ? 'pointer-events-none' : ''}"
+          onclick={() => !uploading && fileInput?.click()}
+        >
+          {#if thumbnailUrl}
+            <img src={thumbnailUrl} alt="Thumbnail" class="w-full h-full object-cover" />
+          {:else}
+            <div class="text-center">
+              <span class="i-lucide-upload text-4xl text-accent mb-2 block"></span>
+              <p class="text-text-2">Click to select a video file</p>
+              <p class="text-text-3 text-sm mt-1">MP4, WebM, MOV, AVI, MKV supported</p>
+            </div>
+          {/if}
+        </div>
+        <input
+          bind:this={fileInput}
+          type="file"
+          accept="video/*"
+          class="hidden"
+          onchange={handleFileSelect}
+        />
+
+        <!-- File info (if selected) -->
+        {#if selectedFile}
+          <div class="text-sm text-text-3 flex flex-col gap-1">
+            <span>{selectedFile.name} ({formatSize(selectedFile.size)})</span>
+            {#if willTranscode}
+              {#if transcodeSupported && !transcodeError}
+                <span class="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded w-fit">Will convert to WebM</span>
               {:else}
-                <span class="i-lucide-video text-4xl text-text-3"></span>
+                <span class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded w-fit">
+                  {transcodeError || 'Cannot convert: SharedArrayBuffer not available. Use Chrome/Edge or upload MP4/WebM.'}
+                </span>
               {/if}
-            </div>
-
-            <!-- File info -->
-            <div class="text-sm text-text-3 flex flex-col gap-1">
-              <span>{selectedFile.name} ({formatSize(selectedFile.size)})</span>
-              {#if willTranscode}
-                {#if transcodeSupported}
-                  <span class="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded w-fit">Will convert to WebM</span>
-                {:else}
-                  <span class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded w-fit">
-                    Cannot convert: SharedArrayBuffer not available. Use Chrome/Edge or upload MP4/WebM.
-                  </span>
-                {/if}
-              {/if}
-            </div>
-
-            <!-- Title -->
-            <div>
-              <label class="block text-sm text-text-2 mb-1">Title</label>
-              <input
-                type="text"
-                bind:value={title}
-                class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 focus:border-accent focus:outline-none"
-                placeholder="Video title"
-                disabled={uploading}
-              />
-            </div>
-
-            <!-- Description -->
-            <div>
-              <label class="block text-sm text-text-2 mb-1">Description (optional)</label>
-              <textarea
-                bind:value={description}
-                class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 resize-none focus:border-accent focus:outline-none"
-                placeholder="Video description..."
-                rows="3"
-                disabled={uploading}
-              ></textarea>
-            </div>
-
-            <!-- Visibility -->
-            <div>
-              <label class="block text-sm text-text-2 mb-2">Visibility</label>
-              <div class="flex gap-2">
-                <button
-                  type="button"
-                  onclick={() => visibility = 'public'}
-                  class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'public' ? 'ring-2 ring-accent bg-surface-3' : ''}"
-                  disabled={uploading}
-                >
-                  <span class="i-lucide-globe"></span>
-                  <span class="text-sm">Public</span>
-                </button>
-                <button
-                  type="button"
-                  onclick={() => visibility = 'unlisted'}
-                  class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'unlisted' ? 'ring-2 ring-accent bg-surface-3' : ''}"
-                  disabled={uploading}
-                >
-                  <span class="i-lucide-link"></span>
-                  <span class="text-sm">Unlisted</span>
-                </button>
-                <button
-                  type="button"
-                  onclick={() => visibility = 'private'}
-                  class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'private' ? 'ring-2 ring-accent bg-surface-3' : ''}"
-                  disabled={uploading}
-                >
-                  <span class="i-lucide-lock"></span>
-                  <span class="text-sm">Private</span>
-                </button>
-              </div>
-              <p class="text-xs text-text-3 mt-2">
-                {#if visibility === 'public'}
-                  Anyone can find and watch this video
-                {:else if visibility === 'unlisted'}
-                  Only people with the link can watch
-                {:else}
-                  Encrypted, only you can watch
-                {/if}
-              </p>
-            </div>
-
-            <!-- Progress bar -->
-            {#if uploading}
-              <div class="space-y-2">
-                <div class="flex justify-between text-sm text-text-3">
-                  <span>{progressMessage || 'Processing...'}</span>
-                  <span>{progress}%</span>
-                </div>
-                <div class="h-2 bg-surface-2 rounded-full overflow-hidden">
-                  <div
-                    class="h-full bg-accent transition-all duration-300"
-                    style="width: {progress}%"
-                  ></div>
-                </div>
-              </div>
             {/if}
+          </div>
+        {/if}
+
+        <!-- Title -->
+        <div>
+          <label class="block text-sm text-text-2 mb-1">Title</label>
+          <input
+            type="text"
+            bind:value={title}
+            class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 focus:border-accent focus:outline-none"
+            placeholder="Video title"
+            disabled={uploading}
+          />
+        </div>
+
+        <!-- Description -->
+        <div>
+          <label class="block text-sm text-text-2 mb-1">Description (optional)</label>
+          <textarea
+            bind:value={description}
+            class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 resize-none focus:border-accent focus:outline-none"
+            placeholder="Video description..."
+            rows="2"
+            disabled={uploading}
+          ></textarea>
+        </div>
+
+        <!-- Visibility -->
+        <div>
+          <label class="block text-sm text-text-2 mb-2">Visibility</label>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onclick={() => visibility = 'public'}
+              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'public' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+              disabled={uploading}
+            >
+              <span class="i-lucide-globe"></span>
+              <span class="text-sm">Public</span>
+            </button>
+            <button
+              type="button"
+              onclick={() => visibility = 'unlisted'}
+              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'unlisted' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+              disabled={uploading}
+            >
+              <span class="i-lucide-link"></span>
+              <span class="text-sm">Unlisted</span>
+            </button>
+            <button
+              type="button"
+              onclick={() => visibility = 'private'}
+              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'private' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+              disabled={uploading}
+            >
+              <span class="i-lucide-lock"></span>
+              <span class="text-sm">Private</span>
+            </button>
+          </div>
+          <p class="text-xs text-text-3 mt-2">
+            {#if visibility === 'public'}
+              Anyone can find and watch this video
+            {:else if visibility === 'unlisted'}
+              Only people with the link can watch
+            {:else}
+              Encrypted, only you can watch
+            {/if}
+          </p>
+        </div>
+
+        <!-- Progress bar -->
+        {#if uploading}
+          <div class="space-y-2">
+            <div class="flex justify-between text-sm text-text-3">
+              <span>{progressMessage || 'Processing...'}</span>
+              <span>{progress}%</span>
+            </div>
+            <div class="h-2 bg-surface-2 rounded-full overflow-hidden">
+              <div
+                class="h-full bg-accent transition-all duration-300"
+                style="width: {progress}%"
+              ></div>
+            </div>
           </div>
         {/if}
       </div>
@@ -465,15 +459,13 @@
         <button onclick={handleClose} class="btn-ghost px-4 py-2" disabled={uploading}>
           Cancel
         </button>
-        {#if selectedFile}
-          <button
-            onclick={handleUpload}
-            class="btn-primary px-4 py-2"
-            disabled={!title.trim() || uploading || (willTranscode && !transcodeSupported)}
-          >
-            {uploading ? 'Processing...' : 'Upload'}
-          </button>
-        {/if}
+        <button
+          onclick={handleUpload}
+          class="btn-primary px-4 py-2"
+          disabled={!selectedFile || !title.trim() || uploading || (willTranscode && (!transcodeSupported || !!transcodeError))}
+        >
+          {uploading ? 'Processing...' : 'Upload'}
+        </button>
       </div>
     </div>
   </div>

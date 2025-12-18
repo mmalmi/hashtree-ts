@@ -367,11 +367,17 @@
       event.kind = 17; // External content reaction
       event.content = userLiked ? '' : '+'; // Toggle (note: can't really "unlike" in Nostr, but we track locally)
 
-      // Build tags
+      // Build tags - include both npub path and nhash for discoverability
       const tags: string[][] = [
         ['i', videoIdentifier, `https://video.iris.to/#/${videoIdentifier}`],
         ['k', 'web'],
       ];
+
+      // Add nhash identifier if we have the root CID (for permalink reactions)
+      if (rootCid) {
+        const nhash = `nhash/${toHex(rootCid.hash)}`;
+        tags.push(['i', nhash, `https://video.iris.to/#/${nhash}`]);
+      }
 
       // Add p tag if we know the owner
       if (ownerPubkey) {
