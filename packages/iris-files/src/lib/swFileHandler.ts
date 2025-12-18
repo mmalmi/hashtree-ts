@@ -144,20 +144,33 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       return;
     }
 
-    // Read file data
     const tree = getTree();
-    const fileData = await tree.readFile(cid);
 
-    if (!fileData) {
-      port.postMessage({
-        status: 404,
-        headers: { 'Content-Type': 'text/plain' },
-        body: 'File data not found',
-      } as FileResponseHeaders);
-      return;
+    // Get file size first (needed for Content-Length and range calculations)
+    // Use getTreeNode which handles encryption, then sum link sizes
+    let totalSize: number;
+    const treeNode = await tree.getTreeNode(cid);
+
+    if (treeNode) {
+      // Chunked file - sum link sizes from decrypted tree node
+      // Note: for encrypted files, link.size is the decrypted (plaintext) size
+      totalSize = treeNode.links.reduce((sum, l) => sum + l.size, 0);
+    } else {
+      // Single blob - fetch just to check existence and get encrypted size
+      const blob = await tree.getBlob(cid.hash);
+      if (!blob) {
+        port.postMessage({
+          status: 404,
+          headers: { 'Content-Type': 'text/plain' },
+          body: 'File data not found',
+        } as FileResponseHeaders);
+        return;
+      }
+      // For encrypted blobs, decrypted size = encrypted size - 16 (nonce overhead)
+      // This is a small file anyway (< chunk size ~2MB)
+      totalSize = cid.key ? Math.max(0, blob.length - 16) : blob.length;
     }
 
-    const totalSize = fileData.length;
     const rangeStart = start || 0;
     const rangeEnd = end !== undefined ? Math.min(end, totalSize - 1) : totalSize - 1;
     const contentLength = rangeEnd - rangeStart + 1;
@@ -193,11 +206,12 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       totalSize,
     } as FileResponseHeaders);
 
-    // Stream chunks via pull-based protocol
+    // Stream chunks via pull-based protocol using readFileRange
+    // This fetches only the needed chunks from network, not the whole file
     let offset = rangeStart;
-    const CHUNK_SIZE = 64 * 1024; // 64KB chunks
+    const CHUNK_SIZE = 512 * 1024; // 512KB chunks for efficient network fetches
 
-    port.onmessage = (msg: MessageEvent) => {
+    port.onmessage = async (msg: MessageEvent) => {
       if (msg.data === false) {
         // Cancel signal
         port.onmessage = null;
@@ -205,7 +219,7 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       }
 
       if (msg.data === true) {
-        // Pull request - send next chunk
+        // Pull request - fetch and send next chunk
         if (offset > rangeEnd) {
           // Done
           port.postMessage(null);
@@ -213,10 +227,21 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
           return;
         }
 
-        const chunkEnd = Math.min(offset + CHUNK_SIZE - 1, rangeEnd);
-        const chunk = fileData.slice(offset, chunkEnd + 1);
-        port.postMessage(chunk);
-        offset = chunkEnd + 1;
+        try {
+          const chunkEnd = Math.min(offset + CHUNK_SIZE - 1, rangeEnd);
+          const chunk = await tree.readFileRange(cid, offset, chunkEnd + 1);
+          if (chunk) {
+            port.postMessage(chunk);
+            offset = chunkEnd + 1;
+          } else {
+            port.postMessage(null);
+            port.onmessage = null;
+          }
+        } catch (err) {
+          console.error('[SwFileHandler] Range read error:', err);
+          port.postMessage(null);
+          port.onmessage = null;
+        }
       }
     };
   } catch (error) {
