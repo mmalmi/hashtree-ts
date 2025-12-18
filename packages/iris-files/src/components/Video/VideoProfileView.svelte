@@ -179,10 +179,10 @@
           <span class="i-lucide-share text-lg"></span>
         </button>
         {#if isOwnProfile}
-          <a href="#/users" class="btn-ghost px-4 py-2" title="Switch user">
+          <a href="#/users" class="btn-ghost px-4 py-2 no-underline" title="Switch user">
             Switch User
           </a>
-          <a href={`#/${npub}/edit`} class="btn-ghost px-4 py-2">
+          <a href={`#/${npub}/edit`} class="btn-ghost px-4 py-2 no-underline">
             Edit Profile
           </a>
           <button onclick={uploadVideo} class="btn-primary px-4 py-2">
