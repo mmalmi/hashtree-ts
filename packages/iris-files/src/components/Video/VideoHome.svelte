@@ -298,41 +298,6 @@
       </section>
     {/if}
 
-    <!-- From Followed Users Section (or Suggested when using fallback) -->
-    {#if followedUsersVideos.length > 0 || followsLoading}
-      <section class="mb-8">
-        <h2 class="text-lg font-semibold text-text-1 mb-3">
-          {#if usingFallback || !isLoggedIn}
-            Suggested
-          {:else}
-            From People You Follow
-          {/if}
-        </h2>
-        {#if followsLoading && followedUsersVideos.length === 0}
-          <div class="flex items-center gap-2 text-text-3 py-4">
-            <span class="i-lucide-loader-2 animate-spin"></span>
-            <span>Loading...</span>
-          </div>
-        {:else}
-          <div class="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin">
-            {#each followedUsersVideos.slice(0, 10) as video (video.href)}
-              <div class="shrink-0 w-48 md:w-56">
-                <VideoCard
-                  href={video.href}
-                  title={video.title}
-                  duration={video.duration}
-                  ownerPubkey={video.ownerPubkey}
-                  ownerNpub={video.ownerNpub}
-                  treeName={video.treeName}
-                  visibility={video.visibility}
-                />
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </section>
-    {/if}
-
     <!-- Feed Section -->
     {#if feedVideos.length > 0}
       <section>

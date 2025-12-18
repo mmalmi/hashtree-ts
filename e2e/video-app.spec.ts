@@ -42,7 +42,7 @@ test.describe('Iris Video App', () => {
     await page.screenshot({ path: 'e2e/screenshots/video-home.png' });
   });
 
-  test('shows suggested content for new user with no follows', async ({ page }) => {
+  test('shows feed content for new user with no follows', async ({ page }) => {
     await page.goto('/video.html#/');
     await disableOthersPool(page);
 
@@ -54,11 +54,11 @@ test.describe('Iris Video App', () => {
       await expect(page.locator('button:has-text("Create")')).toBeVisible({ timeout: 15000 });
     }
 
-    // Should show "Suggested" section (fallback content for users with <5 follows)
-    await expect(page.locator('text=Suggested')).toBeVisible({ timeout: 30000 });
+    // Should show "Feed" section (fallback content from default user for users with <5 follows)
+    await expect(page.locator('text=Feed')).toBeVisible({ timeout: 30000 });
 
-    // Take screenshot of suggested content
-    await page.screenshot({ path: 'e2e/screenshots/video-suggested-content.png' });
+    // Take screenshot of feed content
+    await page.screenshot({ path: 'e2e/screenshots/video-feed-content.png' });
   });
 
   test('can open upload modal', async ({ page }) => {
