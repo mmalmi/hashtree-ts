@@ -13,8 +13,8 @@ import { navigate } from '../utils/navigate';
 import { parseRoute } from '../utils/route';
 import { getCurrentPathFromUrl } from '../actions/route';
 import { markFilesChanged } from './recentlyChanged';
-import { openExtractModal, openGitignoreModal, type ArchiveFile } from './modals';
-import { isArchiveFile, extractArchive } from '../utils/compression';
+import { openExtractModal, openGitignoreModal } from './modals';
+import { isArchiveFile, getArchiveFileList } from '../utils/compression';
 import { nip19 } from 'nostr-tools';
 import type { FileWithPath, DirectoryReadResult } from '../utils/directory';
 import { findGitignoreFile, parseGitignoreFromFile, applyGitignoreFilter, applyDefaultIgnoreFilter } from '../utils/directory';
@@ -180,17 +180,13 @@ export async function uploadFiles(files: FileList): Promise<void> {
       }
 
       try {
-        const extractedFiles = extractArchive(data, file.name);
-        if (extractedFiles.length > 0) {
-          // Convert to ArchiveFile format and show modal
-          const archiveFiles: ArchiveFile[] = extractedFiles.map(f => ({
-            name: f.name,
-            data: f.data,
-            size: f.data.length,
-          }));
+        // Get file list without decompressing - fast and low memory
+        const archiveInfo = getArchiveFileList(data);
+        if (archiveInfo.files.length > 0) {
           setUploadProgress(null);
-          // Pass original data so "Keep as ZIP" can upload the original file
-          openExtractModal(file.name, archiveFiles, data);
+          // Pass archive data for extraction later (one file at a time)
+          // Include commonRoot so modal knows if files already have a root folder
+          openExtractModal(file.name, archiveInfo.files, data, archiveInfo.commonRoot);
           // Don't continue with normal upload - the modal will handle it
           return;
         }

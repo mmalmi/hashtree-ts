@@ -12,16 +12,16 @@ interface ForkTarget {
   suggestedName: string;
 }
 
-interface ArchiveFile {
+interface ArchiveFileInfo {
   name: string;
-  data: Uint8Array;
   size: number;
 }
 
 interface ExtractTarget {
   archiveName: string;
-  files: ArchiveFile[];
-  originalData?: Uint8Array; // Original ZIP data for "Keep as ZIP" option
+  files: ArchiveFileInfo[];  // File list without data
+  archiveData: Uint8Array;   // Original ZIP for extraction and "Keep as ZIP"
+  commonRoot: string | null; // If all files share a common root directory
 }
 
 type ExtractLocation = 'current' | 'subdir';
@@ -204,8 +204,11 @@ export function closeForkModal() {
   modalsStore.update(s => ({ ...s, showForkModal: false, forkTarget: null, modalInput: '' }));
 }
 
-export function openExtractModal(archiveName: string, files: ArchiveFile[], originalData?: Uint8Array) {
-  modalsStore.update(s => ({ ...s, showExtractModal: true, extractTarget: { archiveName, files, originalData }, extractLocation: 'subdir', modalInput: '' }));
+export function openExtractModal(archiveName: string, files: ArchiveFileInfo[], archiveData: Uint8Array, commonRoot: string | null = null) {
+  // If files already have a common root, default to extracting to current directory
+  // (since the subdirectory already exists in the file paths)
+  const defaultLocation: ExtractLocation = commonRoot ? 'current' : 'subdir';
+  modalsStore.update(s => ({ ...s, showExtractModal: true, extractTarget: { archiveName, files, archiveData, commonRoot }, extractLocation: defaultLocation, modalInput: '' }));
 }
 
 export function closeExtractModal() {
@@ -334,4 +337,4 @@ export function closeVideoUploadModal() {
   modalsStore.update(s => ({ ...s, showVideoUploadModal: false }));
 }
 
-export type { ArchiveFile, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, GitShellTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget, BlossomPushTarget };
+export type { ArchiveFileInfo, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, GitShellTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget, BlossomPushTarget };

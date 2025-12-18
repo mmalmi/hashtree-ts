@@ -165,6 +165,78 @@ export function extractArchive(data: Uint8Array, fileName: string): ExtractedFil
 }
 
 /**
+ * File info without data - for listing archive contents without decompressing
+ */
+export interface ArchiveFileInfo {
+  name: string;
+  size: number;
+}
+
+export interface ArchiveInfo {
+  files: ArchiveFileInfo[];
+  /** If all files share a common root directory, this is that directory name */
+  commonRoot: string | null;
+}
+
+/**
+ * Get list of files in a ZIP without decompressing data
+ * Uses unzipSync filter to read central directory only
+ * Also detects if all files are under a common root directory
+ */
+export function getArchiveFileList(data: Uint8Array): ArchiveInfo {
+  const files: ArchiveFileInfo[] = [];
+
+  unzipSync(data, {
+    filter: (file) => {
+      // Skip Mac OS X metadata
+      if (file.name.startsWith('__MACOSX/') || file.name.endsWith('.DS_Store')) {
+        return false;
+      }
+      // Skip directories
+      if (file.name.endsWith('/')) {
+        return false;
+      }
+      files.push({
+        name: file.name,
+        size: file.originalSize ?? 0,
+      });
+      return false; // Don't actually decompress
+    }
+  });
+
+  // Check if all files share a common root directory
+  let commonRoot: string | null = null;
+  if (files.length > 0) {
+    const firstSlash = files[0].name.indexOf('/');
+    if (firstSlash > 0) {
+      const potentialRoot = files[0].name.substring(0, firstSlash);
+      const allHaveSameRoot = files.every(f => f.name.startsWith(potentialRoot + '/'));
+      if (allHaveSameRoot) {
+        commonRoot = potentialRoot;
+      }
+    }
+  }
+
+  return { files, commonRoot };
+}
+
+/**
+ * Extract a batch of files from a ZIP by name
+ * Returns a Map of fileName -> data
+ */
+export function extractFileBatch(data: Uint8Array, fileNames: Set<string>): Map<string, Uint8Array> {
+  const result = unzipSync(data, {
+    filter: (file) => fileNames.has(file.name)
+  });
+
+  const map = new Map<string, Uint8Array>();
+  for (const [name, content] of Object.entries(result)) {
+    map.set(name, content);
+  }
+  return map;
+}
+
+/**
  * Download a Uint8Array as a file
  */
 export function downloadBlob(data: Uint8Array, fileName: string, mimeType: string = 'application/octet-stream'): void {

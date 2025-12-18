@@ -15,12 +15,17 @@
   let isProcessing = $state(false);
 
   // Get archive name without extension for subdirectory suggestion
+  // If archive has a common root, use that; otherwise use archive name without extension
   let suggestedSubdir = $derived.by(() => {
     if (!target?.archiveName) return '';
+    if (target.commonRoot) return target.commonRoot;
     const name = target.archiveName;
     const dotIndex = name.lastIndexOf('.');
     return dotIndex > 0 ? name.substring(0, dotIndex) : name;
   });
+
+  // Check if archive already has a common root folder
+  let hasCommonRoot = $derived(!!target?.commonRoot);
 
   // Total size of extracted files
   let totalSize = $derived.by(() => {
@@ -32,23 +37,31 @@
     if (!target || isProcessing) return;
     isProcessing = true;
 
+    // Capture values before closing modal
+    const archiveData = target.archiveData;
+    const archiveName = target.archiveName;
+    // Only add subdirName if:
+    // 1. User selected 'subdir' option AND
+    // 2. Archive doesn't already have a common root folder
+    const subdirName = (location === 'subdir' && !hasCommonRoot) ? suggestedSubdir : undefined;
+
+    // Close modal immediately so user sees progress
+    closeExtractModal();
+
     try {
-      const subdirName = location === 'subdir' ? suggestedSubdir : undefined;
-      await uploadExtractedFiles(target.files, subdirName);
-      closeExtractModal();
+      // Pass archive data and name - extraction happens inside
+      await uploadExtractedFiles(archiveData, archiveName, subdirName);
     } catch (e) {
       console.error('Failed to extract files:', e);
-    } finally {
-      isProcessing = false;
     }
   }
 
   async function handleKeepAsZip() {
-    if (!target?.originalData || isProcessing) return;
+    if (!target?.archiveData || isProcessing) return;
     isProcessing = true;
 
     try {
-      await uploadSingleFile(target.archiveName, target.originalData);
+      await uploadSingleFile(target.archiveName, target.archiveData);
       closeExtractModal();
     } catch (e) {
       console.error('Failed to upload ZIP:', e);
@@ -97,26 +110,43 @@
 
       <!-- Location options -->
       <div class="mb-4 space-y-2">
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input
-            type="radio"
-            name="extract-location"
-            checked={location === 'subdir'}
-            onchange={() => handleLocationChange('subdir')}
-            class="accent-accent"
-          />
-          <span class="text-sm">Extract to folder: <span class="font-medium text-text-1">{suggestedSubdir}/</span></span>
-        </label>
-        <label class="flex items-center gap-2 cursor-pointer">
-          <input
-            type="radio"
-            name="extract-location"
-            checked={location === 'current'}
-            onchange={() => handleLocationChange('current')}
-            class="accent-accent"
-          />
-          <span class="text-sm">Extract to current directory</span>
-        </label>
+        {#if hasCommonRoot}
+          <!-- Archive already has a root folder, show simpler options -->
+          <p class="text-sm text-text-2 mb-2">
+            Archive contains folder: <span class="font-medium text-text-1">{suggestedSubdir}/</span>
+          </p>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="extract-location"
+              checked={location === 'current'}
+              onchange={() => handleLocationChange('current')}
+              class="accent-accent"
+            />
+            <span class="text-sm">Extract here (creates <span class="font-medium text-text-1">{suggestedSubdir}/</span>)</span>
+          </label>
+        {:else}
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="extract-location"
+              checked={location === 'subdir'}
+              onchange={() => handleLocationChange('subdir')}
+              class="accent-accent"
+            />
+            <span class="text-sm">Extract to folder: <span class="font-medium text-text-1">{suggestedSubdir}/</span></span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="extract-location"
+              checked={location === 'current'}
+              onchange={() => handleLocationChange('current')}
+              class="accent-accent"
+            />
+            <span class="text-sm">Extract to current directory</span>
+          </label>
+        {/if}
       </div>
 
       <!-- Action buttons -->
@@ -124,11 +154,9 @@
         <button onclick={handleCancel} class="btn-ghost" disabled={isProcessing}>
           Cancel
         </button>
-        {#if target.originalData}
-          <button onclick={handleKeepAsZip} class="btn-ghost" disabled={isProcessing}>
-            Keep as ZIP
-          </button>
-        {/if}
+        <button onclick={handleKeepAsZip} class="btn-ghost" disabled={isProcessing}>
+          Keep as ZIP
+        </button>
         <button onclick={handleExtract} class="btn-success" disabled={isProcessing}>
           {isProcessing ? 'Extracting...' : 'Extract Files'}
         </button>
