@@ -179,6 +179,9 @@
           <span class="i-lucide-share text-lg"></span>
         </button>
         {#if isOwnProfile}
+          <a href="#/users" class="btn-ghost px-4 py-2" title="Switch user">
+            Switch User
+          </a>
           <a href={`#/${npub}/edit`} class="btn-ghost px-4 py-2">
             Edit Profile
           </a>
