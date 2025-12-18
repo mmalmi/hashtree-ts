@@ -9,33 +9,44 @@ registerSW({
   immediate: true,
   onRegistered(r) {
     console.log('[SW] registered:', r);
-    // Log SW controller status for debugging iOS Safari
-    if (navigator.serviceWorker.controller) {
-      console.log('[SW] Controller active:', navigator.serviceWorker.controller.state);
-    } else {
-      console.warn('[SW] No controller yet - waiting for controllerchange');
-    }
   },
   onRegisterError(error) {
     console.error('[SW] registration error:', error);
   },
 });
 
-// On first visit, SW won't control the page until reload.
-// Wait for controller to become available and reload once.
-if (navigator.serviceWorker && !navigator.serviceWorker.controller) {
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    console.log('[SW] Controller now available, reloading for SW to take control');
-    window.location.reload();
+// Wait for SW to be ready before mounting app
+// This ensures file streaming works on first visit
+async function init() {
+  if ('serviceWorker' in navigator) {
+    // Wait for SW to be active and controlling this page
+    if (!navigator.serviceWorker.controller) {
+      console.log('[SW] Waiting for controller...');
+      await new Promise<void>((resolve) => {
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          console.log('[SW] Controller now active');
+          resolve();
+        });
+        // Also resolve if ready fires (fallback)
+        navigator.serviceWorker.ready.then(() => {
+          if (navigator.serviceWorker.controller) {
+            resolve();
+          }
+        });
+      });
+    }
+  }
+
+  // Set up handler for SW file requests
+  setupSwFileHandler();
+
+  // Mount app
+  mount(VideoApp, {
+    target: document.getElementById('app')!,
   });
 }
 
-// Set up handler for SW file requests
-setupSwFileHandler();
-
-const app = mount(VideoApp, {
-  target: document.getElementById('app')!,
-});
+init();
 
 // Expose test helpers on window for e2e tests
 if (typeof window !== 'undefined') {
