@@ -12,7 +12,7 @@
     ]
   },
   "scripts": {
-    "build": "pnpm --filter hashtree --filter hashtree-dexie build && pnpm --filter iris-files build",
+    "build": "pnpm --filter hashtree build && pnpm --filter iris-files build",
     "build:hashtree": "pnpm --filter hashtree build",
     "build:web": "pnpm --filter iris-files build",
     "build:docs": "pnpm --filter iris-files build:docs",

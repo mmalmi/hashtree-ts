@@ -70,6 +70,7 @@ export {
   type BlossomLogEntry,
   type BlossomLogger,
 } from './store/blossom.js';
+export { DexieStore } from './store/dexie.js';
 
 // HashTree - unified tree operations (create, read, edit, stream)
 export {
