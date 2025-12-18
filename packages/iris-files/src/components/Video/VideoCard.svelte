@@ -1,13 +1,11 @@
 <script lang="ts">
   /**
    * VideoCard - 16:9 aspect ratio video card for video grid
-   * Shows thumbnail preview if available
+   * Shows thumbnail preview if available via Service Worker URL
    */
-  import { onMount } from 'svelte';
   import VisibilityIcon from '../VisibilityIcon.svelte';
   import { Avatar, Name } from '../User';
-  import { getTree } from '../../store';
-  import { getTreeRootSync, subscribeToTreeRoot } from '../../stores';
+  import { getNpubFileUrl } from '../../lib/mediaUrl';
 
   interface Props {
     href: string;
@@ -21,7 +19,13 @@
 
   let { href, title, duration, ownerPubkey, ownerNpub, treeName, visibility }: Props = $props();
 
-  let thumbnailUrl = $state<string | null>(null);
+  // Use SW URL for thumbnail - browser caches this automatically
+  // No need for blob URLs or manual loading
+  let thumbnailUrl = $derived(
+    ownerNpub && treeName ? getNpubFileUrl(ownerNpub, treeName, 'thumbnail.jpg') : null
+  );
+
+  let thumbnailError = $state(false);
 
   // Format duration as MM:SS or HH:MM:SS
   function formatDuration(seconds: number): string {
@@ -33,49 +37,6 @@
     }
     return `${m}:${s.toString().padStart(2, '0')}`;
   }
-
-  // Subscribe to tree root updates and load thumbnail when available
-  onMount(() => {
-    if (!ownerNpub || !treeName) return;
-
-    // Try loading immediately if cached
-    loadThumbnail();
-
-    // Subscribe to resolver for updates
-    const unsubscribe = subscribeToTreeRoot(ownerNpub, treeName, (hash) => {
-      if (hash && !thumbnailUrl) {
-        loadThumbnail();
-      }
-    });
-
-    return () => {
-      unsubscribe();
-      if (thumbnailUrl) URL.revokeObjectURL(thumbnailUrl);
-    };
-  });
-
-  async function loadThumbnail() {
-    if (!ownerNpub || !treeName || thumbnailUrl) return;
-
-    try {
-      const rootCid = getTreeRootSync(ownerNpub, treeName);
-      if (!rootCid) return;
-
-      const tree = getTree();
-
-      // Thumbnail is at thumbnail.jpg in the video tree root
-      const result = await tree.resolvePath(rootCid, 'thumbnail.jpg');
-      if (!result) return;
-
-      const data = await tree.readFile(result.cid);
-      if (!data) return;
-
-      const blob = new Blob([data], { type: 'image/jpeg' });
-      thumbnailUrl = URL.createObjectURL(blob);
-    } catch {
-      // Thumbnail not available
-    }
-  }
 </script>
 
 <a
@@ -84,8 +45,13 @@
 >
   <!-- Thumbnail with 16:9 aspect ratio -->
   <div class="relative aspect-video bg-surface-2 rounded-lg flex items-center justify-center overflow-hidden">
-    {#if thumbnailUrl}
-      <img src={thumbnailUrl} alt="" class="w-full h-full object-cover" />
+    {#if thumbnailUrl && !thumbnailError}
+      <img
+        src={thumbnailUrl}
+        alt=""
+        class="w-full h-full object-cover"
+        onerror={() => thumbnailError = true}
+      />
     {:else}
       <span class="i-lucide-video text-2xl text-text-3"></span>
     {/if}

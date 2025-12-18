@@ -168,7 +168,13 @@
         const allVideos: VideoItem[] = [];
         videosByUser.forEach(vids => allVideos.push(...vids));
         allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-        untrack(() => { followedUsersVideos = allVideos; });
+
+        // Only update if content actually changed (avoid flicker from same data)
+        const newKeys = allVideos.map(v => v.key).join(',');
+        const oldKeys = untrack(() => followedUsersVideos.map(v => v.key).join(','));
+        if (newKeys !== oldKeys) {
+          untrack(() => { followedUsersVideos = allVideos; });
+        }
       });
 
       untrack(() => { followStoreUnsubscribes.push(unsub); });
