@@ -21,13 +21,14 @@
   let userPubkey = $derived($nostrStore.pubkey);
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
 
-  // Get recents - show all trees (documents detected by .yjs file in root)
+  // Get recents - only show trees starting with "docs/"
   let recents = $derived($recentsStore);
   let recentDocs = $derived(
     recents
+      .filter(r => r.treeName?.startsWith('docs/'))
       .map(r => ({
         key: r.path,
-        displayName: r.treeName || r.label,
+        displayName: r.treeName ? r.treeName.slice(5) : r.label, // Remove "docs/" prefix
         ownerPubkey: r.npub ? npubToPubkey(r.npub) : null,
         ownerNpub: r.npub,
         treeName: r.treeName,
@@ -49,12 +50,13 @@
     return unsub;
   });
 
-  // User's own docs - show all trees
+  // User's own docs - only show trees starting with "docs/"
   let ownDocs = $derived(
     trees
+      .filter(t => t.name.startsWith('docs/'))
       .map(t => ({
         key: `/${userNpub}/${t.name}`,
-        displayName: t.name,
+        displayName: t.name.slice(5), // Remove "docs/" prefix for display
         ownerPubkey: userPubkey,
         ownerNpub: userNpub,
         treeName: t.name,
