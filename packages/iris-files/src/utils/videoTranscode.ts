@@ -33,7 +33,7 @@ export function needsTranscoding(file: File): boolean {
 }
 
 /**
- * Lazy load FFmpeg WASM
+ * Lazy load FFmpeg WASM from local files in public folder
  */
 async function loadFFmpeg(): Promise<any> {
   if (ffmpegInstance) return ffmpegInstance;
@@ -44,10 +44,11 @@ async function loadFFmpeg(): Promise<any> {
     const { toBlobURL } = await import('@ffmpeg/util');
 
     const ffmpeg = new FFmpeg();
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
 
-    const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript');
-    const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm');
+    // Load from local public folder (files copied from @ffmpeg/core)
+    // toBlobURL fetches the file and creates a blob URL, which FFmpeg requires
+    const coreURL = await toBlobURL('/ffmpeg-core.js', 'text/javascript');
+    const wasmURL = await toBlobURL('/ffmpeg-core.wasm', 'application/wasm');
 
     await ffmpeg.load({ coreURL, wasmURL });
     ffmpegInstance = ffmpeg;
