@@ -14,7 +14,7 @@
   import type { TreeVisibility } from 'hashtree';
   import { deleteTree } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
-  import { addRecent } from '../../stores/recents';
+  import { addRecent, updateVideoPosition, getVideoPosition, clearVideoPosition } from '../../stores/recents';
   import { Avatar, Name } from '../User';
   import { Truncate } from '../ui';
   import VisibilityIcon from '../VisibilityIcon.svelte';
@@ -54,6 +54,33 @@
   let videoDescription = $state<string>('');
   let videoCid = $state<CID | null>(null);
   let videoVisibility = $state<TreeVisibility>('public');
+  let videoRef: HTMLVideoElement | undefined = $state();
+
+  // Video path for position tracking
+  let videoPath = $derived(npub && treeName ? `/${npub}/${treeName}` : null);
+
+  // Restore position when video loads
+  function handleLoadedMetadata() {
+    if (!videoRef || !videoPath) return;
+    const savedPosition = getVideoPosition(videoPath);
+    if (savedPosition > 0 && videoRef.duration > savedPosition) {
+      videoRef.currentTime = savedPosition;
+      console.log('[VideoView] Restored position:', savedPosition);
+    }
+  }
+
+  // Save position on timeupdate
+  function handleTimeUpdate() {
+    if (!videoRef || !videoPath) return;
+    updateVideoPosition(videoPath, videoRef.currentTime);
+  }
+
+  // Clear position when video ends
+  function handleEnded() {
+    if (videoPath) {
+      clearVideoPosition(videoPath);
+    }
+  }
 
   // Derive owner pubkey
   let ownerPubkey = $derived.by(() => {
@@ -418,12 +445,16 @@
     {:else if videoSrc}
       <!-- svelte-ignore a11y_media_has_caption -->
       <video
+        bind:this={videoRef}
         src={videoSrc}
         controls
         autoplay
         playsinline
         class="w-full h-full"
         preload="metadata"
+        onloadedmetadata={handleLoadedMetadata}
+        ontimeupdate={handleTimeUpdate}
+        onended={handleEnded}
       >
         Your browser does not support the video tag.
       </video>

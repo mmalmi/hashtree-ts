@@ -27,6 +27,8 @@ export interface RecentItem {
   linkKey?: string;
   /** For hash type: whether it has an encryption key */
   hasKey?: boolean;
+  /** Video playback position in seconds (for resume) */
+  videoPosition?: number;
 }
 
 function loadRecents(): RecentItem[] {
@@ -142,6 +144,91 @@ export function clearRecentsByPrefix(prefix: string) {
  */
 export function getRecentsSync(): RecentItem[] {
   return get(recentsStore);
+}
+
+// In-memory position cache (updated frequently, flushed less often)
+const positionCache = new Map<string, number>();
+let flushTimeout: ReturnType<typeof setTimeout> | null = null;
+const FLUSH_DELAY = 5000; // Flush to localStorage every 5 seconds
+
+function flushPositions() {
+  if (positionCache.size === 0) return;
+
+  recentsStore.update(current => {
+    let changed = false;
+    const updated = current.map(item => {
+      const pos = positionCache.get(item.path);
+      if (pos !== undefined && pos !== item.videoPosition) {
+        changed = true;
+        return { ...item, videoPosition: pos };
+      }
+      return item;
+    });
+    if (changed) saveRecents(updated);
+    return changed ? updated : current;
+  });
+
+  // Clear cache after flush (positions are now in store)
+  positionCache.clear();
+}
+
+// Flush on page unload
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', flushPositions);
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') flushPositions();
+  });
+}
+
+/**
+ * Update video playback position for a recent item
+ * Updates in-memory cache immediately, flushes to storage periodically
+ */
+export function updateVideoPosition(path: string, position: number) {
+  // Don't save if at the very beginning
+  if (position < 3) return;
+
+  positionCache.set(path, position);
+
+  // Debounce flush to localStorage
+  if (!flushTimeout) {
+    flushTimeout = setTimeout(() => {
+      flushTimeout = null;
+      flushPositions();
+    }, FLUSH_DELAY);
+  }
+}
+
+/**
+ * Clear video position for a recent item (e.g., when finished watching)
+ */
+export function clearVideoPosition(path: string) {
+  positionCache.delete(path);
+  recentsStore.update(current => {
+    const updated = current.map(item => {
+      if (item.path === path && item.videoPosition !== undefined) {
+        const { videoPosition: _, ...rest } = item;
+        return rest;
+      }
+      return item;
+    });
+    saveRecents(updated);
+    return updated;
+  });
+}
+
+/**
+ * Get video position for a path (checks in-memory cache first)
+ */
+export function getVideoPosition(path: string): number {
+  // Check in-memory cache first (most recent)
+  const cached = positionCache.get(path);
+  if (cached !== undefined) return cached;
+
+  // Fall back to stored value
+  const recents = get(recentsStore);
+  const item = recents.find(r => r.path === path);
+  return item?.videoPosition ?? 0;
 }
 
 // Track nhash visits automatically
