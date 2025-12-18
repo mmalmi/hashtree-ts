@@ -30,13 +30,16 @@ export function getNpubFileUrl(npub: string, treeName: string, path: string): st
  * Generate a file URL for direct nhash access (content-addressed)
  *
  * @param cid - The content ID (with Uint8Array fields)
- * @param filename - Filename (for MIME type detection)
- * @returns URL string like /htree/nhash1.../video.mp4
+ * @param filename - Optional filename (for MIME type detection). If omitted, URL is just /htree/{nhash}
+ * @returns URL string like /htree/nhash1... or /htree/nhash1.../video.mp4
  */
-export function getNhashFileUrl(cid: CID, filename: string = 'file'): string {
+export function getNhashFileUrl(cid: CID, filename?: string): string {
   // nhashEncode now accepts CID directly with Uint8Array fields
   const nhash = nhashEncode(cid);
-  return `/htree/${nhash}/${encodeURIComponent(filename)}`;
+  if (filename) {
+    return `/htree/${nhash}/${encodeURIComponent(filename)}`;
+  }
+  return `/htree/${nhash}`;
 }
 
 /**

@@ -366,4 +366,89 @@ test.describe('Iris Video App', () => {
     // Take screenshot of liked video
     await page.screenshot({ path: 'e2e/screenshots/video-liked.png' });
   });
+
+  test('permalink navigates to nhash URL and shows video', async ({ page }) => {
+    test.slow();
+
+    await page.goto('/video.html#/');
+    await disableOthersPool(page);
+    await ensureLoggedIn(page);
+
+    const uploadBtn = page.locator('button:has-text("Create")');
+    await expect(uploadBtn).toBeVisible({ timeout: 15000 });
+
+    // Upload a video first
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await uploadBtn.click();
+
+    const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
+    await page.locator('input[type="file"]').setInputFiles(testVideoPath);
+
+    const videoTitle = `Permalink Test ${Date.now()}`;
+    await page.locator('input[placeholder="Video title"]').fill(videoTitle);
+    await page.locator('.fixed button:has-text("Upload")').click();
+
+    // Wait for video page (npub route)
+    await page.waitForURL(/\/video\.html#\/npub.*\/videos%2F/, { timeout: 60000 });
+
+    // Modal should auto-close
+    await expect(page.getByRole('heading', { name: 'Upload Video' })).not.toBeVisible({ timeout: 10000 });
+
+    // Wait for video to load
+    const videoLocator = page.locator('video');
+    await expect(videoLocator).toBeVisible({ timeout: 60000 });
+
+    // Wait for video to actually load metadata
+    await page.waitForFunction(() => {
+      const video = document.querySelector('video');
+      return video && video.readyState >= 1 && video.duration > 0;
+    }, { timeout: 30000 });
+
+    // Find the Permalink button and click it
+    const permalinkBtn = page.locator('button[title="Permalink (content-addressed)"]');
+    await expect(permalinkBtn).toBeVisible({ timeout: 10000 });
+    await permalinkBtn.click();
+
+    // URL should now contain nhash (content-addressed permalink)
+    await page.waitForURL(/\/video\.html#\/nhash1/, { timeout: 10000 });
+
+    // Take screenshot of permalink page
+    await page.screenshot({ path: 'e2e/screenshots/video-permalink-page.png' });
+
+    // Video should still be visible on permalink page
+    await expect(page.locator('video')).toBeVisible({ timeout: 30000 });
+
+    // Wait for video to load on permalink page
+    await page.waitForFunction(() => {
+      const video = document.querySelector('video');
+      return video && video.readyState >= 1 && video.duration > 0;
+    }, { timeout: 30000 });
+
+    // Verify video properties are valid
+    const videoProps = await page.evaluate(() => {
+      const video = document.querySelector('video');
+      if (!video) return null;
+      return {
+        duration: video.duration,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        readyState: video.readyState,
+        src: video.src?.substring(0, 100),
+        error: video.error?.message
+      };
+    });
+
+    expect(videoProps).not.toBeNull();
+    expect(videoProps!.duration).toBeGreaterThan(5);
+    expect(videoProps!.videoWidth).toBeGreaterThan(0);
+    expect(videoProps!.videoHeight).toBeGreaterThan(0);
+    expect(videoProps!.error).toBeUndefined();
+
+    // Should show the permalink info box
+    await expect(page.locator('text=content-addressed permalink')).toBeVisible({ timeout: 5000 });
+
+    // Take final screenshot
+    await page.screenshot({ path: 'e2e/screenshots/video-permalink-loaded.png' });
+  });
 });

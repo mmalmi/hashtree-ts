@@ -111,13 +111,10 @@
   // Get root CID from treeRootStore (handles linkKey decryption)
   let rootCid = $derived($treeRootStore);
 
-  // Generate nhash for comments cross-linking
+  // Generate nhash for permalink - uses video file CID (not root dir) so same content = same link
   let videoNhash = $derived.by(() => {
-    if (!rootCid) return undefined;
-    return nhashEncode({
-      hash: toHex(rootCid.hash),
-      decryptKey: rootCid.key ? toHex(rootCid.key) : undefined,
-    });
+    if (!videoCid) return undefined;
+    return nhashEncode(videoCid);
   });
 
   // Subscribe to trees store to get visibility
@@ -246,13 +243,9 @@
   }
 
   function handlePermalink() {
-    if (!rootCid) return;
-    const nhash = nhashEncode({
-      hash: toHex(rootCid.hash),
-      decryptKey: rootCid.key ? toHex(rootCid.key) : undefined,
-    });
-    // Navigate to the nhash permalink
-    window.location.hash = `#/${nhash}`;
+    if (!videoNhash) return;
+    // Navigate to the nhash permalink (video file CID)
+    window.location.hash = `#/${videoNhash}`;
   }
 
   function handleDownload() {
@@ -406,14 +399,13 @@
 
       // Build tags - include both npub path and nhash for discoverability
       const tags: string[][] = [
-        ['i', videoIdentifier, `https://video.iris.to/#/${videoIdentifier}`],
+        ['i', videoIdentifier],
         ['k', 'web'],
       ];
 
-      // Add nhash identifier if we have the root CID (for permalink reactions)
-      if (rootCid) {
-        const nhash = `nhash/${toHex(rootCid.hash)}`;
-        tags.push(['i', nhash, `https://video.iris.to/#/${nhash}`]);
+      // Add nhash identifier for permalink reactions (uses video file CID, not directory)
+      if (videoNhash) {
+        tags.push(['i', videoNhash]);
       }
 
       // Add p tag if we know the owner
@@ -528,7 +520,7 @@
             <button onclick={handleShare} class="btn-ghost p-2" title="Share">
               <span class="i-lucide-share text-lg"></span>
             </button>
-            <button onclick={handlePermalink} class="btn-ghost p-2" title="Permalink (content-addressed)" disabled={!rootCid}>
+            <button onclick={handlePermalink} class="btn-ghost p-2" title="Permalink (content-addressed)" disabled={!videoNhash}>
               <span class="i-lucide-link text-lg"></span>
             </button>
             <button onclick={handleDownload} class="btn-ghost p-2" title="Download" disabled={!videoCid}>
