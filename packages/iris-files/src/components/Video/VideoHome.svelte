@@ -314,7 +314,7 @@
         <div class="flex items-center justify-between mb-3">
           <h2 class="text-lg font-semibold text-text-1">Recent</h2>
           <button
-            class="btn-ghost text-xs text-text-3 hover:text-text-2"
+            class="btn-ghost text-xs"
             onclick={() => clearRecentsByPrefix('videos/')}
           >
             Clear
