@@ -62,7 +62,7 @@
         closeCreateModal();
         if (result.npub && result.treeName) {
           const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
-          navigate(`/${result.npub}/${result.treeName}${linkKeyParam}`);
+          navigate(`/${result.npub}/${encodeURIComponent(result.treeName)}${linkKeyParam}`);
         }
       }
       isCreating = false;

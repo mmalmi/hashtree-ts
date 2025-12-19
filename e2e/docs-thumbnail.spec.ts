@@ -63,12 +63,13 @@ test.describe('Document Thumbnails', () => {
       const nostrStore = (window as any).__nostrStore;
 
       const npub = nostrStore?.getState()?.npub;
-      const treeNameEncoded = window.location.hash.match(/\/docs\/([^/?]+)/)?.[1];
-      const treeName = treeNameEncoded ? decodeURIComponent(treeNameEncoded) : null;
+      // Tree name is URL-encoded and includes docs/ prefix (e.g., docs%2FThumbnail%20Test)
+      const treeNameMatch = window.location.hash.match(/\/npub[^/]+\/([^/?]+)/)?.[1];
+      const treeName = treeNameMatch ? decodeURIComponent(treeNameMatch) : null;
 
       if (!npub || !treeName) return false;
 
-      const rootCid = getTreeRootSync(npub, `docs/${treeName}`);
+      const rootCid = getTreeRootSync(npub, treeName);
       if (!rootCid) return false;
 
       const tree = getTree();
@@ -187,11 +188,12 @@ test.describe('Document Thumbnails', () => {
       const nostrStore = (window as any).__nostrStore;
 
       const npub = nostrStore?.getState()?.npub;
-      const treeNameEncoded = window.location.hash.match(/\/docs\/([^/?]+)/)?.[1];
-      const treeName = treeNameEncoded ? decodeURIComponent(treeNameEncoded) : null;
+      // Tree name is URL-encoded and includes docs/ prefix
+      const treeNameMatch = window.location.hash.match(/\/npub[^/]+\/([^/?]+)/)?.[1];
+      const treeName = treeNameMatch ? decodeURIComponent(treeNameMatch) : null;
       if (!npub || !treeName) return null;
 
-      const rootCid = getTreeRootSync(npub, `docs/${treeName}`);
+      const rootCid = getTreeRootSync(npub, treeName);
       if (!rootCid) return null;
 
       const tree = getTree();
@@ -222,11 +224,12 @@ test.describe('Document Thumbnails', () => {
       const nostrStore = (window as any).__nostrStore;
 
       const npub = nostrStore?.getState()?.npub;
-      const treeNameEncoded = window.location.hash.match(/\/docs\/([^/?]+)/)?.[1];
-      const treeName = treeNameEncoded ? decodeURIComponent(treeNameEncoded) : null;
+      // Tree name is URL-encoded and includes docs/ prefix
+      const treeNameMatch = window.location.hash.match(/\/npub[^/]+\/([^/?]+)/)?.[1];
+      const treeName = treeNameMatch ? decodeURIComponent(treeNameMatch) : null;
       if (!npub || !treeName) return null;
 
-      const rootCid = getTreeRootSync(npub, `docs/${treeName}`);
+      const rootCid = getTreeRootSync(npub, treeName);
       if (!rootCid) return null;
 
       const tree = getTree();

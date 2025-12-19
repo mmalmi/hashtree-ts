@@ -317,6 +317,29 @@ self.addEventListener('fetch', (event: FetchEvent) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') return;
 
+  // All hashtree routes start with /htree/ - check this FIRST before navigation handling
+  // Otherwise navigation requests to /htree/... get redirected to index.html
+  if (pathParts[0] === 'htree') {
+    // /htree/{nhash}/{filename} - Direct nhash access (content-addressed)
+    if (pathParts.length >= 2 && pathParts[1].startsWith('nhash1')) {
+      const nhash = pathParts[1];
+      const filename = pathParts.slice(2).join('/') || 'file';
+      const forceDownload = url.searchParams.get('download') === '1';
+      event.respondWith(createNhashFileResponse(nhash, filename, rangeHeader, forceDownload));
+      return;
+    }
+
+    // /htree/{npub}/{treeName}/{path...} - Npub-based file access
+    // treeName is URL-encoded (may contain %2F for slashes)
+    if (pathParts.length >= 3 && NPUB_PATTERN.test(pathParts[1])) {
+      const npub = pathParts[1];
+      const treeName = decodeURIComponent(pathParts[2]);
+      const filePath = pathParts.slice(3).map(decodeURIComponent).join('/');
+      event.respondWith(createNpubFileResponse(npub, treeName, filePath, rangeHeader));
+      return;
+    }
+  }
+
   // For same-origin requests, add COOP/COEP headers
   // This enables SharedArrayBuffer for FFmpeg WASM transcoding
   // Apply to navigation (HTML) and same-origin workers/scripts
@@ -332,28 +355,6 @@ self.addEventListener('fetch', (event: FetchEvent) => {
       );
       return;
     }
-  }
-
-  // All hashtree routes start with /htree/
-  if (pathParts[0] !== 'htree') return;
-
-  // /htree/{nhash}/{filename} - Direct nhash access (content-addressed)
-  if (pathParts.length >= 2 && pathParts[1].startsWith('nhash1')) {
-    const nhash = pathParts[1];
-    const filename = pathParts.slice(2).join('/') || 'file';
-    const forceDownload = url.searchParams.get('download') === '1';
-    event.respondWith(createNhashFileResponse(nhash, filename, rangeHeader, forceDownload));
-    return;
-  }
-
-  // /htree/{npub}/{treeName}/{path...} - Npub-based file access
-  // treeName is URL-encoded (may contain %2F for slashes)
-  if (pathParts.length >= 3 && NPUB_PATTERN.test(pathParts[1])) {
-    const npub = pathParts[1];
-    const treeName = decodeURIComponent(pathParts[2]);
-    const filePath = pathParts.slice(3).map(decodeURIComponent).join('/');
-    event.respondWith(createNpubFileResponse(npub, treeName, filePath, rangeHeader));
-    return;
   }
 
   // Let workbox handle everything else (static assets, app routes)
