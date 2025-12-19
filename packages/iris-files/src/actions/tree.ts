@@ -262,7 +262,7 @@ export async function createDocumentTree(
     return { success: false };
   }
 
-  const treeName = name;
+  const treeName = `docs/${name}`;
 
   // Create .yjs config file with owner's npub as first editor
   const yjsContent = new TextEncoder().encode(nostrState.npub + '\n');

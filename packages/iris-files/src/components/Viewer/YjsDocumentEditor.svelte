@@ -18,7 +18,7 @@
   import { getTree } from '../../store';
   import { routeStore, createTreesStore, getTreeRootSync } from '../../stores';
   import { openShareModal, openForkModal, openCollaboratorsModal, updateCollaboratorsModal, openBlossomPushModal } from '../../stores/modals';
-  import { autosaveIfOwn, nostrStore, npubToPubkey } from '../../nostr';
+  import { autosaveIfOwn, nostrStore, npubToPubkey, deleteTree } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
   import { getCurrentRootCid, deleteCurrentFolder } from '../../actions';
   import VisibilityIcon from '../VisibilityIcon.svelte';
@@ -188,7 +188,9 @@
     const savedFilename = await saveImage(data, filename);
     if (savedFilename && editor) {
       // Insert with attachments: src - MutationObserver resolves to /htree/ URL
-      editor.chain().focus().setImage({ src: `attachments:${savedFilename}` }).run();
+      // Include uploader's npub so collaborator images can be resolved from their tree
+      const uploaderNpub = userNpub;
+      editor.chain().focus().setImage({ src: `attachments:${uploaderNpub}/${savedFilename}` }).run();
     }
   }
 
@@ -494,9 +496,16 @@
   }
 
   // Handle delete
-  function handleDelete() {
+  async function handleDelete() {
     if (confirm(`Delete document "${dirName}" and all its contents?`)) {
-      deleteCurrentFolder();
+      // If at tree root (path is empty), delete the entire tree
+      // Otherwise delete the current folder within the tree
+      if (route.path.length === 0 && route.treeName) {
+        await deleteTree(route.treeName);
+        window.location.hash = '/';
+      } else {
+        deleteCurrentFolder();
+      }
     }
   }
 
@@ -642,16 +651,37 @@
   });
 
   // Resolve image src from attachments:filename to /htree/ URL
+  // Format: attachments:npub/filename (new) or attachments:filename (legacy)
   function resolveImageSrc(img: HTMLImageElement): void {
     const src = img.getAttribute('src');
     if (!src || !src.startsWith('attachments:')) return;
 
-    const filename = src.replace('attachments:', '');
+    const attachmentPath = src.replace('attachments:', '');
 
-    const npub = viewedNpub || userNpub;
+    // Check if npub is included in the path (new format: npub/filename)
+    let imageNpub: string;
+    let filename: string;
+
+    if (attachmentPath.startsWith('npub1')) {
+      // New format: attachments:npub1.../filename
+      const slashIndex = attachmentPath.indexOf('/');
+      if (slashIndex > 0) {
+        imageNpub = attachmentPath.slice(0, slashIndex);
+        filename = attachmentPath.slice(slashIndex + 1);
+      } else {
+        // Malformed, fall back to viewed/user npub
+        imageNpub = viewedNpub || userNpub || '';
+        filename = attachmentPath;
+      }
+    } else {
+      // Legacy format: attachments:filename - use viewed npub (owner's tree)
+      imageNpub = viewedNpub || userNpub || '';
+      filename = attachmentPath;
+    }
+
     const treeName = route.treeName;
 
-    if (!npub || !treeName) {
+    if (!imageNpub || !treeName) {
       img.dataset.pendingResolve = 'true';
       return;
     }
@@ -661,7 +691,7 @@
     const encodedTreeName = encodeURIComponent(treeName);
     const pathParts = [...route.path, 'attachments', filename];
     const encodedPath = pathParts.map(encodeURIComponent).join('/');
-    img.src = `/htree/${npub}/${encodedTreeName}/${encodedPath}`;
+    img.src = `/htree/${imageNpub}/${encodedTreeName}/${encodedPath}`;
   }
 
   // Re-resolve any images that failed to load initially (after npub/treeName available)
