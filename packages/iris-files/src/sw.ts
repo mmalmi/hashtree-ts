@@ -303,6 +303,25 @@ function addCrossOriginHeaders(response: Response): Response {
 }
 
 /**
+ * Add CORP header for same-origin resources
+ * Required for scripts (including worker scripts) when COEP: credentialless is active
+ */
+function addCORPHeader(response: Response): Response {
+  if (response.type === 'opaque' || response.type === 'opaqueredirect') {
+    return response;
+  }
+
+  const newHeaders = new Headers(response.headers);
+  newHeaders.set('Cross-Origin-Resource-Policy', 'same-origin');
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
+}
+
+/**
  * Intercept fetch requests
  */
 self.addEventListener('fetch', (event: FetchEvent) => {
@@ -340,18 +359,25 @@ self.addEventListener('fetch', (event: FetchEvent) => {
     }
   }
 
-  // For same-origin requests, add COOP/COEP headers
+  // For same-origin requests, add cross-origin isolation headers
   // This enables SharedArrayBuffer for FFmpeg WASM transcoding
-  // Apply to navigation (HTML) and same-origin workers/scripts
   if (url.origin === self.location.origin) {
-    // Navigation and workers need headers for cross-origin isolation
-    const needsHeaders = event.request.mode === 'navigate' ||
-      event.request.destination === 'worker' ||
-      event.request.destination === 'sharedworker';
-
-    if (needsHeaders) {
+    // Navigation requests need COOP/COEP headers
+    if (event.request.mode === 'navigate') {
       event.respondWith(
         fetch(event.request).then(addCrossOriginHeaders)
+      );
+      return;
+    }
+
+    // Worker and script requests need CORP header when COEP: credentialless is active
+    // Without CORP, workers are blocked due to the embedder policy
+    const needsCORP = event.request.destination === 'worker' ||
+      event.request.destination === 'sharedworker' ||
+      event.request.destination === 'script';
+    if (needsCORP) {
+      event.respondWith(
+        fetch(event.request).then(addCORPHeader)
       );
       return;
     }
