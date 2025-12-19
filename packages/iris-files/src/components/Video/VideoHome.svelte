@@ -27,6 +27,10 @@
   // Track loading state for follows
   let followsLoading = $state(true);
 
+  // Delay showing "no videos" to avoid flash during initial load
+  let showEmptyState = $state(false);
+  let emptyStateTimer: ReturnType<typeof setTimeout> | null = null;
+
   // Get recents and filter to only videos, deduped by normalized href
   let recents = $derived($recentsStore);
   let recentVideos = $derived(
@@ -405,6 +409,29 @@
   // Total available videos from all sources (for infinite scroll check)
   let totalAvailableVideos = $derived(followedUsersVideos.length + socialVideos.length);
 
+  // Control empty state visibility with delay
+  $effect(() => {
+    const hasContent = recentVideos.length > 0 || feedVideos.length > 0 || followedUsersVideos.length > 0;
+    const isLoading = followsLoading;
+
+    if (hasContent || isLoading) {
+      // Clear timer and hide empty state immediately when content appears or loading
+      if (emptyStateTimer) {
+        clearTimeout(emptyStateTimer);
+        emptyStateTimer = null;
+      }
+      showEmptyState = false;
+    } else {
+      // Start timer to show empty state after delay
+      if (!emptyStateTimer && !showEmptyState) {
+        emptyStateTimer = setTimeout(() => {
+          showEmptyState = true;
+          emptyStateTimer = null;
+        }, 2000);
+      }
+    }
+  });
+
   onMount(() => {
     const observer = new IntersectionObserver(
       entries => {
@@ -419,7 +446,12 @@
       observer.observe(feedEndRef);
     }
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (emptyStateTimer) {
+        clearTimeout(emptyStateTimer);
+      }
+    };
   });
 
   function npubToPubkey(npub: string): string | null {
@@ -517,8 +549,8 @@
       </section>
     {/if}
 
-    <!-- Empty state when no content -->
-    {#if recentVideos.length === 0 && feedVideos.length === 0 && followedUsersVideos.length === 0 && !followsLoading}
+    <!-- Empty state when no content (delayed to avoid flash) -->
+    {#if showEmptyState}
       <div class="text-center py-12 text-text-3">
         <p>No videos found. {#if !isLoggedIn}Sign in to upload videos.{/if}</p>
       </div>
