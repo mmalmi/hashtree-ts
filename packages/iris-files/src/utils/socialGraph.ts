@@ -49,7 +49,6 @@ function handleWorkerMessage(e: MessageEvent) {
 
   if (msg.type === 'ready') {
     socialGraphStore.setVersion(msg.version);
-    isInitialized = true;
     resolveLoaded?.(true);
     return;
   }

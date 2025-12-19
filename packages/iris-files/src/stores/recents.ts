@@ -213,7 +213,8 @@ export function clearVideoPosition(path: string) {
   recentsStore.update(current => {
     const updated = current.map(item => {
       if (item.path === path && item.videoPosition !== undefined) {
-        const { videoPosition: _, ...rest } = item;
+        const { videoPosition: _unused, ...rest } = item;
+        void _unused; // Destructure to remove property
         return rest;
       }
       return item;
