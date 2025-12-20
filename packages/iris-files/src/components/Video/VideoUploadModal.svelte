@@ -797,7 +797,7 @@
     onclick={handleBackdropClick}
   >
     <div class="bg-surface-1 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto">
-      <!-- Header with tabs -->
+      <!-- Header with tab buttons -->
       <div class="flex items-center justify-between p-4 border-b border-surface-3">
         <div class="flex items-center gap-2">
           {#if activeTab === 'upload' && mode !== 'select' && !uploading}
@@ -805,26 +805,26 @@
               <span class="i-lucide-arrow-left text-lg"></span>
             </button>
           {/if}
-          <div class="flex items-center gap-4">
-            <button
-              onclick={() => handleTabChange('upload')}
-              class="text-lg font-semibold transition-colors {activeTab === 'upload' ? 'text-text-1' : 'text-text-3 hover:text-text-2'}"
-              disabled={isBusy}
-            >
-              {#if activeTab === 'upload' && mode === 'batch'}
-                Upload {batchVideos.length} Videos
-              {:else}
-                Upload
-              {/if}
-            </button>
-            <button
-              onclick={() => handleTabChange('stream')}
-              class="text-lg font-semibold transition-colors {activeTab === 'stream' ? 'text-text-1' : 'text-text-3 hover:text-text-2'}"
-              disabled={isBusy}
-            >
-              Record
-            </button>
-          </div>
+          <button
+            onclick={() => handleTabChange('upload')}
+            class="px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 {activeTab === 'upload' ? 'bg-accent text-white' : 'btn-ghost'}"
+            disabled={isBusy}
+          >
+            <span class="i-lucide-upload text-lg"></span>
+            {#if activeTab === 'upload' && mode === 'batch'}
+              Upload {batchVideos.length} Videos
+            {:else}
+              Upload
+            {/if}
+          </button>
+          <button
+            onclick={() => handleTabChange('stream')}
+            class="px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 {activeTab === 'stream' ? 'bg-danger text-white' : 'btn-ghost'}"
+            disabled={isBusy}
+          >
+            <span class="i-lucide-video text-lg"></span>
+            Stream
+          </button>
         </div>
         <button onclick={handleClose} class="btn-ghost p-1" disabled={isBusy}>
           <span class="i-lucide-x text-xl"></span>
@@ -1022,8 +1022,8 @@
             ></video>
             {#if !streamState.isPreviewing && !streamState.isRecording}
               <div class="text-center">
-                <span class="i-lucide-video text-4xl text-accent mb-2 block"></span>
-                <p class="text-text-2">Record a video from your camera</p>
+                <span class="i-lucide-video text-4xl text-danger mb-2 block"></span>
+                <p class="text-text-2">Stream from your camera</p>
               </div>
             {/if}
           </div>
