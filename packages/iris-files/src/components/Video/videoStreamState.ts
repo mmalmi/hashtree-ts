@@ -15,9 +15,9 @@ import { addRecent } from '../../stores/recents';
 import { storeLinkKey } from '../../stores/trees';
 import { patchWebmDuration } from '../../utils/webmDuration';
 
-// Chunk size for live streaming: 256KB = ~2 seconds at 1Mbps
-// Smaller chunks = more frequent updates for viewers
-const STREAM_CHUNK_SIZE = 256 * 1024;
+// Chunk size for live streaming: 512KB = ~4 seconds at 1Mbps
+// Aligned with typical VP8 keyframe interval for clean chunk boundaries
+const STREAM_CHUNK_SIZE = 512 * 1024;
 
 // Stream state interface
 interface VideoStreamState {
@@ -135,7 +135,10 @@ export async function startRecording(
   mediaRecorder = new MediaRecorder(mediaStream, {
     mimeType: 'video/webm;codecs=vp8,opus',
     videoBitsPerSecond: 1000000,
-  });
+    // Force keyframes every 2 seconds for better chunk boundaries
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    videoKeyFrameIntervalDuration: 2000,
+  } as any);
 
   mediaRecorder.ondataavailable = async (event) => {
     if (event.data.size > 0) {
