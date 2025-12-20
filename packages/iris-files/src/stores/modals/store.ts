@@ -9,7 +9,6 @@ import type { FileWithPath } from '../../utils/directory';
 
 export type ModalType = 'file' | 'folder' | 'tree' | 'document';
 export type ExtractLocation = 'current' | 'subdir';
-export type VideoUploadTab = 'upload' | 'stream';
 
 export interface ArchiveFileInfo {
   name: string;
@@ -133,8 +132,6 @@ export interface ModalState {
   // Other modals
   showUnsavedChangesModal: boolean;
   unsavedChangesTarget: UnsavedChangesTarget | null;
-  showVideoUploadModal: boolean;
-  videoUploadTab: VideoUploadTab;
   showAddToPlaylistModal: boolean;
   addToPlaylistTarget: AddToPlaylistTarget | null;
 
@@ -180,8 +177,6 @@ const initialState: ModalState = {
   // Other modals
   showUnsavedChangesModal: false,
   unsavedChangesTarget: null,
-  showVideoUploadModal: false,
-  videoUploadTab: 'upload',
   showAddToPlaylistModal: false,
   addToPlaylistTarget: null,
 

@@ -8,7 +8,6 @@ export type {
   ModalState,
   ModalType,
   ExtractLocation,
-  VideoUploadTab,
   ArchiveFileInfo,
   ForkTarget,
   ExtractTarget,
@@ -69,9 +68,6 @@ export {
 export {
   openUnsavedChangesModal,
   closeUnsavedChangesModal,
-  openVideoUploadModal,
-  closeVideoUploadModal,
-  setVideoUploadTab,
   openAddToPlaylistModal,
   closeAddToPlaylistModal,
 } from './other';

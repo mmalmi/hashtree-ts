@@ -12,13 +12,11 @@
   import VideoRouter from './components/Video/VideoRouter.svelte';
   import { currentPath, initRouter } from './lib/router.svelte';
   import { nostrStore } from './nostr';
-  import { openVideoUploadModal } from './stores/modals/other';
 
   // Modal components
   import ShareModal from './components/Modals/ShareModal.svelte';
   import ForkModal from './components/Modals/ForkModal.svelte';
   import BlossomPushModal from './components/Modals/BlossomPushModal.svelte';
-  import VideoUploadModal from './components/Video/VideoUploadModal.svelte';
   import AddToPlaylistModal from './components/Modals/AddToPlaylistModal.svelte';
 
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
@@ -29,7 +27,7 @@
   });
 
   function handleCreate() {
-    openVideoUploadModal();
+    window.location.hash = '#/create';
   }
 </script>
 
@@ -65,7 +63,6 @@
   </div>
 
   <!-- Modals -->
-  <VideoUploadModal />
   <ShareModal />
   <ForkModal />
   <BlossomPushModal />

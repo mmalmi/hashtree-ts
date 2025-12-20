@@ -19,6 +19,7 @@
   import VideoProfileView from './VideoProfileView.svelte';
   import VideoView from './VideoView.svelte';
   import VideoNHashView from './VideoNHashView.svelte';
+  import VideoCreate from './VideoCreate.svelte';
   import SettingsPage from '../SettingsPage.svelte';
   import EditProfilePage from '../EditProfilePage.svelte';
   import UsersPage from '../UsersPage.svelte';
@@ -27,6 +28,7 @@
 
   const routePatterns = [
     { pattern: '/', component: VideoHome },
+    { pattern: '/create', component: VideoCreate },
     { pattern: '/settings', component: SettingsPage },
     { pattern: '/users', component: UsersPage },
     { pattern: '/:npub/edit', component: EditProfilePage },
