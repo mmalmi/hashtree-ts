@@ -13,8 +13,6 @@
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { recentlyChangedFiles } from '../../stores/recentlyChanged';
   import { currentHash } from '../../stores';
-  import { subscribeToTreeRoot } from '../../stores/treeRoot';
-  import { onDestroy } from 'svelte';
   import type { CID } from 'hashtree';
   import { getCidFileUrl, getNpubFileUrl } from '../../lib/mediaUrl';
 
@@ -205,73 +203,6 @@
         loading = false;
       });
     }
-  });
-
-  // Subscribe to tree root changes for live streaming
-  let treeUnsubscribe: (() => void) | null = null;
-  let lastTreeHash: string | null = null;
-  let lastReloadTime = 0;
-  const MIN_RELOAD_INTERVAL = 2000; // Don't reload more than once every 2 seconds
-
-  $effect(() => {
-    // Only subscribe if we have npub/treeName context (live-capable)
-    if (npub && treeName && isLive) {
-      treeUnsubscribe = subscribeToTreeRoot(npub, treeName, (hash) => {
-        if (!hash) return;
-
-        // Convert hash to string for comparison
-        const hashStr = Array.from(hash).join(',');
-
-        // Skip first update (initial load)
-        if (lastTreeHash === null) {
-          lastTreeHash = hashStr;
-          return;
-        }
-
-        // Tree changed - reload to get new content (with rate limiting)
-        const now = Date.now();
-        const timeSinceLastReload = now - lastReloadTime;
-
-        if (hashStr !== lastTreeHash && mediaRef && !loading && timeSinceLastReload >= MIN_RELOAD_INTERVAL) {
-          lastTreeHash = hashStr;
-          lastReloadTime = now;
-
-          if (npub && treeName && filePath) {
-            const savedTime = mediaRef.currentTime;
-            const wasPlaying = !mediaRef.paused;
-
-            // Add cache-busting param and reload
-            const currentSrc = mediaRef.src.split('?')[0];
-            mediaRef.src = `${currentSrc}?_t=${Date.now()}`;
-
-            mediaRef.addEventListener('loadedmetadata', () => {
-              if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
-                duration = mediaRef.duration;
-                // Restore position (clamped to new duration)
-                const newTime = Math.min(savedTime, Math.max(0, mediaRef.duration - 1));
-                if (isFinite(newTime) && newTime > 0) {
-                  mediaRef.currentTime = newTime;
-                }
-                if (wasPlaying) {
-                  mediaRef.play().catch(() => {});
-                }
-              }
-            }, { once: true });
-          }
-        }
-      });
-    }
-
-    return () => {
-      treeUnsubscribe?.();
-      treeUnsubscribe = null;
-      lastTreeHash = null;
-      lastReloadTime = 0;
-    };
-  });
-
-  onDestroy(() => {
-    treeUnsubscribe?.();
   });
 </script>
 

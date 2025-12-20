@@ -11,7 +11,7 @@
  */
 
 import { getTree } from '../store';
-import { getLocalRootCache, getLocalRootKey, requestTreeRootFromOtherTabs } from '../treeRootCache';
+import { getLocalRootCache, getLocalRootKey } from '../treeRootCache';
 import { getTreeRootSync, waitForTreeRoot } from '../stores/treeRoot';
 import { nhashDecode, type CID } from 'hashtree';
 
@@ -126,38 +126,21 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       // Npub-based request - resolve through tree root cache
       const filePath = path;
 
-      // Try local write cache first, then subscription cache, then wait for resolver
+      // Try local write cache first (we're the broadcaster), then Nostr subscription cache
       let rootCid: CID | null = null;
 
       const localHash = getLocalRootCache(npub, treeName);
       if (localHash) {
-        // This tab has the local write cache - we're probably the broadcaster
+        // This tab has the local write cache - we're the broadcaster
         const localKey = getLocalRootKey(npub, treeName);
         rootCid = { hash: localHash, key: localKey };
       } else {
-        // We don't have the local write cache - request from other tabs via BroadcastChannel
-        // This is critical for live streaming where the broadcaster tab has the latest data
-        requestTreeRootFromOtherTabs(npub, treeName);
+        // Try sync cache (for already-resolved trees from Nostr)
+        rootCid = getTreeRootSync(npub, treeName);
 
-        // Wait for BroadcastChannel response AND give broadcaster tab time to respond to SW
-        // The broadcaster tab has localRootCache so it responds to SW immediately.
-        // By waiting here, we ensure the broadcaster's SW response arrives first.
-        // 500ms should be plenty for the broadcaster to send its response.
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        // Check local cache again after the request (response may have arrived)
-        const localHashAfterRequest = getLocalRootCache(npub, treeName);
-        if (localHashAfterRequest) {
-          const localKey = getLocalRootKey(npub, treeName);
-          rootCid = { hash: localHashAfterRequest, key: localKey };
-        } else {
-          // Try sync cache (for already-resolved trees from Nostr)
-          rootCid = getTreeRootSync(npub, treeName);
-
-          // If not in cache, wait for resolver to fetch from network
-          if (!rootCid) {
-            rootCid = await waitForTreeRoot(npub, treeName, 30000);
-          }
+        // If not in cache, wait for resolver to fetch from network
+        if (!rootCid) {
+          rootCid = await waitForTreeRoot(npub, treeName, 30000);
         }
       }
 
