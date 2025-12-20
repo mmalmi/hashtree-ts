@@ -3,17 +3,23 @@
    * Modal for creating new files, folders, or trees
    * Port of React CreateModal component
    */
-  import { modalsStore, setModalInput } from '../../stores/modals/store';
-  import { closeCreateModal, setCreateTreeVisibility } from '../../stores/modals/file';
+  import { setModalInput, modalInput as modalInputStore } from '../../stores/modals/store';
+  import {
+    showCreateModal,
+    createModalType,
+    createTreeVisibility as createTreeVisibilityStore,
+    closeCreateModal,
+    setCreateTreeVisibility,
+  } from '../../stores/modals/file';
   import { createFile, createFolder, createTree, createDocument } from '../../actions';
   import { routeStore } from '../../stores';
   import { navigate } from '../../lib/router.svelte';
   import VisibilityPicker from './VisibilityPicker.svelte';
 
-  let show = $derived($modalsStore.showCreateModal);
-  let modalInput = $derived($modalsStore.modalInput);
-  let modalType = $derived($modalsStore.createModalType);
-  let createTreeVisibility = $derived($modalsStore.createTreeVisibility);
+  let show = $derived($showCreateModal);
+  let modalInput = $derived($modalInputStore);
+  let modalType = $derived($createModalType);
+  let treeVisibility = $derived($createTreeVisibilityStore);
   let route = $derived($routeStore);
 
   let isCreating = $state(false);
@@ -44,7 +50,7 @@
 
     if (isTree) {
       isCreating = true;
-      await createTree(name, createTreeVisibility);
+      await createTree(name, treeVisibility);
       isCreating = false;
       closeCreateModal();
     } else if (isDocument) {
@@ -59,7 +65,7 @@
       } else {
         // Create new tree as a document (from docs home)
         const { createDocumentTree } = await import('../../actions/tree');
-        const result = await createDocumentTree(name, createTreeVisibility);
+        const result = await createDocumentTree(name, treeVisibility);
         closeCreateModal();
         if (result.npub && result.treeName) {
           const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
@@ -108,7 +114,7 @@
         <!-- Visibility picker for trees and new documents -->
         {#if isTree || (isDocument && !route.treeName)}
           <div class="mt-4 mb-4">
-            <VisibilityPicker value={createTreeVisibility} onchange={setCreateTreeVisibility} />
+            <VisibilityPicker value={treeVisibility} onchange={setCreateTreeVisibility} />
           </div>
         {/if}
 

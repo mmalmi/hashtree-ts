@@ -1,10 +1,14 @@
 /**
  * Sharing-related modals: share, collaborators, blossom push
  */
+import { derived } from 'svelte/store';
 import type { CID } from 'hashtree';
 import { modalsStore } from './store';
 
 // ========== Share Modal ==========
+
+export const showShareModal = derived(modalsStore, s => s.showShareModal);
+export const shareUrl = derived(modalsStore, s => s.shareUrl);
 
 export function openShareModal(url: string) {
   modalsStore.update(s => ({ ...s, showShareModal: true, shareUrl: url }));
@@ -15,6 +19,9 @@ export function closeShareModal() {
 }
 
 // ========== Collaborators Modal ==========
+
+export const showCollaboratorsModal = derived(modalsStore, s => s.showCollaboratorsModal);
+export const collaboratorsTarget = derived(modalsStore, s => s.collaboratorsTarget);
 
 export function openCollaboratorsModal(npubs: string[], onSave?: (npubs: string[]) => void) {
   modalsStore.update(s => ({
@@ -40,6 +47,9 @@ export function closeCollaboratorsModal() {
 }
 
 // ========== Blossom Push Modal ==========
+
+export const showBlossomPushModal = derived(modalsStore, s => s.showBlossomPushModal);
+export const blossomPushTarget = derived(modalsStore, s => s.blossomPushTarget);
 
 export function openBlossomPushModal(cid: CID, name: string, isDirectory: boolean) {
   modalsStore.update(s => ({

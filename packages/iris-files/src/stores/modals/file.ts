@@ -1,10 +1,15 @@
 /**
  * File-related modals: create, rename, fork, extract
  */
+import { derived } from 'svelte/store';
 import type { CID, TreeVisibility } from 'hashtree';
 import { modalsStore, type ModalType, type ArchiveFileInfo, type ExtractLocation } from './store';
 
 // ========== Create Modal ==========
+
+export const showCreateModal = derived(modalsStore, s => s.showCreateModal);
+export const createModalType = derived(modalsStore, s => s.createModalType);
+export const createTreeVisibility = derived(modalsStore, s => s.createTreeVisibility);
 
 export function openCreateModal(type: ModalType) {
   modalsStore.update(s => ({
@@ -31,6 +36,9 @@ export function setCreateTreeVisibility(visibility: TreeVisibility) {
 
 // ========== Rename Modal ==========
 
+export const showRenameModal = derived(modalsStore, s => s.showRenameModal);
+export const renameTarget = derived(modalsStore, s => s.renameTarget);
+
 export function openRenameModal(currentName: string) {
   modalsStore.update(s => ({
     ...s,
@@ -51,6 +59,9 @@ export function closeRenameModal() {
 
 // ========== Fork Modal ==========
 
+export const showForkModal = derived(modalsStore, s => s.showForkModal);
+export const forkTarget = derived(modalsStore, s => s.forkTarget);
+
 export function openForkModal(dirCid: CID, suggestedName: string) {
   modalsStore.update(s => ({
     ...s,
@@ -70,6 +81,10 @@ export function closeForkModal() {
 }
 
 // ========== Extract Modal ==========
+
+export const showExtractModal = derived(modalsStore, s => s.showExtractModal);
+export const extractTarget = derived(modalsStore, s => s.extractTarget);
+export const extractLocation = derived(modalsStore, s => s.extractLocation);
 
 export function openExtractModal(
   archiveName: string,

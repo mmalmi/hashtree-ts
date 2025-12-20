@@ -4,8 +4,13 @@
    * Supports single video upload, batch upload from yt-dlp directories, and camera recording
    */
   import { SvelteSet } from 'svelte/reactivity';
-  import { modalsStore, type VideoUploadTab } from '../../stores/modals/store';
-  import { closeVideoUploadModal, setVideoUploadTab } from '../../stores/modals/other';
+  import { type VideoUploadTab } from '../../stores/modals/store';
+  import {
+    showVideoUploadModal,
+    videoUploadTab,
+    closeVideoUploadModal,
+    setVideoUploadTab,
+  } from '../../stores/modals/other';
   import { nostrStore, saveHashtree } from '../../nostr';
   import { toHex, videoChunker, cid, type CID } from 'hashtree';
   import { getTree } from '../../store';
@@ -27,8 +32,8 @@
     formatBytes,
   } from './videoStreamState';
 
-  let showModal = $derived($modalsStore.showVideoUploadModal);
-  let activeTab = $derived($modalsStore.videoUploadTab);
+  let showModal = $derived($showVideoUploadModal);
+  let activeTab = $derived($videoUploadTab);
   let streamState = $derived($videoStreamStore);
 
   // Handle escape key to close modal

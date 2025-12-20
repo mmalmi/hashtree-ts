@@ -3,8 +3,11 @@
    * BlossomPushModal - Push directory/file contents to Blossom servers
    * Uses BlossomStore from hashtree for uploads with proper auth and backoff
    */
-  import { modalsStore } from '../../stores/modals/store';
-  import { closeBlossomPushModal } from '../../stores/modals/share';
+  import {
+    showBlossomPushModal,
+    blossomPushTarget,
+    closeBlossomPushModal,
+  } from '../../stores/modals/share';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../../stores/settings';
   import { getTree } from '../../store';
   import { signEvent } from '../../nostr';
@@ -25,8 +28,8 @@
     write: boolean;
   }
 
-  let show = $derived($modalsStore.showBlossomPushModal);
-  let target = $derived($modalsStore.blossomPushTarget);
+  let show = $derived($showBlossomPushModal);
+  let target = $derived($blossomPushTarget);
 
   // State
   let phase = $state<'select' | 'pushing' | 'done'>('select');

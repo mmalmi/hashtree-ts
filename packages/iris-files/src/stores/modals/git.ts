@@ -1,10 +1,14 @@
 /**
  * Git-related modals: gitignore, history, shell, commit, PR, issue
  */
+import { derived } from 'svelte/store';
 import type { CID } from 'hashtree';
 import { modalsStore, type GitignoreTarget } from './store';
 
 // ========== Gitignore Modal ==========
+
+export const showGitignoreModal = derived(modalsStore, s => s.showGitignoreModal);
+export const gitignoreTarget = derived(modalsStore, s => s.gitignoreTarget);
 
 export function openGitignoreModal(target: GitignoreTarget) {
   modalsStore.update(s => ({ ...s, showGitignoreModal: true, gitignoreTarget: target }));
@@ -15,6 +19,9 @@ export function closeGitignoreModal() {
 }
 
 // ========== Git History Modal ==========
+
+export const showGitHistoryModal = derived(modalsStore, s => s.showGitHistoryModal);
+export const gitHistoryTarget = derived(modalsStore, s => s.gitHistoryTarget);
 
 export function openGitHistoryModal(
   dirCid: CID,
@@ -34,6 +41,9 @@ export function closeGitHistoryModal() {
 
 // ========== Git Shell Modal ==========
 
+export const showGitShellModal = derived(modalsStore, s => s.showGitShellModal);
+export const gitShellTarget = derived(modalsStore, s => s.gitShellTarget);
+
 export function openGitShellModal(
   dirCid: CID,
   canEdit?: boolean,
@@ -51,6 +61,9 @@ export function closeGitShellModal() {
 }
 
 // ========== Git Commit Modal ==========
+
+export const showGitCommitModal = derived(modalsStore, s => s.showGitCommitModal);
+export const gitCommitTarget = derived(modalsStore, s => s.gitCommitTarget);
 
 export function openGitCommitModal(
   dirCid: CID,
@@ -74,6 +87,9 @@ export function closeGitCommitModal() {
 }
 
 // ========== New Pull Request Modal ==========
+
+export const showNewPullRequestModal = derived(modalsStore, s => s.showNewPullRequestModal);
+export const newPullRequestTarget = derived(modalsStore, s => s.newPullRequestTarget);
 
 export function openNewPullRequestModal(
   npub: string,
@@ -108,6 +124,9 @@ export function closeNewPullRequestModal() {
 }
 
 // ========== New Issue Modal ==========
+
+export const showNewIssueModal = derived(modalsStore, s => s.showNewIssueModal);
+export const newIssueTarget = derived(modalsStore, s => s.newIssueTarget);
 
 export function openNewIssueModal(
   npub: string,

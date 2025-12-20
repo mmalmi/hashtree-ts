@@ -3,14 +3,20 @@
    * Modal for extracting archive files (ZIP)
    * Shows options to extract to current directory, subdirectory, or keep as ZIP
    */
-  import { modalsStore, type ExtractLocation } from '../../stores/modals/store';
-  import { closeExtractModal, setExtractLocation } from '../../stores/modals/file';
+  import { type ExtractLocation } from '../../stores/modals/store';
+  import {
+    showExtractModal,
+    extractTarget,
+    extractLocation,
+    closeExtractModal,
+    setExtractLocation,
+  } from '../../stores/modals/file';
   import { uploadSingleFile, uploadExtractedFiles } from '../../actions/file';
   import { formatBytes } from '../../store';
 
-  let show = $derived($modalsStore.showExtractModal);
-  let target = $derived($modalsStore.extractTarget);
-  let location = $derived($modalsStore.extractLocation);
+  let show = $derived($showExtractModal);
+  let target = $derived($extractTarget);
+  let location = $derived($extractLocation);
 
   let isProcessing = $state(false);
 

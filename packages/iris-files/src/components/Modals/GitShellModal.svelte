@@ -4,8 +4,7 @@
    * Supports both read-only commands (status, log, etc.) and write commands (commit, add, etc.)
    */
   import type { CID } from 'hashtree';
-  import { modalsStore } from '../../stores/modals/store';
-  import { closeGitShellModal } from '../../stores/modals/git';
+  import { showGitShellModal, gitShellTarget, closeGitShellModal } from '../../stores/modals/git';
   import { getProfileSync } from '../../stores/profile';
   import { runGitCommand, applyGitChanges } from '../../utils/git';
   import { nostrStore } from '../../nostr';
@@ -17,8 +16,8 @@
     wasWrite?: boolean;
   }
 
-  let show = $derived($modalsStore.showGitShellModal);
-  let target = $derived($modalsStore.gitShellTarget);
+  let show = $derived($showGitShellModal);
+  let target = $derived($gitShellTarget);
 
   let inputValue = $state('');
   let commandHistory = $state<CommandResult[]>([]);

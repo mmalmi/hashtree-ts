@@ -1,7 +1,7 @@
 /**
  * Core modal store - shared state and utilities
  */
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 import type { CID, TreeVisibility } from 'hashtree';
 import type { FileWithPath } from '../../utils/directory';
 
@@ -190,6 +190,9 @@ const initialState: ModalState = {
 };
 
 export const modalsStore = writable<ModalState>(initialState);
+
+// Shared derived stores
+export const modalInput = derived(modalsStore, s => s.modalInput);
 
 // Shared utilities
 export function setModalInput(input: string) {

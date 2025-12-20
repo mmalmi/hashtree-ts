@@ -7,8 +7,12 @@
    * - QR Scanner for adding npubs
    * - Search through followed users with Fuse.js
    */
-  import { modalsStore } from '../../stores/modals/store';
-  import { closeCollaboratorsModal, openShareModal } from '../../stores/modals/share';
+  import {
+    showCollaboratorsModal,
+    collaboratorsTarget,
+    closeCollaboratorsModal,
+    openShareModal,
+  } from '../../stores/modals/share';
   import { nip19 } from 'nostr-tools';
   import Fuse from 'fuse.js';
   import { UserRow } from '../User';
@@ -17,8 +21,8 @@
   import QRScanner from '../QRScanner.svelte';
   import CopyText from '../CopyText.svelte';
 
-  let show = $derived($modalsStore.showCollaboratorsModal);
-  let target = $derived($modalsStore.collaboratorsTarget);
+  let show = $derived($showCollaboratorsModal);
+  let target = $derived($collaboratorsTarget);
 
   // Local state for editing
   let localNpubs = $state<string[]>([]);

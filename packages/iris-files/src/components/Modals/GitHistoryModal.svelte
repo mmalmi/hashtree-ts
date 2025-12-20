@@ -2,8 +2,11 @@
   /**
    * Modal for displaying git commit history
    */
-  import { modalsStore } from '../../stores/modals/store';
-  import { closeGitHistoryModal } from '../../stores/modals/git';
+  import {
+    showGitHistoryModal,
+    gitHistoryTarget,
+    closeGitHistoryModal,
+  } from '../../stores/modals/git';
   import { createGitLogStore, type CommitInfo } from '../../stores/git';
   import { nhashEncode } from 'hashtree';
   import { checkoutCommit, getBranches } from '../../utils/git';
@@ -12,8 +15,8 @@
     return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   }
 
-  let show = $derived($modalsStore.showGitHistoryModal);
-  let target = $derived($modalsStore.gitHistoryTarget);
+  let show = $derived($showGitHistoryModal);
+  let target = $derived($gitHistoryTarget);
 
   // Commit loading state
   let currentDepth = $state(50);

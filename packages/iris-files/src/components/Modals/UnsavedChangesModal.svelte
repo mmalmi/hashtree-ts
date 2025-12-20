@@ -2,11 +2,14 @@
   /**
    * Modal for confirming unsaved changes before closing editor
    */
-  import { modalsStore } from '../../stores/modals/store';
-  import { closeUnsavedChangesModal } from '../../stores/modals/other';
+  import {
+    showUnsavedChangesModal,
+    unsavedChangesTarget,
+    closeUnsavedChangesModal,
+  } from '../../stores/modals/other';
 
-  let show = $derived($modalsStore.showUnsavedChangesModal);
-  let target = $derived($modalsStore.unsavedChangesTarget);
+  let show = $derived($showUnsavedChangesModal);
+  let target = $derived($unsavedChangesTarget);
 
   let saving = $state(false);
 

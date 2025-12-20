@@ -1,13 +1,13 @@
 <script lang="ts">
   import type { TreeVisibility } from 'hashtree';
-  import { modalsStore, setModalInput } from '../../stores/modals/store';
-  import { closeForkModal } from '../../stores/modals/file';
+  import { setModalInput, modalInput as modalInputStore } from '../../stores/modals/store';
+  import { showForkModal, forkTarget as forkTargetStore, closeForkModal } from '../../stores/modals/file';
   import { forkTree } from '../../actions/tree';
   import VisibilityPicker from './VisibilityPicker.svelte';
 
-  let show = $derived($modalsStore.showForkModal);
-  let forkTarget = $derived($modalsStore.forkTarget);
-  let modalInput = $derived($modalsStore.modalInput);
+  let show = $derived($showForkModal);
+  let forkTarget = $derived($forkTargetStore);
+  let modalInput = $derived($modalInputStore);
 
   let isForking = $state(false);
   let error = $state('');

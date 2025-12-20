@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { modalsStore, setModalInput } from '../../stores/modals/store';
-  import { closeRenameModal } from '../../stores/modals/file';
+  import { setModalInput, modalInput as modalInputStore } from '../../stores/modals/store';
+  import { showRenameModal, renameTarget, closeRenameModal } from '../../stores/modals/file';
   import { renameEntry } from '../../actions';
 
-  let show = $derived($modalsStore.showRenameModal);
-  let modalInput = $derived($modalsStore.modalInput);
-  let originalName = $derived($modalsStore.renameTarget || '');
+  let show = $derived($showRenameModal);
+  let modalInput = $derived($modalInputStore);
+  let originalName = $derived($renameTarget || '');
   let inputRef = $state<HTMLInputElement | null>(null);
 
   // Focus input when modal opens

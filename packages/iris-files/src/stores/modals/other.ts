@@ -1,10 +1,14 @@
 /**
  * Other modals: unsaved changes, video upload, add to playlist
  */
+import { derived } from 'svelte/store';
 import { modalsStore, type UnsavedChangesTarget, type VideoUploadTab, type AddToPlaylistTarget } from './store';
 import type { CID } from 'hashtree';
 
 // ========== Unsaved Changes Modal ==========
+
+export const showUnsavedChangesModal = derived(modalsStore, s => s.showUnsavedChangesModal);
+export const unsavedChangesTarget = derived(modalsStore, s => s.unsavedChangesTarget);
 
 export function openUnsavedChangesModal(target: UnsavedChangesTarget) {
   modalsStore.update(s => ({
@@ -23,6 +27,9 @@ export function closeUnsavedChangesModal() {
 }
 
 // ========== Video Upload Modal ==========
+
+export const showVideoUploadModal = derived(modalsStore, s => s.showVideoUploadModal);
+export const videoUploadTab = derived(modalsStore, s => s.videoUploadTab);
 
 export function openVideoUploadModal(tab: VideoUploadTab = 'upload') {
   modalsStore.update(s => ({
@@ -45,6 +52,9 @@ export function setVideoUploadTab(tab: VideoUploadTab) {
 }
 
 // ========== Add To Playlist Modal ==========
+
+export const showAddToPlaylistModal = derived(modalsStore, s => s.showAddToPlaylistModal);
+export const addToPlaylistTarget = derived(modalsStore, s => s.addToPlaylistTarget);
 
 export function openAddToPlaylistModal(videoCid: CID, videoTitle: string, videoSize: number) {
   modalsStore.update(s => ({

@@ -3,21 +3,20 @@
    * ShareModal - unified sharing options with QR code, copy link, and native share
    */
   import QRCode from 'qrcode';
-  import { modalsStore } from '../../stores/modals/store';
-  import { closeShareModal } from '../../stores/modals/share';
+  import { showShareModal, shareUrl, closeShareModal } from '../../stores/modals/share';
   import CopyText from '../CopyText.svelte';
 
-  let show = $derived($modalsStore.showShareModal);
-  let shareUrl = $derived($modalsStore.shareUrl);
+  let show = $derived($showShareModal);
+  let url = $derived($shareUrl);
   let qrDataUrl = $state<string | null>(null);
 
   // Generate QR code when modal opens
   $effect(() => {
-    if (!show || !shareUrl) {
+    if (!show || !url) {
       qrDataUrl = null;
       return;
     }
-    generateQrCode(shareUrl).then((url) => (qrDataUrl = url));
+    generateQrCode(url).then((u) => (qrDataUrl = u));
   });
 
   // Handle Escape key to close modal
@@ -36,9 +35,9 @@
   });
 
   async function handleNativeShare() {
-    if (navigator.share && shareUrl) {
+    if (navigator.share && url) {
       try {
-        await navigator.share({ url: shareUrl });
+        await navigator.share({ url });
       } catch (e) {
         if ((e as Error).name !== 'AbortError') {
           console.error('Share failed:', e);
@@ -56,7 +55,7 @@
   }
 </script>
 
-{#if show && shareUrl}
+{#if show && url}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
@@ -88,7 +87,7 @@
 
       <!-- URL with copy -->
       <div class="bg-surface-2 p-3 m-4 mb-2 rounded">
-        <CopyText text={shareUrl} truncate={80} class="text-sm" testId="share-copy-url" />
+        <CopyText text={url} truncate={80} class="text-sm" testId="share-copy-url" />
       </div>
 
       <!-- Native share button -->

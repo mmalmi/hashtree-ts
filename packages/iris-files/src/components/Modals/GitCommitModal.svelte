@@ -5,8 +5,7 @@
    */
   import { LinkType, type CID } from 'hashtree';
   import { SvelteMap } from 'svelte/reactivity';
-  import { modalsStore } from '../../stores/modals/store';
-  import { closeGitCommitModal } from '../../stores/modals/git';
+  import { showGitCommitModal, gitCommitTarget, closeGitCommitModal } from '../../stores/modals/git';
   import { createGitStatusStore } from '../../stores/git';
   import { commit } from '../../utils/git';
   import { getTree } from '../../store';
@@ -14,8 +13,8 @@
   import { createProfileStore } from '../../stores/profile';
   import type { GitStatusResult } from '../../utils/wasmGit';
 
-  let show = $derived($modalsStore.showGitCommitModal);
-  let target = $derived($modalsStore.gitCommitTarget);
+  let show = $derived($showGitCommitModal);
+  let target = $derived($gitCommitTarget);
 
   // Get user info for commit author
   let nostrState = $derived($nostrStore);
