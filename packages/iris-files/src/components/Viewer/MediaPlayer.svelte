@@ -13,6 +13,8 @@
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { recentlyChangedFiles } from '../../stores/recentlyChanged';
   import { currentHash } from '../../stores';
+  import { subscribeToTreeRoot } from '../../stores/treeRoot';
+  import { onDestroy } from 'svelte';
   import type { CID } from 'hashtree';
   import { getCidFileUrl, getNpubFileUrl } from '../../lib/mediaUrl';
 
@@ -207,28 +209,60 @@
     }
   });
 
-  // Refresh live stream - reloads video to get latest content
-  function refreshLive() {
-    if (!mediaRef) return;
+  // Subscribe to tree root changes for live streaming
+  let treeUnsubscribe: (() => void) | null = null;
+  let lastTreeHash: string | null = null;
 
-    const savedTime = mediaRef.currentTime;
-    const wasNearEnd = mediaRef.duration - savedTime < 5;
+  $effect(() => {
+    // Only subscribe if we have npub/treeName context (live-capable)
+    if (npub && treeName && isLive) {
+      treeUnsubscribe = subscribeToTreeRoot(npub, treeName, (hash) => {
+        if (!hash) return;
 
-    // Add cache-busting param and reload
-    const currentSrc = mediaRef.src.split('?')[0];
-    mediaRef.src = `${currentSrc}?_t=${Date.now()}`;
+        // Convert hash to string for comparison
+        const hashStr = Array.from(hash).join(',');
 
-    mediaRef.addEventListener('loadedmetadata', () => {
-      if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
-        duration = mediaRef.duration;
-        // Jump to live edge or keep position
-        mediaRef.currentTime = wasNearEnd
-          ? Math.max(0, mediaRef.duration - 2)
-          : Math.min(savedTime, mediaRef.duration - 1);
-        mediaRef.play().catch(() => {});
-      }
-    }, { once: true });
-  }
+        // Skip first update (initial load)
+        if (lastTreeHash === null) {
+          lastTreeHash = hashStr;
+          return;
+        }
+
+        // Tree changed - reload video to get new content
+        if (hashStr !== lastTreeHash && mediaRef) {
+          lastTreeHash = hashStr;
+
+          const savedTime = mediaRef.currentTime;
+          const wasNearEnd = !isFinite(mediaRef.duration) || mediaRef.duration - savedTime < 5;
+
+          // Add cache-busting param and reload
+          const currentSrc = mediaRef.src.split('?')[0];
+          mediaRef.src = `${currentSrc}?_t=${Date.now()}`;
+
+          mediaRef.addEventListener('loadedmetadata', () => {
+            if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
+              duration = mediaRef.duration;
+              // Jump to live edge or keep position
+              mediaRef.currentTime = wasNearEnd
+                ? Math.max(0, mediaRef.duration - 2)
+                : Math.min(savedTime, mediaRef.duration - 1);
+              mediaRef.play().catch(() => {});
+            }
+          }, { once: true });
+        }
+      });
+    }
+
+    return () => {
+      treeUnsubscribe?.();
+      treeUnsubscribe = null;
+      lastTreeHash = null;
+    };
+  });
+
+  onDestroy(() => {
+    treeUnsubscribe?.();
+  });
 </script>
 
 <div class="flex-1 flex flex-col min-h-0 overflow-hidden" class:bg-black={!isAudio} class:bg-surface-0={isAudio}>
@@ -251,20 +285,11 @@
       </div>
     {/if}
 
-    <!-- Live indicator with refresh button (video only) -->
+    <!-- Live indicator (video only) -->
     {#if !isAudio && isLive && !loading && !error}
-      <div class="absolute top-3 left-3 z-10 flex items-center gap-1">
-        <div class="flex items-center gap-2 px-2 py-1 bg-red-600 text-white text-sm font-bold rounded-l">
-          <span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>
-          LIVE
-        </div>
-        <button
-          onclick={refreshLive}
-          class="px-2 py-1 bg-red-600 hover:bg-red-500 text-white text-sm rounded-r transition-colors"
-          title="Refresh to get latest"
-        >
-          <span class="i-lucide-refresh-cw text-sm"></span>
-        </button>
+      <div class="absolute top-3 left-3 z-10 flex items-center gap-2 px-2 py-1 bg-red-600 text-white text-sm font-bold rounded">
+        <span class="w-2 h-2 bg-white rounded-full animate-pulse"></span>
+        LIVE
       </div>
     {/if}
 
