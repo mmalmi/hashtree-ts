@@ -5,7 +5,7 @@
  * All uploads use encryption by default (CHK - Content Hash Key).
  */
 import { writable, get } from 'svelte/store';
-import { toHex, nhashEncode, cid, LinkType } from 'hashtree';
+import { toHex, nhashEncode, cid, LinkType, videoChunker } from 'hashtree';
 import type { CID } from 'hashtree';
 import { getTree } from '../store';
 import { autosaveIfOwn, saveHashtree, nostrStore } from '../nostr';
@@ -21,6 +21,14 @@ import { findGitignoreFile, parseGitignoreFromFile, applyGitignoreFilter, applyD
 import { getTreeRootSync } from './treeRoot';
 import { settingsStore } from '../stores/settings';
 import { toast } from '../stores/toast';
+
+// Video file extensions for faster streaming start
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mkv', '.mov', '.avi', '.m4v', '.ogv', '.3gp']);
+
+function isVideoFile(filename: string): boolean {
+  const ext = filename.toLowerCase().slice(filename.lastIndexOf('.'));
+  return VIDEO_EXTENSIONS.has(ext);
+}
 
 // Upload progress type
 export interface UploadProgress {
@@ -212,7 +220,9 @@ export async function uploadFiles(files: FileList): Promise<void> {
       size = result.size;
     } else {
       // Stream upload - no buffering needed
-      const stream = tree.createStream();
+      // Use videoChunker for video files (smaller first chunk for faster playback start)
+      const chunker = isVideoFile(file.name) ? videoChunker() : undefined;
+      const stream = tree.createStream({ chunker });
       let bytesRead = 0;
       const reader = file.stream().getReader();
 
@@ -486,7 +496,9 @@ export async function uploadFilesWithPaths(filesWithPaths: FileWithPath[]): Prom
     });
 
     // Stream upload - no buffering needed
-    const stream = tree.createStream();
+    // Use videoChunker for video files (smaller first chunk for faster playback start)
+    const chunker = isVideoFile(file.name) ? videoChunker() : undefined;
+    const stream = tree.createStream({ chunker });
     let bytesRead = 0;
     const reader = file.stream().getReader();
 
