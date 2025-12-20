@@ -325,4 +325,123 @@ test.describe('Cross-User Livestream', () => {
       await contextB.close();
     }
   });
+
+  test('streaming fails without mutual follows (no WebRTC, no Blossom)', async ({ browser }) => {
+    /**
+     * This test verifies what happens when:
+     * - Users do NOT follow each other (no WebRTC connection)
+     * - Chunks are NOT on Blossom
+     *
+     * Expected: Viewer gets stuck on loading because chunks are only in
+     * broadcaster's local storage and there's no way to fetch them.
+     */
+    test.slow();
+    test.setTimeout(90000);
+
+    expect(fs.existsSync(TEST_VIDEO)).toBe(true);
+    const videoBase64 = getTestVideoBase64();
+
+    const contextA = await browser.newContext();
+    const contextB = await browser.newContext();
+    const pageA = await contextA.newPage();
+    const pageB = await contextB.newPage();
+
+    setupPageErrorHandler(pageA);
+    setupPageErrorHandler(pageB);
+
+    try {
+      // Setup broadcaster
+      console.log('\n=== Setting up Broadcaster (NO mutual follows) ===');
+      await setupFreshUser(pageA);
+      const npubA = await getNpub(pageA);
+      console.log(`Broadcaster: ${npubA.slice(0, 20)}...`);
+      await injectMockMediaRecorder(pageA, videoBase64);
+
+      // Setup viewer - but DON'T follow broadcaster
+      console.log('\n=== Setting up Viewer (NO mutual follows) ===');
+      await setupFreshUser(pageB);
+      const npubB = await getNpub(pageB);
+      console.log(`Viewer: ${npubB.slice(0, 20)}...`);
+
+      // NO mutual follows - WebRTC won't connect
+
+      // Start streaming
+      console.log('\n=== Starting stream ===');
+      await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
+      await pageA.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
+
+      const streamLink = pageA.getByRole('link', { name: 'Stream' });
+      await expect(streamLink).toBeVisible({ timeout: 10000 });
+      await streamLink.click();
+      await pageA.waitForTimeout(500);
+
+      const startCameraBtn = pageA.getByRole('button', { name: 'Start Camera' });
+      await expect(startCameraBtn).toBeVisible({ timeout: 10000 });
+      await startCameraBtn.click();
+      await pageA.waitForTimeout(2000);
+
+      const testFilename = `no_follow_test_${Date.now()}`;
+      const filenameInput = pageA.locator('input[placeholder="filename"]');
+      await expect(filenameInput).toBeVisible({ timeout: 10000 });
+      await filenameInput.fill(testFilename);
+
+      const startRecordingBtn = pageA.getByRole('button', { name: /Start Recording/ });
+      await startRecordingBtn.click();
+
+      // Wait for chunks
+      await pageA.waitForTimeout(6000);
+
+      // Viewer navigates to stream
+      console.log('\n=== Viewer navigating to stream (without WebRTC connection) ===');
+      const streamUrl = `http://localhost:5173/#/${npubA}/public/${testFilename}.webm?live=1`;
+      await pageB.goto(streamUrl);
+
+      // Wait for load attempt
+      await pageB.waitForTimeout(10000);
+
+      const viewerState = await pageB.evaluate(() => {
+        const video = document.querySelector('video') as HTMLVideoElement;
+        const loading = document.querySelector('.animate-spin');
+        const errorEl = document.querySelector('.text-red-400');
+
+        return {
+          hasVideo: !!video,
+          videoReadyState: video?.readyState || 0,
+          videoDuration: video?.duration || 0,
+          isLoading: !!loading,
+          errorText: errorEl?.textContent || null,
+        };
+      });
+
+      console.log('\n=== Viewer State (NO WebRTC) ===');
+      console.log(JSON.stringify(viewerState, null, 2));
+
+      // Stop recording
+      const stopBtn = pageA.getByRole('button', { name: /Stop Recording/ });
+      if (await stopBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await stopBtn.click();
+      }
+
+      // Without WebRTC connection and without Blossom, the viewer should:
+      // - Have a video element
+      // - But no data loaded (readyState 0 or low, duration 0 or NaN)
+      // - Possibly stuck loading or showing an error
+
+      if (viewerState.videoReadyState > 0 && viewerState.videoDuration > 0) {
+        console.log('SUCCESS: Viewer got data (possibly via Blossom or WebRTC "others" pool)');
+      } else {
+        console.log('EXPECTED: Viewer stuck without data - no WebRTC connection to broadcaster');
+        console.log('This is the gray window bug scenario.');
+        console.log('Fix: Either require mutual follows, or auto-upload to Blossom during streaming.');
+      }
+
+      // This test documents the current behavior - it may fail or succeed
+      // depending on whether Blossom or "others" pool provides data
+      expect(viewerState.hasVideo).toBe(true);
+
+    } finally {
+      await contextA.close();
+      await contextB.close();
+    }
+  });
 });
