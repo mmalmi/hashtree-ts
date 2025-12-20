@@ -21,6 +21,7 @@
     formatBytes,
   } from './videoStreamState';
   import VideoComments from './VideoComments.svelte';
+  import { openShareModal } from '../../stores/modals/share';
 
   type TabType = 'upload' | 'stream';
 
@@ -514,7 +515,7 @@
         </div>
       {/if}
 
-      <!-- Recording indicator -->
+      <!-- Recording indicator and share button -->
       {#if streamState.isRecording}
         <div class="absolute top-4 left-4 flex items-center gap-3 bg-black/60 px-3 py-2 rounded-lg">
           <div class="flex items-center gap-2 text-danger">
@@ -524,6 +525,20 @@
           <span class="text-white">{formatTime(streamState.recordingTime)}</span>
           <span class="text-white/60">{formatBytes(streamState.streamStats.totalSize)}</span>
         </div>
+        {#if streamTreeName && userNpub}
+          <button
+            onclick={() => {
+              const encodedTreeName = encodeURIComponent(streamTreeName!);
+              const streamUrl = `${window.location.origin}${window.location.pathname}#/${userNpub}/${encodedTreeName}`;
+              openShareModal(streamUrl);
+            }}
+            class="absolute top-4 right-4 flex items-center gap-2 bg-black/60 hover:bg-black/80 px-3 py-2 rounded-lg text-white transition-colors"
+            title="Share stream"
+          >
+            <span class="i-lucide-share"></span>
+            <span>Share</span>
+          </button>
+        {/if}
       {/if}
     {/if}
   </div>
