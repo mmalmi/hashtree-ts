@@ -49,6 +49,8 @@
   let videoSrc = $state<string>('');  // SW URL (not blob!)
   let videoFileName = $state<string>('');  // For MIME type detection
   let loading = $state(true);
+  let showLoading = $state(false);  // Delayed loading indicator
+  let loadingTimer: ReturnType<typeof setTimeout> | null = null;
   let error = $state<string | null>(null);
   let videoTitle = $state<string>('');
   let videoDescription = $state<string>('');
@@ -141,6 +143,31 @@
     if (cid) {
       untrack(() => loadVideo(cid));
     }
+  });
+
+  // Delayed loading indicator - only show after 2 seconds
+  $effect(() => {
+    if (!loading) {
+      // Video loaded - clear timer and hide loading
+      if (loadingTimer) {
+        clearTimeout(loadingTimer);
+        loadingTimer = null;
+      }
+      showLoading = false;
+    } else if (!loadingTimer && !showLoading) {
+      // Still loading - start timer to show indicator
+      loadingTimer = setTimeout(() => {
+        showLoading = true;
+        loadingTimer = null;
+      }, 2000);
+    }
+
+    return () => {
+      if (loadingTimer) {
+        clearTimeout(loadingTimer);
+        loadingTimer = null;
+      }
+    };
   });
 
   // No blob URL cleanup needed - using SW URLs
@@ -435,7 +462,7 @@
 <div class="flex-1 overflow-auto">
   <!-- Video Player - full width, sensible height like YouTube -->
   <div class="w-full max-w-full bg-black overflow-hidden mx-auto" style="height: min(calc(100vh - 48px - 80px), 90vh); aspect-ratio: 16/9;">
-    {#if loading}
+    {#if loading && showLoading}
       <div class="w-full h-full flex items-center justify-center text-white text-sm">
         Loading video...
       </div>

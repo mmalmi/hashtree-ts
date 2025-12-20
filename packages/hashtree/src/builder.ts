@@ -186,7 +186,7 @@ export class TreeBuilder {
     const { data, hash } = await encodeAndHash(node);
 
     // Small directory - store directly
-    if (data.length <= this.chunkSize) {
+    if (data.length <= this.chunker(0)) {
       await this.store.put(hash, data);
       return hash;
     }
