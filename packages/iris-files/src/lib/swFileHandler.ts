@@ -38,33 +38,6 @@ interface FileResponseHeaders {
 let isSetup = false;
 
 /**
- * Cache for resolved CIDs to ensure consistent data across range requests.
- * Key format: "npub/treeName/path?_t=timestamp" or "nhash/path?_t=timestamp"
- * This ensures all range requests for a given video session use the same CID.
- */
-const cidCache = new Map<string, { cid: CID; totalSize: number; expires: number }>();
-const CID_CACHE_TTL = 60000; // 1 minute TTL
-
-function getCacheKey(request: FileRequest): string {
-  if (request.nhash) {
-    return `nhash:${request.nhash}/${request.path || ''}`;
-  }
-  if (request.npub && request.treeName) {
-    return `npub:${request.npub}/${request.treeName}/${request.path || ''}`;
-  }
-  return '';
-}
-
-/**
- * Clear the CID cache for a specific path
- * Call this before reloading a video to get fresh content
- */
-export function clearCidCacheForPath(npub: string, treeName: string, path: string): void {
-  const key = `npub:${npub}/${treeName}/${path}`;
-  cidCache.delete(key);
-}
-
-/**
  * Setup the file request handler
  * Call this once at app startup
  */
@@ -111,22 +84,6 @@ function handleSwMessage(event: MessageEvent): void {
 async function handleFileRequest(request: FileRequest, port: MessagePort): Promise<void> {
   try {
     const { npub, nhash, treeName, path, start, end, mimeType, download } = request;
-
-    // Check CID cache for consistent data across range requests
-    // For range requests (start > 0), use cached CID to ensure consistent video data
-    // For initial requests (start === 0), fetch fresh tree root
-    const cacheKey = getCacheKey(request);
-    const isRangeRequest = start !== undefined && start > 0;
-
-    if (cacheKey && isRangeRequest) {
-      const cached = cidCache.get(cacheKey);
-      if (cached && cached.expires > Date.now()) {
-        // Use cached CID for range request
-        const { cid, totalSize } = cached;
-        await streamFromCid(request, port, cid, totalSize);
-        return;
-      }
-    }
 
     // Resolve the CID
     let cid: CID | null = null;
@@ -262,15 +219,6 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
       // For encrypted blobs, decrypted size = encrypted size - 16 (nonce overhead)
       // This is a small file anyway (< chunk size ~2MB)
       totalSize = cid.key ? Math.max(0, blob.length - 16) : blob.length;
-    }
-
-    // Cache the resolved CID for consistent range requests
-    if (cacheKey) {
-      cidCache.set(cacheKey, {
-        cid,
-        totalSize,
-        expires: Date.now() + CID_CACHE_TTL,
-      });
     }
 
     // Stream the content

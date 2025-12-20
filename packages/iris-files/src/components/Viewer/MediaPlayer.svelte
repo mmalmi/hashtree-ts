@@ -17,7 +17,6 @@
   import { onDestroy } from 'svelte';
   import type { CID } from 'hashtree';
   import { getCidFileUrl, getNpubFileUrl } from '../../lib/mediaUrl';
-  import { clearCidCacheForPath } from '../../lib/swFileHandler';
 
   interface Props {
     cid: CID;
@@ -240,9 +239,6 @@
           if (npub && treeName && filePath) {
             const savedTime = mediaRef.currentTime;
             const wasPlaying = !mediaRef.paused;
-
-            // Clear CID cache so new request gets fresh data
-            clearCidCacheForPath(npub, treeName, filePath);
 
             // Add cache-busting param and reload
             const currentSrc = mediaRef.src.split('?')[0];
