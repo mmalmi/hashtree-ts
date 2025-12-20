@@ -2,7 +2,8 @@
   /**
    * Modal for creating a new issue
    */
-  import { modalsStore, closeNewIssueModal } from '../../stores';
+  import { modalsStore } from '../../stores/modals/store';
+  import { closeNewIssueModal } from '../../stores/modals/git';
   import { createIssue } from '../../nip34';
 
   let modalState = $derived($modalsStore);

@@ -3,7 +3,10 @@
    * PullRequestsView - Lists pull requests for a repository using NIP-34
    * Layout matches TreeRoute: FileBrowser on left, content on right
    */
-  import { createPullRequestsStore, filterByStatus, countByStatus, openNewPullRequestModal, routeStore, createTreesStore, currentDirCidStore, createGitInfoStore } from '../../stores';
+  import { routeStore, createTreesStore, currentDirCidStore } from '../../stores';
+  import { createPullRequestsStore, filterByStatus, countByStatus } from '../../stores/nip34';
+  import { createGitInfoStore } from '../../stores/git';
+  import { openNewPullRequestModal } from '../../stores/modals/git';
   import { nostrStore } from '../../nostr';
   import { encodeEventId, type PullRequest, type ItemStatus } from '../../nip34';
   import ItemStatusBadge from './ItemStatusBadge.svelte';

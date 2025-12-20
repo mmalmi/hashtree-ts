@@ -5,7 +5,8 @@
    * - Branch selection via dropdowns when branches are available
    * - Cross-repo PRs with source repo specification (npub/path or nhash)
    */
-  import { modalsStore, closeNewPullRequestModal } from '../../stores';
+  import { modalsStore } from '../../stores/modals/store';
+  import { closeNewPullRequestModal } from '../../stores/modals/git';
   import { createPullRequest } from '../../nip34';
 
   let modalState = $derived($modalsStore);

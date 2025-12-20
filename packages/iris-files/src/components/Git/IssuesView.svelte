@@ -3,7 +3,9 @@
    * IssuesView - Lists issues for a repository using NIP-34
    * Layout matches TreeRoute: FileBrowser on left, content on right
    */
-  import { createIssuesStore, filterByStatus, countByStatus, openNewIssueModal, routeStore, treeRootStore, createTreesStore } from '../../stores';
+  import { routeStore, treeRootStore, createTreesStore } from '../../stores';
+  import { createIssuesStore, filterByStatus, countByStatus } from '../../stores/nip34';
+  import { openNewIssueModal } from '../../stores/modals/git';
   import { nostrStore } from '../../nostr';
   import { encodeEventId, type Issue, type ItemStatus } from '../../nip34';
   import ItemStatusBadge from './ItemStatusBadge.svelte';

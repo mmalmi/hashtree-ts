@@ -5,7 +5,9 @@
    */
   import { LinkType, type CID, type TreeEntry } from 'hashtree';
   import { getTree, decodeAsText } from '../../store';
-  import { routeStore, createGitLogStore, createGitStatusStore, openGitHistoryModal, openGitShellModal, openGitCommitModal } from '../../stores';
+  import { routeStore } from '../../stores';
+  import { createGitLogStore, createGitStatusStore } from '../../stores/git';
+  import { openGitHistoryModal, openGitShellModal, openGitCommitModal } from '../../stores/modals/git';
   import { getFileLastCommits } from '../../utils/git';
   import FolderActions from '../FolderActions.svelte';
   import ReadmePanel from '../Viewer/ReadmePanel.svelte';
