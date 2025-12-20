@@ -515,9 +515,9 @@
         </div>
       {/if}
 
-      <!-- Recording indicator and share button -->
+      <!-- Recording indicator -->
       {#if streamState.isRecording}
-        <div class="absolute top-4 left-4 flex items-center gap-3 bg-black/60 px-3 py-2 rounded-lg">
+        <div class="absolute top-4 left-4 z-10 flex items-center gap-3 bg-black/60 px-3 py-2 rounded-lg">
           <div class="flex items-center gap-2 text-danger">
             <span class="w-3 h-3 bg-danger rounded-full animate-pulse"></span>
             <span class="font-medium">REC</span>
@@ -525,27 +525,13 @@
           <span class="text-white">{formatTime(streamState.recordingTime)}</span>
           <span class="text-white/60">{formatBytes(streamState.streamStats.totalSize)}</span>
         </div>
-        {#if streamTreeName && userNpub}
-          <button
-            onclick={() => {
-              const encodedTreeName = encodeURIComponent(streamTreeName!);
-              const streamUrl = `${window.location.origin}${window.location.pathname}#/${userNpub}/${encodedTreeName}`;
-              openShareModal(streamUrl);
-            }}
-            class="absolute top-4 right-4 flex items-center gap-2 bg-black/60 hover:bg-black/80 px-3 py-2 rounded-lg text-white transition-colors"
-            title="Share stream"
-          >
-            <span class="i-lucide-share"></span>
-            <span>Share</span>
-          </button>
-        {/if}
       {/if}
     {/if}
   </div>
 
   <!-- Content below video -->
   <div class="max-w-5xl mx-auto px-4 py-4">
-    <!-- Header with back button and tabs -->
+    <!-- Header with back button, tabs, and share -->
     <div class="flex items-center justify-between mb-6">
       <button onclick={handleBack} class="btn-ghost flex items-center gap-2">
         <span class="i-lucide-arrow-left"></span>
@@ -569,6 +555,20 @@
           <span class="i-lucide-video"></span>
           Stream
         </button>
+        {#if streamState.isRecording && streamTreeName && userNpub}
+          <button
+            onclick={() => {
+              const encodedTreeName = encodeURIComponent(streamTreeName!);
+              const streamUrl = `${window.location.origin}${window.location.pathname}#/${userNpub}/${encodedTreeName}`;
+              openShareModal(streamUrl);
+            }}
+            class="btn-ghost flex items-center gap-2"
+            title="Share stream"
+          >
+            <span class="i-lucide-share"></span>
+            Share
+          </button>
+        {/if}
       </div>
     </div>
 
