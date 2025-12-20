@@ -3,7 +3,8 @@
    * Modal for creating new files, folders, or trees
    * Port of React CreateModal component
    */
-  import { modalsStore, closeCreateModal, setModalInput, setCreateTreeVisibility } from '../../stores/modals';
+  import { modalsStore, setModalInput } from '../../stores/modals/store';
+  import { closeCreateModal, setCreateTreeVisibility } from '../../stores/modals/file';
   import { createFile, createFolder, createTree, createDocument } from '../../actions';
   import { routeStore } from '../../stores';
   import { navigate } from '../../lib/router.svelte';

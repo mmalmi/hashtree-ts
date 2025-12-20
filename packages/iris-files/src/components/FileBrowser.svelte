@@ -6,7 +6,8 @@
   import { toHex, nhashEncode, LinkType, type TreeEntry as HashTreeEntry } from 'hashtree';
   import { formatBytes } from '../store';
   import { deleteEntry, moveEntry, moveToParent } from '../actions';
-  import { openCreateModal, openShareModal } from '../stores/modals';
+  import { openCreateModal } from '../stores/modals/file';
+  import { openShareModal } from '../stores/modals/share';
   import { uploadFiles, uploadDirectory } from '../stores/upload';
   import { recentlyChangedFiles } from '../stores/recentlyChanged';
   import { nostrStore, npubToPubkey } from '../nostr';

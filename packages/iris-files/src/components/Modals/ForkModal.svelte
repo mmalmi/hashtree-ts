@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TreeVisibility } from 'hashtree';
-  import { modalsStore, closeForkModal, setModalInput } from '../../stores/modals';
+  import { modalsStore, setModalInput } from '../../stores/modals/store';
+  import { closeForkModal } from '../../stores/modals/file';
   import { forkTree } from '../../actions/tree';
   import VisibilityPicker from './VisibilityPicker.svelte';
 

@@ -4,7 +4,8 @@
    * Shows contents of a ZIP file and allows extraction to current dir or subdirectory
    */
   import { unzipSync } from 'fflate';
-  import { openExtractModal, type ArchiveFile } from '../../stores/modals';
+  import { openExtractModal } from '../../stores/modals/file';
+  import type { ArchiveFileInfo } from '../../stores/modals/store';
 
   interface Props {
     data: Uint8Array;
@@ -107,8 +108,8 @@
   function handleExtract() {
     if (!unzipped) return;
 
-    // Convert to ArchiveFile format
-    const archiveFiles: ArchiveFile[] = [];
+    // Convert to ArchiveFileInfo format
+    const archiveFiles: ArchiveFileInfo[] = [];
     for (const [name, content] of Object.entries(unzipped)) {
       // Skip Mac OS X metadata and directories
       if (name.startsWith('__MACOSX/') || name.endsWith('.DS_Store')) {

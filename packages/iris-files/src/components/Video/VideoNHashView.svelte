@@ -5,7 +5,7 @@
    */
   import { untrack } from 'svelte';
   import { nhashDecode, type CID } from 'hashtree';
-  import { openShareModal } from '../../stores/modals';
+  import { openShareModal } from '../../stores/modals/share';
   import { getNhashFileUrl } from '../../lib/mediaUrl';
   import VideoComments from './VideoComments.svelte';
 

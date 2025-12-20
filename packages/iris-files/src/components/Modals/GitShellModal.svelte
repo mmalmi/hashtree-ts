@@ -4,7 +4,8 @@
    * Supports both read-only commands (status, log, etc.) and write commands (commit, add, etc.)
    */
   import type { CID } from 'hashtree';
-  import { modalsStore, closeGitShellModal } from '../../stores/modals';
+  import { modalsStore } from '../../stores/modals/store';
+  import { closeGitShellModal } from '../../stores/modals/git';
   import { getProfileSync } from '../../stores/profile';
   import { runGitCommand, applyGitChanges } from '../../utils/git';
   import { nostrStore } from '../../nostr';

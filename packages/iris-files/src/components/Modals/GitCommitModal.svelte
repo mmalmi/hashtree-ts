@@ -5,7 +5,8 @@
    */
   import { LinkType, type CID } from 'hashtree';
   import { SvelteMap } from 'svelte/reactivity';
-  import { modalsStore, closeGitCommitModal } from '../../stores/modals';
+  import { modalsStore } from '../../stores/modals/store';
+  import { closeGitCommitModal } from '../../stores/modals/git';
   import { createGitStatusStore } from '../../stores/git';
   import { commit } from '../../utils/git';
   import { getTree } from '../../store';

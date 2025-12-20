@@ -6,9 +6,9 @@
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../../nostr';
   import { createTreesStore, createProfileStore } from '../../stores';
-  import { openVideoUploadModal } from '../../stores/modals';
+  import { openVideoUploadModal } from '../../stores/modals/other';
   import { followPubkey, unfollowPubkey, getFollowsSync, createFollowsStore } from '../../stores/follows';
-  import { openShareModal } from '../../stores/modals';
+  import { openShareModal } from '../../stores/modals/share';
   import { Avatar, Name } from '../User';
   import VideoCard from './VideoCard.svelte';
   import PlaylistCard from './PlaylistCard.svelte';

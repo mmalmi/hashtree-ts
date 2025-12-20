@@ -2,7 +2,8 @@
   /**
    * Modal for handling .gitignore detection in directory uploads
    */
-  import { modalsStore, closeGitignoreModal } from '../../stores/modals';
+  import { modalsStore } from '../../stores/modals/store';
+  import { closeGitignoreModal } from '../../stores/modals/git';
   import { formatBytes } from '../../store';
 
   let show = $derived($modalsStore.showGitignoreModal);

@@ -7,7 +7,8 @@
    * - QR Scanner for adding npubs
    * - Search through followed users with Fuse.js
    */
-  import { modalsStore, closeCollaboratorsModal, openShareModal } from '../../stores/modals';
+  import { modalsStore } from '../../stores/modals/store';
+  import { closeCollaboratorsModal, openShareModal } from '../../stores/modals/share';
   import { nip19 } from 'nostr-tools';
   import Fuse from 'fuse.js';
   import { UserRow } from '../User';

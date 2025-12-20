@@ -2,7 +2,8 @@
   /**
    * Modal for displaying git commit history
    */
-  import { modalsStore, closeGitHistoryModal } from '../../stores/modals';
+  import { modalsStore } from '../../stores/modals/store';
+  import { closeGitHistoryModal } from '../../stores/modals/git';
   import { createGitLogStore, type CommitInfo } from '../../stores/git';
   import { nhashEncode } from 'hashtree';
   import { checkoutCommit, getBranches } from '../../utils/git';

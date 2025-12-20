@@ -6,7 +6,8 @@
   import { nhashEncode, toHex, LinkType } from 'hashtree';
   import type { CID } from 'hashtree';
   import { SvelteMap } from 'svelte/reactivity';
-  import { openCreateModal, openRenameModal, openForkModal, openShareModal, openBlossomPushModal } from '../stores/modals';
+  import { openCreateModal, openRenameModal, openForkModal } from '../stores/modals/file';
+  import { openShareModal, openBlossomPushModal } from '../stores/modals/share';
   import { uploadFiles, uploadDirectory } from '../stores/upload';
   import { deleteCurrentFolder, buildRouteUrl } from '../actions';
   import { nostrStore, autosaveIfOwn, deleteTree } from '../nostr';

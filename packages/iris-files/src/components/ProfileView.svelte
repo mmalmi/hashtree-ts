@@ -7,7 +7,7 @@
   import { nostrStore } from '../nostr';
   import { createProfileStore } from '../stores/profile';
   import { createFollowsStore, followPubkey, unfollowPubkey } from '../stores/follows';
-  import { openShareModal } from '../stores/modals';
+  import { openShareModal } from '../stores/modals/share';
   import { Avatar, Name, Badge, FollowedBy } from './User';
   import CopyText from './CopyText.svelte';
   import ProxyImg from './ProxyImg.svelte';

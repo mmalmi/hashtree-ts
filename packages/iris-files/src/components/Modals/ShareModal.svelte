@@ -3,7 +3,8 @@
    * ShareModal - unified sharing options with QR code, copy link, and native share
    */
   import QRCode from 'qrcode';
-  import { modalsStore, closeShareModal } from '../../stores/modals';
+  import { modalsStore } from '../../stores/modals/store';
+  import { closeShareModal } from '../../stores/modals/share';
   import CopyText from '../CopyText.svelte';
 
   let show = $derived($modalsStore.showShareModal);

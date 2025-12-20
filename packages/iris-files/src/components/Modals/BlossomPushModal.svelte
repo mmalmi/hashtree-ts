@@ -3,7 +3,8 @@
    * BlossomPushModal - Push directory/file contents to Blossom servers
    * Uses BlossomStore from hashtree for uploads with proper auth and backoff
    */
-  import { modalsStore, closeBlossomPushModal } from '../../stores/modals';
+  import { modalsStore } from '../../stores/modals/store';
+  import { closeBlossomPushModal } from '../../stores/modals/share';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../../stores/settings';
   import { getTree } from '../../store';
   import { signEvent } from '../../nostr';

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { modalsStore, closeRenameModal, setModalInput } from '../../stores/modals';
+  import { modalsStore, setModalInput } from '../../stores/modals/store';
+  import { closeRenameModal } from '../../stores/modals/file';
   import { renameEntry } from '../../actions';
 
   let show = $derived($modalsStore.showRenameModal);

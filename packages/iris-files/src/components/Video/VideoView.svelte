@@ -10,7 +10,8 @@
   import { getTree } from '../../store';
   import { ndk, nostrStore } from '../../nostr';
   import { treeRootStore, createTreesStore } from '../../stores';
-  import { openShareModal, openBlossomPushModal, openAddToPlaylistModal } from '../../stores/modals';
+  import { openShareModal, openBlossomPushModal } from '../../stores/modals/share';
+  import { openAddToPlaylistModal } from '../../stores/modals/other';
   import type { TreeVisibility } from 'hashtree';
   import { deleteTree } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';

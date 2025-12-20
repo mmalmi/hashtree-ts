@@ -17,7 +17,8 @@
   import type { CID, TreeEntry } from 'hashtree';
   import { getTree } from '../../store';
   import { routeStore, createTreesStore, getTreeRootSync } from '../../stores';
-  import { openShareModal, openForkModal, openCollaboratorsModal, updateCollaboratorsModal, openBlossomPushModal } from '../../stores/modals';
+  import { openForkModal } from '../../stores/modals/file';
+  import { openShareModal, openCollaboratorsModal, updateCollaboratorsModal, openBlossomPushModal } from '../../stores/modals/share';
   import { autosaveIfOwn, nostrStore, npubToPubkey, deleteTree } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
   import { getCurrentRootCid, deleteCurrentFolder } from '../../actions';

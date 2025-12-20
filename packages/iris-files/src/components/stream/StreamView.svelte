@@ -7,7 +7,7 @@
   import { formatBytes } from '../../store';
   import { nostrStore } from '../../nostr';
   import { routeStore, directoryEntriesStore } from '../../stores';
-  import { openShareModal } from '../../stores/modals';
+  import { openShareModal } from '../../stores/modals/share';
   import {
     streamStore,
     startPreview,
