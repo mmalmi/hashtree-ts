@@ -24,7 +24,6 @@ const log = (...args: unknown[]) => DEBUG && console.log('[socialGraph]', ...arg
 
 let worker: Worker | null = null;
 let requestId = 0;
-let isInitialized = false;
 const pending = new Map<string, { resolve: (data: unknown) => void; reject: (err: Error) => void }>();
 
 function getNextId(): string {

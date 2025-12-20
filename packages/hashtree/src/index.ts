@@ -87,8 +87,12 @@ export {
 // Stream options for readFileStream
 export type { StreamOptions } from './tree/read.js';
 
-// BEP52 chunk size constant
-export { BEP52_CHUNK_SIZE } from './builder.js';
+// Chunker utilities
+export {
+  type Chunker,
+  fixedChunker,
+  videoChunker,
+} from './builder.js';
 
 // WebRTC P2P store
 export {

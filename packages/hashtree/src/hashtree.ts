@@ -10,6 +10,7 @@
 import { Store, Hash, CID, TreeNode, LinkType, toHex, cid } from './types.js';
 import { tryDecodeTreeNode } from './codec.js';
 import { StreamWriter } from './streaming.js';
+import * as streaming from './streaming.js';
 export { StreamWriter } from './streaming.js';
 export { verifyTree } from './verify.js';
 import * as create from './tree/create.js';
@@ -584,10 +585,17 @@ export class HashTree {
   /**
    * Create a streaming file writer for incremental appends
    * Useful for writing large files chunk by chunk (e.g., video recording)
-   * @param options - { public?: boolean } - if true, create without encryption
+   * @param options.public - if true, create without encryption
+   * @param options.chunker - custom chunker for variable chunk sizes (e.g., videoChunker for faster start)
    */
-  createStream(options?: { public?: boolean }): StreamWriter {
-    return new StreamWriter(this.store, this.chunkSize, this.maxLinks, options?.public ?? false);
+  createStream(options?: { public?: boolean; chunker?: streaming.Chunker }): StreamWriter {
+    return new StreamWriter({
+      store: this.store,
+      chunkSize: this.chunkSize,
+      chunker: options?.chunker,
+      maxLinks: this.maxLinks,
+      isPublic: options?.public ?? false,
+    });
   }
 }
 

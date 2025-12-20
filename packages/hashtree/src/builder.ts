@@ -16,19 +16,42 @@ import { encodeAndHash } from './codec.js';
 export const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024;
 
 /**
- * BEP52 chunk size: 16KB
- */
-export const BEP52_CHUNK_SIZE = 16 * 1024;
-
-/**
  * Default max links per tree node (fanout)
  */
 export const DEFAULT_MAX_LINKS = 174;
 
+/**
+ * Chunker function: returns chunk size for a given chunk index
+ * @param index - 0-based chunk index
+ * @returns chunk size in bytes
+ */
+export type Chunker = (index: number) => number;
+
+/**
+ * Create a fixed-size chunker
+ */
+export function fixedChunker(size: number): Chunker {
+  return () => size;
+}
+
+/**
+ * Create a video-optimized chunker with smaller first chunk for fast playback start
+ * @param firstChunkSize - Size of first chunk (default: 256KB)
+ * @param regularChunkSize - Size of remaining chunks (default: 2MB)
+ */
+export function videoChunker(
+  firstChunkSize: number = 256 * 1024,
+  regularChunkSize: number = DEFAULT_CHUNK_SIZE
+): Chunker {
+  return (index: number) => index === 0 ? firstChunkSize : regularChunkSize;
+}
+
 export interface BuilderConfig {
   store: Store;
-  /** Chunk size for splitting blobs */
+  /** Chunk size for splitting blobs (ignored if chunker is provided) */
   chunkSize?: number;
+  /** Custom chunker function for variable chunk sizes */
+  chunker?: Chunker;
   /** Max links per tree node */
   maxLinks?: number;
   /** Hash chunks in parallel (default: true) */
@@ -53,13 +76,13 @@ export interface DirEntry {
  */
 export class TreeBuilder {
   private store: Store;
-  private chunkSize: number;
+  private chunker: Chunker;
   private maxLinks: number;
   private parallel: boolean;
 
   constructor(config: BuilderConfig) {
     this.store = config.store;
-    this.chunkSize = config.chunkSize ?? DEFAULT_CHUNK_SIZE;
+    this.chunker = config.chunker ?? fixedChunker(config.chunkSize ?? DEFAULT_CHUNK_SIZE);
     this.maxLinks = config.maxLinks ?? DEFAULT_MAX_LINKS;
     this.parallel = config.parallel ?? true;
   }
@@ -80,20 +103,27 @@ export class TreeBuilder {
    */
   async putFile(data: Uint8Array): Promise<{ hash: Hash; size: number }> {
     const size = data.length;
+    const firstChunkSize = this.chunker(0);
 
     // Small file - store as single blob
-    if (data.length <= this.chunkSize) {
+    if (data.length <= firstChunkSize) {
       const hash = await this.putBlob(data);
       return { hash, size };
     }
 
-    // Split into chunks
+    // Split into chunks using chunker
     const chunkList: Uint8Array[] = [];
+    const chunkSizes: number[] = [];
     let offset = 0;
+    let chunkIndex = 0;
+
     while (offset < data.length) {
-      const end = Math.min(offset + this.chunkSize, data.length);
+      const chunkSize = this.chunker(chunkIndex);
+      const end = Math.min(offset + chunkSize, data.length);
       chunkList.push(data.slice(offset, end));
+      chunkSizes.push(end - offset);
       offset = end;
+      chunkIndex++;
     }
 
     // Hash and store chunks (parallel or sequential)
@@ -110,7 +140,7 @@ export class TreeBuilder {
     // Build tree from chunks (leaf chunks are raw blobs)
     const chunks: Link[] = chunkHashes.map((hash, i) => ({
       hash,
-      size: i < chunkHashes.length - 1 ? this.chunkSize : data.length - i * this.chunkSize,
+      size: chunkSizes[i],
       type: LinkType.Blob,
     }));
     const rootHash = await this.buildTree(chunks, size);
@@ -221,7 +251,7 @@ export class TreeBuilder {
  */
 export class StreamBuilder {
   private store: Store;
-  private chunkSize: number;
+  private chunker: Chunker;
   private maxLinks: number;
 
   // Current partial chunk being built
@@ -234,9 +264,15 @@ export class StreamBuilder {
 
   constructor(config: BuilderConfig) {
     this.store = config.store;
-    this.chunkSize = config.chunkSize ?? DEFAULT_CHUNK_SIZE;
+    this.chunker = config.chunker ?? fixedChunker(config.chunkSize ?? DEFAULT_CHUNK_SIZE);
     this.maxLinks = config.maxLinks ?? DEFAULT_MAX_LINKS;
-    this.buffer = new Uint8Array(this.chunkSize);
+    // Initialize buffer with first chunk size
+    this.buffer = new Uint8Array(this.chunker(0));
+  }
+
+  /** Get current target chunk size */
+  private currentChunkSize(): number {
+    return this.chunker(this.chunks.length);
   }
 
   /**
@@ -246,15 +282,26 @@ export class StreamBuilder {
     let offset = 0;
 
     while (offset < data.length) {
-      const space = this.chunkSize - this.bufferOffset;
+      const targetSize = this.currentChunkSize();
+
+      // Resize buffer if needed for new chunk size
+      if (this.buffer.length !== targetSize) {
+        const newBuffer = new Uint8Array(targetSize);
+        if (this.bufferOffset > 0) {
+          newBuffer.set(this.buffer.subarray(0, this.bufferOffset));
+        }
+        this.buffer = newBuffer;
+      }
+
+      const space = targetSize - this.bufferOffset;
       const toWrite = Math.min(space, data.length - offset);
 
-      this.buffer.set(data.slice(offset, offset + toWrite), this.bufferOffset);
+      this.buffer.set(data.subarray(offset, offset + toWrite), this.bufferOffset);
       this.bufferOffset += toWrite;
       offset += toWrite;
 
       // Flush full chunk
-      if (this.bufferOffset === this.chunkSize) {
+      if (this.bufferOffset === targetSize) {
         await this.flushChunk();
       }
     }

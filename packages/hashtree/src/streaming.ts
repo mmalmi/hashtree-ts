@@ -11,10 +11,20 @@ import { Store, Hash, CID, TreeNode, LinkType, Link, cid } from './types.js';
 import { encodeAndHash } from './codec.js';
 import { sha256 } from './hash.js';
 import { encryptChk, type EncryptionKey } from './crypto.js';
+import { type Chunker, fixedChunker } from './builder.js';
+export type { Chunker } from './builder.js';
+
+export interface StreamWriterConfig {
+  store: Store;
+  chunkSize?: number;
+  chunker?: Chunker;
+  maxLinks: number;
+  isPublic?: boolean;
+}
 
 export class StreamWriter {
   private store: Store;
-  private chunkSize: number;
+  private chunker: Chunker;
   private maxLinks: number;
   private isPublic: boolean;
 
@@ -26,12 +36,36 @@ export class StreamWriter {
   private chunks: Link[] = [];
   private totalSize: number = 0;
 
-  constructor(store: Store, chunkSize: number, maxLinks: number, isPublic: boolean = false) {
-    this.store = store;
-    this.chunkSize = chunkSize;
-    this.maxLinks = maxLinks;
-    this.isPublic = isPublic;
-    this.buffer = new Uint8Array(this.chunkSize);
+  constructor(config: StreamWriterConfig);
+  /** @deprecated Use config object instead */
+  constructor(store: Store, chunkSize: number, maxLinks: number, isPublic?: boolean);
+  constructor(
+    storeOrConfig: Store | StreamWriterConfig,
+    chunkSize?: number,
+    maxLinks?: number,
+    isPublic?: boolean
+  ) {
+    if ('store' in storeOrConfig && typeof storeOrConfig === 'object' && !('get' in storeOrConfig)) {
+      // New config-based constructor
+      const config = storeOrConfig as StreamWriterConfig;
+      this.store = config.store;
+      this.chunker = config.chunker ?? fixedChunker(config.chunkSize ?? 2 * 1024 * 1024);
+      this.maxLinks = config.maxLinks;
+      this.isPublic = config.isPublic ?? false;
+    } else {
+      // Legacy positional constructor
+      this.store = storeOrConfig as Store;
+      this.chunker = fixedChunker(chunkSize!);
+      this.maxLinks = maxLinks!;
+      this.isPublic = isPublic ?? false;
+    }
+    // Initialize buffer with first chunk size
+    this.buffer = new Uint8Array(this.chunker(0));
+  }
+
+  /** Get current target chunk size */
+  private currentChunkSize(): number {
+    return this.chunker(this.chunks.length);
   }
 
   /**
@@ -41,15 +75,26 @@ export class StreamWriter {
     let offset = 0;
 
     while (offset < data.length) {
-      const space = this.chunkSize - this.bufferOffset;
+      const targetSize = this.currentChunkSize();
+
+      // Resize buffer if needed for new chunk size
+      if (this.buffer.length !== targetSize) {
+        const newBuffer = new Uint8Array(targetSize);
+        if (this.bufferOffset > 0) {
+          newBuffer.set(this.buffer.subarray(0, this.bufferOffset));
+        }
+        this.buffer = newBuffer;
+      }
+
+      const space = targetSize - this.bufferOffset;
       const toWrite = Math.min(space, data.length - offset);
 
-      this.buffer.set(data.slice(offset, offset + toWrite), this.bufferOffset);
+      this.buffer.set(data.subarray(offset, offset + toWrite), this.bufferOffset);
       this.bufferOffset += toWrite;
       offset += toWrite;
 
       // Flush full chunk
-      if (this.bufferOffset === this.chunkSize) {
+      if (this.bufferOffset === targetSize) {
         await this.flushChunk();
       }
     }

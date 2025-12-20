@@ -5,7 +5,7 @@
    */
     import { modalsStore, closeVideoUploadModal } from '../../stores/modals';
   import { nostrStore, saveHashtree } from '../../nostr';
-  import { toHex } from 'hashtree';
+  import { toHex, videoChunker } from 'hashtree';
   import { getTree } from '../../store';
   import { addRecent } from '../../stores/recents';
   import { storeLinkKey } from '../../stores/trees';
@@ -156,7 +156,7 @@
         progress = 5;
 
         // Use streaming transcode - writes chunks directly to hashtree
-        const streamWriter = tree.createStream({ public: isPublic });
+        const streamWriter = tree.createStream({ public: isPublic, chunker: videoChunker() });
 
         const result = await transcodeToMP4Streaming(
           selectedFile,
@@ -185,8 +185,8 @@
         progress = 10;
 
         // For non-transcoded files, use streaming upload in chunks
-        const streamWriter = tree.createStream({ public: isPublic });
-        const chunkSize = 1024 * 1024; // 1MB chunks
+        const streamWriter = tree.createStream({ public: isPublic, chunker: videoChunker() });
+        const chunkSize = 1024 * 1024; // 1MB read chunks (hashtree uses videoChunker for storage)
 
         for (let offset = 0; offset < selectedFile.size; offset += chunkSize) {
           const chunk = selectedFile.slice(offset, Math.min(offset + chunkSize, selectedFile.size));
