@@ -333,7 +333,7 @@
     streamTreeName = `videos/${streamTitle.trim()}`;
 
     const isPublic = streamVisibility === 'public';
-    await startRecording(videoRef ?? null, isPublic);
+    await startRecording(videoRef ?? null, isPublic, streamTitle.trim(), streamVisibility);
 
     // Generate thumbnail from first frame
     if (videoRef) {

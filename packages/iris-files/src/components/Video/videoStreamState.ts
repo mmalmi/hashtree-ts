@@ -2,7 +2,7 @@
  * Video Streaming State for Video App
  *
  * Handles webcam/mic recording and saving to videos/{title} trees.
- * Simplified version of stream/streamState.ts for video-specific use.
+ * Publishes tree updates every 3 seconds for live streaming.
  */
 
 import { writable, get } from 'svelte/store';
@@ -66,6 +66,11 @@ export function setStreamStats(stats: { chunks: number; buffered: number; totalS
 let mediaStream: MediaStream | null = null;
 let mediaRecorder: MediaRecorder | null = null;
 let recordingInterval: number | null = null;
+let publishInterval: number | null = null;
+
+// Track current stream metadata for periodic publishing
+let currentStreamTitle: string = '';
+let currentStreamVisibility: TreeVisibility = 'public';
 
 export function getMediaStream(): MediaStream | null {
   return mediaStream;
@@ -98,11 +103,20 @@ export function stopPreview(videoEl: HTMLVideoElement | null): void {
   setIsPreviewing(false);
 }
 
-export async function startRecording(videoEl: HTMLVideoElement | null, isPublic: boolean): Promise<void> {
+export async function startRecording(
+  videoEl: HTMLVideoElement | null,
+  isPublic: boolean,
+  title: string,
+  visibility: TreeVisibility
+): Promise<void> {
   if (!mediaStream) {
     await startPreview(videoEl);
     if (!mediaStream) return;
   }
+
+  // Store metadata for periodic publishing
+  currentStreamTitle = title;
+  currentStreamVisibility = visibility;
 
   // Reset state
   const tree = getTree();
@@ -136,6 +150,55 @@ export async function startRecording(videoEl: HTMLVideoElement | null, isPublic:
     const currentState = getVideoStreamState();
     setRecordingTime(currentState.recordingTime + 1);
   }, 1000);
+
+  // Publish tree updates every 3 seconds for live streaming
+  publishInterval = window.setInterval(async () => {
+    await publishStreamUpdate();
+  }, 3000);
+}
+
+/**
+ * Publish current stream state to Nostr for live viewers
+ */
+async function publishStreamUpdate(): Promise<void> {
+  const nostrState = nostrStore.getState();
+  if (!nostrState.isLoggedIn || !nostrState.npub) return;
+
+  const currentState = getVideoStreamState();
+  if (!currentState.streamWriter || !currentState.isRecording) return;
+
+  const tree = getTree();
+  const treeName = `videos/${currentStreamTitle.trim()}`;
+  const isPublic = currentStreamVisibility === 'public';
+  const durationMs = currentState.recordingTime * 1000;
+
+  // Finalize current stream to get CID (non-destructive - can continue appending)
+  const result = await currentState.streamWriter.finalize();
+  let fileCid: CID = cid(result.hash, result.key);
+  const fileSize = result.size;
+
+  // Patch WebM duration so viewers can seek
+  if (durationMs > 0) {
+    fileCid = await patchWebmDuration(tree, fileCid, durationMs);
+  }
+
+  // Build video directory with current state
+  const entries: Array<{ name: string; cid: CID; size?: number }> = [
+    { name: 'video.webm', cid: fileCid, size: fileSize },
+  ];
+
+  // Add title
+  const titleData = new TextEncoder().encode(currentStreamTitle.trim());
+  const titleResult = await tree.putFile(titleData, { public: isPublic });
+  entries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
+
+  // Create directory and publish
+  const dirResult = await tree.putDirectory(entries, { public: isPublic });
+  const rootHash = toHex(dirResult.cid.hash);
+  const rootKey = dirResult.cid.key ? toHex(dirResult.cid.key) : undefined;
+
+  // Publish to Nostr - viewers subscribed to this tree will get the update
+  await saveHashtree(treeName, rootHash, rootKey, { visibility: currentStreamVisibility });
 }
 
 interface StopRecordingResult {
@@ -152,6 +215,11 @@ export async function stopRecording(
   if (recordingInterval) {
     clearInterval(recordingInterval);
     recordingInterval = null;
+  }
+
+  if (publishInterval) {
+    clearInterval(publishInterval);
+    publishInterval = null;
   }
 
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
@@ -268,6 +336,11 @@ export function cancelRecording(): void {
     recordingInterval = null;
   }
 
+  if (publishInterval) {
+    clearInterval(publishInterval);
+    publishInterval = null;
+  }
+
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
     mediaRecorder = null;
@@ -283,6 +356,8 @@ export function cancelRecording(): void {
   setStreamWriter(null);
   setStreamStats({ chunks: 0, buffered: 0, totalSize: 0 });
   setRecordingTime(0);
+  currentStreamTitle = '';
+  currentStreamVisibility = 'public';
 }
 
 export function formatTime(seconds: number): string {
