@@ -16,11 +16,6 @@ import { encodeAndHash } from './codec.js';
 export const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024;
 
 /**
- * Default max links per tree node (fanout)
- */
-export const DEFAULT_MAX_LINKS = 174;
-
-/**
  * Chunker function: returns chunk size for a given chunk index
  * @param index - 0-based chunk index
  * @returns chunk size in bytes
@@ -52,8 +47,6 @@ export interface BuilderConfig {
   chunkSize?: number;
   /** Custom chunker function for variable chunk sizes */
   chunker?: Chunker;
-  /** Max links per tree node */
-  maxLinks?: number;
   /** Hash chunks in parallel (default: true) */
   parallel?: boolean;
 }
@@ -77,13 +70,11 @@ export interface DirEntry {
 export class TreeBuilder {
   private store: Store;
   private chunker: Chunker;
-  private maxLinks: number;
   private parallel: boolean;
 
   constructor(config: BuilderConfig) {
     this.store = config.store;
     this.chunker = config.chunker ?? fixedChunker(config.chunkSize ?? DEFAULT_CHUNK_SIZE);
-    this.maxLinks = config.maxLinks ?? DEFAULT_MAX_LINKS;
     this.parallel = config.parallel ?? true;
   }
 
@@ -157,36 +148,14 @@ export class TreeBuilder {
       return links[0].hash;
     }
 
-    // Fits in one node
-    if (links.length <= this.maxLinks) {
-      const node: TreeNode = {
-        type: LinkType.File,
-        links,
-      };
-      const { data, hash } = await encodeAndHash(node);
-      await this.store.put(hash, data);
-      return hash;
-    }
-
-    // Need to split into sub-trees
-    const subTrees: Link[] = [];
-
-    for (let i = 0; i < links.length; i += this.maxLinks) {
-      const batch = links.slice(i, i + this.maxLinks);
-      const batchSize = batch.reduce((sum, l) => sum + l.size, 0);
-
-      const node: TreeNode = {
-        type: LinkType.File,
-        links: batch,
-      };
-      const { data, hash } = await encodeAndHash(node);
-      await this.store.put(hash, data);
-
-      subTrees.push({ hash, size: batchSize, type: LinkType.File });
-    }
-
-    // Recursively build parent level
-    return this.buildTree(subTrees, totalSize);
+    // Create single flat node with all links
+    const node: TreeNode = {
+      type: LinkType.File,
+      links,
+    };
+    const { data, hash } = await encodeAndHash(node);
+    await this.store.put(hash, data);
+    return hash;
   }
 
   /**
@@ -252,7 +221,6 @@ export class TreeBuilder {
 export class StreamBuilder {
   private store: Store;
   private chunker: Chunker;
-  private maxLinks: number;
 
   // Current partial chunk being built
   private buffer: Uint8Array;
@@ -265,7 +233,6 @@ export class StreamBuilder {
   constructor(config: BuilderConfig) {
     this.store = config.store;
     this.chunker = config.chunker ?? fixedChunker(config.chunkSize ?? DEFAULT_CHUNK_SIZE);
-    this.maxLinks = config.maxLinks ?? DEFAULT_MAX_LINKS;
     // Initialize buffer with first chunk size
     this.buffer = new Uint8Array(this.chunker(0));
   }
@@ -363,40 +330,21 @@ export class StreamBuilder {
   }
 
   /**
-   * Build balanced tree from chunks (for streaming files)
+   * Build flat tree from chunks (for streaming files)
    */
-  private async buildTreeFromChunks(chunks: Link[], totalSize: number): Promise<Hash> {
+  private async buildTreeFromChunks(chunks: Link[], _totalSize: number): Promise<Hash> {
     if (chunks.length === 1) {
       return chunks[0].hash;
     }
 
-    if (chunks.length <= this.maxLinks) {
-      const node: TreeNode = {
-        type: LinkType.File,
-        links: chunks,
-      };
-      const { data, hash } = await encodeAndHash(node);
-      await this.store.put(hash, data);
-      return hash;
-    }
-
-    // Build intermediate level
-    const subTrees: Link[] = [];
-    for (let i = 0; i < chunks.length; i += this.maxLinks) {
-      const batch = chunks.slice(i, i + this.maxLinks);
-      const batchSize = batch.reduce((sum, l) => sum + l.size, 0);
-
-      const node: TreeNode = {
-        type: LinkType.File,
-        links: batch,
-      };
-      const { data, hash } = await encodeAndHash(node);
-      await this.store.put(hash, data);
-
-      subTrees.push({ hash, size: batchSize, type: LinkType.File });
-    }
-
-    return this.buildTreeFromChunks(subTrees, totalSize);
+    // Create single flat node with all links
+    const node: TreeNode = {
+      type: LinkType.File,
+      links: chunks,
+    };
+    const { data, hash } = await encodeAndHash(node);
+    await this.store.put(hash, data);
+    return hash;
   }
 
   /**

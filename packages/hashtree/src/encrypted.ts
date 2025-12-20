@@ -17,7 +17,6 @@ import { encryptChk, decryptChk, type EncryptionKey } from './crypto.js';
 export interface EncryptedTreeConfig {
   store: Store;
   chunkSize: number;
-  maxLinks: number;
 }
 
 /**
@@ -96,7 +95,7 @@ async function buildEncryptedTree(
   links: Link[],
   totalSize: number | undefined
 ): Promise<{ hash: Hash; key: EncryptionKey }> {
-  const { store, maxLinks } = config;
+  const { store } = config;
 
   // Single link - return its hash and key directly
   if (links.length === 1 && links[0].key) {
@@ -105,44 +104,17 @@ async function buildEncryptedTree(
     }
   }
 
-  if (links.length <= maxLinks) {
-    const node: TreeNode = {
-      type: LinkType.File,
-      links,
-    };
-    const { data } = await encodeAndHash(node);
-    // CHK encrypt the tree node
-    const { ciphertext, key: nodeKey } = await encryptChk(data);
-    const hash = await sha256(ciphertext);
-    await store.put(hash, ciphertext);
-    return { hash, key: nodeKey };
-  }
-
-  // Too many links - create subtrees
-  const subTrees: Link[] = [];
-  for (let i = 0; i < links.length; i += maxLinks) {
-    const batch = links.slice(i, i + maxLinks);
-    const batchSize = batch.reduce((sum, l) => sum + l.size, 0);
-
-    const node: TreeNode = {
-      type: LinkType.File,
-      links: batch,
-    };
-    const { data } = await encodeAndHash(node);
-    // CHK encrypt the subtree node
-    const { ciphertext, key: nodeKey } = await encryptChk(data);
-    const hash = await sha256(ciphertext);
-    await store.put(hash, ciphertext);
-
-    subTrees.push({
-      hash,
-      size: batchSize,
-      key: nodeKey,
-      type: LinkType.File,
-    });
-  }
-
-  return buildEncryptedTree(config, subTrees, totalSize);
+  // Create single flat node with all links
+  const node: TreeNode = {
+    type: LinkType.File,
+    links,
+  };
+  const { data } = await encodeAndHash(node);
+  // CHK encrypt the tree node
+  const { ciphertext, key: nodeKey } = await encryptChk(data);
+  const hash = await sha256(ciphertext);
+  await store.put(hash, ciphertext);
+  return { hash, key: nodeKey };
 }
 
 /**

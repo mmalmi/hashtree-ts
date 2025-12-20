@@ -18,14 +18,12 @@ export interface StreamWriterConfig {
   store: Store;
   chunkSize?: number;
   chunker?: Chunker;
-  maxLinks: number;
   isPublic?: boolean;
 }
 
 export class StreamWriter {
   private store: Store;
   private chunker: Chunker;
-  private maxLinks: number;
   private isPublic: boolean;
 
   // Current partial chunk being built
@@ -42,7 +40,7 @@ export class StreamWriter {
   constructor(
     storeOrConfig: Store | StreamWriterConfig,
     chunkSize?: number,
-    maxLinks?: number,
+    _maxLinks?: number,
     isPublic?: boolean
   ) {
     if ('store' in storeOrConfig && typeof storeOrConfig === 'object' && !('get' in storeOrConfig)) {
@@ -50,13 +48,11 @@ export class StreamWriter {
       const config = storeOrConfig as StreamWriterConfig;
       this.store = config.store;
       this.chunker = config.chunker ?? fixedChunker(config.chunkSize ?? 2 * 1024 * 1024);
-      this.maxLinks = config.maxLinks;
       this.isPublic = config.isPublic ?? false;
     } else {
-      // Legacy positional constructor
+      // Legacy positional constructor (maxLinks ignored)
       this.store = storeOrConfig as Store;
       this.chunker = fixedChunker(chunkSize!);
-      this.maxLinks = maxLinks!;
       this.isPublic = isPublic ?? false;
     }
     // Initialize buffer with first chunk size
@@ -189,58 +185,32 @@ export class StreamWriter {
   }
 
   /**
-   * Build balanced tree from chunks
+   * Build flat tree from chunks
    */
-  private async buildTreeFromChunks(chunks: Link[], totalSize: number): Promise<CID> {
+  private async buildTreeFromChunks(chunks: Link[], _totalSize: number): Promise<CID> {
     // Single chunk - return its hash (and key if encrypted)
     if (chunks.length === 1) {
       return cid(chunks[0].hash, chunks[0].key);
     }
 
-    if (chunks.length <= this.maxLinks) {
-      const node: TreeNode = {
-        type: LinkType.File,
-        links: chunks,
-      };
-      const { data, hash: nodeHash } = await encodeAndHash(node);
+    // Create single flat node with all links
+    const node: TreeNode = {
+      type: LinkType.File,
+      links: chunks,
+    };
+    const { data, hash: nodeHash } = await encodeAndHash(node);
 
-      if (this.isPublic) {
-        // Public mode: store plaintext tree node
-        await this.store.put(nodeHash, data);
-        return { hash: nodeHash };
-      } else {
-        // Encrypted mode: CHK encrypt the tree node
-        const { ciphertext, key } = await encryptChk(data);
-        const hash = await sha256(ciphertext);
-        await this.store.put(hash, ciphertext);
-        return cid(hash, key);
-      }
+    if (this.isPublic) {
+      // Public mode: store plaintext tree node
+      await this.store.put(nodeHash, data);
+      return { hash: nodeHash };
+    } else {
+      // Encrypted mode: CHK encrypt the tree node
+      const { ciphertext, key } = await encryptChk(data);
+      const hash = await sha256(ciphertext);
+      await this.store.put(hash, ciphertext);
+      return cid(hash, key);
     }
-
-    // Build intermediate level
-    const subTrees: Link[] = [];
-    for (let i = 0; i < chunks.length; i += this.maxLinks) {
-      const batch = chunks.slice(i, i + this.maxLinks);
-      const batchSize = batch.reduce((sum, l) => sum + l.size, 0);
-
-      const node: TreeNode = {
-        type: LinkType.File,
-        links: batch,
-      };
-      const { data, hash: nodeHash } = await encodeAndHash(node);
-
-      if (this.isPublic) {
-        await this.store.put(nodeHash, data);
-        subTrees.push({ hash: nodeHash, size: batchSize, type: LinkType.File });
-      } else {
-        const { ciphertext, key } = await encryptChk(data);
-        const hash = await sha256(ciphertext);
-        await this.store.put(hash, ciphertext);
-        subTrees.push({ hash, size: batchSize, key, type: LinkType.File });
-      }
-    }
-
-    return this.buildTreeFromChunks(subTrees, totalSize);
   }
 
   /**

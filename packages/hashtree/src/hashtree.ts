@@ -32,13 +32,9 @@ import * as writeAtOps from './tree/writeAt.js';
 /** Default chunk size: 2MB (optimized for blossom uploads) */
 export const DEFAULT_CHUNK_SIZE = 2 * 1024 * 1024;
 
-/** Default max links per tree node (fanout) */
-export const DEFAULT_MAX_LINKS = 174;
-
 export interface HashTreeConfig {
   store: Store;
   chunkSize?: number;
-  maxLinks?: number;
 }
 
 export interface TreeEntry {
@@ -63,16 +59,14 @@ export interface DirEntry {
 export class HashTree {
   private store: Store;
   private chunkSize: number;
-  private maxLinks: number;
 
   constructor(config: HashTreeConfig) {
     this.store = config.store;
     this.chunkSize = config.chunkSize ?? DEFAULT_CHUNK_SIZE;
-    this.maxLinks = config.maxLinks ?? DEFAULT_MAX_LINKS;
   }
 
   private get config(): create.CreateConfig {
-    return { store: this.store, chunkSize: this.chunkSize, maxLinks: this.maxLinks };
+    return { store: this.store, chunkSize: this.chunkSize };
   }
 
   // Create (encrypted by default)
@@ -593,7 +587,6 @@ export class HashTree {
       store: this.store,
       chunkSize: this.chunkSize,
       chunker: options?.chunker,
-      maxLinks: this.maxLinks,
       isPublic: options?.public ?? false,
     });
   }

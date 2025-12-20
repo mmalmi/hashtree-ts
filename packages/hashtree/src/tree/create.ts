@@ -9,7 +9,6 @@ import { encodeAndHash } from '../codec.js';
 export interface CreateConfig {
   store: Store;
   chunkSize: number;
-  maxLinks: number;
 }
 
 export interface DirEntry {
@@ -111,37 +110,20 @@ export async function buildTree(
   links: Link[],
   totalSize?: number
 ): Promise<Hash> {
-  const { store, maxLinks } = config;
+  const { store } = config;
 
+  // Single chunk that matches total size - return it directly
   if (links.length === 1 && links[0].size === totalSize) {
     return links[0].hash;
   }
 
-  if (links.length <= maxLinks) {
-    const node: TreeNode = {
-      type: LinkType.File,
-      links,
-    };
-    const { data, hash } = await encodeAndHash(node);
-    await store.put(hash, data);
-    return hash;
-  }
-
-  const subTrees: Link[] = [];
-  for (let i = 0; i < links.length; i += maxLinks) {
-    const batch = links.slice(i, i + maxLinks);
-    const batchSize = batch.reduce((sum, l) => sum + l.size, 0);
-
-    const node: TreeNode = {
-      type: LinkType.File,
-      links: batch,
-    };
-    const { data, hash } = await encodeAndHash(node);
-    await store.put(hash, data);
-
-    subTrees.push({ hash, size: batchSize, type: LinkType.File });
-  }
-
-  return buildTree(config, subTrees, totalSize);
+  // Create single flat node with all links
+  const node: TreeNode = {
+    type: LinkType.File,
+    links,
+  };
+  const { data, hash } = await encodeAndHash(node);
+  await store.put(hash, data);
+  return hash;
 }
 
