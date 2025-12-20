@@ -17,6 +17,7 @@
   import { onDestroy } from 'svelte';
   import type { CID } from 'hashtree';
   import { getCidFileUrl, getNpubFileUrl } from '../../lib/mediaUrl';
+  import { clearCidCacheForPath } from '../../lib/swFileHandler';
 
   interface Props {
     cid: CID;
@@ -97,19 +98,17 @@
       console.log('[MediaPlayer] Using CID streaming:', url);
     }
 
-    mediaRef.src = url;
+    // Add cache-busting timestamp to prevent browser caching
+    // This ensures we always get fresh content, especially for live streams
+    mediaRef.src = `${url}?_t=${Date.now()}`;
 
     // Listen for metadata to get duration
     mediaRef.addEventListener('loadedmetadata', () => {
       if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
         duration = mediaRef.duration;
         console.log('[MediaPlayer] Duration:', duration);
-
-        // For live streams, seek near end
-        if (isLive && duration > 5) {
-          mediaRef.currentTime = Math.max(0, duration - 3);
-          console.log('[MediaPlayer] Live stream - seeking near end');
-        }
+        // Don't seek on initial load - let the video play from the start
+        // Seeking to near-end is only done on tree updates when we want to catch up
       }
     }, { once: true });
 
@@ -212,6 +211,8 @@
   // Subscribe to tree root changes for live streaming
   let treeUnsubscribe: (() => void) | null = null;
   let lastTreeHash: string | null = null;
+  let lastReloadTime = 0;
+  const MIN_RELOAD_INTERVAL = 2000; // Don't reload more than once every 2 seconds
 
   $effect(() => {
     // Only subscribe if we have npub/treeName context (live-capable)
@@ -228,27 +229,39 @@
           return;
         }
 
-        // Tree changed - reload video to get new content
-        if (hashStr !== lastTreeHash && mediaRef) {
+        // Tree changed - reload to get new content (with rate limiting)
+        const now = Date.now();
+        const timeSinceLastReload = now - lastReloadTime;
+
+        if (hashStr !== lastTreeHash && mediaRef && !loading && timeSinceLastReload >= MIN_RELOAD_INTERVAL) {
           lastTreeHash = hashStr;
+          lastReloadTime = now;
 
-          const savedTime = mediaRef.currentTime;
-          const wasNearEnd = !isFinite(mediaRef.duration) || mediaRef.duration - savedTime < 5;
+          if (npub && treeName && filePath) {
+            const savedTime = mediaRef.currentTime;
+            const wasPlaying = !mediaRef.paused;
 
-          // Add cache-busting param and reload
-          const currentSrc = mediaRef.src.split('?')[0];
-          mediaRef.src = `${currentSrc}?_t=${Date.now()}`;
+            // Clear CID cache so new request gets fresh data
+            clearCidCacheForPath(npub, treeName, filePath);
 
-          mediaRef.addEventListener('loadedmetadata', () => {
-            if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
-              duration = mediaRef.duration;
-              // Jump to live edge or keep position
-              mediaRef.currentTime = wasNearEnd
-                ? Math.max(0, mediaRef.duration - 2)
-                : Math.min(savedTime, mediaRef.duration - 1);
-              mediaRef.play().catch(() => {});
-            }
-          }, { once: true });
+            // Add cache-busting param and reload
+            const currentSrc = mediaRef.src.split('?')[0];
+            mediaRef.src = `${currentSrc}?_t=${Date.now()}`;
+
+            mediaRef.addEventListener('loadedmetadata', () => {
+              if (mediaRef && !isNaN(mediaRef.duration) && isFinite(mediaRef.duration)) {
+                duration = mediaRef.duration;
+                // Restore position (clamped to new duration)
+                const newTime = Math.min(savedTime, Math.max(0, mediaRef.duration - 1));
+                if (isFinite(newTime) && newTime > 0) {
+                  mediaRef.currentTime = newTime;
+                }
+                if (wasPlaying) {
+                  mediaRef.play().catch(() => {});
+                }
+              }
+            }, { once: true });
+          }
         }
       });
     }
@@ -257,6 +270,7 @@
       treeUnsubscribe?.();
       treeUnsubscribe = null;
       lastTreeHash = null;
+      lastReloadTime = 0;
     };
   });
 

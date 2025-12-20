@@ -1645,4 +1645,306 @@ test.describe('Livestream Viewer Updates', () => {
     // Playback position should not jump back to 0 during stream updates
     expect(playbackPositionPreserved).toBe(true);
   });
+
+  test('viewer can watch 30 second stream to near end with screenshot', async ({ page, context }) => {
+    /**
+     * This test verifies that the stream viewer (iris-files video entrypoint) can watch
+     * a long stream (~30 seconds) to near the end.
+     *
+     * Bug being tested: Previously only 7-10 seconds showed even though streamer continues longer.
+     *
+     * Uses the 30-second Big Buck Bunny WebM fixture and takes screenshots to verify
+     * that the viewer can actually see and play content near the end of the stream.
+     */
+    test.slow(); // Long streaming test
+    test.setTimeout(120000); // 2 minutes
+
+    // Use the 30-second video fixture with standard helper
+    const TEST_VIDEO_30S = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_30s.webm');
+    expect(fs.existsSync(TEST_VIDEO_30S)).toBe(true);
+    const videoBuffer = fs.readFileSync(TEST_VIDEO_30S);
+    const videoBase64 = videoBuffer.toString('base64');
+
+    setupPageErrorHandler(page);
+
+    // Track stream/viewer activity
+    page.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('[MockRecorder]') || text.includes('[Stream]') || text.includes('Duration') || text.includes('[TreeRootCache]')) {
+        console.log(`[Broadcaster] ${text}`);
+      }
+    });
+
+    await page.goto('http://localhost:5173');
+
+    // Clear storage for fresh state
+    await page.evaluate(async () => {
+      const dbs = await indexedDB.databases();
+      for (const db of dbs) {
+        if (db.name) indexedDB.deleteDatabase(db.name);
+      }
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+
+    await page.reload();
+    await page.waitForTimeout(500);
+    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+
+    // Get the user's npub
+    const publicLink = page.getByRole('link', { name: 'public' }).first();
+    await expect(publicLink).toBeVisible({ timeout: 15000 });
+    await publicLink.click();
+    await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
+
+    const url = page.url();
+    const npubMatch = url.match(/npub1[a-z0-9]+/);
+    expect(npubMatch).not.toBeNull();
+    const npub = npubMatch![0];
+    console.log(`User npub: ${npub.slice(0, 20)}...`);
+
+    // Inject mock MediaRecorder using the standard helper pattern
+    await injectMockMediaRecorder(page, videoBase64);
+
+    // Start streaming
+    const streamLink = page.getByRole('link', { name: 'Stream' });
+    await expect(streamLink).toBeVisible({ timeout: 5000 });
+    await streamLink.click();
+    await page.waitForTimeout(500);
+
+    // Start camera preview
+    const startCameraBtn = page.getByRole('button', { name: 'Start Camera' });
+    await expect(startCameraBtn).toBeVisible({ timeout: 5000 });
+    await startCameraBtn.click();
+    await page.waitForTimeout(1000);
+
+    // Set filename
+    const testFilename = `stream_30s_nearend_${Date.now()}`;
+    const filenameInput = page.locator('input[placeholder="filename"]');
+    await expect(filenameInput).toBeVisible({ timeout: 5000 });
+    await filenameInput.fill(testFilename);
+
+    // Start recording
+    console.log('=== Starting 30 second stream ===');
+    const startTime = Date.now();
+    await page.getByRole('button', { name: /Start Recording/ }).click();
+
+    // Wait for stream to build up (at least 10 seconds of recording = multiple publish cycles)
+    console.log('Waiting for stream to build up...');
+    await page.waitForTimeout(12000);
+
+    const initialChunks = await page.evaluate(() => (window as any).__testChunkIndex || 0);
+    const totalChunks = await page.evaluate(() => (window as any).__testChunks?.length || 0);
+    console.log(`Chunks delivered: ${initialChunks}/${totalChunks}`);
+
+    // Open viewer in new tab (same context = shared storage)
+    console.log('Opening viewer in new tab...');
+    const viewerPage = await context.newPage();
+    setupPageErrorHandler(viewerPage);
+
+    viewerPage.on('console', msg => {
+      const text = msg.text();
+      if (text.includes('poll') || text.includes('bytesLoaded') || text.includes('duration') || text.includes('MSE')) {
+        console.log(`[Viewer] ${text}`);
+      }
+    });
+
+    const streamUrl = `http://localhost:5173/#/${npub}/public/${testFilename}.webm?live=1`;
+    console.log(`Stream URL: ${streamUrl}`);
+    await viewerPage.goto(streamUrl);
+
+    // Wait for video to load
+    const videoElement = viewerPage.locator('video');
+    await expect(videoElement).toBeVisible({ timeout: 15000 });
+    await viewerPage.waitForTimeout(2000);
+
+    // Get initial video state
+    const initialState = await viewerPage.evaluate(() => {
+      const video = document.querySelector('video') as HTMLVideoElement;
+      if (!video) return null;
+      return {
+        duration: video.duration,
+        currentTime: video.currentTime,
+        buffered: video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0,
+        readyState: video.readyState,
+      };
+    });
+    console.log('Initial viewer state:', JSON.stringify(initialState, null, 2));
+
+    // Continue streaming and monitor viewer
+    console.log('Continuing stream and monitoring viewer...');
+    const monitorResults: Array<{ elapsed: number; chunks: number; duration: number; buffered: number }> = [];
+
+    // Monitor for 20 more seconds as stream continues
+    for (let i = 0; i < 10; i++) {
+      await page.waitForTimeout(2000);
+
+      const chunks = await page.evaluate(() => (window as any).__testChunkIndex);
+      const viewerState = await viewerPage.evaluate(() => {
+        const video = document.querySelector('video') as HTMLVideoElement;
+        if (!video) return { duration: 0, buffered: 0 };
+        return {
+          duration: video.duration,
+          buffered: video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0,
+        };
+      });
+
+      const elapsed = (Date.now() - startTime) / 1000;
+      monitorResults.push({
+        elapsed: Math.round(elapsed),
+        chunks,
+        duration: viewerState.duration,
+        buffered: viewerState.buffered,
+      });
+
+      console.log(
+        `t=${Math.round(elapsed)}s: chunks=${chunks}/${totalChunks}, ` +
+        `viewer duration=${viewerState.duration.toFixed(1)}s, buffered=${viewerState.buffered.toFixed(1)}s`
+      );
+
+      // Check if all chunks delivered
+      if (chunks >= totalChunks) {
+        console.log('All chunks delivered!');
+        break;
+      }
+    }
+
+    // Get final state before stopping
+    const finalViewerState = await viewerPage.evaluate(() => {
+      const video = document.querySelector('video') as HTMLVideoElement;
+      if (!video) return null;
+      return {
+        duration: video.duration,
+        currentTime: video.currentTime,
+        buffered: video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0,
+        readyState: video.readyState,
+        seekable: video.seekable.length > 0 ? {
+          start: video.seekable.start(0),
+          end: video.seekable.end(0),
+        } : null,
+      };
+    });
+    console.log('Final viewer state:', JSON.stringify(finalViewerState, null, 2));
+
+    // Take screenshot during stream
+    await viewerPage.screenshot({ path: 'e2e/screenshots/video-stream-viewer-30s-during.png' });
+
+    // Try to seek to near the end (if duration is available and finite)
+    const hasDuration = finalViewerState &&
+                        Number.isFinite(finalViewerState.duration) &&
+                        finalViewerState.duration >= 20;
+
+    if (hasDuration) {
+      const seekTarget = finalViewerState!.duration * 0.8; // 80% of the way
+      console.log(`Seeking viewer to ${seekTarget.toFixed(1)}s (80% of ${finalViewerState!.duration.toFixed(1)}s)`);
+
+      await viewerPage.evaluate((target) => {
+        const video = document.querySelector('video') as HTMLVideoElement;
+        if (video && Number.isFinite(target)) {
+          video.currentTime = target;
+        }
+      }, seekTarget);
+
+      await viewerPage.waitForTimeout(2000);
+
+      // Get state after seek
+      const afterSeekState = await viewerPage.evaluate(() => {
+        const video = document.querySelector('video') as HTMLVideoElement;
+        if (!video) return null;
+        return {
+          duration: video.duration,
+          currentTime: video.currentTime,
+          buffered: video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0,
+          readyState: video.readyState,
+        };
+      });
+      console.log('After seek state:', JSON.stringify(afterSeekState, null, 2));
+
+      // Take screenshot at near-end position
+      await viewerPage.screenshot({ path: 'e2e/screenshots/video-stream-viewer-30s-near-end.png' });
+
+      // Verify we successfully seeked near the end
+      if (afterSeekState && Number.isFinite(afterSeekState.currentTime)) {
+        expect(afterSeekState.currentTime).toBeGreaterThan(15); // Should be past 15 seconds
+        console.log(`SUCCESS: Viewer seeked to ${afterSeekState.currentTime.toFixed(1)}s (target was ${seekTarget.toFixed(1)}s)`);
+      }
+    } else {
+      console.log(`WARNING: Duration not available or less than 20s: ${finalViewerState?.duration}`);
+      // Still take a screenshot for debugging
+      await viewerPage.screenshot({ path: 'e2e/screenshots/video-stream-viewer-30s-near-end.png' });
+    }
+
+    // Stop recording
+    console.log('Stopping recording...');
+    const stopBtn = page.getByRole('button', { name: /Stop Recording/ });
+    if (await stopBtn.isVisible()) {
+      await stopBtn.click();
+    }
+
+    // Wait a moment for final state
+    await viewerPage.waitForTimeout(2000);
+
+    // Take final screenshot
+    await viewerPage.screenshot({ path: 'e2e/screenshots/video-stream-viewer-30s-final.png' });
+
+    // Get viewer's final state after stream stopped
+    const stoppedState = await viewerPage.evaluate(() => {
+      const video = document.querySelector('video') as HTMLVideoElement;
+      if (!video) return null;
+      return {
+        duration: video.duration,
+        buffered: video.buffered.length > 0 ? video.buffered.end(video.buffered.length - 1) : 0,
+      };
+    });
+    console.log('Viewer state after stream stopped:', JSON.stringify(stoppedState, null, 2));
+
+    await viewerPage.close();
+
+    // === Analyze results ===
+    console.log('\n=== 30 Second Stream Test Analysis ===');
+
+    // Verify stream grew over time
+    const firstResult = monitorResults[0];
+    const lastResult = monitorResults[monitorResults.length - 1];
+
+    if (firstResult && lastResult) {
+      const formatNum = (n: number) => Number.isFinite(n) ? n.toFixed(1) : String(n);
+      console.log(`Duration growth: ${formatNum(firstResult.duration)}s -> ${formatNum(lastResult.duration)}s`);
+      console.log(`Buffered growth: ${formatNum(firstResult.buffered)}s -> ${formatNum(lastResult.buffered)}s`);
+      console.log(`Chunks growth: ${firstResult.chunks} -> ${lastResult.chunks}`);
+
+      // Check for finite duration - might be NaN/Infinity if duration patching fails
+      const possibleDurations = [
+        stoppedState?.duration,
+        lastResult.duration,
+        finalViewerState?.duration,
+      ].filter(d => Number.isFinite(d) && d! > 0);
+
+      const possibleBuffered = [
+        stoppedState?.buffered,
+        lastResult.buffered,
+        finalViewerState?.buffered,
+      ].filter(b => Number.isFinite(b) && b! > 0);
+
+      const finalDuration = possibleDurations.length > 0 ? Math.max(...possibleDurations as number[]) : 0;
+      const finalBuffered = possibleBuffered.length > 0 ? Math.max(...possibleBuffered as number[]) : 0;
+
+      console.log(`Final viewer duration: ${formatNum(finalDuration)}s`);
+      console.log(`Final viewer buffered: ${formatNum(finalBuffered)}s`);
+
+      // KEY ASSERTION: The viewer should be able to watch near the end of a 30-second stream
+      // Bug being tested: Previously only 7-10 seconds showed even though streamer continues longer
+      //
+      // We check EITHER duration OR buffered content - whichever is available and valid.
+      // The stream should show at least 15 seconds (not just 7-10) of a 30-second stream.
+      const viewableContent = Math.max(finalDuration, finalBuffered);
+      console.log(`Maximum viewable content: ${formatNum(viewableContent)}s`);
+
+      // This assertion catches the bug where only ~7-10 seconds are shown
+      expect(viewableContent).toBeGreaterThan(15);
+      console.log('SUCCESS: Viewer can see more than 15 seconds of the 30 second stream');
+    }
+
+    console.log('=== 30 Second Stream Near-End Test Complete ===');
+  });
 });

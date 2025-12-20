@@ -5,6 +5,10 @@
  * All writes go here immediately, publishing to Nostr is throttled.
  *
  * Key: "npub/treeName", Value: { hash, key, visibility, dirty }
+ *
+ * Uses BroadcastChannel to sync cache across all tabs in the same browser.
+ * This is critical for live streaming where the broadcaster tab writes data
+ * and viewer tabs need immediate access to the latest tree root.
  */
 import type { Hash, TreeVisibility } from 'hashtree';
 import { fromHex, toHex } from 'hashtree';
@@ -18,6 +22,124 @@ interface CacheEntry {
 }
 
 const localRootCache = new Map<string, CacheEntry>();
+
+// BroadcastChannel for cross-tab sync of tree root cache
+// This ensures viewer tabs get immediate updates when broadcaster writes
+const CHANNEL_NAME = 'iris-files-tree-root-cache';
+let broadcastChannel: BroadcastChannel | null = null;
+
+interface BroadcastMessage {
+  type: 'tree-root-update' | 'tree-root-request' | 'tree-root-response';
+  cacheKey: string;
+  hashHex?: string;
+  keyHex?: string;
+  requestId?: string;
+}
+
+function initBroadcastChannel(): BroadcastChannel | null {
+  if (typeof BroadcastChannel === 'undefined') return null;
+  if (broadcastChannel) return broadcastChannel;
+
+  try {
+    broadcastChannel = new BroadcastChannel(CHANNEL_NAME);
+    broadcastChannel.onmessage = (event: MessageEvent<BroadcastMessage>) => {
+      const msg = event.data;
+
+      if (msg.type === 'tree-root-update') {
+        // Update local cache from other tab (don't mark as dirty - we're not the writer)
+        if (!msg.hashHex) return;
+        const hash = fromHex(msg.hashHex);
+        const key = msg.keyHex ? fromHex(msg.keyHex) : undefined;
+
+        // Only update if we don't already have this entry OR our entry is older
+        // We don't broadcast back to avoid loops
+        const existing = localRootCache.get(msg.cacheKey);
+        if (!existing || toHex(existing.hash) !== msg.hashHex) {
+          localRootCache.set(msg.cacheKey, {
+            hash,
+            key,
+            visibility: existing?.visibility, // preserve local visibility
+            dirty: false, // received from another tab, not our write
+          });
+
+          // Update subscription cache for UI updates
+          updateSubscriptionCache(msg.cacheKey, hash, key);
+
+          // Notify local listeners
+          const [npub, treeName] = msg.cacheKey.split('/');
+          notifyListeners(npub, treeName);
+        }
+      } else if (msg.type === 'tree-root-request') {
+        // Another tab is requesting the current tree root - respond if we have it
+        const cached = localRootCache.get(msg.cacheKey);
+        if (cached && cached.hash) {
+          const response: BroadcastMessage = {
+            type: 'tree-root-response',
+            cacheKey: msg.cacheKey,
+            hashHex: toHex(cached.hash),
+            keyHex: cached.key ? toHex(cached.key) : undefined,
+            requestId: msg.requestId,
+          };
+          try {
+            broadcastChannel?.postMessage(response);
+          } catch (e) {
+            // Channel might be closed
+          }
+        }
+      } else if (msg.type === 'tree-root-response') {
+        // Response to our request - check if we have a pending request
+        if (!msg.hashHex) return;
+        const hash = fromHex(msg.hashHex);
+        const key = msg.keyHex ? fromHex(msg.keyHex) : undefined;
+
+        // Update cache if we don't have this entry or ours is different
+        const existing = localRootCache.get(msg.cacheKey);
+        if (!existing || toHex(existing.hash) !== msg.hashHex) {
+          localRootCache.set(msg.cacheKey, {
+            hash,
+            key,
+            visibility: existing?.visibility,
+            dirty: false,
+          });
+
+          // Update subscription cache for UI updates
+          updateSubscriptionCache(msg.cacheKey, hash, key);
+
+          // Notify local listeners
+          const [npub, treeName] = msg.cacheKey.split('/');
+          notifyListeners(npub, treeName);
+        }
+      }
+    };
+    return broadcastChannel;
+  } catch (e) {
+    console.warn('[TreeRootCache] BroadcastChannel not available:', e);
+    return null;
+  }
+}
+
+// Initialize on load
+initBroadcastChannel();
+
+/**
+ * Request tree root from other tabs via BroadcastChannel
+ * Used when we need the latest tree root that might not be in our local cache
+ */
+export function requestTreeRootFromOtherTabs(npub: string, treeName: string): void {
+  const channel = initBroadcastChannel();
+  if (channel) {
+    const message: BroadcastMessage = {
+      type: 'tree-root-request',
+      cacheKey: `${npub}/${treeName}`,
+      requestId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    };
+    try {
+      channel.postMessage(message);
+    } catch (e) {
+      // Channel might be closed
+    }
+  }
+}
 
 // Throttle timers per tree
 const publishTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -50,6 +172,8 @@ function notifyListeners(npub: string, treeName: string) {
  * Update the local root cache after a write operation.
  * This should be the ONLY place that tracks merkle root changes.
  * Publishing to Nostr is throttled - multiple rapid updates result in one publish.
+ *
+ * Also broadcasts to other tabs via BroadcastChannel for cross-tab sync.
  */
 export function updateLocalRootCache(npub: string, treeName: string, hash: Hash, key?: Hash, visibility?: TreeVisibility) {
   const cacheKey = `${npub}/${treeName}`;
@@ -62,6 +186,22 @@ export function updateLocalRootCache(npub: string, treeName: string, hash: Hash,
 
   // Update subscription cache to trigger immediate UI update
   updateSubscriptionCache(cacheKey, hash, key);
+
+  // Broadcast to other tabs for cross-tab sync (critical for live streaming)
+  const channel = initBroadcastChannel();
+  if (channel) {
+    const message: BroadcastMessage = {
+      type: 'tree-root-update',
+      cacheKey,
+      hashHex: toHex(hash),
+      keyHex: key ? toHex(key) : undefined,
+    };
+    try {
+      channel.postMessage(message);
+    } catch (e) {
+      // Channel might be closed, ignore
+    }
+  }
 }
 
 /**
