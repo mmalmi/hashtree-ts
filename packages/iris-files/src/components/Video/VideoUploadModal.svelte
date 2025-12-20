@@ -844,7 +844,7 @@
               ondrop={handleDrop}
             >
               <div class="text-center p-4">
-                <span class="i-lucide-upload text-4xl text-accent mb-2 block"></span>
+                <span class="i-lucide-upload text-4xl text-accent mb-2 block mx-auto"></span>
                 <p class="text-text-2">Click to select a video file</p>
                 <p class="text-text-3 text-sm mt-1">or drag & drop files/folders here</p>
                 <button
@@ -882,7 +882,7 @@
                 <img src={thumbnailUrl} alt="Thumbnail" class="w-full h-full object-cover" />
               {:else}
                 <div class="text-center">
-                  <span class="i-lucide-video text-4xl text-text-3 mb-2 block"></span>
+                  <span class="i-lucide-video text-4xl text-text-3 mb-2 block mx-auto"></span>
                   <p class="text-text-3">Generating thumbnail...</p>
                 </div>
               {/if}
@@ -1022,7 +1022,7 @@
             ></video>
             {#if !streamState.isPreviewing && !streamState.isRecording}
               <div class="text-center">
-                <span class="i-lucide-video text-4xl text-danger mb-2 block"></span>
+                <span class="i-lucide-video text-4xl text-danger mb-2 block mx-auto"></span>
                 <p class="text-text-2">Stream from your camera</p>
               </div>
             {/if}
