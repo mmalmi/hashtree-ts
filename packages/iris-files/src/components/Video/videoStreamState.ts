@@ -190,10 +190,10 @@ async function checkAndPublish(): Promise<void> {
     const isPublic = currentStreamVisibility === 'public';
     const durationMs = currentState.recordingTime * 1000;
 
-    // Finalize current stream to get CID (non-destructive - can continue appending)
-    const result = await currentState.streamWriter.finalize();
-    let fileCid: CID = cid(result.hash, result.key);
-    const fileSize = result.size;
+    // Get current root without finalizing (preserves buffer for continued streaming)
+    let fileCid: CID | null = await currentState.streamWriter.currentRoot();
+    if (!fileCid) return;
+    const fileSize = currentState.streamStats.totalSize;
 
     // Patch WebM duration so viewers can seek
     if (durationMs > 0) {
