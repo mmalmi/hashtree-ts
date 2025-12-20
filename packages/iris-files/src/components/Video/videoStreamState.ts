@@ -188,17 +188,14 @@ async function checkAndPublish(): Promise<void> {
     const tree = getTree();
     const treeName = `videos/${currentStreamTitle.trim()}`;
     const isPublic = currentStreamVisibility === 'public';
-    const durationMs = currentState.recordingTime * 1000;
 
     // Get current root without finalizing (preserves buffer for continued streaming)
-    let fileCid: CID | null = await currentState.streamWriter.currentRoot();
+    const fileCid: CID | null = await currentState.streamWriter.currentRoot();
     if (!fileCid) return;
     const fileSize = currentState.streamStats.totalSize;
 
-    // Patch WebM duration so viewers can seek
-    if (durationMs > 0) {
-      fileCid = await patchWebmDuration(tree, fileCid, durationMs);
-    }
+    // Note: Don't patch duration during live streaming - it would create a different
+    // file on each publish. Duration is patched only on final stopRecording().
 
     // Build video directory with current state
     const entries: Array<{ name: string; cid: CID; size?: number }> = [
