@@ -1,10 +1,10 @@
 <script lang="ts">
   /**
-   * VideoUploadModal - Upload video files with metadata
-   * Supports single video upload and batch upload from yt-dlp directories
+   * VideoUploadModal - Upload video files with metadata or record from camera
+   * Supports single video upload, batch upload from yt-dlp directories, and camera recording
    */
   import { SvelteSet } from 'svelte/reactivity';
-  import { modalsStore, closeVideoUploadModal } from '../../stores/modals';
+  import { modalsStore, closeVideoUploadModal, setVideoUploadTab, type VideoUploadTab } from '../../stores/modals';
   import { nostrStore, saveHashtree } from '../../nostr';
   import { toHex, videoChunker, cid, type CID } from 'hashtree';
   import { getTree } from '../../store';
@@ -15,12 +15,24 @@
   import VisibilitySelector from './VisibilitySelector.svelte';
   import UploadProgress from './UploadProgress.svelte';
   import BatchVideoList from './BatchVideoList.svelte';
+  import {
+    videoStreamStore,
+    startPreview,
+    stopPreview,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    formatTime,
+    formatBytes,
+  } from './videoStreamState';
 
   let showModal = $derived($modalsStore.showVideoUploadModal);
+  let activeTab = $derived($modalsStore.videoUploadTab);
+  let streamState = $derived($videoStreamStore);
 
   // Handle escape key to close modal
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && showModal && !uploading) {
+    if (e.key === 'Escape' && showModal && !uploading && !streamState.isRecording) {
       handleClose();
     }
   }
@@ -31,12 +43,13 @@
       return () => document.removeEventListener('keydown', handleKeydown);
     }
   });
+
   let userNpub = $derived($nostrStore.npub);
 
   // Mode: 'single' for one video, 'batch' for yt-dlp directory
   let mode = $state<'select' | 'single' | 'batch'>('select');
 
-  // Single video state
+  // ========== Upload Tab State ==========
   let fileInput: HTMLInputElement | undefined = $state();
   let folderInput: HTMLInputElement | undefined = $state();
   let selectedFile = $state<File | null>(null);
@@ -83,6 +96,24 @@
   // Drag state
   let isDragging = $state(false);
 
+  // ========== Stream Tab State ==========
+  let videoRef: HTMLVideoElement | undefined = $state();
+  let streamTitle = $state('');
+  let streamDescription = $state('');
+  let streamVisibility = $state<'public' | 'unlisted' | 'private'>('public');
+  let streamThumbnailUrl = $state<string | null>(null);
+  let streamThumbnailBlob = $state<Blob | null>(null);
+  let saving = $state(false);
+
+  // Determine if we're busy (can't switch tabs or close)
+  let isBusy = $derived(uploading || streamState.isRecording || saving);
+
+  function handleTabChange(tab: VideoUploadTab) {
+    if (isBusy) return;
+    setVideoUploadTab(tab);
+  }
+
+  // ========== Upload Tab Functions ==========
   function handleFileSelect(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -96,7 +127,6 @@
     willTranscode = needsTranscoding(file);
     transcodeSupported = isTranscodingSupported();
 
-    // Check if transcoding is possible (size limits, etc.)
     if (willTranscode) {
       const check = canTranscode(file);
       transcodeError = check.ok ? null : (check.reason || 'Cannot transcode');
@@ -104,12 +134,10 @@
       transcodeError = null;
     }
 
-    // Default title from filename (without extension)
     if (!title) {
       title = file.name.replace(/\.[^/.]+$/, '');
     }
 
-    // Generate thumbnail from video
     generateThumbnail(file);
   }
 
@@ -238,12 +266,10 @@
         video.onerror = reject;
       });
 
-      // Draw to canvas - maintain video aspect ratio
       const canvas = document.createElement('canvas');
       const maxWidth = 640;
       const maxHeight = 360;
 
-      // Calculate dimensions maintaining aspect ratio
       const videoAspect = video.videoWidth / video.videoHeight;
       let width = video.videoWidth;
       let height = video.videoHeight;
@@ -305,16 +331,12 @@
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- CID type from hashtree
       let videoResult: { cid: any; size: number };
 
-      // Public: content is unencrypted (anyone with hash can read)
-      // Unlisted/Private: content is encrypted (key needed to read)
       const isPublic = visibility === 'public';
 
-      // Check if transcoding is needed
       if (willTranscode) {
         progressMessage = 'Loading encoder...';
         progress = 5;
 
-        // Use streaming transcode - writes chunks directly to hashtree
         const streamWriter = tree.createStream({ public: isPublic, chunker: videoChunker() });
 
         const result = await transcodeToMP4Streaming(
@@ -325,7 +347,6 @@
           (p: TranscodeProgress) => {
             progressMessage = p.message;
             if (p.percent !== undefined) {
-              // Transcoding is 5-70% of total progress
               progress = 5 + Math.round(p.percent * 0.65);
             }
           },
@@ -343,9 +364,8 @@
         progressMessage = 'Reading file...';
         progress = 10;
 
-        // For non-transcoded files, use streaming upload in chunks
         const streamWriter = tree.createStream({ public: isPublic, chunker: videoChunker() });
-        const chunkSize = 1024 * 1024; // 1MB read chunks (hashtree uses videoChunker for storage)
+        const chunkSize = 1024 * 1024;
 
         for (let offset = 0; offset < selectedFile.size; offset += chunkSize) {
           const chunk = selectedFile.slice(offset, Math.min(offset + chunkSize, selectedFile.size));
@@ -354,7 +374,7 @@
 
           const pct = Math.round((offset / selectedFile.size) * 100);
           progressMessage = `Uploading: ${Math.round(offset / 1024 / 1024)}MB / ${Math.round(selectedFile.size / 1024 / 1024)}MB`;
-          progress = 10 + Math.round(pct * 0.55); // 10-65%
+          progress = 10 + Math.round(pct * 0.55);
         }
 
         const finalResult = await streamWriter.finalize();
@@ -376,13 +396,10 @@
         { name: videoFileName, cid: videoResult.cid, size: videoResult.size },
       ];
 
-      // Upload title.txt
-      progressMessage = 'Saving metadata...';
       const titleData = new TextEncoder().encode(title.trim());
       const titleResult = await tree.putFile(titleData, { public: isPublic });
       entries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
 
-      // Upload description.txt if provided
       if (description.trim()) {
         const descData = new TextEncoder().encode(description.trim());
         const descResult = await tree.putFile(descData, { public: isPublic });
@@ -390,7 +407,6 @@
       }
       progress = 80;
 
-      // Upload thumbnail if available
       if (thumbnailBlob) {
         const thumbData = new Uint8Array(await thumbnailBlob.arrayBuffer());
         const thumbResult = await tree.putFile(thumbData, { public: isPublic });
@@ -398,12 +414,10 @@
       }
       progress = 85;
 
-      // Create directory
       progressMessage = 'Creating video...';
       const dirResult = await tree.putDirectory(entries, { public: isPublic });
       progress = 90;
 
-      // Publish to Nostr with proper visibility handling
       progressMessage = 'Publishing...';
       const rootHash = toHex(dirResult.cid.hash);
       const rootKey = dirResult.cid.key ? toHex(dirResult.cid.key) : undefined;
@@ -411,12 +425,10 @@
       const result = await saveHashtree(treeName, rootHash, rootKey, { visibility });
       progress = 100;
 
-      // Store link key for unlisted videos
       if (result.linkKey && userNpub) {
         storeLinkKey(userNpub, treeName, result.linkKey);
       }
 
-      // Add to recents
       addRecent({
         type: 'tree',
         path: `/${userNpub}/${treeName}`,
@@ -427,7 +439,6 @@
         linkKey: result.linkKey,
       });
 
-      // Navigate to the video and close modal
       uploading = false;
       progressMessage = '';
       const encodedTreeName = encodeURIComponent(treeName);
@@ -437,7 +448,6 @@
     } catch (e) {
       console.error('Upload failed:', e);
       const message = e instanceof Error ? e.message : 'Unknown error';
-      // Don't show alert for user-initiated cancellation
       if (message !== 'Cancelled') {
         alert('Failed to upload video: ' + message);
       }
@@ -588,7 +598,7 @@
     }
   }
 
-  function handleCancel() {
+  function handleCancelUpload() {
     if (abortController) {
       abortController.abort();
       abortController = null;
@@ -597,10 +607,120 @@
     progressMessage = '';
   }
 
+  // ========== Stream Tab Functions ==========
+  async function handleStartCamera() {
+    try {
+      await startPreview(videoRef ?? null);
+    } catch (e) {
+      console.error('Failed to start camera:', e);
+      alert('Failed to access camera. Please check permissions.');
+    }
+  }
+
+  function handleStopCamera() {
+    stopPreview(videoRef ?? null);
+  }
+
+  async function handleStartRecording() {
+    if (!streamTitle.trim()) {
+      alert('Please enter a title first');
+      return;
+    }
+    const isPublic = streamVisibility === 'public';
+    await startRecording(videoRef ?? null, isPublic);
+
+    // Generate thumbnail from first frame
+    if (videoRef) {
+      setTimeout(() => {
+        generateStreamThumbnail();
+      }, 500);
+    }
+  }
+
+  function generateStreamThumbnail() {
+    if (!videoRef) return;
+
+    try {
+      const canvas = document.createElement('canvas');
+      const maxWidth = 640;
+      const maxHeight = 360;
+
+      const videoAspect = videoRef.videoWidth / videoRef.videoHeight;
+      let width = videoRef.videoWidth;
+      let height = videoRef.videoHeight;
+
+      if (width > maxWidth) {
+        width = maxWidth;
+        height = width / videoAspect;
+      }
+      if (height > maxHeight) {
+        height = maxHeight;
+        width = height * videoAspect;
+      }
+
+      canvas.width = Math.round(width);
+      canvas.height = Math.round(height);
+
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef, 0, 0, canvas.width, canvas.height);
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            streamThumbnailBlob = blob;
+            if (streamThumbnailUrl) URL.revokeObjectURL(streamThumbnailUrl);
+            streamThumbnailUrl = URL.createObjectURL(blob);
+          }
+        }, 'image/jpeg', 0.8);
+      }
+    } catch (e) {
+      console.error('Failed to generate stream thumbnail:', e);
+    }
+  }
+
+  async function handleStopRecording() {
+    saving = true;
+    try {
+      const result = await stopRecording(
+        streamTitle.trim(),
+        streamDescription.trim(),
+        streamVisibility,
+        streamThumbnailBlob
+      );
+
+      if (result.success && result.videoUrl) {
+        window.location.hash = result.videoUrl;
+        handleClose();
+      } else {
+        alert('Failed to save recording');
+      }
+    } catch (e) {
+      console.error('Failed to stop recording:', e);
+      alert('Failed to save recording');
+    } finally {
+      saving = false;
+    }
+  }
+
+  function handleCancelRecording() {
+    cancelRecording();
+    if (videoRef) {
+      videoRef.srcObject = null;
+    }
+  }
+
+  // ========== Modal Functions ==========
   function handleClose() {
     if (uploading) {
-      handleCancel();
+      handleCancelUpload();
     }
+    if (streamState.isRecording || streamState.isPreviewing) {
+      cancelRecording();
+      if (videoRef) {
+        videoRef.srcObject = null;
+      }
+    }
+
     // Reset all state
     mode = 'select';
     selectedFile = null;
@@ -621,11 +741,22 @@
       thumbnailUrl = null;
     }
     thumbnailBlob = null;
+
+    // Reset stream tab state
+    streamTitle = '';
+    streamDescription = '';
+    streamVisibility = 'public';
+    if (streamThumbnailUrl) {
+      URL.revokeObjectURL(streamThumbnailUrl);
+      streamThumbnailUrl = null;
+    }
+    streamThumbnailBlob = null;
+
     closeVideoUploadModal();
   }
 
   function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) {
+    if (e.target === e.currentTarget && !isBusy) {
       handleClose();
     }
   }
@@ -660,108 +791,257 @@
     onclick={handleBackdropClick}
   >
     <div class="bg-surface-1 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto">
-      <!-- Header -->
+      <!-- Header with tabs -->
       <div class="flex items-center justify-between p-4 border-b border-surface-3">
         <div class="flex items-center gap-2">
-          {#if mode !== 'select' && !uploading}
+          {#if activeTab === 'upload' && mode !== 'select' && !uploading}
             <button onclick={handleBack} class="btn-ghost p-1">
               <span class="i-lucide-arrow-left text-lg"></span>
             </button>
           {/if}
-          <h2 class="text-lg font-semibold text-text-1">
-            {#if mode === 'batch'}
-              Upload {batchVideos.length} Videos
-            {:else}
-              Upload Video
-            {/if}
-          </h2>
+          <div class="flex items-center gap-4">
+            <button
+              onclick={() => handleTabChange('upload')}
+              class="text-lg font-semibold transition-colors {activeTab === 'upload' ? 'text-text-1' : 'text-text-3 hover:text-text-2'}"
+              disabled={isBusy}
+            >
+              {#if activeTab === 'upload' && mode === 'batch'}
+                Upload {batchVideos.length} Videos
+              {:else}
+                Upload
+              {/if}
+            </button>
+            <button
+              onclick={() => handleTabChange('stream')}
+              class="text-lg font-semibold transition-colors {activeTab === 'stream' ? 'text-text-1' : 'text-text-3 hover:text-text-2'}"
+              disabled={isBusy}
+            >
+              Record
+            </button>
+          </div>
         </div>
-        <button onclick={handleClose} class="btn-ghost p-1" disabled={uploading}>
+        <button onclick={handleClose} class="btn-ghost p-1" disabled={isBusy}>
           <span class="i-lucide-x text-xl"></span>
         </button>
       </div>
 
-      <!-- Content -->
-      <div class="p-4 space-y-4">
-        {#if mode === 'select'}
-          <!-- Selection mode: file or folder -->
-          <div
-            class="aspect-video bg-surface-2 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer hover:bg-surface-3 transition-colors border-2 border-dashed {isDragging ? 'border-accent bg-accent/10' : 'border-surface-3'}"
-            onclick={() => fileInput?.click()}
-            ondragover={handleDragOver}
-            ondragleave={handleDragLeave}
-            ondrop={handleDrop}
-          >
-            <div class="text-center p-4">
-              <span class="i-lucide-upload text-4xl text-accent mb-2 block"></span>
-              <p class="text-text-2">Click to select a video file</p>
-              <p class="text-text-3 text-sm mt-1">or drag & drop files/folders here</p>
-              <button
-                type="button"
-                class="btn-ghost text-accent text-sm mt-3"
-                onclick={(e) => { e.stopPropagation(); folderInput?.click(); }}
-              >
-                <span class="i-lucide-folder-open mr-1"></span>
-                Select folder
-              </button>
+      <!-- Upload Tab Content -->
+      {#if activeTab === 'upload'}
+        <div class="p-4 space-y-4">
+          {#if mode === 'select'}
+            <!-- Selection mode: file or folder -->
+            <div
+              class="aspect-video bg-surface-2 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer hover:bg-surface-3 transition-colors border-2 border-dashed {isDragging ? 'border-accent bg-accent/10' : 'border-surface-3'}"
+              onclick={() => fileInput?.click()}
+              ondragover={handleDragOver}
+              ondragleave={handleDragLeave}
+              ondrop={handleDrop}
+            >
+              <div class="text-center p-4">
+                <span class="i-lucide-upload text-4xl text-accent mb-2 block"></span>
+                <p class="text-text-2">Click to select a video file</p>
+                <p class="text-text-3 text-sm mt-1">or drag & drop files/folders here</p>
+                <button
+                  type="button"
+                  class="btn-ghost text-accent text-sm mt-3"
+                  onclick={(e) => { e.stopPropagation(); folderInput?.click(); }}
+                >
+                  <span class="i-lucide-folder-open mr-1"></span>
+                  Select folder
+                </button>
+              </div>
             </div>
-          </div>
-          <input
-            bind:this={fileInput}
-            type="file"
-            accept="video/*"
-            class="hidden"
-            onchange={handleFileSelect}
-          />
-          <input
-            bind:this={folderInput}
-            type="file"
-            webkitdirectory
-            class="hidden"
-            onchange={handleFolderSelect}
-          />
+            <input
+              bind:this={fileInput}
+              type="file"
+              accept="video/*"
+              class="hidden"
+              onchange={handleFileSelect}
+            />
+            <input
+              bind:this={folderInput}
+              type="file"
+              webkitdirectory
+              class="hidden"
+              onchange={handleFolderSelect}
+            />
 
-        {:else if mode === 'single'}
-          <!-- Single video mode -->
-          <div
-            class="aspect-video bg-surface-2 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer hover:bg-surface-3 transition-colors {uploading ? 'pointer-events-none' : ''}"
-            onclick={() => !uploading && fileInput?.click()}
-          >
-            {#if thumbnailUrl}
-              <img src={thumbnailUrl} alt="Thumbnail" class="w-full h-full object-cover" />
-            {:else}
+          {:else if mode === 'single'}
+            <!-- Single video mode -->
+            <div
+              class="aspect-video bg-surface-2 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer hover:bg-surface-3 transition-colors {uploading ? 'pointer-events-none' : ''}"
+              onclick={() => !uploading && fileInput?.click()}
+            >
+              {#if thumbnailUrl}
+                <img src={thumbnailUrl} alt="Thumbnail" class="w-full h-full object-cover" />
+              {:else}
+                <div class="text-center">
+                  <span class="i-lucide-video text-4xl text-text-3 mb-2 block"></span>
+                  <p class="text-text-3">Generating thumbnail...</p>
+                </div>
+              {/if}
+            </div>
+
+            <!-- File info -->
+            {#if selectedFile}
+              <div class="text-sm text-text-3 flex flex-col gap-1">
+                <span>{selectedFile.name} ({formatSize(selectedFile.size)})</span>
+                {#if willTranscode}
+                  {#if transcodeSupported && !transcodeError}
+                    <span class="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded w-fit">Will convert to WebM</span>
+                  {:else}
+                    <span class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded w-fit">
+                      {transcodeError || 'Cannot convert: SharedArrayBuffer not available. Use Chrome/Edge or upload MP4/WebM.'}
+                    </span>
+                  {/if}
+                {/if}
+              </div>
+            {/if}
+
+            <!-- Title -->
+            <div>
+              <label class="block text-sm text-text-2 mb-1">Title</label>
+              <input
+                type="text"
+                bind:value={title}
+                class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 focus:border-accent focus:outline-none"
+                placeholder="Video title"
+                disabled={uploading}
+              />
+            </div>
+
+            <!-- Description -->
+            <div>
+              <label class="block text-sm text-text-2 mb-1">Description (optional)</label>
+              <textarea
+                bind:value={description}
+                class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 resize-none focus:border-accent focus:outline-none"
+                placeholder="Video description..."
+                rows="2"
+                disabled={uploading}
+              ></textarea>
+            </div>
+
+          {:else if mode === 'batch'}
+            <!-- Batch mode: yt-dlp directory -->
+            <div class="bg-surface-2 rounded-lg p-4">
+              <div class="flex items-center gap-3 mb-3">
+                <span class="i-lucide-folder-video text-2xl text-accent"></span>
+                <div>
+                  <p class="text-text-1 font-medium">yt-dlp Backup Detected</p>
+                  <p class="text-text-3 text-sm">{batchVideos.length} videos, {formatSize(batchTotalSize)} total</p>
+                </div>
+              </div>
+
+              <!-- Channel name input -->
+              <div class="mb-3">
+                <label class="block text-sm text-text-2 mb-1">Channel Name</label>
+                <input
+                  type="text"
+                  bind:value={channelName}
+                  class="w-full bg-surface-0 border border-surface-3 rounded-lg p-2 text-text-1 focus:border-accent focus:outline-none"
+                  placeholder="Channel name"
+                  disabled={uploading}
+                />
+              </div>
+
+              <BatchVideoList
+                videos={batchVideos}
+                selectedIds={selectedVideoIds}
+                currentUploadingId={uploading ? selectedVideos[batchCurrentIndex]?.id : null}
+                disabled={uploading}
+                onToggle={toggleVideo}
+                onSelectAll={selectAll}
+                onDeselectAll={deselectAll}
+                {formatSize}
+              />
+            </div>
+          {/if}
+
+          <!-- Visibility (shown for single and batch) -->
+          {#if mode !== 'select'}
+            <VisibilitySelector
+              value={visibility}
+              onchange={(v) => visibility = v}
+              disabled={uploading}
+              mode={mode}
+            />
+          {/if}
+
+          <!-- Progress bar -->
+          {#if uploading}
+            <UploadProgress {progress} message={progressMessage} />
+          {/if}
+        </div>
+
+        <!-- Upload Footer -->
+        <div class="flex justify-end gap-2 p-4 border-t border-surface-3">
+          <button onclick={uploading ? handleCancelUpload : handleClose} class="btn-ghost px-4 py-2">
+            {uploading ? 'Cancel' : 'Close'}
+          </button>
+          {#if mode !== 'select'}
+            <button
+              onclick={handleUpload}
+              class="btn-primary px-4 py-2"
+              disabled={
+                uploading ||
+                (mode === 'single' && (!selectedFile || !title.trim() || (willTranscode && (!transcodeSupported || !!transcodeError)))) ||
+                (mode === 'batch' && (!channelName.trim() || selectedVideos.length === 0))
+              }
+            >
+              {#if uploading}
+                Processing...
+              {:else if mode === 'batch'}
+                Upload {selectedVideos.length} Video{selectedVideos.length !== 1 ? 's' : ''}
+              {:else}
+                Upload
+              {/if}
+            </button>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Stream Tab Content -->
+      {#if activeTab === 'stream'}
+        <div class="p-4 space-y-4">
+          <!-- Video preview -->
+          <div class="aspect-video bg-surface-2 rounded-lg overflow-hidden flex items-center justify-center">
+            <!-- svelte-ignore a11y_media_has_caption -->
+            <video
+              bind:this={videoRef}
+              autoplay
+              muted
+              playsinline
+              class="w-full h-full object-cover {streamState.isPreviewing || streamState.isRecording ? '' : 'hidden'}"
+            ></video>
+            {#if !streamState.isPreviewing && !streamState.isRecording}
               <div class="text-center">
-                <span class="i-lucide-video text-4xl text-text-3 mb-2 block"></span>
-                <p class="text-text-3">Generating thumbnail...</p>
+                <span class="i-lucide-video text-4xl text-accent mb-2 block"></span>
+                <p class="text-text-2">Record a video from your camera</p>
               </div>
             {/if}
           </div>
 
-          <!-- File info -->
-          {#if selectedFile}
-            <div class="text-sm text-text-3 flex flex-col gap-1">
-              <span>{selectedFile.name} ({formatSize(selectedFile.size)})</span>
-              {#if willTranscode}
-                {#if transcodeSupported && !transcodeError}
-                  <span class="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded w-fit">Will convert to WebM</span>
-                {:else}
-                  <span class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded w-fit">
-                    {transcodeError || 'Cannot convert: SharedArrayBuffer not available. Use Chrome/Edge or upload MP4/WebM.'}
-                  </span>
-                {/if}
-              {/if}
+          <!-- Recording status -->
+          {#if streamState.isRecording}
+            <div class="flex items-center justify-between text-sm">
+              <div class="flex items-center gap-2 text-danger">
+                <span class="w-2 h-2 bg-danger rounded-full animate-pulse"></span>
+                <span>REC {formatTime(streamState.recordingTime)}</span>
+              </div>
+              <span class="text-text-3">{formatBytes(streamState.streamStats.totalSize)}</span>
             </div>
           {/if}
 
-          <!-- Title -->
+          <!-- Title (required before recording) -->
           <div>
             <label class="block text-sm text-text-2 mb-1">Title</label>
             <input
               type="text"
-              bind:value={title}
+              bind:value={streamTitle}
               class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 focus:border-accent focus:outline-none"
               placeholder="Video title"
-              disabled={uploading}
+              disabled={streamState.isRecording || saving}
             />
           </div>
 
@@ -769,91 +1049,96 @@
           <div>
             <label class="block text-sm text-text-2 mb-1">Description (optional)</label>
             <textarea
-              bind:value={description}
+              bind:value={streamDescription}
               class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 resize-none focus:border-accent focus:outline-none"
               placeholder="Video description..."
               rows="2"
-              disabled={uploading}
+              disabled={streamState.isRecording || saving}
             ></textarea>
           </div>
 
-        {:else if mode === 'batch'}
-          <!-- Batch mode: yt-dlp directory -->
-          <div class="bg-surface-2 rounded-lg p-4">
-            <div class="flex items-center gap-3 mb-3">
-              <span class="i-lucide-folder-video text-2xl text-accent"></span>
-              <div>
-                <p class="text-text-1 font-medium">yt-dlp Backup Detected</p>
-                <p class="text-text-3 text-sm">{batchVideos.length} videos, {formatSize(batchTotalSize)} total</p>
-              </div>
+          <!-- Visibility -->
+          <div>
+            <label class="block text-sm text-text-2 mb-2">Visibility</label>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                onclick={() => streamVisibility = 'public'}
+                class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {streamVisibility === 'public' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+                disabled={streamState.isRecording || saving}
+              >
+                <span class="i-lucide-globe"></span>
+                <span class="text-sm">Public</span>
+              </button>
+              <button
+                type="button"
+                onclick={() => streamVisibility = 'unlisted'}
+                class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {streamVisibility === 'unlisted' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+                disabled={streamState.isRecording || saving}
+              >
+                <span class="i-lucide-link"></span>
+                <span class="text-sm">Unlisted</span>
+              </button>
+              <button
+                type="button"
+                onclick={() => streamVisibility = 'private'}
+                class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {streamVisibility === 'private' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+                disabled={streamState.isRecording || saving}
+              >
+                <span class="i-lucide-lock"></span>
+                <span class="text-sm">Private</span>
+              </button>
             </div>
-
-            <!-- Channel name input -->
-            <div class="mb-3">
-              <label class="block text-sm text-text-2 mb-1">Channel Name</label>
-              <input
-                type="text"
-                bind:value={channelName}
-                class="w-full bg-surface-0 border border-surface-3 rounded-lg p-2 text-text-1 focus:border-accent focus:outline-none"
-                placeholder="Channel name"
-                disabled={uploading}
-              />
-            </div>
-
-            <BatchVideoList
-              videos={batchVideos}
-              selectedIds={selectedVideoIds}
-              currentUploadingId={uploading ? selectedVideos[batchCurrentIndex]?.id : null}
-              disabled={uploading}
-              onToggle={toggleVideo}
-              onSelectAll={selectAll}
-              onDeselectAll={deselectAll}
-              {formatSize}
-            />
+            <p class="text-xs text-text-3 mt-2">
+              {#if streamVisibility === 'public'}
+                Anyone can find and watch this video
+              {:else if streamVisibility === 'unlisted'}
+                Only people with the link can watch
+              {:else}
+                Encrypted, only you can watch
+              {/if}
+            </p>
           </div>
-        {/if}
+        </div>
 
-        <!-- Visibility (shown for single and batch) -->
-        {#if mode !== 'select'}
-          <VisibilitySelector
-            value={visibility}
-            onchange={(v) => visibility = v}
-            disabled={uploading}
-            mode={mode}
-          />
-        {/if}
-
-        <!-- Progress bar -->
-        {#if uploading}
-          <UploadProgress {progress} message={progressMessage} />
-        {/if}
-      </div>
-
-      <!-- Footer -->
-      <div class="flex justify-end gap-2 p-4 border-t border-surface-3">
-        <button onclick={uploading ? handleCancel : handleClose} class="btn-ghost px-4 py-2">
-          {uploading ? 'Cancel' : 'Close'}
-        </button>
-        {#if mode !== 'select'}
-          <button
-            onclick={handleUpload}
-            class="btn-primary px-4 py-2"
-            disabled={
-              uploading ||
-              (mode === 'single' && (!selectedFile || !title.trim() || (willTranscode && (!transcodeSupported || !!transcodeError)))) ||
-              (mode === 'batch' && (!channelName.trim() || selectedVideos.length === 0))
-            }
-          >
-            {#if uploading}
-              Processing...
-            {:else if mode === 'batch'}
-              Upload {selectedVideos.length} Video{selectedVideos.length !== 1 ? 's' : ''}
-            {:else}
-              Upload
-            {/if}
-          </button>
-        {/if}
-      </div>
+        <!-- Stream Footer -->
+        <div class="flex justify-end gap-2 p-4 border-t border-surface-3">
+          {#if !streamState.isPreviewing && !streamState.isRecording}
+            <button onclick={handleClose} class="btn-ghost px-4 py-2">
+              Close
+            </button>
+            <button onclick={handleStartCamera} class="btn-primary px-4 py-2">
+              <span class="i-lucide-video mr-2"></span>
+              Start Camera
+            </button>
+          {:else if streamState.isPreviewing && !streamState.isRecording}
+            <button onclick={handleStopCamera} class="btn-ghost px-4 py-2">
+              Cancel
+            </button>
+            <button
+              onclick={handleStartRecording}
+              class="btn-danger px-4 py-2"
+              disabled={!streamTitle.trim()}
+            >
+              <span class="i-lucide-circle mr-2"></span>
+              Start Recording
+            </button>
+          {:else if streamState.isRecording}
+            <button onclick={handleCancelRecording} class="btn-ghost px-4 py-2" disabled={saving}>
+              Cancel
+            </button>
+            <button onclick={handleStopRecording} class="btn-success px-4 py-2" disabled={saving}>
+              {#if saving}
+                <span class="i-lucide-loader-2 animate-spin mr-2"></span>
+                Saving...
+              {:else}
+                <span class="i-lucide-square mr-2"></span>
+                Stop Recording
+              {/if}
+            </button>
+          {/if}
+        </div>
+      {/if}
     </div>
   </div>
 {/if}

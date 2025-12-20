@@ -111,6 +111,8 @@ interface AddToPlaylistTarget {
   videoSize: number;
 }
 
+type VideoUploadTab = 'upload' | 'stream';
+
 interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
@@ -143,6 +145,7 @@ interface ModalState {
   showBlossomPushModal: boolean;
   blossomPushTarget: BlossomPushTarget | null;
   showVideoUploadModal: boolean;
+  videoUploadTab: VideoUploadTab;
   showAddToPlaylistModal: boolean;
   addToPlaylistTarget: AddToPlaylistTarget | null;
   modalInput: string;
@@ -180,6 +183,7 @@ const initialState: ModalState = {
   showBlossomPushModal: false,
   blossomPushTarget: null,
   showVideoUploadModal: false,
+  videoUploadTab: 'upload',
   showAddToPlaylistModal: false,
   addToPlaylistTarget: null,
   modalInput: '',
@@ -342,12 +346,16 @@ export function closeBlossomPushModal() {
   modalsStore.update(s => ({ ...s, showBlossomPushModal: false, blossomPushTarget: null }));
 }
 
-export function openVideoUploadModal() {
-  modalsStore.update(s => ({ ...s, showVideoUploadModal: true }));
+export function openVideoUploadModal(tab: VideoUploadTab = 'upload') {
+  modalsStore.update(s => ({ ...s, showVideoUploadModal: true, videoUploadTab: tab }));
 }
 
 export function closeVideoUploadModal() {
-  modalsStore.update(s => ({ ...s, showVideoUploadModal: false }));
+  modalsStore.update(s => ({ ...s, showVideoUploadModal: false, videoUploadTab: 'upload' }));
+}
+
+export function setVideoUploadTab(tab: VideoUploadTab) {
+  modalsStore.update(s => ({ ...s, videoUploadTab: tab }));
 }
 
 export function openAddToPlaylistModal(videoCid: CID, videoTitle: string, videoSize: number) {
@@ -358,4 +366,4 @@ export function closeAddToPlaylistModal() {
   modalsStore.update(s => ({ ...s, showAddToPlaylistModal: false, addToPlaylistTarget: null, modalInput: '' }));
 }
 
-export type { ArchiveFileInfo, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, GitShellTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget, BlossomPushTarget, AddToPlaylistTarget };
+export type { ArchiveFileInfo, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, GitShellTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget, BlossomPushTarget, VideoUploadTab, AddToPlaylistTarget };
