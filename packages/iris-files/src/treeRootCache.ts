@@ -7,7 +7,7 @@
  * Key: "npub/treeName", Value: { hash, key, visibility, dirty }
  */
 import type { Hash, TreeVisibility } from 'hashtree';
-import { toHex } from 'hashtree';
+import { fromHex, toHex } from 'hashtree';
 import { updateSubscriptionCache } from './stores/treeRoot';
 
 interface CacheEntry {

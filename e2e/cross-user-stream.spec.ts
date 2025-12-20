@@ -1,0 +1,328 @@
+/**
+ * Cross-user livestream test
+ *
+ * Tests real cross-user streaming where broadcaster and viewer are in
+ * separate browser contexts with separate storage.
+ *
+ * This test will expose where the data flow breaks:
+ * 1. Tree root propagation via Nostr
+ * 2. Chunk transfer via WebRTC or Blossom
+ */
+import { test, expect, type Page, type BrowserContext } from '@playwright/test';
+import * as path from 'path';
+import * as fs from 'fs';
+import { fileURLToPath } from 'url';
+import { setupPageErrorHandler, followUser } from './test-utils';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const TEST_VIDEO = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s.webm');
+
+// Get video as base64 for mock MediaRecorder
+function getTestVideoBase64(): string {
+  const buffer = fs.readFileSync(TEST_VIDEO);
+  return buffer.toString('base64');
+}
+
+// Setup fresh user with cleared storage
+async function setupFreshUser(page: Page): Promise<void> {
+  await page.goto('http://localhost:5173');
+
+  // Clear storage
+  await page.evaluate(async () => {
+    const dbs = await indexedDB.databases();
+    for (const db of dbs) {
+      if (db.name) indexedDB.deleteDatabase(db.name);
+    }
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  await page.reload();
+  await page.waitForTimeout(500);
+  await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+}
+
+// Get user's npub from public folder URL
+async function getNpub(page: Page): Promise<string> {
+  const publicLink = page.getByRole('link', { name: 'public' }).first();
+  await expect(publicLink).toBeVisible({ timeout: 15000 });
+  await publicLink.click();
+  await page.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
+
+  const url = page.url();
+  const match = url.match(/npub1[a-z0-9]+/);
+  if (!match) throw new Error('Could not find npub in URL');
+  return match[0];
+}
+
+// Inject mock MediaRecorder and getUserMedia for headless testing
+async function injectMockMediaRecorder(page: Page, videoBase64: string): Promise<void> {
+  await page.evaluate((b64) => {
+    const videoBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const CHUNK_SIZE = 100 * 1024; // 100KB chunks
+    const chunks: Uint8Array[] = [];
+    for (let i = 0; i < videoBytes.length; i += CHUNK_SIZE) {
+      chunks.push(videoBytes.slice(i, i + CHUNK_SIZE));
+    }
+    console.log(`[MockRecorder] Split video into ${chunks.length} chunks`);
+
+    // Create fake MediaStream using canvas
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#333';
+      ctx.fillRect(0, 0, 320, 240);
+    }
+    const fakeStream = canvas.captureStream(30);
+
+    // Mock getUserMedia
+    navigator.mediaDevices.getUserMedia = async () => fakeStream;
+
+    class MockMediaRecorder {
+      stream: MediaStream;
+      state: string = 'inactive';
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      private intervalId: number | null = null;
+      private chunkIndex = 0;
+
+      constructor(stream: MediaStream, _options?: MediaRecorderOptions) {
+        this.stream = stream;
+      }
+
+      start(timeslice?: number) {
+        this.state = 'recording';
+        this.chunkIndex = 0;
+        const interval = timeslice || 1000;
+
+        const feedChunk = () => {
+          if (this.chunkIndex < chunks.length && this.ondataavailable) {
+            console.log(`[MockRecorder] Feeding chunk ${this.chunkIndex + 1}/${chunks.length}`);
+            this.ondataavailable({ data: new Blob([chunks[this.chunkIndex]]) });
+            this.chunkIndex++;
+          } else if (this.chunkIndex >= chunks.length) {
+            console.log('[MockRecorder] All chunks fed');
+          }
+        };
+
+        feedChunk();
+        this.intervalId = window.setInterval(feedChunk, interval);
+      }
+
+      stop() {
+        if (this.intervalId) {
+          clearInterval(this.intervalId);
+          this.intervalId = null;
+        }
+        this.state = 'inactive';
+        if (this.onstop) this.onstop();
+      }
+
+      static isTypeSupported() { return true; }
+    }
+
+    (window as any).MediaRecorder = MockMediaRecorder;
+    console.log('[MockRecorder] Mocked MediaRecorder and getUserMedia');
+  }, videoBase64);
+}
+
+test.describe('Cross-User Livestream', () => {
+  test('viewer can fetch stream data from broadcaster', async ({ browser }) => {
+    test.slow();
+    test.setTimeout(120000);
+
+    expect(fs.existsSync(TEST_VIDEO)).toBe(true);
+    const videoBase64 = getTestVideoBase64();
+
+    // Create two completely separate browser contexts
+    const contextA = await browser.newContext();
+    const contextB = await browser.newContext();
+    const pageA = await contextA.newPage(); // Broadcaster
+    const pageB = await contextB.newPage(); // Viewer
+
+    // Detailed logging
+    const logs = {
+      broadcaster: [] as string[],
+      viewer: [] as string[],
+    };
+
+    pageA.on('console', msg => {
+      const text = msg.text();
+      logs.broadcaster.push(text);
+      if (text.includes('[MockRecorder]') || text.includes('[Stream]') ||
+          text.includes('WebRTC') || text.includes('Blossom') || text.includes('peer')) {
+        console.log(`[A] ${text}`);
+      }
+    });
+
+    pageB.on('console', msg => {
+      const text = msg.text();
+      logs.viewer.push(text);
+      if (text.includes('SwFileHandler') || text.includes('tree') ||
+          text.includes('WebRTC') || text.includes('Blossom') || text.includes('peer') ||
+          text.includes('404') || text.includes('error')) {
+        console.log(`[B] ${text}`);
+      }
+    });
+
+    setupPageErrorHandler(pageA);
+    setupPageErrorHandler(pageB);
+
+    try {
+      // === Setup Broadcaster ===
+      console.log('\n=== Setting up Broadcaster ===');
+      await setupFreshUser(pageA);
+      const npubA = await getNpub(pageA);
+      console.log(`Broadcaster: ${npubA.slice(0, 20)}...`);
+      await injectMockMediaRecorder(pageA, videoBase64);
+
+      // === Setup Viewer ===
+      console.log('\n=== Setting up Viewer ===');
+      await setupFreshUser(pageB);
+      const npubB = await getNpub(pageB);
+      console.log(`Viewer: ${npubB.slice(0, 20)}...`);
+
+      // === Mutual follows for WebRTC ===
+      console.log('\n=== Setting up mutual follows ===');
+      await followUser(pageA, npubB);
+      await followUser(pageB, npubA);
+      console.log('Mutual follows established');
+
+      // === Check WebRTC connections ===
+      console.log('\n=== Waiting for WebRTC connections ===');
+      await pageA.waitForTimeout(5000); // Wait for WebRTC hello exchange
+
+      const peersA = await pageA.evaluate(() => {
+        const store = (window as any).webrtcStore;
+        return store?.getPeers?.()?.map((p: any) => ({
+          pubkey: p.pubkey?.slice(0, 16),
+          isConnected: p.isConnected,
+          pool: p.pool,
+        })) || [];
+      });
+      console.log('Broadcaster peers:', JSON.stringify(peersA, null, 2));
+
+      const peersB = await pageB.evaluate(() => {
+        const store = (window as any).webrtcStore;
+        return store?.getPeers?.()?.map((p: any) => ({
+          pubkey: p.pubkey?.slice(0, 16),
+          isConnected: p.isConnected,
+          pool: p.pool,
+        })) || [];
+      });
+      console.log('Viewer peers:', JSON.stringify(peersB, null, 2));
+
+      // === Start streaming ===
+      console.log('\n=== Starting stream ===');
+      await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
+      await pageA.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
+
+      const streamLink = pageA.getByRole('link', { name: 'Stream' });
+      await expect(streamLink).toBeVisible({ timeout: 10000 });
+      await streamLink.click();
+      await pageA.waitForTimeout(500);
+
+      const startCameraBtn = pageA.getByRole('button', { name: 'Start Camera' });
+      await expect(startCameraBtn).toBeVisible({ timeout: 10000 });
+      await startCameraBtn.click();
+      await pageA.waitForTimeout(2000);
+
+      const testFilename = `test_stream_${Date.now()}`;
+      const filenameInput = pageA.locator('input[placeholder="filename"]');
+      await expect(filenameInput).toBeVisible({ timeout: 10000 });
+      await filenameInput.fill(testFilename);
+
+      const startRecordingBtn = pageA.getByRole('button', { name: /Start Recording/ });
+      await expect(startRecordingBtn).toBeVisible({ timeout: 10000 });
+      await startRecordingBtn.click();
+
+      // Wait for some chunks to be recorded and published
+      console.log('Waiting for chunks to be recorded and published...');
+      await pageA.waitForTimeout(6000); // Wait for 2 publish cycles (3s each)
+
+      // Check broadcaster's tree root
+      const broadcasterRoot = await pageA.evaluate((filename) => {
+        const { getTreeRootSync } = (window as any);
+        // Try to find the tree root for this user
+        const url = window.location.hash;
+        const npubMatch = url.match(/npub1[a-z0-9]+/);
+        if (!npubMatch) return null;
+
+        // Can't easily get this without more work
+        return { hasData: true };
+      }, testFilename);
+      console.log('Broadcaster tree root:', broadcasterRoot);
+
+      // === Viewer navigates to stream ===
+      console.log('\n=== Viewer navigating to stream ===');
+      const streamUrl = `http://localhost:5173/#/${npubA}/public/${testFilename}.webm?live=1`;
+      console.log(`Stream URL: ${streamUrl}`);
+      await pageB.goto(streamUrl);
+
+      // Wait for page to try loading
+      await pageB.waitForTimeout(5000);
+
+      // Check what happened
+      const viewerState = await pageB.evaluate(() => {
+        const video = document.querySelector('video') as HTMLVideoElement;
+        const loading = document.querySelector('.animate-spin');
+        const errorEl = document.querySelector('.text-red-400');
+
+        return {
+          hasVideo: !!video,
+          videoSrc: video?.src || null,
+          videoReadyState: video?.readyState || null,
+          videoDuration: video?.duration || null,
+          videoError: video?.error?.message || null,
+          isLoading: !!loading,
+          errorText: errorEl?.textContent || null,
+          bodyText: document.body.innerText.slice(0, 500),
+        };
+      });
+
+      console.log('\n=== Viewer State ===');
+      console.log(JSON.stringify(viewerState, null, 2));
+
+      // Check for specific errors in viewer logs
+      const viewerErrors = logs.viewer.filter(l =>
+        l.includes('error') || l.includes('Error') || l.includes('404') || l.includes('failed')
+      );
+      if (viewerErrors.length > 0) {
+        console.log('\n=== Viewer Errors ===');
+        viewerErrors.slice(0, 20).forEach(e => console.log(e));
+      }
+
+      // Stop recording
+      const stopBtn = pageA.getByRole('button', { name: /Stop Recording/ });
+      if (await stopBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await stopBtn.click();
+      }
+
+      // === Assertions ===
+      // The viewer should have a video element
+      expect(viewerState.hasVideo).toBe(true);
+
+      // The video should NOT be in loading state forever
+      // If isLoading is true and we have no video data, the data flow is broken
+      if (viewerState.isLoading && viewerState.videoReadyState === 0) {
+        console.log('\n=== FAILURE: Viewer stuck in loading state ===');
+        console.log('This means chunks are not being transferred from broadcaster to viewer.');
+        console.log('Possible causes:');
+        console.log('1. WebRTC connection not established');
+        console.log('2. Chunks not available via Blossom');
+        console.log('3. Tree root not propagated via Nostr');
+      }
+
+      // We expect the video to have loaded something (readyState > 0)
+      expect(viewerState.videoReadyState).toBeGreaterThan(0);
+
+    } finally {
+      await contextA.close();
+      await contextB.close();
+    }
+  });
+});
