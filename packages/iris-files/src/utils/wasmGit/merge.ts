@@ -62,14 +62,6 @@ export async function mergeWithWasmGit(
 
       module.FS.chdir(repoPath);
 
-      // Initialize git repo first (same pattern as commit.ts)
-      try {
-        runSilent(module, ['init', '.']);
-      } catch {
-        // Ignore init errors
-      }
-
-      // Copy entire repo (working tree + .git)
       await copyToWasmFS(module, rootCid, '.');
 
       // Get commit hashes for both branches

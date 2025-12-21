@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, rmRf } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, rmRf } from './core';
 
 /**
  * Get current HEAD commit SHA
@@ -37,13 +37,7 @@ export async function getHeadWithWasmGit(
 
       module.FS.chdir(repoPath);
 
-      try {
-        runSilent(module, ['init', '.']);
-      } catch {
-        // Ignore init errors
-      }
-
-      await copyToWasmFS(module, gitDirResult.cid, '.git');
+      await copyToWasmFS(module, rootCid, '.');
 
       // Use rev-parse HEAD to get the commit SHA
       try {
@@ -116,16 +110,7 @@ export async function getLogWithWasmGit(
       // Change to repo directory
       module.FS.chdir(repoPath);
 
-      // Initialize a git repo first so it has proper structure
-      try {
-        runSilent(module, ['init', '.']);
-      } catch {
-        // Ignore init errors
-      }
-
-      // Copy .git contents from hashtree to wasm filesystem
-      // This overwrites the initialized .git with our actual git data
-      await copyToWasmFS(module, gitDirResult.cid, '.git');
+      await copyToWasmFS(module, rootCid, '.');
 
       // Run git log from HEAD
       // Note: After checking out an older commit, only ancestors of HEAD are shown
@@ -252,13 +237,7 @@ export async function getFileLastCommitsWithWasmGit(
 
       module.FS.chdir(repoPath);
 
-      try {
-        runSilent(module, ['init', '.']);
-      } catch {
-        // Ignore init errors
-      }
-
-      await copyToWasmFS(module, gitDirResult.cid, '.git');
+      await copyToWasmFS(module, rootCid, '.');
 
       // For each file, get the last commit that touched it
       for (const filename of filenames) {

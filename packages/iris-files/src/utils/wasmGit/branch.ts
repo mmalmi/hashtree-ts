@@ -36,29 +36,21 @@ export async function getBranchesWithWasmGit(
 
       module.FS.chdir(repoPath);
 
-      try {
-        runSilent(module, ['init', '.']);
-      } catch {
-        // Ignore init errors
-      }
+      await copyToWasmFS(module, rootCid, '.');
 
-      await copyToWasmFS(module, gitDirResult.cid, '.git');
-
-      // Get current branch from status
+      // Get current branch by reading HEAD file directly
+      // This is the standard way git determines the current branch
+      // HEAD contains either "ref: refs/heads/<branch>" or a direct SHA (detached)
       let currentBranch: string | null = null;
       try {
-        const statusOutput = module.callWithOutput(['status']);
-        // Check for detached HEAD first
-        if (statusOutput.includes('HEAD detached') || statusOutput.includes('detached HEAD')) {
-          currentBranch = null; // Explicitly detached
-        } else {
-          const branchMatch = statusOutput.match(/On branch (\S+)/);
-          if (branchMatch && branchMatch[1] !== 'HEAD') {
-            currentBranch = branchMatch[1];
-          }
+        const headContent = module.FS.readFile('.git/HEAD', { encoding: 'utf8' }) as string;
+        const refMatch = headContent.match(/^ref: refs\/heads\/(\S+)/);
+        if (refMatch) {
+          currentBranch = refMatch[1];
         }
+        // If no match, HEAD is a direct SHA (detached state) - currentBranch stays null
       } catch {
-        // Ignore
+        // HEAD file not found or unreadable
       }
 
       // Get list of branches by reading refs/heads directory directly
@@ -124,13 +116,6 @@ export async function createBranchWithWasmGit(
 
       module.FS.chdir(repoPath);
 
-      try {
-        runSilent(module, ['init', '.']);
-      } catch {
-        // Ignore init errors
-      }
-
-      // Copy full working directory (including .git) for proper checkout
       await copyToWasmFS(module, rootCid, '.');
 
       // Create the branch

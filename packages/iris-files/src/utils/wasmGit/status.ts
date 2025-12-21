@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, rmRf } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, rmRf } from './core';
 
 /**
  * Git status entry from porcelain format
@@ -63,21 +63,42 @@ export async function getStatusWithWasmGit(
 
       module.FS.chdir(repoPath);
 
+      await copyToWasmFS(module, rootCid, '.');
+
+      // Check if index file exists
+      // git-remote-htree now generates index files during push, but legacy repos may lack them
       try {
-        runSilent(module, ['init', '.']);
+        module.FS.stat('.git/index');
       } catch {
-        // Ignore init errors
+        // No index file - can't determine status accurately
+        // This happens with repos pushed before git-remote-htree added index generation
+        console.warn('[wasm-git] No .git/index found - repo needs to be re-pushed with updated git-remote-htree');
+        return { staged: [], unstaged: [], untracked: [], hasChanges: false };
       }
 
-      // Copy entire repo (not just .git) so we can compare working tree
-      await copyToWasmFS(module, rootCid, '.');
+      // Debug: list files in repo
+      try {
+        const files = module.FS.readdir('.');
+        console.log('[wasm-git] Files in repo:', files.filter((f: string) => f !== '.' && f !== '..'));
+      } catch (e) {
+        console.error('[wasm-git] Failed to list files:', e);
+      }
+
+      // Debug: check index content
+      try {
+        const indexStat = module.FS.stat('.git/index');
+        console.log('[wasm-git] Index file size:', indexStat.size);
+      } catch (e) {
+        console.error('[wasm-git] Index stat failed:', e);
+      }
 
       // Run git status --porcelain
       let output = '';
       try {
         output = module.callWithOutput(['status', '--porcelain']);
-      } catch {
-        // Status may fail on fresh repos
+        console.log('[wasm-git] git status output:', JSON.stringify(output));
+      } catch (e) {
+        console.error('[wasm-git] git status failed:', e);
         return { staged: [], unstaged: [], untracked: [], hasChanges: false };
       }
 

@@ -179,15 +179,19 @@ export async function getStatus(rootCid: CID) {
   // Check cache first
   const cached = gitStatusCache.get(cacheKey);
   if (cached) {
+    console.log('[git] getStatus CACHE HIT for:', cacheKey.slice(0, 16), 'hasChanges:', cached.hasChanges);
     return cached;
   }
 
+  console.log('[git] getStatus CACHE MISS for:', cacheKey.slice(0, 16), '- calling wasm-git');
   try {
     const { getStatusWithWasmGit } = await import('./wasmGit');
     const result = await getStatusWithWasmGit(rootCid);
+    console.log('[git] getStatus result: hasChanges:', result.hasChanges, 'staged:', result.staged.length, 'unstaged:', result.unstaged.length, 'untracked:', result.untracked.length);
     gitStatusCache.set(cacheKey, result);
     return result;
-  } catch {
+  } catch (e) {
+    console.error('[git] getStatus error:', e);
     return { staged: [], unstaged: [], untracked: [], hasChanges: false };
   }
 }

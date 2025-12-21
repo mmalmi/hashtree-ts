@@ -39,13 +39,7 @@ export async function checkoutWithWasmGit(
 
       module.FS.chdir(repoPath);
 
-      try {
-        runSilent(module, ['init', '.']);
-      } catch {
-        // Ignore init errors
-      }
-
-      await copyToWasmFS(module, gitDirResult.cid, '.git');
+      await copyToWasmFS(module, rootCid, '.');
 
       // Checkout the commit
       try {

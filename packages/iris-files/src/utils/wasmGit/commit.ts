@@ -97,13 +97,6 @@ export async function commitWithWasmGit(
 
       module.FS.chdir(repoPath);
 
-      try {
-        runSilent(module, ['init', '.']);
-      } catch {
-        // Ignore init errors
-      }
-
-      // Copy entire repo so we have working tree + .git
       await copyToWasmFS(module, rootCid, '.');
 
       // Stage files
