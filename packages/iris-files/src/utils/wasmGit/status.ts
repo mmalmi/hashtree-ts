@@ -65,6 +65,19 @@ export async function getStatusWithWasmGit(
 
       await copyToWasmFS(module, rootCid, '.');
 
+      // Fix bare=true in config - git-remote-htree creates repos with bare=true
+      // but we have a working tree, so we need bare=false for status to work
+      try {
+        const configPath = '.git/config';
+        const configContent = module.FS.readFile(configPath, { encoding: 'utf8' }) as string;
+        if (configContent.includes('bare = true')) {
+          const fixedConfig = configContent.replace('bare = true', 'bare = false');
+          module.FS.writeFile(configPath, fixedConfig);
+        }
+      } catch {
+        // Config read/write failed - continue anyway
+      }
+
       // Check if index file exists
       // git-remote-htree now generates index files during push, but legacy repos may lack them
       try {
@@ -76,27 +89,10 @@ export async function getStatusWithWasmGit(
         return { staged: [], unstaged: [], untracked: [], hasChanges: false };
       }
 
-      // Debug: list files in repo
-      try {
-        const files = module.FS.readdir('.');
-        console.log('[wasm-git] Files in repo:', files.filter((f: string) => f !== '.' && f !== '..'));
-      } catch (e) {
-        console.error('[wasm-git] Failed to list files:', e);
-      }
-
-      // Debug: check index content
-      try {
-        const indexStat = module.FS.stat('.git/index');
-        console.log('[wasm-git] Index file size:', indexStat.size);
-      } catch (e) {
-        console.error('[wasm-git] Index stat failed:', e);
-      }
-
       // Run git status --porcelain
       let output = '';
       try {
         output = module.callWithOutput(['status', '--porcelain']);
-        console.log('[wasm-git] git status output:', JSON.stringify(output));
       } catch (e) {
         console.error('[wasm-git] git status failed:', e);
         return { staged: [], unstaged: [], untracked: [], hasChanges: false };

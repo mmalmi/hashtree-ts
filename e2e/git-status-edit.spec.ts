@@ -610,15 +610,7 @@ test.describe('Git status after file edit', () => {
 
   // This test verifies that repos pushed via git-remote-htree have a valid index file
   // and git status works when viewing from the browser via nostr.
-  // Note: This test requires reliable nostr relay access and may be flaky due to network conditions.
-  // It is skipped by default - run with HTREE_NETWORK_TEST=1 to enable.
-  test.skip('should show uncommitted in git-remote-htree pushed repo after edit', { timeout: 180000 }, async ({ page }) => {
-    // Skip unless explicitly enabled via env var
-    if (!process.env.HTREE_NETWORK_TEST) {
-      test.skip(true, 'Network test skipped - set HTREE_NETWORK_TEST=1 to enable');
-      return;
-    }
-
+  test('should show uncommitted in git-remote-htree pushed repo after edit', { timeout: 180000 }, async ({ page }) => {
     // Skip if git-remote-htree is not built
     if (!hasGitRemoteHtree()) {
       test.skip(true, 'git-remote-htree not built - run: cargo build --release -p git-remote-htree');
@@ -832,6 +824,87 @@ servers = ["https://blossom.iris.to"]
       }
 
       console.log('[test] SUCCESS: git-remote-htree pushed repo shows correct git status (clean)');
+
+      // ==== PART 2: Fork the repo and verify index is preserved ====
+      console.log('[test] Forking the htree pushed repo...');
+
+      // Click Fork button
+      const forkBtn = page.getByRole('button', { name: /fork/i });
+      await expect(forkBtn).toBeVisible({ timeout: 10000 });
+      await forkBtn.click();
+
+      // Wait for fork modal
+      const forkModal = page.locator('.fixed.inset-0').filter({ hasText: 'Fork as New Folder' });
+      await expect(forkModal).toBeVisible({ timeout: 5000 });
+
+      // Enter name for forked repo
+      const forkNameInput = forkModal.locator('input');
+      const forkedRepoName = `forked-${repoName}`;
+      await forkNameInput.fill(forkedRepoName);
+
+      // Click Fork button in modal
+      const confirmForkBtn = forkModal.getByRole('button', { name: /fork/i }).last();
+      await confirmForkBtn.click();
+
+      // Wait for navigation to forked repo
+      await page.waitForURL(new RegExp(forkedRepoName), { timeout: 15000 });
+      console.log(`[test] Forked to ${forkedRepoName}`);
+
+      // Wait for forked repo to load
+      const forkedReadme = page.locator('[data-testid="file-list"] a').filter({ hasText: 'README.md' });
+      await expect(forkedReadme).toBeVisible({ timeout: 15000 });
+      const forkedGit = page.locator('[data-testid="file-list"] a').filter({ hasText: '.git' });
+      await expect(forkedGit).toBeVisible({ timeout: 5000 });
+      console.log('[test] Forked repo loaded with files');
+
+      // Verify git status shows clean in forked repo
+      const forkedCleanIndicator = page.locator('text=clean');
+      await expect(forkedCleanIndicator).toBeVisible({ timeout: 30000 });
+      console.log('[test] Forked repo: Git status shows clean (index copied correctly)');
+
+      // Clear console logs for edit detection
+      consoleLogs.length = 0;
+
+      // ==== PART 3: Edit a file and verify uncommitted shows ====
+      console.log('[test] Editing README.md in forked htree repo...');
+      await page.evaluate(async () => {
+        const { getTree, LinkType } = await import('/src/store.ts');
+        const { autosaveIfOwn } = await import('/src/nostr.ts');
+        const { getCurrentRootCid } = await import('/src/actions/route.ts');
+        const { getRouteSync } = await import('/src/stores/index.ts');
+        const route = getRouteSync();
+
+        const tree = getTree();
+        let rootCid = getCurrentRootCid();
+        if (!rootCid) return;
+
+        // Modify README.md with new content
+        const updatedContent = new TextEncoder().encode('# Test Repo\n\nModified content in forked htree repo!');
+        const { cid: updatedCid, size: updatedSize } = await tree.putFile(updatedContent);
+        rootCid = await tree.setEntry(rootCid, route.path, 'README.md', updatedCid, updatedSize, LinkType.Blob);
+
+        autosaveIfOwn(rootCid);
+      });
+
+      // Wait for the uncommitted changes indicator to appear
+      console.log('[test] Waiting for uncommitted indicator in forked htree repo...');
+      const uncommittedBtn = page.locator('button').filter({ hasText: /uncommitted/i });
+
+      // Take screenshot for debugging
+      await page.screenshot({ path: 'e2e/screenshots/git-status-htree-forked-edit.png' });
+
+      // Log console output for debugging
+      console.log('[test] Console logs after edit:');
+      for (const log of consoleLogs) {
+        console.log('  ', log);
+      }
+
+      await expect(uncommittedBtn).toBeVisible({ timeout: 30000 });
+      console.log('[test] SUCCESS: uncommitted indicator visible after editing forked htree repo');
+
+      // Verify the count shows 1 change
+      await expect(uncommittedBtn).toContainText(/1/);
+      console.log('[test] SUCCESS: uncommitted count shows 1 change');
 
     } finally {
       // Cleanup
