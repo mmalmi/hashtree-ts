@@ -360,6 +360,7 @@ function parseCommit(content: Uint8Array): {
 /**
  * Get commit log by reading git objects directly from hashtree
  * No wasm-git needed - much faster for large repos
+ * Uses parallel fetching for better performance
  */
 export async function getLogWithWasmGit(
   rootCid: CID,
@@ -383,39 +384,62 @@ export async function getLogWithWasmGit(
 
     const commits: CommitInfo[] = [];
     const visited = new Set<string>();
-    const queue = [headSha];
+    const commitMap = new Map<string, CommitInfo>();
+    let queue = [headSha];
+
+    // Fetch commits in parallel batches
+    const BATCH_SIZE = 10;
 
     while (queue.length > 0 && commits.length < depth) {
-      const sha = queue.shift()!;
-      if (visited.has(sha)) continue;
-      visited.add(sha);
+      // Take a batch of SHAs to fetch
+      const batch = queue.splice(0, Math.min(BATCH_SIZE, depth - commits.length));
+      const newShas = batch.filter(sha => !visited.has(sha));
 
-      const obj = await readGitObject(tree, gitDirResult.cid, sha);
-      if (!obj || obj.type !== 'commit') {
-        continue;
+      if (newShas.length === 0) continue;
+
+      // Mark as visited before fetching to avoid duplicates
+      for (const sha of newShas) {
+        visited.add(sha);
       }
 
-      const parsed = parseCommit(obj.content);
-      if (!parsed) {
-        continue;
-      }
+      // Fetch all commits in parallel
+      const results = await Promise.all(
+        newShas.map(async (sha) => {
+          const obj = await readGitObject(tree, gitDirResult.cid, sha);
+          if (!obj || obj.type !== 'commit') return null;
 
-      commits.push({
-        oid: sha,
-        message: parsed.message,
-        author: parsed.author,
-        email: parsed.email,
-        timestamp: parsed.timestamp,
-        parent: parsed.parents,
-      });
+          const parsed = parseCommit(obj.content);
+          if (!parsed) return null;
 
-      // Add parents to queue
-      for (const parent of parsed.parents) {
-        if (!visited.has(parent)) {
-          queue.push(parent);
+          return {
+            oid: sha,
+            message: parsed.message,
+            author: parsed.author,
+            email: parsed.email,
+            timestamp: parsed.timestamp,
+            parent: parsed.parents,
+          };
+        })
+      );
+
+      // Process results
+      for (const commit of results) {
+        if (commit && commits.length < depth) {
+          commits.push(commit);
+          commitMap.set(commit.oid, commit);
+
+          // Add parents to queue
+          for (const parent of commit.parent) {
+            if (!visited.has(parent)) {
+              queue.push(parent);
+            }
+          }
         }
       }
     }
+
+    // Sort by timestamp (newest first)
+    commits.sort((a, b) => b.timestamp - a.timestamp);
 
     return commits;
   } catch (err) {
