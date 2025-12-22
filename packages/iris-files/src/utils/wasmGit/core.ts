@@ -169,6 +169,35 @@ export async function copyToWasmFS(
 }
 
 /**
+ * Copy only the .git directory to wasm-git filesystem
+ * Much faster than copyToWasmFS for read-only git operations (log, branches, etc.)
+ */
+export async function copyGitDirToWasmFS(
+  module: WasmGitModule,
+  rootCid: CID,
+  destPath: string
+): Promise<void> {
+  const tree = getTree();
+
+  // Find .git directory
+  const gitDirResult = await tree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+    throw new Error('No .git directory found');
+  }
+
+  // Create .git directory
+  const gitPath = `${destPath}/.git`;
+  try {
+    module.FS.mkdir(gitPath);
+  } catch {
+    // May already exist
+  }
+
+  // Copy .git contents recursively
+  await copyToWasmFS(module, gitDirResult.cid, gitPath);
+}
+
+/**
  * Read .git directory and return all files
  */
 export function readGitDirectory(

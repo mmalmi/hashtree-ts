@@ -71,15 +71,7 @@
   <!-- Commit info header row - always shown -->
   <thead>
     <tr class="bg-surface-1 b-b-1 b-b-solid b-b-surface-3">
-      {#if commitsLoading}
-        <!-- Loading state -->
-        <td class="py-3 px-4 w-10">
-          <span class="i-lucide-loader-2 animate-spin text-text-3"></span>
-        </td>
-        <td class="py-3 px-4 text-text-3" colspan="3">
-          Loading commit info...
-        </td>
-      {:else if latestCommit}
+      {#if latestCommit}
         <!-- Commit info -->
         <td class="py-3 px-4 w-10">
           <span class="i-lucide-user-circle text-text-3"></span>
@@ -98,6 +90,14 @@
         </td>
         <td class="py-3 px-4 text-right text-text-3 whitespace-nowrap">
           {formatRelativeTime(latestCommit.timestamp)}
+        </td>
+      {:else if commitsLoading}
+        <!-- Loading state -->
+        <td class="py-3 px-4 w-10">
+          <span class="i-lucide-loader-2 animate-spin text-text-3"></span>
+        </td>
+        <td class="py-3 px-4 text-text-3" colspan="3">
+          Loading commit info...
         </td>
       {:else}
         <!-- No commits yet -->

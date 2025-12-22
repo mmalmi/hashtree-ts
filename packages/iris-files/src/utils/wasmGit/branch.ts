@@ -4,83 +4,59 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, rmRf, readGitDirectory } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, copyGitDirToWasmFS, runSilent, rmRf, readGitDirectory } from './core';
 
 /**
- * Get list of branches using wasm-git
+ * Get list of branches by reading directly from hashtree
+ * No wasm-git needed - just reads .git/HEAD and .git/refs/heads/
  */
 export async function getBranchesWithWasmGit(
   rootCid: CID
 ): Promise<{ branches: string[]; currentBranch: string | null }> {
-  return withWasmGitLock(async () => {
-    const tree = getTree();
+  const tree = getTree();
 
-    // Check for .git directory
-    const gitDirResult = await tree.resolvePath(rootCid, '.git');
-    if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
-      return { branches: [], currentBranch: null };
-    }
+  // Check for .git directory
+  const gitDirResult = await tree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+    return { branches: [], currentBranch: null };
+  }
 
-    const module = await loadWasmGit();
-    const repoPath = `/repo_${Date.now()}`;
-    const originalCwd = module.FS.cwd();
-
-    try {
-      module.FS.mkdir(repoPath);
-
-      try {
-        module.FS.writeFile('/home/web_user/.gitconfig', '[user]\nname = Reader\nemail = reader@example.com\n');
-      } catch {
-        // May already exist
-      }
-
-      module.FS.chdir(repoPath);
-
-      await copyToWasmFS(module, rootCid, '.');
-
-      // Get current branch by reading HEAD file directly
-      // This is the standard way git determines the current branch
-      // HEAD contains either "ref: refs/heads/<branch>" or a direct SHA (detached)
-      let currentBranch: string | null = null;
-      try {
-        const headContent = module.FS.readFile('.git/HEAD', { encoding: 'utf8' }) as string;
+  // Read HEAD file to get current branch
+  let currentBranch: string | null = null;
+  try {
+    const headResult = await tree.resolvePath(gitDirResult.cid, 'HEAD');
+    if (headResult && headResult.type !== LinkType.Dir) {
+      const headData = await tree.readFile(headResult.cid);
+      if (headData) {
+        const headContent = new TextDecoder().decode(headData);
         const refMatch = headContent.match(/^ref: refs\/heads\/(\S+)/);
         if (refMatch) {
           currentBranch = refMatch[1];
         }
         // If no match, HEAD is a direct SHA (detached state) - currentBranch stays null
-      } catch {
-        // HEAD file not found or unreadable
-      }
-
-      // Get list of branches by reading refs/heads directory directly
-      // wasm-git has limited commands (no 'branch', no 'for-each-ref')
-      const branches: string[] = [];
-      try {
-        const refsHeadsPath = '.git/refs/heads';
-        const branchFiles = module.FS.readdir(refsHeadsPath);
-        for (const file of branchFiles) {
-          if (file !== '.' && file !== '..') {
-            branches.push(file);
-          }
-        }
-      } catch {
-        // refs/heads may not exist
-      }
-
-      return { branches, currentBranch };
-    } catch (err) {
-      console.error('[wasm-git] getBranches failed:', err);
-      return { branches: [], currentBranch: null };
-    } finally {
-      try {
-        module.FS.chdir(originalCwd);
-        rmRf(module, repoPath);
-      } catch {
-        // Ignore
       }
     }
-  });
+  } catch {
+    // HEAD file not found or unreadable
+  }
+
+  // Read refs/heads directory to get branch list
+  const branches: string[] = [];
+  try {
+    const refsResult = await tree.resolvePath(gitDirResult.cid, 'refs/heads');
+    if (refsResult && refsResult.type === LinkType.Dir) {
+      const entries = await tree.listDirectory(refsResult.cid);
+      for (const entry of entries) {
+        if (entry.type !== LinkType.Dir) {
+          branches.push(entry.name);
+        }
+      }
+    }
+  } catch {
+    // refs/heads may not exist
+  }
+
+  return { branches, currentBranch };
 }
 
 /**
