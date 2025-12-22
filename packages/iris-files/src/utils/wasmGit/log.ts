@@ -773,11 +773,11 @@ export async function getFileLastCommitsNative(
     const headSha = await getHeadWithWasmGit(rootCid);
     if (!headSha) return result;
 
-    // Walk through commits until we've found all entries
+    // Walk through commits, comparing each with its parent to find when files changed
     const visited = new Set<string>();
     const queue = [headSha];
-    let prevTree: Map<string, { hash: string; mode: string }> | null = null;
     const foundEntries = new Set<string>();
+    const treeCache = new Map<string, Map<string, { hash: string; mode: string }>>();
 
     while (queue.length > 0 && foundEntries.size < targetPaths.size) {
       const sha = queue.shift()!;
@@ -791,90 +791,86 @@ export async function getFileLastCommitsNative(
       if (!commit) continue;
 
       // Get tree for this commit
-      const currentTree = await getGitTreeEntries(htree, gitDirResult.cid, commit.tree);
-
-      // Compare with previous tree to find changes
-      if (prevTree) {
-        for (const [targetPath, filename] of targetPaths) {
-          if (foundEntries.has(targetPath)) continue;
-
-          // Check if this is a file (exact match)
-          const currentFile = currentTree.get(targetPath);
-          const prevFile = prevTree.get(targetPath);
-
-          if (currentFile && (!prevFile || currentFile.hash !== prevFile.hash)) {
-            // File was added or modified
-            result.set(filename, {
-              oid: sha,
-              message: commit.message,
-              timestamp: commit.timestamp,
-            });
-            foundEntries.add(targetPath);
-            continue;
-          }
-
-          // Check if this is a directory (any file under it changed)
-          const dirPrefix = targetPath + '/';
-          let dirChanged = false;
-
-          for (const [filePath, fileInfo] of currentTree) {
-            if (filePath.startsWith(dirPrefix)) {
-              const prevFileInfo = prevTree.get(filePath);
-              if (!prevFileInfo || prevFileInfo.hash !== fileInfo.hash) {
-                dirChanged = true;
-                break;
-              }
-            }
-          }
-
-          // Also check for deleted files under directory
-          if (!dirChanged) {
-            for (const filePath of prevTree.keys()) {
-              if (filePath.startsWith(dirPrefix) && !currentTree.has(filePath)) {
-                dirChanged = true;
-                break;
-              }
-            }
-          }
-
-          if (dirChanged) {
-            result.set(filename, {
-              oid: sha,
-              message: commit.message,
-              timestamp: commit.timestamp,
-            });
-            foundEntries.add(targetPath);
-          }
-        }
-      } else {
-        // First commit (HEAD) - mark all existing entries
-        for (const [targetPath, filename] of targetPaths) {
-          // Check if it's a file
-          if (currentTree.has(targetPath)) {
-            result.set(filename, {
-              oid: sha,
-              message: commit.message,
-              timestamp: commit.timestamp,
-            });
-            foundEntries.add(targetPath);
-            continue;
-          }
-
-          // Check if it's a directory (has files under it)
-          const dirPrefix = targetPath + '/';
-          const hasFilesUnder = Array.from(currentTree.keys()).some(p => p.startsWith(dirPrefix));
-          if (hasFilesUnder) {
-            result.set(filename, {
-              oid: sha,
-              message: commit.message,
-              timestamp: commit.timestamp,
-            });
-            foundEntries.add(targetPath);
-          }
-        }
+      let currentTree = treeCache.get(sha);
+      if (!currentTree) {
+        currentTree = await getGitTreeEntries(htree, gitDirResult.cid, commit.tree);
+        treeCache.set(sha, currentTree);
       }
 
-      prevTree = currentTree;
+      // Get parent tree (or empty if initial commit)
+      let parentTree: Map<string, { hash: string; mode: string }>;
+      if (commit.parents.length > 0) {
+        const parentSha = commit.parents[0];
+        let cached = treeCache.get(parentSha);
+        if (!cached) {
+          const parentObj = await readGitObject(htree, gitDirResult.cid, parentSha);
+          if (parentObj && parentObj.type === 'commit') {
+            const parentCommit = parseCommit(parentObj.content);
+            if (parentCommit) {
+              cached = await getGitTreeEntries(htree, gitDirResult.cid, parentCommit.tree);
+              treeCache.set(parentSha, cached);
+            }
+          }
+        }
+        parentTree = cached || new Map();
+      } else {
+        // Initial commit - parent is empty tree
+        parentTree = new Map();
+      }
+
+      // Compare this commit with its parent to find changes
+      for (const [targetPath, filename] of targetPaths) {
+        if (foundEntries.has(targetPath)) continue;
+
+        // Check if this is a file (exact match)
+        const currentFile = currentTree.get(targetPath);
+        const parentFile = parentTree.get(targetPath);
+
+        if (currentFile && (!parentFile || currentFile.hash !== parentFile.hash)) {
+          // File was added or modified in this commit
+          result.set(filename, {
+            oid: sha,
+            message: commit.message,
+            timestamp: commit.timestamp,
+          });
+          foundEntries.add(targetPath);
+          continue;
+        }
+
+        // Check if this is a directory (any file under it changed)
+        const dirPrefix = targetPath + '/';
+        let dirChanged = false;
+
+        // Check for added/modified files
+        for (const [filePath, fileInfo] of currentTree) {
+          if (filePath.startsWith(dirPrefix)) {
+            const parentFileInfo = parentTree.get(filePath);
+            if (!parentFileInfo || parentFileInfo.hash !== fileInfo.hash) {
+              dirChanged = true;
+              break;
+            }
+          }
+        }
+
+        // Check for deleted files under directory
+        if (!dirChanged) {
+          for (const filePath of parentTree.keys()) {
+            if (filePath.startsWith(dirPrefix) && !currentTree.has(filePath)) {
+              dirChanged = true;
+              break;
+            }
+          }
+        }
+
+        if (dirChanged) {
+          result.set(filename, {
+            oid: sha,
+            message: commit.message,
+            timestamp: commit.timestamp,
+          });
+          foundEntries.add(targetPath);
+        }
+      }
 
       // Add parents to queue
       for (const parent of commit.parents) {
