@@ -110,10 +110,6 @@ async function decompressZlib(data: Uint8Array): Promise<Uint8Array> {
   return result;
 }
 
-// Cache for pack index data
-let packIndexCache: Map<string, { fanout: Uint32Array; shas: string[]; offsets: number[] }> | null = null;
-let packDataCache: Map<string, { cid: CID; size: number }> | null = null;
-
 /**
  * Load pack index file (.idx) and return the SHA -> offset mapping
  */
@@ -174,7 +170,7 @@ async function loadPackIndex(
     }
 
     return { fanout, shas, offsets };
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -261,7 +257,7 @@ async function readFromPack(
     const decompressed = await decompressZlib(compressedData);
 
     return { type: typeName, content: decompressed.slice(0, size) };
-  } catch (err) {
+  } catch {
     return null;
   }
 }
@@ -385,7 +381,7 @@ export async function getLogWithWasmGit(
     const commits: CommitInfo[] = [];
     const visited = new Set<string>();
     const commitMap = new Map<string, CommitInfo>();
-    let queue = [headSha];
+    const queue = [headSha];
 
     // Fetch commits in parallel batches
     const BATCH_SIZE = 10;

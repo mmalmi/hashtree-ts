@@ -4,7 +4,7 @@
 import type { CID } from 'hashtree';
 import { LinkType } from 'hashtree';
 import { getTree } from '../../store';
-import { withWasmGitLock, loadWasmGit, copyToWasmFS, copyGitDirToWasmFS, runSilent, rmRf, readGitDirectory } from './core';
+import { withWasmGitLock, loadWasmGit, copyToWasmFS, runSilent, rmRf, readGitDirectory } from './core';
 
 /**
  * Get list of branches by reading directly from hashtree
