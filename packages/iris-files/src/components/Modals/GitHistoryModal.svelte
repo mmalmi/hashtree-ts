@@ -14,14 +14,17 @@
   let show = $derived($modalsStore.showGitHistoryModal);
   let target = $derived($modalsStore.gitHistoryTarget);
 
-  // Create git log store when modal opens
-  let logStore = $derived(target ? createGitLogStore(target.dirCid, 100) : null);
+  // Commit loading state
+  let currentDepth = $state(50);
+  let logStore = $derived(target ? createGitLogStore(target.dirCid, currentDepth) : null);
   let logState = $state<{ commits: CommitInfo[]; headOid: string | null; loading: boolean; error: string | null }>({
     commits: [],
     headOid: null,
     loading: true,
     error: null,
   });
+  let loadingMore = $state(false);
+  let hasMoreCommits = $derived(logState.commits.length >= currentDepth && !logState.loading);
 
   // Branch info for detached HEAD detection
   let branchInfo = $state<{ branches: string[]; currentBranch: string | null }>({ branches: [], currentBranch: null });
@@ -37,9 +40,22 @@
     }
     const unsub = logStore.subscribe(value => {
       logState = value;
+      loadingMore = false;
     });
     return unsub;
   });
+
+  // Reset depth when modal closes
+  $effect(() => {
+    if (!show) {
+      currentDepth = 50;
+    }
+  });
+
+  function loadMoreCommits() {
+    loadingMore = true;
+    currentDepth += 100;
+  }
 
   // Fetch branch info when modal opens
   $effect(() => {
@@ -228,11 +244,11 @@
           <div class="flex flex-col">
             {#each logState.commits as commit, i (commit.oid)}
               {@const isHead = commit.oid === logState.headOid}
-              <div class="flex gap-3 pb-4 {i < logState.commits.length - 1 ? 'b-b-1 b-b-solid b-b-surface-3 mb-4' : ''} {isHead ? 'bg-accent/5 -mx-4 px-4 py-3 rounded-lg' : ''}">
+              <div class="flex gap-3 pb-4 {i < logState.commits.length - 1 || hasMoreCommits ? 'b-b-1 b-b-solid b-b-surface-3 mb-4' : ''} {isHead ? 'bg-accent/5 -mx-4 px-4 py-3 rounded-lg' : ''}">
                 <!-- Timeline dot -->
                 <div class="flex flex-col items-center shrink-0">
                   <div class="w-3 h-3 rounded-full {isHead ? 'bg-success ring-2 ring-success/30' : 'bg-accent'}"></div>
-                  {#if i < logState.commits.length - 1}
+                  {#if i < logState.commits.length - 1 || hasMoreCommits}
                     <div class="w-0.5 flex-1 bg-surface-3 mt-1"></div>
                   {/if}
                 </div>
@@ -298,6 +314,25 @@
                 </div>
               </div>
             {/each}
+
+            <!-- Load more button -->
+            {#if hasMoreCommits}
+              <div class="flex justify-center pt-2">
+                <button
+                  onclick={loadMoreCommits}
+                  disabled={loadingMore}
+                  class="btn-ghost px-4 py-2 text-sm flex items-center gap-2"
+                >
+                  {#if loadingMore}
+                    <span class="i-lucide-loader-2 animate-spin"></span>
+                    Loading...
+                  {:else}
+                    <span class="i-lucide-chevrons-down"></span>
+                    Load more commits
+                  {/if}
+                </button>
+              </div>
+            {/if}
           </div>
         {/if}
       </div>
