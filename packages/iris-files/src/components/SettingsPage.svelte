@@ -897,7 +897,7 @@
           </span>
         </div>
         <a
-          href={isFilesApp ? "#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/repos/hashtree-ts" : "https://files.iris.to/#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/repos/hashtree-ts"}
+          href={isFilesApp ? "#/npub1xndmdgymsf4a34rzr7346vp8qcptxf75pjqweh8naa8rklgxpfqqmfjtce/hashtree-ts" : "https://files.iris.to/#/npub1xndmdgymsf4a34rzr7346vp8qcptxf75pjqweh8naa8rklgxpfqqmfjtce/hashtree-ts"}
           target={isFilesApp ? undefined : "_blank"}
           rel={isFilesApp ? undefined : "noopener noreferrer"}
           class="btn-ghost w-full flex items-center justify-center gap-2 no-underline"
@@ -907,7 +907,7 @@
           <span class="text-text-3 text-xs no-underline">(TypeScript library & this app)</span>
         </a>
         <a
-          href={isFilesApp ? "#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/repos/hashtree-rs" : "https://files.iris.to/#/npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk/repos/hashtree-rs"}
+          href={isFilesApp ? "#/npub1xndmdgymsf4a34rzr7346vp8qcptxf75pjqweh8naa8rklgxpfqqmfjtce/hashtree-rs" : "https://files.iris.to/#/npub1xndmdgymsf4a34rzr7346vp8qcptxf75pjqweh8naa8rklgxpfqqmfjtce/hashtree-rs"}
           target={isFilesApp ? undefined : "_blank"}
           rel={isFilesApp ? undefined : "noopener noreferrer"}
           class="btn-ghost w-full flex items-center justify-center gap-2 no-underline"
