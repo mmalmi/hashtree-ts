@@ -73,7 +73,7 @@ export function createGitLogStore(dirCid: CID | null, depth = 20): Readable<{
   loading: boolean;
   error: string | null;
 }> {
-  const { subscribe, set, update } = writable<{
+  const { subscribe, set } = writable<{
     commits: CommitInfo[];
     headOid: string | null;
     loading: boolean;
@@ -88,23 +88,12 @@ export function createGitLogStore(dirCid: CID | null, depth = 20): Readable<{
   if (!dirCid) {
     set({ commits: [], headOid: null, loading: false, error: null });
   } else {
-    // First, quickly get just 1 commit for the header row
+    // Fetch commits and HEAD in parallel - parallel batch fetching is fast enough
     Promise.all([
-      getLog(dirCid, { depth: 1 }),
+      getLog(dirCid, { depth }),
       getHead(dirCid),
-    ]).then(([firstCommit, headOid]) => {
-      // Show first commit immediately
-      update(state => ({ ...state, commits: firstCommit, headOid, loading: depth > 1 }));
-
-      // Then load more commits in background if needed
-      if (depth > 1) {
-        getLog(dirCid, { depth }).then(allCommits => {
-          update(state => ({ ...state, commits: allCommits, loading: false }));
-        }).catch(() => {
-          // Keep first commit even if full load fails
-          update(state => ({ ...state, loading: false }));
-        });
-      }
+    ]).then(([commits, headOid]) => {
+      set({ commits, headOid, loading: false, error: null });
     }).catch((err) => {
       set({
         commits: [],
