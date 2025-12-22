@@ -227,11 +227,14 @@ export async function commit(
 
 /**
  * Get diff between two commits
- * Note: Full diff implementation requires tree walking - not yet implemented
+ * Native implementation - reads git objects directly from hashtree
  */
-export async function getDiff(_rootCid: CID, _commitHash1: string, _commitHash2?: string): Promise<string> {
-  // TODO: Implement with wasm-git diff command
-  return '';
+export async function getDiff(rootCid: CID, fromCommit: string, toCommit: string): Promise<{
+  entries: Array<{ path: string; status: 'added' | 'deleted' | 'modified'; oldHash?: string; newHash?: string }>;
+}> {
+  const { getDiffNative } = await import('./wasmGit');
+  const entries = await getDiffNative(rootCid, fromCommit, toCommit);
+  return { entries };
 }
 
 /**
@@ -258,15 +261,15 @@ export async function isGitRepo(rootCid: CID): Promise<boolean> {
 
 /**
  * Get file content at a specific commit
- * Note: Requires tree walking from commit to find blob - not yet implemented
+ * Native implementation - reads git objects directly from hashtree
  */
 export async function getFileAtCommit(
-  _rootCid: CID,
-  _filepath: string,
-  _commitHash: string
+  rootCid: CID,
+  filepath: string,
+  commitHash: string
 ): Promise<Uint8Array | null> {
-  // TODO: Implement with wasm-git checkout and read
-  return null;
+  const { getFileAtCommitNative } = await import('./wasmGit');
+  return getFileAtCommitNative(rootCid, commitHash, filepath);
 }
 
 /**
@@ -327,10 +330,10 @@ export async function getFileLastCommits(
     return result;
   }
 
-  // Fetch uncached files from wasm-git
+  // Fetch uncached files using native implementation (no wasm needed)
   try {
-    const { getFileLastCommitsWithWasmGit } = await import('./wasmGit');
-    const freshData = await getFileLastCommitsWithWasmGit(rootCid, uncachedFiles, subpath);
+    const { getFileLastCommitsNative } = await import('./wasmGit');
+    const freshData = await getFileLastCommitsNative(rootCid, uncachedFiles, subpath);
 
     // Initialize cache map if needed
     if (!cachedData) {

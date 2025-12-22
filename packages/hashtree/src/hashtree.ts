@@ -272,6 +272,58 @@ export class HashTree {
   }
 
   /**
+   * Walk entire tree and return all entries as an array
+   * More convenient than the async generator for most use cases
+   * @param id - Root CID of the tree
+   * @param options.includeData - If true, include file data in results
+   * @param options.filesOnly - If true, only return files (not directories)
+   */
+  async walkTree(
+    id: CID,
+    options?: { includeData?: boolean; filesOnly?: boolean }
+  ): Promise<Array<{ path: string; cid: CID; type: LinkType; size: number; data?: Uint8Array }>> {
+    const results: Array<{ path: string; cid: CID; type: LinkType; size: number; data?: Uint8Array }> = [];
+
+    const walkRecursive = async (currentCid: CID, currentPath: string): Promise<void> => {
+      const isDir = await this.isDirectory(currentCid);
+
+      if (isDir) {
+        if (!options?.filesOnly) {
+          const entries = await this.listDirectory(currentCid);
+          const dirSize = entries.reduce((sum, e) => sum + e.size, 0);
+          results.push({ path: currentPath, cid: currentCid, type: LinkType.Dir, size: dirSize });
+        }
+
+        const entries = await this.listDirectory(currentCid);
+        for (const entry of entries) {
+          const childPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+          await walkRecursive(entry.cid, childPath);
+        }
+      } else {
+        // File or blob
+        const type = await this.getType(currentCid);
+        const size = await this.getSize(currentCid.hash);
+        const result: { path: string; cid: CID; type: LinkType; size: number; data?: Uint8Array } = {
+          path: currentPath,
+          cid: currentCid,
+          type,
+          size,
+        };
+
+        if (options?.includeData) {
+          const data = await this.readFile(currentCid);
+          if (data) result.data = data;
+        }
+
+        results.push(result);
+      }
+    };
+
+    await walkRecursive(id, '');
+    return results;
+  }
+
+  /**
    * Iterate over all raw blocks in a merkle tree
    * Yields each block's hash and data, traversing encrypted nodes correctly
    * Useful for syncing to remote stores (e.g., Blossom push)

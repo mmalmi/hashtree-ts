@@ -4,8 +4,15 @@
  */
 
 // Re-export all public APIs
-export { getHeadWithWasmGit, getLogWithWasmGit, getFileLastCommitsWithWasmGit } from './log';
-export type { CommitInfo } from './log';
+export {
+  getHeadWithWasmGit,
+  getLogWithWasmGit,
+  getFileLastCommitsWithWasmGit,
+  getFileLastCommitsNative,
+  getDiffNative,
+  getFileAtCommitNative,
+} from './log';
+export type { CommitInfo, DiffEntry } from './log';
 
 export { getBranchesWithWasmGit, createBranchWithWasmGit } from './branch';
 

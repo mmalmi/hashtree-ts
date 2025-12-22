@@ -653,3 +653,297 @@ export async function getFileLastCommitsWithWasmGit(
     }
   });
 }
+
+/**
+ * Parse a git tree object
+ * Returns array of { mode, name, hash } entries
+ */
+function parseGitTree(content: Uint8Array): Array<{ mode: string; name: string; hash: string }> {
+  const entries: Array<{ mode: string; name: string; hash: string }> = [];
+  let pos = 0;
+
+  while (pos < content.length) {
+    // Find space (separates mode from name)
+    let spacePos = pos;
+    while (spacePos < content.length && content[spacePos] !== 0x20) spacePos++;
+    const mode = new TextDecoder().decode(content.slice(pos, spacePos));
+
+    // Find null (separates name from hash)
+    let nullPos = spacePos + 1;
+    while (nullPos < content.length && content[nullPos] !== 0) nullPos++;
+    const name = new TextDecoder().decode(content.slice(spacePos + 1, nullPos));
+
+    // Hash is 20 bytes after null
+    const hashBytes = content.slice(nullPos + 1, nullPos + 21);
+    const hash = Array.from(hashBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    entries.push({ mode, name, hash });
+    pos = nullPos + 21;
+  }
+
+  return entries;
+}
+
+/**
+ * Get tree entries for a git tree object
+ */
+async function getGitTreeEntries(
+  tree: ReturnType<typeof getTree>,
+  gitDirCid: CID,
+  treeSha: string
+): Promise<Map<string, { hash: string; mode: string }>> {
+  const result = new Map<string, { hash: string; mode: string }>();
+
+  const walkGitTree = async (sha: string, prefix: string): Promise<void> => {
+    const obj = await readGitObject(tree, gitDirCid, sha);
+    if (!obj || obj.type !== 'tree') return;
+
+    const entries = parseGitTree(obj.content);
+    for (const entry of entries) {
+      const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+
+      // Mode 40000 = directory, 100644/100755 = file, 120000 = symlink, 160000 = submodule
+      if (entry.mode === '40000') {
+        await walkGitTree(entry.hash, path);
+      } else {
+        result.set(path, { hash: entry.hash, mode: entry.mode });
+      }
+    }
+  };
+
+  await walkGitTree(treeSha, '');
+  return result;
+}
+
+/**
+ * Get last commit info for each file by tracing through commit history
+ * Native implementation - no wasm-git needed
+ */
+export async function getFileLastCommitsNative(
+  rootCid: CID,
+  filenames: string[],
+  subpath?: string
+): Promise<Map<string, { oid: string; message: string; timestamp: number }>> {
+  const htree = getTree();
+  const result = new Map<string, { oid: string; message: string; timestamp: number }>();
+
+  if (filenames.length === 0) return result;
+
+  // Check for .git directory
+  const gitDirResult = await htree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+    return result;
+  }
+
+  try {
+    // Build full paths to search for
+    const targetPaths = new Set(
+      filenames
+        .filter(f => f !== '.git')
+        .map(f => subpath ? `${subpath}/${f}` : f)
+    );
+
+    // Get commit history
+    const headSha = await getHeadWithWasmGit(rootCid);
+    if (!headSha) return result;
+
+    // Walk through commits until we've found all files
+    const visited = new Set<string>();
+    const queue = [headSha];
+    let prevTree: Map<string, { hash: string; mode: string }> | null = null;
+    const foundFiles = new Set<string>();
+
+    while (queue.length > 0 && foundFiles.size < targetPaths.size) {
+      const sha = queue.shift()!;
+      if (visited.has(sha)) continue;
+      visited.add(sha);
+
+      const obj = await readGitObject(htree, gitDirResult.cid, sha);
+      if (!obj || obj.type !== 'commit') continue;
+
+      const commit = parseCommit(obj.content);
+      if (!commit) continue;
+
+      // Get tree for this commit
+      const currentTree = await getGitTreeEntries(htree, gitDirResult.cid, commit.tree);
+
+      // Compare with previous tree to find changed files
+      if (prevTree) {
+        for (const targetPath of targetPaths) {
+          if (foundFiles.has(targetPath)) continue;
+
+          const currentFile = currentTree.get(targetPath);
+          const prevFile = prevTree.get(targetPath);
+
+          // File was added or modified in this commit
+          if (currentFile && (!prevFile || currentFile.hash !== prevFile.hash)) {
+            const filename = subpath
+              ? targetPath.slice(subpath.length + 1)
+              : targetPath;
+            result.set(filename, {
+              oid: sha,
+              message: commit.message,
+              timestamp: commit.timestamp,
+            });
+            foundFiles.add(targetPath);
+          }
+        }
+      } else {
+        // First commit - mark all existing files as touched
+        for (const targetPath of targetPaths) {
+          if (currentTree.has(targetPath)) {
+            const filename = subpath
+              ? targetPath.slice(subpath.length + 1)
+              : targetPath;
+            result.set(filename, {
+              oid: sha,
+              message: commit.message,
+              timestamp: commit.timestamp,
+            });
+            foundFiles.add(targetPath);
+          }
+        }
+      }
+
+      prevTree = currentTree;
+
+      // Add parents to queue
+      for (const parent of commit.parents) {
+        if (!visited.has(parent)) {
+          queue.push(parent);
+        }
+      }
+    }
+
+    return result;
+  } catch (err) {
+    console.error('[git] getFileLastCommitsNative failed:', err);
+    return result;
+  }
+}
+
+export interface DiffEntry {
+  path: string;
+  status: 'added' | 'deleted' | 'modified';
+  oldHash?: string;
+  newHash?: string;
+}
+
+/**
+ * Get diff between two commits
+ * Native implementation - no wasm-git needed
+ */
+export async function getDiffNative(
+  rootCid: CID,
+  fromCommit: string,
+  toCommit: string
+): Promise<DiffEntry[]> {
+  const htree = getTree();
+  const result: DiffEntry[] = [];
+
+  // Check for .git directory
+  const gitDirResult = await htree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+    return result;
+  }
+
+  try {
+    // Get tree for "from" commit
+    const fromObj = await readGitObject(htree, gitDirResult.cid, fromCommit);
+    if (!fromObj || fromObj.type !== 'commit') return result;
+    const fromParsed = parseCommit(fromObj.content);
+    if (!fromParsed) return result;
+
+    // Get tree for "to" commit
+    const toObj = await readGitObject(htree, gitDirResult.cid, toCommit);
+    if (!toObj || toObj.type !== 'commit') return result;
+    const toParsed = parseCommit(toObj.content);
+    if (!toParsed) return result;
+
+    // Get all files in both trees
+    const fromTree = await getGitTreeEntries(htree, gitDirResult.cid, fromParsed.tree);
+    const toTree = await getGitTreeEntries(htree, gitDirResult.cid, toParsed.tree);
+
+    // Find deleted files (in from but not in to)
+    for (const [path, file] of fromTree) {
+      if (!toTree.has(path)) {
+        result.push({ path, status: 'deleted', oldHash: file.hash });
+      }
+    }
+
+    // Find added and modified files
+    for (const [path, file] of toTree) {
+      const fromFile = fromTree.get(path);
+      if (!fromFile) {
+        result.push({ path, status: 'added', newHash: file.hash });
+      } else if (fromFile.hash !== file.hash) {
+        result.push({ path, status: 'modified', oldHash: fromFile.hash, newHash: file.hash });
+      }
+    }
+
+    // Sort by path for consistent output
+    result.sort((a, b) => a.path.localeCompare(b.path));
+
+    return result;
+  } catch (err) {
+    console.error('[git] getDiffNative failed:', err);
+    return result;
+  }
+}
+
+/**
+ * Get file content at a specific commit
+ * Native implementation - no wasm-git needed
+ */
+export async function getFileAtCommitNative(
+  rootCid: CID,
+  commitSha: string,
+  filePath: string
+): Promise<Uint8Array | null> {
+  const htree = getTree();
+
+  // Check for .git directory
+  const gitDirResult = await htree.resolvePath(rootCid, '.git');
+  if (!gitDirResult || gitDirResult.type !== LinkType.Dir) {
+    return null;
+  }
+
+  try {
+    // Get commit
+    const commitObj = await readGitObject(htree, gitDirResult.cid, commitSha);
+    if (!commitObj || commitObj.type !== 'commit') return null;
+
+    const commit = parseCommit(commitObj.content);
+    if (!commit) return null;
+
+    // Walk tree to find file
+    const parts = filePath.split('/').filter(p => p);
+    let currentTreeSha = commit.tree;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const treeObj = await readGitObject(htree, gitDirResult.cid, currentTreeSha);
+      if (!treeObj || treeObj.type !== 'tree') return null;
+
+      const entries = parseGitTree(treeObj.content);
+      const entry = entries.find(e => e.name === part);
+      if (!entry) return null;
+
+      if (i === parts.length - 1) {
+        // Last part - should be a blob
+        const blobObj = await readGitObject(htree, gitDirResult.cid, entry.hash);
+        if (!blobObj || blobObj.type !== 'blob') return null;
+        return blobObj.content;
+      } else {
+        // Not last part - should be a tree
+        if (entry.mode !== '40000') return null;
+        currentTreeSha = entry.hash;
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.error('[git] getFileAtCommitNative failed:', err);
+    return null;
+  }
+}
