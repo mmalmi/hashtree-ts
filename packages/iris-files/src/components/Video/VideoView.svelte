@@ -19,7 +19,9 @@
   import { Truncate } from '../ui';
   import VisibilityIcon from '../VisibilityIcon.svelte';
   import VideoComments from './VideoComments.svelte';
+  import PlaylistSidebar from './PlaylistSidebar.svelte';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
+  import { currentPlaylist, loadPlaylistFromVideo, playNext, autoPlayEnabled } from '../../stores/playlist';
   import type { CID, LinkType } from 'hashtree';
   import { toHex, nhashEncode } from 'hashtree';
   import { getNpubFileUrl, getNhashFileUrl } from '../../lib/mediaUrl';
@@ -36,15 +38,43 @@
   let userLiked = $state(false);
   let liking = $state(false);
 
+  // Playlist state
+  let showPlaylistSidebar = $state(true);
+  let playlist = $derived($currentPlaylist);
+  let autoPlay = $derived($autoPlayEnabled);
+
   interface Props {
     npub?: string;
-    videoName?: string;
+    videoName?: string;  // Legacy prop
+    wild?: string;       // Wildcard capture from router (e.g., "Channel/videoId")
   }
 
-  let { npub, videoName }: Props = $props();
+  let { npub, videoName, wild }: Props = $props();
 
-  // Full tree name is videos/{videoName}
-  let treeName = $derived(videoName ? `videos/${videoName}` : undefined);
+  // 'wild' contains the full path after /videos/ (can include slashes)
+  // For single videos: "VideoTitle" → treeName = "videos/VideoTitle"
+  // For playlist videos: "ChannelName/videoId" → treeName = "videos/ChannelName", videoId = "videoId"
+  let videoPath = $derived(wild || videoName || '');
+  let pathParts = $derived(videoPath.split('/'));
+  let isPlaylistVideo = $derived(pathParts.length > 1);
+
+  // For playlists, the tree is the channel (parent), not the full path
+  let channelName = $derived(isPlaylistVideo ? pathParts.slice(0, -1).join('/') : null);
+  let currentVideoId = $derived(isPlaylistVideo ? pathParts[pathParts.length - 1] : null);
+
+  // The actual tree name to resolve
+  // - Single video: videos/VideoTitle
+  // - Playlist video: videos/ChannelName (the video is a subdirectory within)
+  let treeName = $derived.by(() => {
+    if (!videoPath) return undefined;
+    if (isPlaylistVideo && channelName) {
+      return `videos/${channelName}`;
+    }
+    return `videos/${videoPath}`;
+  });
+
+  // For playlist sidebar loading
+  let parentTreeName = $derived(isPlaylistVideo ? treeName : null);
 
   let videoSrc = $state<string>('');  // SW URL (not blob!)
   let videoFileName = $state<string>('');  // For MIME type detection
@@ -58,13 +88,13 @@
   let videoVisibility = $state<TreeVisibility>('public');
   let videoRef: HTMLVideoElement | undefined = $state();
 
-  // Video path for position tracking
-  let videoPath = $derived(npub && treeName ? `/${npub}/${treeName}` : null);
+  // Full video path for position tracking (includes npub)
+  let videoFullPath = $derived(npub && treeName ? `/${npub}/${treeName}` : null);
 
   // Restore position when video loads
   function handleLoadedMetadata() {
-    if (!videoRef || !videoPath) return;
-    const savedPosition = getVideoPosition(videoPath);
+    if (!videoRef || !videoFullPath) return;
+    const savedPosition = getVideoPosition(videoFullPath);
     if (savedPosition > 0 && videoRef.duration > savedPosition) {
       videoRef.currentTime = savedPosition;
       console.log('[VideoView] Restored position:', savedPosition);
@@ -73,14 +103,23 @@
 
   // Save position on timeupdate
   function handleTimeUpdate() {
-    if (!videoRef || !videoPath) return;
-    updateVideoPosition(videoPath, videoRef.currentTime);
+    if (!videoRef || !videoFullPath) return;
+    updateVideoPosition(videoFullPath, videoRef.currentTime);
   }
 
-  // Clear position when video ends
+  // Clear position when video ends and auto-play next
   function handleEnded() {
-    if (videoPath) {
-      clearVideoPosition(videoPath);
+    if (videoFullPath) {
+      clearVideoPosition(videoFullPath);
+    }
+
+    // Auto-play next video if enabled and we're in a playlist
+    if (autoPlay && playlist && playlist.items.length > 1) {
+      const nextUrl = playNext();
+      if (nextUrl) {
+        console.log('[VideoView] Auto-playing next video');
+        window.location.hash = nextUrl;
+      }
     }
   }
 
@@ -94,8 +133,8 @@
     return null;
   });
 
-  // Video title from title.txt or video name
-  let title = $derived(videoTitle || videoName || 'Video');
+  // Video title from title.txt or video path (last segment for playlists)
+  let title = $derived(videoTitle || currentVideoId || videoPath || 'Video');
 
   // Current user
   let currentUserNpub = $derived($nostrStore.npub);
@@ -137,10 +176,18 @@
     return unsub;
   });
 
-  // Load video when rootCid changes
+  // Load video when rootCid or videoPath changes
+  // For playlist videos, rootCid is the same but videoPath changes
   $effect(() => {
     const cid = rootCid;
+    const path = videoPath; // Subscribe to videoPath changes
     if (cid) {
+      // Reset state for new video
+      videoSrc = '';
+      videoTitle = '';
+      videoDescription = '';
+      loading = true;
+      error = null;
       untrack(() => loadVideo(cid));
     }
   });
@@ -179,15 +226,38 @@
 
     const tree = getTree();
 
+    // For playlist videos, we need to first navigate to the video subdirectory
+    let videoDirCid = rootCidParam;
+    let videoPathPrefix = '';
+
+    if (isPlaylistVideo && currentVideoId) {
+      // Navigate to the video subdirectory within the playlist
+      try {
+        const videoDir = await tree.resolvePath(rootCidParam, currentVideoId);
+        if (videoDir) {
+          videoDirCid = videoDir.cid;
+          videoPathPrefix = `${currentVideoId}/`;
+        } else {
+          error = `Video "${currentVideoId}" not found in playlist`;
+          loading = false;
+          return;
+        }
+      } catch (e) {
+        error = `Failed to load video: ${e}`;
+        loading = false;
+        return;
+      }
+    }
+
     // Try common video filenames immediately (don't wait for directory listing)
     const commonNames = ['video.webm', 'video.mp4', 'video.mov'];
     for (const name of commonNames) {
       try {
-        const result = await tree.resolvePath(rootCidParam, name);
+        const result = await tree.resolvePath(videoDirCid, name);
         if (result) {
           videoCid = result.cid;
           videoFileName = name;
-          videoSrc = getNpubFileUrl(npub, treeName, name);
+          videoSrc = getNpubFileUrl(npub, treeName, videoPathPrefix + name);
           loading = false;
           break;
         }
@@ -197,7 +267,7 @@
     // If common names didn't work, list directory to find video
     if (!videoSrc) {
       try {
-        const dir = await tree.listDirectory(rootCidParam);
+        const dir = await tree.listDirectory(videoDirCid);
         const videoEntry = dir?.find(e =>
           e.name.startsWith('video.') ||
           e.name.endsWith('.webm') ||
@@ -206,12 +276,43 @@
         );
 
         if (videoEntry) {
-          const videoResult = await tree.resolvePath(rootCidParam, videoEntry.name);
+          const videoResult = await tree.resolvePath(videoDirCid, videoEntry.name);
           if (videoResult) {
             videoCid = videoResult.cid;
             videoFileName = videoEntry.name;
-            videoSrc = getNpubFileUrl(npub, treeName, videoEntry.name);
+            videoSrc = getNpubFileUrl(npub, treeName, videoPathPrefix + videoEntry.name);
             loading = false;
+          }
+        }
+      } catch {}
+    }
+
+    // If still no video and NOT a playlist video, check if this is a playlist directory root
+    if (!videoSrc && !isPlaylistVideo) {
+      try {
+        const dir = await tree.listDirectory(rootCidParam);
+        if (dir && dir.length > 0) {
+          // Check first entry to see if it's a directory with a video
+          for (const entry of dir) {
+            try {
+              const subDir = await tree.listDirectory(entry.cid);
+              const hasVideo = subDir?.some(e =>
+                e.name.startsWith('video.') ||
+                e.name.endsWith('.webm') ||
+                e.name.endsWith('.mp4') ||
+                e.name.endsWith('.mkv')
+              );
+              if (hasVideo) {
+                // This is a playlist! Navigate to the first video
+                const firstVideoId = entry.name;
+                const playlistUrl = `#/${npub}/${encodeURIComponent(treeName)}/${encodeURIComponent(firstVideoId)}`;
+                console.log('[VideoView] Detected playlist, navigating to first video:', playlistUrl);
+                window.location.hash = playlistUrl;
+                return;
+              }
+            } catch {
+              // Not a directory, continue
+            }
           }
         }
       } catch {}
@@ -224,18 +325,41 @@
     }
 
     // Load metadata in background (don't block video playback)
-    loadMetadata(rootCidParam, tree);
+    // For playlist videos, load from the video subdirectory
+    loadMetadata(videoDirCid, tree);
 
-    // Add to recents
+    // Add to recents - use full path for playlist videos
     if (npub && treeName) {
+      const recentPath = isPlaylistVideo && currentVideoId
+        ? `/${npub}/${treeName}/${currentVideoId}`
+        : `/${npub}/${treeName}`;
       addRecent({
         type: 'tree',
-        path: `/${npub}/${treeName}`,
-        label: videoTitle || videoName || 'Video',
+        path: recentPath,
+        label: videoTitle || currentVideoId || videoPath || 'Video',
         npub,
-        treeName,
+        treeName: isPlaylistVideo ? `${treeName}/${currentVideoId}` : treeName,
         visibility: videoVisibility,
       });
+    }
+
+    // Load playlist if this is a playlist video
+    if (isPlaylistVideo && treeName && npub) {
+      loadPlaylistForVideo();
+    }
+  }
+
+  /** Load playlist from parent directory */
+  async function loadPlaylistForVideo() {
+    if (!treeName || !npub || !currentVideoId) return;
+
+    console.log('[VideoView] Loading playlist for video:', currentVideoId, 'from', treeName);
+
+    // Load the playlist using the playlist tree (same as treeName for playlist videos)
+    const result = await loadPlaylistFromVideo(npub, treeName, currentVideoId);
+
+    if (result) {
+      console.log('[VideoView] Loaded playlist with', result.items.length, 'videos');
     }
   }
 
@@ -459,9 +583,11 @@
   }
 </script>
 
-<div class="flex-1 overflow-auto">
-  <!-- Video Player - full width, sensible height like YouTube -->
-  <div class="w-full max-w-full bg-black overflow-hidden mx-auto" style="height: min(calc(100vh - 48px - 80px), 90vh); aspect-ratio: 16/9;">
+<div class="flex flex-1 overflow-hidden">
+  <!-- Main content area -->
+  <div class="flex-1 overflow-auto">
+    <!-- Video Player - full width, sensible height like YouTube -->
+    <div class="w-full max-w-full bg-black overflow-hidden mx-auto" style="height: min(calc(100vh - 48px - 80px), 90vh); aspect-ratio: 16/9;">
     {#if loading && showLoading}
       <div class="w-full h-full flex items-center justify-center text-white text-sm">
         Loading video...
@@ -601,11 +727,26 @@
       {/if}
     </div>
 
+    <!-- Mobile Playlist (horizontal scroll) -->
+    {#if playlist && playlist.items.length > 1}
+      <div class="lg:hidden mt-4">
+        <PlaylistSidebar mobile={true} />
+      </div>
+    {/if}
+
     <!-- Comments -->
     {#if npub && treeName}
-      {#key `${npub}/${treeName}`}
+      {#key `${npub}/${treeName}/${currentVideoId || ''}`}
         <VideoComments {npub} {treeName} nhash={videoNhash} filename={videoFileName} />
       {/key}
     {/if}
   </div>
+  </div>
+
+  <!-- Desktop Playlist Sidebar -->
+  {#if playlist && showPlaylistSidebar && playlist.items.length > 1}
+    <div class="w-80 shrink-0 border-l border-surface-3 hidden lg:block">
+      <PlaylistSidebar onClose={() => showPlaylistSidebar = false} />
+    </div>
+  {/if}
 </div>

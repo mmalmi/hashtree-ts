@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * VideoProfileView - User's video channel page
-   * Shows user info and their videos
+   * Shows user info and their videos (including playlists)
    */
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../../nostr';
@@ -11,9 +11,26 @@
   import { openShareModal } from '../../stores/modals';
   import { Avatar, Name } from '../User';
   import VideoCard from './VideoCard.svelte';
+  import PlaylistCard from './PlaylistCard.svelte';
   import ProxyImg from '../ProxyImg.svelte';
   import type { VideoItem } from './types';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
+  import { getTree } from '../../store';
+  import { getLocalRootCache, getLocalRootKey } from '../../treeRootCache';
+  import { getRefResolver } from '../../refResolver';
+  import type { CID } from 'hashtree';
+
+  interface PlaylistInfo {
+    key: string;
+    title: string;
+    treeName: string;
+    ownerNpub: string | undefined;
+    ownerPubkey: string | null;
+    visibility: string | undefined;
+    href: string;
+    videoCount: number;
+    isPlaylist: true;
+  }
 
   /** Encode tree name for use in URL path */
   function encodeTreeNameForUrl(treeName: string): string {
@@ -65,10 +82,76 @@
     return unsub;
   });
 
-  // Filter to videos only
+  // Filter to videos only (initial list before playlist detection)
+  let videoTrees = $derived(trees.filter(t => t.name.startsWith('videos/')));
+
+  // Track which trees are playlists (detected asynchronously)
+  let playlistInfo = $state<Map<string, { videoCount: number }>>(new Map());
+
+  // Detect playlists when trees change
+  $effect(() => {
+    if (!npub) return;
+    // Subscribe to videoTrees changes
+    const currentVideoTrees = videoTrees;
+    if (currentVideoTrees.length === 0) return;
+    detectPlaylists(currentVideoTrees);
+  });
+
+  async function detectPlaylists(treesToCheck: typeof videoTrees) {
+    const tree = getTree();
+    const newPlaylistInfo = new Map<string, { videoCount: number }>();
+
+    for (const t of treesToCheck) {
+      try {
+        // Try to resolve the tree root
+        let rootCid: CID | null = null;
+
+        const localHash = getLocalRootCache(npub!, t.name);
+        if (localHash) {
+          const localKey = getLocalRootKey(npub!, t.name);
+          rootCid = { hash: localHash, key: localKey };
+        } else {
+          const resolver = getRefResolver();
+          rootCid = await resolver.resolve(npub!, t.name);
+        }
+
+        if (!rootCid) continue;
+
+        // List directory contents
+        const entries = await tree.listDirectory(rootCid);
+        if (!entries || entries.length === 0) continue;
+
+        // Check if first entry is a directory with video files (playlist)
+        let videoCount = 0;
+        for (const entry of entries) {
+          try {
+            const subEntries = await tree.listDirectory(entry.cid);
+            const hasVideo = subEntries?.some(e =>
+              e.name.startsWith('video.') ||
+              e.name.endsWith('.mp4') ||
+              e.name.endsWith('.webm')
+            );
+            if (hasVideo) videoCount++;
+          } catch {
+            // Not a directory
+          }
+        }
+
+        if (videoCount >= 2) {
+          newPlaylistInfo.set(t.name, { videoCount });
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+
+    playlistInfo = newPlaylistInfo;
+  }
+
+  // Combined list of videos and playlists
   let videos = $derived(
-    trees
-      .filter(t => t.name.startsWith('videos/'))
+    videoTrees
+      .filter(t => !playlistInfo.has(t.name)) // Exclude playlists
       .map(t => ({
         key: `/${npub}/${t.name}`,
         title: t.name.slice(7),
@@ -77,7 +160,24 @@
         treeName: t.name,
         visibility: t.visibility,
         href: `#/${npub}/${encodeTreeNameForUrl(t.name)}${t.linkKey ? `?k=${t.linkKey}` : ''}`,
+        isPlaylist: false,
       } as VideoItem))
+  );
+
+  let playlists = $derived(
+    videoTrees
+      .filter(t => playlistInfo.has(t.name))
+      .map(t => ({
+        key: `/${npub}/${t.name}`,
+        title: t.name.slice(7),
+        ownerPubkey: ownerPubkey,
+        ownerNpub: npub,
+        treeName: t.name,
+        visibility: t.visibility,
+        href: `#/${npub}/${encodeTreeNameForUrl(t.name)}`,
+        videoCount: playlistInfo.get(t.name)?.videoCount || 0,
+        isPlaylist: true,
+      } as PlaylistInfo))
   );
 
   // Following state
@@ -171,7 +271,7 @@
           <p class="text-text-3 text-sm mt-1 line-clamp-2">{profile.about}</p>
         {/if}
         <div class="flex items-center gap-4 mt-1 text-sm text-text-3">
-          <span><span class="font-bold text-text-2">{videos.length}</span> video{videos.length !== 1 ? 's' : ''}</span>
+          <span><span class="font-bold text-text-2">{videos.length + playlists.length}</span> video{videos.length + playlists.length !== 1 ? 's' : ''}{playlists.length > 0 ? ` (${playlists.length} playlist${playlists.length !== 1 ? 's' : ''})` : ''}</span>
           <a href={`#/${npub}/follows`} class="text-text-3 hover:text-text-1 no-underline">
             <span class="font-bold text-text-2">{profileFollows.length}</span> Following
           </a>
@@ -203,9 +303,29 @@
       </div>
     </div>
 
+    <!-- Playlists section -->
+    {#if playlists.length > 0}
+      <div class="mb-8">
+        <h2 class="text-lg font-semibold text-text-1 mb-4">Playlists</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {#each playlists as playlist (playlist.href)}
+            <PlaylistCard
+              href={playlist.href}
+              title={playlist.title}
+              videoCount={playlist.videoCount}
+              ownerPubkey={playlist.ownerPubkey}
+              ownerNpub={playlist.ownerNpub}
+              treeName={playlist.treeName}
+              visibility={playlist.visibility}
+            />
+          {/each}
+        </div>
+      </div>
+    {/if}
+
     <!-- Videos grid -->
     <div class="pb-8">
-      {#if videos.length === 0}
+      {#if videos.length === 0 && playlists.length === 0}
         <div class="text-center py-12 text-text-3">
           {#if isOwnProfile}
             <p>You haven't uploaded any videos yet.</p>
@@ -216,7 +336,10 @@
             <p>No videos yet.</p>
           {/if}
         </div>
-      {:else}
+      {:else if videos.length > 0}
+        {#if playlists.length > 0}
+          <h2 class="text-lg font-semibold text-text-1 mb-4">Videos</h2>
+        {/if}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {#each videos as video (video.href)}
             <VideoCard

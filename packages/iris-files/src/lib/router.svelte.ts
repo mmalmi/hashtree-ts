@@ -104,8 +104,8 @@ export function matchRoute(pattern: string, path: string): RouteMatch {
             return { matched: false, params: {} };
           }
         }
-        // Capture the rest as 'wild' param
-        params['wild'] = pathParts.slice(patternParts.length - 1).join('/');
+        // Capture the rest as 'wild' param (decode each part)
+        params['wild'] = pathParts.slice(patternParts.length - 1).map(decodeURIComponent).join('/');
         return { matched: true, params };
       }
     }
@@ -115,8 +115,8 @@ export function matchRoute(pattern: string, path: string): RouteMatch {
   const params: RouteParams = {};
   for (let i = 0; i < patternParts.length; i++) {
     if (patternParts[i] === '*') {
-      // Wildcard captures remaining path
-      params['wild'] = pathParts.slice(i).join('/');
+      // Wildcard captures remaining path (decode each part)
+      params['wild'] = pathParts.slice(i).map(decodeURIComponent).join('/');
       return { matched: true, params };
     } else if (patternParts[i].startsWith(':')) {
       params[patternParts[i].slice(1)] = decodeURIComponent(pathParts[i]);

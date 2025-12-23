@@ -33,7 +33,9 @@
     { pattern: '/:npub/profile', component: VideoProfileView },
     { pattern: '/:npub/follows', component: FollowsPage },
     { pattern: '/:npub/followers', component: FollowersPage },
-    { pattern: '/:npub/videos/:videoName', component: VideoView },
+    // Note: videoName can contain slashes for playlist paths like "Channel/videoId"
+    // Uses wildcard * to capture the rest of the path as 'wild' param
+    { pattern: '/:npub/videos/*', component: VideoView },
     { pattern: '/:npub', component: VideoProfileView },
   ];
 

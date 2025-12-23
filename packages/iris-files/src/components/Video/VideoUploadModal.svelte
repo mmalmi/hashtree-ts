@@ -1,15 +1,19 @@
 <script lang="ts">
   /**
    * VideoUploadModal - Upload video files with metadata
-   * Transcodes non-webm/mp4 files to WebM using FFmpeg WASM (lazy-loaded)
+   * Supports single video upload and batch upload from yt-dlp directories
    */
-    import { modalsStore, closeVideoUploadModal } from '../../stores/modals';
+  import { modalsStore, closeVideoUploadModal } from '../../stores/modals';
   import { nostrStore, saveHashtree } from '../../nostr';
-  import { toHex, videoChunker } from 'hashtree';
+  import { toHex, videoChunker, cid } from 'hashtree';
   import { getTree } from '../../store';
   import { addRecent } from '../../stores/recents';
   import { storeLinkKey } from '../../stores/trees';
   import { needsTranscoding, transcodeToMP4Streaming, isTranscodingSupported, canTranscode, type TranscodeProgress } from '../../utils/videoTranscode';
+  import { detectYtDlpDirectory, type YtDlpVideo } from '../../utils/ytdlp';
+  import VisibilitySelector from './VisibilitySelector.svelte';
+  import UploadProgress from './UploadProgress.svelte';
+  import BatchVideoList from './BatchVideoList.svelte';
 
   let showModal = $derived($modalsStore.showVideoUploadModal);
 
@@ -28,7 +32,12 @@
   });
   let userNpub = $derived($nostrStore.npub);
 
+  // Mode: 'single' for one video, 'batch' for yt-dlp directory
+  let mode = $state<'select' | 'single' | 'batch'>('select');
+
+  // Single video state
   let fileInput: HTMLInputElement | undefined = $state();
+  let folderInput: HTMLInputElement | undefined = $state();
   let selectedFile = $state<File | null>(null);
   let title = $state('');
   let description = $state('');
@@ -43,11 +52,49 @@
   let visibility = $state<'public' | 'unlisted' | 'private'>('public');
   let abortController = $state<AbortController | null>(null);
 
+  // Batch upload state
+  let batchVideos = $state<YtDlpVideo[]>([]);
+  let selectedVideoIds = $state<Set<string>>(new Set());
+  let channelName = $state<string>('');
+  let batchCurrentIndex = $state(0);
+  let batchTotalSize = $state(0);
+
+  // Derived: selected videos for upload
+  let selectedVideos = $derived(batchVideos.filter(v => selectedVideoIds.has(v.id)));
+  let selectedSize = $derived(selectedVideos.reduce((sum, v) => {
+    return sum + (v.videoFile?.size || 0) + (v.infoJson?.size || 0) + (v.thumbnail?.size || 0);
+  }, 0));
+  let allSelected = $derived(batchVideos.length > 0 && selectedVideoIds.size === batchVideos.length);
+
+  function toggleVideo(id: string) {
+    selectedVideoIds = new Set(selectedVideoIds);
+    if (selectedVideoIds.has(id)) {
+      selectedVideoIds.delete(id);
+    } else {
+      selectedVideoIds.add(id);
+    }
+  }
+
+  function selectAll() {
+    selectedVideoIds = new Set(batchVideos.map(v => v.id));
+  }
+
+  function deselectAll() {
+    selectedVideoIds = new Set();
+  }
+
+  // Drag state
+  let isDragging = $state(false);
+
   function handleFileSelect(e: Event) {
     const input = e.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
+    setupSingleVideo(file);
+  }
 
+  function setupSingleVideo(file: File) {
+    mode = 'single';
     selectedFile = file;
     willTranscode = needsTranscoding(file);
     transcodeSupported = isTranscodingSupported();
@@ -67,6 +114,112 @@
 
     // Generate thumbnail from video
     generateThumbnail(file);
+  }
+
+  async function handleFolderSelect(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const files = input.files;
+    if (!files || files.length === 0) return;
+    await processFiles(Array.from(files));
+  }
+
+  async function processFiles(files: File[]) {
+    // Check if it's a yt-dlp directory
+    const result = detectYtDlpDirectory(files);
+
+    if (result.isYtDlpDirectory && result.videos.length > 0) {
+      // Batch mode
+      mode = 'batch';
+      batchVideos = result.videos;
+      // Select all by default
+      selectedVideoIds = new Set(result.videos.map(v => v.id));
+      channelName = result.channelName || '';
+
+      // Calculate total size
+      let totalSize = 0;
+      for (const video of result.videos) {
+        if (video.videoFile) totalSize += video.videoFile.size;
+        if (video.infoJson) totalSize += video.infoJson.size;
+        if (video.thumbnail) totalSize += video.thumbnail.size;
+      }
+      batchTotalSize = totalSize;
+
+      // If no channel name, try to extract from first video's uploader
+      if (!channelName && result.videos[0]?.infoJson) {
+        try {
+          const text = await result.videos[0].infoJson.text();
+          const data = JSON.parse(text);
+          channelName = data.channel || data.uploader || '';
+        } catch {}
+      }
+    } else if (files.length === 1 && files[0].type.startsWith('video/')) {
+      // Single video file
+      setupSingleVideo(files[0]);
+    } else {
+      // Find first video file
+      const videoFile = files.find(f => f.type.startsWith('video/'));
+      if (videoFile) {
+        setupSingleVideo(videoFile);
+      }
+    }
+  }
+
+  // Drag and drop handlers
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    isDragging = true;
+  }
+
+  function handleDragLeave(e: DragEvent) {
+    e.preventDefault();
+    isDragging = false;
+  }
+
+  async function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    isDragging = false;
+
+    if (uploading) return;
+
+    const items = e.dataTransfer?.items;
+    if (!items) return;
+
+    const files: File[] = [];
+
+    // Handle directory drops
+    const entries: FileSystemEntry[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const entry = items[i].webkitGetAsEntry();
+      if (entry) entries.push(entry);
+    }
+
+    // Process entries recursively
+    for (const entry of entries) {
+      await collectFiles(entry, files);
+    }
+
+    if (files.length > 0) {
+      await processFiles(files);
+    }
+  }
+
+  async function collectFiles(entry: FileSystemEntry, files: File[]): Promise<void> {
+    if (entry.isFile) {
+      const fileEntry = entry as FileSystemFileEntry;
+      const file = await new Promise<File>((resolve, reject) => {
+        fileEntry.file(resolve, reject);
+      });
+      files.push(file);
+    } else if (entry.isDirectory) {
+      const dirEntry = entry as FileSystemDirectoryEntry;
+      const reader = dirEntry.createReader();
+      const entries = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+        reader.readEntries(resolve, reject);
+      });
+      for (const childEntry of entries) {
+        await collectFiles(childEntry, files);
+      }
+    }
   }
 
   async function generateThumbnail(file: File) {
@@ -131,6 +284,14 @@
   }
 
   async function handleUpload() {
+    if (mode === 'batch') {
+      await handleBatchUpload();
+    } else {
+      await handleSingleUpload();
+    }
+  }
+
+  async function handleSingleUpload() {
     if (!selectedFile || !title.trim() || !userNpub) return;
 
     uploading = true;
@@ -288,6 +449,155 @@
     }
   }
 
+  async function handleBatchUpload() {
+    if (selectedVideos.length === 0 || !channelName.trim() || !userNpub) return;
+
+    uploading = true;
+    progress = 0;
+    progressMessage = 'Preparing batch upload...';
+    abortController = new AbortController();
+
+    try {
+      const tree = getTree();
+      const treeName = `videos/${channelName.trim()}`;
+      const isPublic = visibility === 'public';
+
+      // We'll build up entries for the root directory (one per video)
+      const rootEntries: Array<{ name: string; cid: any; size: number }> = [];
+
+      for (let i = 0; i < selectedVideos.length; i++) {
+        if (abortController.signal.aborted) throw new Error('Cancelled');
+
+        const video = selectedVideos[i];
+        batchCurrentIndex = i;
+        const videoProgress = (i / selectedVideos.length) * 100;
+        progress = Math.round(videoProgress);
+        progressMessage = `Uploading ${i + 1}/${selectedVideos.length}: ${video.title}`;
+
+        const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
+
+        // Upload video file
+        if (video.videoFile) {
+          const streamWriter = tree.createStream({ public: isPublic, chunker: videoChunker() });
+          const chunkSize = 1024 * 1024;
+          const file = video.videoFile;
+
+          for (let offset = 0; offset < file.size; offset += chunkSize) {
+            if (abortController.signal.aborted) throw new Error('Cancelled');
+
+            const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
+            const data = new Uint8Array(await chunk.arrayBuffer());
+            await streamWriter.append(data);
+
+            // Update progress within this video
+            const fileProgress = offset / file.size;
+            const overallProgress = ((i + fileProgress * 0.8) / selectedVideos.length) * 100;
+            progress = Math.round(overallProgress);
+          }
+
+          const result = await streamWriter.finalize();
+          const ext = file.name.split('.').pop()?.toLowerCase() || 'mp4';
+          videoEntries.push({
+            name: `video.${ext}`,
+            cid: cid(result.hash, result.key),
+            size: result.size,
+          });
+        }
+
+        // Upload info.json and extract description
+        if (video.infoJson) {
+          const data = new Uint8Array(await video.infoJson.arrayBuffer());
+          const result = await tree.putFile(data, { public: isPublic });
+          videoEntries.push({ name: 'info.json', cid: result.cid, size: result.size });
+
+          // Extract description from info.json and save as description.txt
+          try {
+            const jsonText = await video.infoJson.text();
+            const infoData = JSON.parse(jsonText);
+            if (infoData.description && infoData.description.trim()) {
+              const descData = new TextEncoder().encode(infoData.description.trim());
+              const descResult = await tree.putFile(descData, { public: isPublic });
+              videoEntries.push({ name: 'description.txt', cid: descResult.cid, size: descResult.size });
+            }
+            // Also extract title.txt from info.json if available
+            if (infoData.title && infoData.title.trim()) {
+              const titleData = new TextEncoder().encode(infoData.title.trim());
+              const titleResult = await tree.putFile(titleData, { public: isPublic });
+              videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
+            }
+          } catch {
+            // Ignore JSON parse errors
+          }
+        }
+
+        // Upload thumbnail
+        if (video.thumbnail) {
+          const data = new Uint8Array(await video.thumbnail.arrayBuffer());
+          const result = await tree.putFile(data, { public: isPublic });
+          const ext = video.thumbnail.name.split('.').pop()?.toLowerCase() || 'jpg';
+          videoEntries.push({ name: `thumbnail.${ext}`, cid: result.cid, size: result.size });
+        }
+
+        // Create video directory
+        const videoDirResult = await tree.putDirectory(videoEntries, { public: isPublic });
+
+        // Add to root entries using video ID as folder name
+        rootEntries.push({
+          name: video.id,
+          cid: videoDirResult.cid,
+          size: videoEntries.reduce((sum, e) => sum + (e.size || 0), 0),
+        });
+      }
+
+      progress = 95;
+      progressMessage = 'Creating channel...';
+
+      // Create root directory with all video subdirectories
+      const rootDirResult = await tree.putDirectory(rootEntries, { public: isPublic });
+
+      // Publish to Nostr
+      progressMessage = 'Publishing...';
+      const rootHash = toHex(rootDirResult.cid.hash);
+      const rootKey = rootDirResult.cid.key ? toHex(rootDirResult.cid.key) : undefined;
+
+      const result = await saveHashtree(treeName, rootHash, rootKey, { visibility });
+      progress = 100;
+
+      // Store link key for unlisted
+      if (result.linkKey && userNpub) {
+        storeLinkKey(userNpub, treeName, result.linkKey);
+      }
+
+      // Add to recents
+      addRecent({
+        type: 'tree',
+        path: `/${userNpub}/${treeName}`,
+        label: channelName.trim(),
+        npub: userNpub,
+        treeName,
+        visibility,
+        linkKey: result.linkKey,
+      });
+
+      // Navigate to the channel
+      uploading = false;
+      progressMessage = '';
+      const encodedTreeName = encodeURIComponent(treeName);
+      const url = result.linkKey ? `#/${userNpub}/${encodedTreeName}?k=${result.linkKey}` : `#/${userNpub}/${encodedTreeName}`;
+      window.location.hash = url;
+      handleClose();
+    } catch (e) {
+      console.error('Batch upload failed:', e);
+      const message = e instanceof Error ? e.message : 'Unknown error';
+      if (message !== 'Cancelled') {
+        alert('Failed to upload videos: ' + message);
+      }
+      uploading = false;
+      progressMessage = '';
+      abortController = null;
+    }
+  }
+
   function handleCancel() {
     if (abortController) {
       abortController.abort();
@@ -301,6 +611,8 @@
     if (uploading) {
       handleCancel();
     }
+    // Reset all state
+    mode = 'select';
     selectedFile = null;
     title = '';
     description = '';
@@ -309,6 +621,11 @@
     willTranscode = false;
     visibility = 'public';
     abortController = null;
+    batchVideos = [];
+    selectedVideoIds = new Set();
+    channelName = '';
+    batchCurrentIndex = 0;
+    batchTotalSize = 0;
     if (thumbnailUrl) {
       URL.revokeObjectURL(thumbnailUrl);
       thumbnailUrl = null;
@@ -321,6 +638,21 @@
     if (e.target === e.currentTarget) {
       handleClose();
     }
+  }
+
+  function handleBack() {
+    mode = 'select';
+    selectedFile = null;
+    title = '';
+    description = '';
+    batchVideos = [];
+    selectedVideoIds = new Set();
+    channelName = '';
+    if (thumbnailUrl) {
+      URL.revokeObjectURL(thumbnailUrl);
+      thumbnailUrl = null;
+    }
+    thumbnailBlob = null;
   }
 
   function formatSize(bytes: number): string {
@@ -340,7 +672,20 @@
     <div class="bg-surface-1 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-auto">
       <!-- Header -->
       <div class="flex items-center justify-between p-4 border-b border-surface-3">
-        <h2 class="text-lg font-semibold text-text-1">Upload Video</h2>
+        <div class="flex items-center gap-2">
+          {#if mode !== 'select' && !uploading}
+            <button onclick={handleBack} class="btn-ghost p-1">
+              <span class="i-lucide-arrow-left text-lg"></span>
+            </button>
+          {/if}
+          <h2 class="text-lg font-semibold text-text-1">
+            {#if mode === 'batch'}
+              Upload {batchVideos.length} Videos
+            {:else}
+              Upload Video
+            {/if}
+          </h2>
+        </div>
         <button onclick={handleClose} class="btn-ghost p-1" disabled={uploading}>
           <span class="i-lucide-x text-xl"></span>
         </button>
@@ -348,126 +693,149 @@
 
       <!-- Content -->
       <div class="p-4 space-y-4">
-        <!-- File selection / preview area -->
-        <div
-          class="aspect-video bg-surface-2 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer hover:bg-surface-3 transition-colors {uploading ? 'pointer-events-none' : ''}"
-          onclick={() => !uploading && fileInput?.click()}
-        >
-          {#if thumbnailUrl}
-            <img src={thumbnailUrl} alt="Thumbnail" class="w-full h-full object-cover" />
-          {:else}
-            <div class="text-center">
+        {#if mode === 'select'}
+          <!-- Selection mode: file or folder -->
+          <div
+            class="aspect-video bg-surface-2 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer hover:bg-surface-3 transition-colors border-2 border-dashed {isDragging ? 'border-accent bg-accent/10' : 'border-surface-3'}"
+            onclick={() => fileInput?.click()}
+            ondragover={handleDragOver}
+            ondragleave={handleDragLeave}
+            ondrop={handleDrop}
+          >
+            <div class="text-center p-4">
               <span class="i-lucide-upload text-4xl text-accent mb-2 block"></span>
               <p class="text-text-2">Click to select a video file</p>
-              <p class="text-text-3 text-sm mt-1">MP4, WebM, MOV, AVI, MKV supported</p>
+              <p class="text-text-3 text-sm mt-1">or drag & drop files/folders here</p>
+              <button
+                type="button"
+                class="btn-ghost text-accent text-sm mt-3"
+                onclick={(e) => { e.stopPropagation(); folderInput?.click(); }}
+              >
+                <span class="i-lucide-folder-open mr-1"></span>
+                Select folder
+              </button>
+            </div>
+          </div>
+          <input
+            bind:this={fileInput}
+            type="file"
+            accept="video/*"
+            class="hidden"
+            onchange={handleFileSelect}
+          />
+          <input
+            bind:this={folderInput}
+            type="file"
+            webkitdirectory
+            class="hidden"
+            onchange={handleFolderSelect}
+          />
+
+        {:else if mode === 'single'}
+          <!-- Single video mode -->
+          <div
+            class="aspect-video bg-surface-2 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer hover:bg-surface-3 transition-colors {uploading ? 'pointer-events-none' : ''}"
+            onclick={() => !uploading && fileInput?.click()}
+          >
+            {#if thumbnailUrl}
+              <img src={thumbnailUrl} alt="Thumbnail" class="w-full h-full object-cover" />
+            {:else}
+              <div class="text-center">
+                <span class="i-lucide-video text-4xl text-text-3 mb-2 block"></span>
+                <p class="text-text-3">Generating thumbnail...</p>
+              </div>
+            {/if}
+          </div>
+
+          <!-- File info -->
+          {#if selectedFile}
+            <div class="text-sm text-text-3 flex flex-col gap-1">
+              <span>{selectedFile.name} ({formatSize(selectedFile.size)})</span>
+              {#if willTranscode}
+                {#if transcodeSupported && !transcodeError}
+                  <span class="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded w-fit">Will convert to WebM</span>
+                {:else}
+                  <span class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded w-fit">
+                    {transcodeError || 'Cannot convert: SharedArrayBuffer not available. Use Chrome/Edge or upload MP4/WebM.'}
+                  </span>
+                {/if}
+              {/if}
             </div>
           {/if}
-        </div>
-        <input
-          bind:this={fileInput}
-          type="file"
-          accept="video/*"
-          class="hidden"
-          onchange={handleFileSelect}
-        />
 
-        <!-- File info (if selected) -->
-        {#if selectedFile}
-          <div class="text-sm text-text-3 flex flex-col gap-1">
-            <span>{selectedFile.name} ({formatSize(selectedFile.size)})</span>
-            {#if willTranscode}
-              {#if transcodeSupported && !transcodeError}
-                <span class="text-xs bg-accent/20 text-accent px-2 py-0.5 rounded w-fit">Will convert to WebM</span>
-              {:else}
-                <span class="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded w-fit">
-                  {transcodeError || 'Cannot convert: SharedArrayBuffer not available. Use Chrome/Edge or upload MP4/WebM.'}
-                </span>
-              {/if}
-            {/if}
+          <!-- Title -->
+          <div>
+            <label class="block text-sm text-text-2 mb-1">Title</label>
+            <input
+              type="text"
+              bind:value={title}
+              class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 focus:border-accent focus:outline-none"
+              placeholder="Video title"
+              disabled={uploading}
+            />
+          </div>
+
+          <!-- Description -->
+          <div>
+            <label class="block text-sm text-text-2 mb-1">Description (optional)</label>
+            <textarea
+              bind:value={description}
+              class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 resize-none focus:border-accent focus:outline-none"
+              placeholder="Video description..."
+              rows="2"
+              disabled={uploading}
+            ></textarea>
+          </div>
+
+        {:else if mode === 'batch'}
+          <!-- Batch mode: yt-dlp directory -->
+          <div class="bg-surface-2 rounded-lg p-4">
+            <div class="flex items-center gap-3 mb-3">
+              <span class="i-lucide-folder-video text-2xl text-accent"></span>
+              <div>
+                <p class="text-text-1 font-medium">yt-dlp Backup Detected</p>
+                <p class="text-text-3 text-sm">{batchVideos.length} videos, {formatSize(batchTotalSize)} total</p>
+              </div>
+            </div>
+
+            <!-- Channel name input -->
+            <div class="mb-3">
+              <label class="block text-sm text-text-2 mb-1">Channel Name</label>
+              <input
+                type="text"
+                bind:value={channelName}
+                class="w-full bg-surface-0 border border-surface-3 rounded-lg p-2 text-text-1 focus:border-accent focus:outline-none"
+                placeholder="Channel name"
+                disabled={uploading}
+              />
+            </div>
+
+            <BatchVideoList
+              videos={batchVideos}
+              selectedIds={selectedVideoIds}
+              currentUploadingId={uploading ? selectedVideos[batchCurrentIndex]?.id : null}
+              disabled={uploading}
+              onToggle={toggleVideo}
+              onSelectAll={selectAll}
+              onDeselectAll={deselectAll}
+              {formatSize}
+            />
           </div>
         {/if}
 
-        <!-- Title -->
-        <div>
-          <label class="block text-sm text-text-2 mb-1">Title</label>
-          <input
-            type="text"
-            bind:value={title}
-            class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 focus:border-accent focus:outline-none"
-            placeholder="Video title"
+        <!-- Visibility (shown for single and batch) -->
+        {#if mode !== 'select'}
+          <VisibilitySelector
+            value={visibility}
+            onchange={(v) => visibility = v}
             disabled={uploading}
+            mode={mode}
           />
-        </div>
-
-        <!-- Description -->
-        <div>
-          <label class="block text-sm text-text-2 mb-1">Description (optional)</label>
-          <textarea
-            bind:value={description}
-            class="w-full bg-surface-0 border border-surface-3 rounded-lg p-3 text-text-1 resize-none focus:border-accent focus:outline-none"
-            placeholder="Video description..."
-            rows="2"
-            disabled={uploading}
-          ></textarea>
-        </div>
-
-        <!-- Visibility -->
-        <div>
-          <label class="block text-sm text-text-2 mb-2">Visibility</label>
-          <div class="flex gap-2">
-            <button
-              type="button"
-              onclick={() => visibility = 'public'}
-              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'public' ? 'ring-2 ring-accent bg-surface-3' : ''}"
-              disabled={uploading}
-            >
-              <span class="i-lucide-globe"></span>
-              <span class="text-sm">Public</span>
-            </button>
-            <button
-              type="button"
-              onclick={() => visibility = 'unlisted'}
-              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'unlisted' ? 'ring-2 ring-accent bg-surface-3' : ''}"
-              disabled={uploading}
-            >
-              <span class="i-lucide-link"></span>
-              <span class="text-sm">Unlisted</span>
-            </button>
-            <button
-              type="button"
-              onclick={() => visibility = 'private'}
-              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'private' ? 'ring-2 ring-accent bg-surface-3' : ''}"
-              disabled={uploading}
-            >
-              <span class="i-lucide-lock"></span>
-              <span class="text-sm">Private</span>
-            </button>
-          </div>
-          <p class="text-xs text-text-3 mt-2">
-            {#if visibility === 'public'}
-              Anyone can find and watch this video
-            {:else if visibility === 'unlisted'}
-              Only people with the link can watch
-            {:else}
-              Encrypted, only you can watch
-            {/if}
-          </p>
-        </div>
+        {/if}
 
         <!-- Progress bar -->
         {#if uploading}
-          <div class="space-y-2">
-            <div class="flex justify-between text-sm text-text-3">
-              <span>{progressMessage || 'Processing...'}</span>
-              <span>{progress}%</span>
-            </div>
-            <div class="h-2 bg-surface-2 rounded-full overflow-hidden">
-              <div
-                class="h-full bg-accent transition-all duration-300"
-                style="width: {progress}%"
-              ></div>
-            </div>
-          </div>
+          <UploadProgress {progress} message={progressMessage} />
         {/if}
       </div>
 
@@ -476,13 +844,25 @@
         <button onclick={uploading ? handleCancel : handleClose} class="btn-ghost px-4 py-2">
           {uploading ? 'Cancel' : 'Close'}
         </button>
-        <button
-          onclick={handleUpload}
-          class="btn-primary px-4 py-2"
-          disabled={!selectedFile || !title.trim() || uploading || (willTranscode && (!transcodeSupported || !!transcodeError))}
-        >
-          {uploading ? 'Processing...' : 'Upload'}
-        </button>
+        {#if mode !== 'select'}
+          <button
+            onclick={handleUpload}
+            class="btn-primary px-4 py-2"
+            disabled={
+              uploading ||
+              (mode === 'single' && (!selectedFile || !title.trim() || (willTranscode && (!transcodeSupported || !!transcodeError)))) ||
+              (mode === 'batch' && (!channelName.trim() || selectedVideos.length === 0))
+            }
+          >
+            {#if uploading}
+              Processing...
+            {:else if mode === 'batch'}
+              Upload {selectedVideos.length} Video{selectedVideos.length !== 1 ? 's' : ''}
+            {:else}
+              Upload
+            {/if}
+          </button>
+        {/if}
       </div>
     </div>
   </div>

@@ -1,0 +1,178 @@
+<script lang="ts">
+  /**
+   * PlaylistSidebar - Shows playlist items with thumbnails
+   * Desktop: sidebar on the right
+   * Mobile: horizontal scroll below video
+   */
+  import { currentPlaylist, playAt, autoPlayEnabled, formatDuration } from '../../stores/playlist';
+
+  interface Props {
+    onClose?: () => void;
+    mobile?: boolean;
+  }
+
+  let { onClose, mobile = false }: Props = $props();
+
+  let playlist = $derived($currentPlaylist);
+  let autoPlay = $derived($autoPlayEnabled);
+
+  function handleVideoClick(index: number) {
+    const url = playAt(index);
+    if (url) {
+      window.location.hash = url;
+    }
+  }
+
+  function toggleAutoPlay() {
+    autoPlayEnabled.update(v => !v);
+  }
+</script>
+
+{#if playlist && playlist.items.length > 0}
+  {#if mobile}
+    <!-- Mobile: Horizontal scroll below video -->
+    <div class="bg-surface-1 rounded-lg overflow-hidden">
+      <!-- Header -->
+      <div class="p-2 flex items-center justify-between">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="i-lucide-list-video text-accent shrink-0"></span>
+          <span class="font-medium text-text-1 truncate text-sm">{playlist.name}</span>
+          <span class="text-xs text-text-3 shrink-0">({playlist.currentIndex + 1}/{playlist.items.length})</span>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-xs text-text-3">Auto</span>
+          <button
+            onclick={toggleAutoPlay}
+            class="w-8 h-4 rounded-full transition-colors {autoPlay ? 'bg-accent' : 'bg-surface-3'}"
+          >
+            <span
+              class="block w-3 h-3 rounded-full bg-white shadow transition-transform {autoPlay ? 'translate-x-4' : 'translate-x-0.5'}"
+            ></span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Horizontal scroll list -->
+      <div class="flex gap-2 overflow-x-auto pb-2 px-2 scrollbar-hide">
+        {#each playlist.items as item, i}
+          {@const isCurrent = i === playlist.currentIndex}
+          <button
+            onclick={() => handleVideoClick(i)}
+            class="shrink-0 w-32 text-left rounded overflow-hidden {isCurrent ? 'ring-2 ring-accent' : ''}"
+          >
+            <!-- Thumbnail -->
+            <div class="w-32 h-18 bg-surface-3 relative">
+              {#if item.thumbnailUrl}
+                <img
+                  src={item.thumbnailUrl}
+                  alt=""
+                  class="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              {:else}
+                <div class="w-full h-full flex items-center justify-center">
+                  <span class="i-lucide-video text-text-3"></span>
+                </div>
+              {/if}
+              {#if isCurrent}
+                <div class="absolute inset-0 bg-black/40 flex items-center justify-center">
+                  <span class="i-lucide-play-circle text-2xl text-white"></span>
+                </div>
+              {/if}
+              {#if item.duration}
+                <span class="absolute bottom-1 right-1 text-xs bg-black/80 text-white px-1 rounded">
+                  {formatDuration(item.duration)}
+                </span>
+              {/if}
+            </div>
+            <!-- Title -->
+            <p class="text-xs text-text-1 line-clamp-2 p-1 {isCurrent ? 'text-accent' : ''}">{item.title}</p>
+          </button>
+        {/each}
+      </div>
+    </div>
+  {:else}
+    <!-- Desktop: Vertical sidebar -->
+    <div class="bg-surface-1 rounded-lg overflow-hidden flex flex-col h-full">
+      <!-- Header -->
+      <div class="p-3 border-b border-surface-3 flex items-center justify-between">
+        <div class="min-w-0">
+          <h3 class="font-medium text-text-1 truncate">{playlist.name}</h3>
+          <p class="text-xs text-text-3">{playlist.items.length} videos</p>
+        </div>
+        {#if onClose}
+          <button onclick={onClose} class="btn-ghost p-1 shrink-0">
+            <span class="i-lucide-x text-lg"></span>
+          </button>
+        {/if}
+      </div>
+
+      <!-- Auto-play toggle -->
+      <div class="px-3 py-2 border-b border-surface-3 flex items-center justify-between">
+        <span class="text-sm text-text-2">Auto-play</span>
+        <button
+          onclick={toggleAutoPlay}
+          class="w-10 h-5 rounded-full transition-colors {autoPlay ? 'bg-accent' : 'bg-surface-3'}"
+        >
+          <span
+            class="block w-4 h-4 rounded-full bg-white shadow transition-transform {autoPlay ? 'translate-x-5' : 'translate-x-0.5'}"
+          ></span>
+        </button>
+      </div>
+
+      <!-- Video list -->
+      <div class="flex-1 overflow-auto">
+        {#each playlist.items as item, i}
+          {@const isCurrent = i === playlist.currentIndex}
+          <button
+            onclick={() => handleVideoClick(i)}
+            class="w-full flex gap-2 p-2 text-left hover:bg-surface-2 transition-colors {isCurrent ? 'bg-surface-2' : ''}"
+          >
+            <!-- Index or playing indicator -->
+            <div class="w-6 shrink-0 flex items-center justify-center text-xs text-text-3">
+              {#if isCurrent}
+                <span class="i-lucide-play text-accent"></span>
+              {:else}
+                {i + 1}
+              {/if}
+            </div>
+
+            <!-- Thumbnail -->
+            <div class="w-24 h-14 shrink-0 bg-surface-3 rounded overflow-hidden">
+              {#if item.thumbnailUrl}
+                <img
+                  src={item.thumbnailUrl}
+                  alt=""
+                  class="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              {:else}
+                <div class="w-full h-full flex items-center justify-center">
+                  <span class="i-lucide-video text-text-3"></span>
+                </div>
+              {/if}
+            </div>
+
+            <!-- Info -->
+            <div class="flex-1 min-w-0">
+              <p class="text-sm text-text-1 line-clamp-2 {isCurrent ? 'text-accent' : ''}">{item.title}</p>
+              {#if item.duration}
+                <p class="text-xs text-text-3 mt-0.5">{formatDuration(item.duration)}</p>
+              {/if}
+            </div>
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
+{/if}
+
+<style>
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+</style>
