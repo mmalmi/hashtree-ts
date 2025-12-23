@@ -120,7 +120,7 @@
       <div class="p-3 border-b border-surface-3 flex items-center justify-between">
         <div class="min-w-0">
           <h3 class="font-medium text-text-1 truncate">{playlist.name}</h3>
-          <p class="text-xs text-text-3">{playlist.items.length} videos</p>
+          <p class="text-xs text-text-3">{playlist.currentIndex + 1}/{playlist.items.length}</p>
         </div>
         {#if onClose}
           <button onclick={onClose} class="btn-ghost p-1 shrink-0">
