@@ -32,6 +32,9 @@ export default defineConfig({
     'i-lucide-globe',
     'i-lucide-link',
     'i-lucide-lock',
+    // Peer blocking icons
+    'i-lucide-ban',
+    'i-lucide-check',
   ],
   presets: [
     presetUno(),
