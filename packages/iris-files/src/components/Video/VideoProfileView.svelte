@@ -29,6 +29,7 @@
     visibility: string | undefined;
     href: string;
     videoCount: number;
+    thumbnailUrl?: string;
     isPlaylist: true;
   }
 
@@ -86,7 +87,7 @@
   let videoTrees = $derived(trees.filter(t => t.name.startsWith('videos/')));
 
   // Track which trees are playlists (detected asynchronously)
-  let playlistInfo = $state<Map<string, { videoCount: number }>>(new Map());
+  let playlistInfo = $state<Map<string, { videoCount: number; thumbnailUrl?: string }>>(new Map());
 
   // Detect playlists when trees change
   $effect(() => {
@@ -99,7 +100,7 @@
 
   async function detectPlaylists(treesToCheck: typeof videoTrees) {
     const tree = getTree();
-    const newPlaylistInfo = new Map<string, { videoCount: number }>();
+    const newPlaylistInfo = new Map<string, { videoCount: number; thumbnailUrl?: string }>();
 
     for (const t of treesToCheck) {
       try {
@@ -121,8 +122,10 @@
         const entries = await tree.listDirectory(rootCid);
         if (!entries || entries.length === 0) continue;
 
-        // Check if first entry is a directory with video files (playlist)
+        // Check if entries are directories with video files (playlist)
         let videoCount = 0;
+        let firstThumbnailUrl: string | undefined;
+
         for (const entry of entries) {
           try {
             const subEntries = await tree.listDirectory(entry.cid);
@@ -131,14 +134,28 @@
               e.name.endsWith('.mp4') ||
               e.name.endsWith('.webm')
             );
-            if (hasVideo) videoCount++;
+            if (hasVideo) {
+              videoCount++;
+              // Get thumbnail from first video
+              if (!firstThumbnailUrl) {
+                const thumbEntry = subEntries?.find(e =>
+                  e.name.startsWith('thumbnail.') ||
+                  e.name.endsWith('.jpg') ||
+                  e.name.endsWith('.webp') ||
+                  e.name.endsWith('.png')
+                );
+                if (thumbEntry) {
+                  firstThumbnailUrl = `/htree/${npub}/${encodeURIComponent(t.name)}/${encodeURIComponent(entry.name)}/${encodeURIComponent(thumbEntry.name)}`;
+                }
+              }
+            }
           } catch {
             // Not a directory
           }
         }
 
         if (videoCount >= 2) {
-          newPlaylistInfo.set(t.name, { videoCount });
+          newPlaylistInfo.set(t.name, { videoCount, thumbnailUrl: firstThumbnailUrl });
         }
       } catch (e) {
         // Ignore errors
@@ -167,17 +184,21 @@
   let playlists = $derived(
     videoTrees
       .filter(t => playlistInfo.has(t.name))
-      .map(t => ({
-        key: `/${npub}/${t.name}`,
-        title: t.name.slice(7),
-        ownerPubkey: ownerPubkey,
-        ownerNpub: npub,
-        treeName: t.name,
-        visibility: t.visibility,
-        href: `#/${npub}/${encodeTreeNameForUrl(t.name)}`,
-        videoCount: playlistInfo.get(t.name)?.videoCount || 0,
-        isPlaylist: true,
-      } as PlaylistInfo))
+      .map(t => {
+        const info = playlistInfo.get(t.name);
+        return {
+          key: `/${npub}/${t.name}`,
+          title: t.name.slice(7),
+          ownerPubkey: ownerPubkey,
+          ownerNpub: npub,
+          treeName: t.name,
+          visibility: t.visibility,
+          href: `#/${npub}/${encodeTreeNameForUrl(t.name)}`,
+          videoCount: info?.videoCount || 0,
+          thumbnailUrl: info?.thumbnailUrl,
+          isPlaylist: true,
+        } as PlaylistInfo;
+      })
   );
 
   // Following state
@@ -313,6 +334,7 @@
               href={playlist.href}
               title={playlist.title}
               videoCount={playlist.videoCount}
+              thumbnailUrl={playlist.thumbnailUrl}
               ownerPubkey={playlist.ownerPubkey}
               ownerNpub={playlist.ownerNpub}
               treeName={playlist.treeName}

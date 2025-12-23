@@ -2,15 +2,50 @@
   /**
    * Truncate - Show more/less for long text content
    * Truncates by line count or character count
+   * Automatically highlights URLs as clickable links
    */
   interface Props {
     text: string;
     maxLines?: number;
     maxChars?: number;
     class?: string;
+    highlightLinks?: boolean;
   }
 
-  let { text, maxLines = 3, maxChars = 300, class: className = '' }: Props = $props();
+  let { text, maxLines = 3, maxChars = 300, class: className = '', highlightLinks = true }: Props = $props();
+
+  // URL regex - matches http(s) URLs
+  const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g;
+
+  /** Convert URLs in text to clickable links */
+  function linkify(input: string): string {
+    if (!highlightLinks) return escapeHtml(input);
+
+    // Escape HTML first, then replace URLs
+    const escaped = escapeHtml(input);
+    return escaped.replace(URL_REGEX, (url) => {
+      // Clean up trailing punctuation that's likely not part of URL
+      let cleanUrl = url;
+      const trailingPunct = /[.,;:!?)]+$/;
+      const match = cleanUrl.match(trailingPunct);
+      let suffix = '';
+      if (match) {
+        suffix = match[0];
+        cleanUrl = cleanUrl.slice(0, -suffix.length);
+      }
+      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">${cleanUrl}</a>${suffix}`;
+    });
+  }
+
+  /** Escape HTML special characters */
+  function escapeHtml(input: string): string {
+    return input
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
 
   let expanded = $state(false);
 
@@ -53,7 +88,7 @@
       Show less
     </button>
   {/if}
-  <p class="whitespace-pre-wrap break-words">{displayText}{#if isTruncated}...{/if}</p>
+  <p class="whitespace-pre-wrap break-words">{@html linkify(displayText)}{#if isTruncated}...{/if}</p>
   {#if needsTruncation}
     <button
       onclick={() => expanded = !expanded}
