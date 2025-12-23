@@ -21,7 +21,7 @@
   import VideoComments from './VideoComments.svelte';
   import PlaylistSidebar from './PlaylistSidebar.svelte';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
-  import { currentPlaylist, loadPlaylistFromVideo, playNext, repeatMode, shuffleEnabled } from '../../stores/playlist';
+  import { currentPlaylist, loadPlaylist, playNext, repeatMode, shuffleEnabled } from '../../stores/playlist';
   import type { CID, LinkType } from 'hashtree';
   import { toHex, nhashEncode } from 'hashtree';
   import { getNpubFileUrl, getNhashFileUrl } from '../../lib/mediaUrl';
@@ -365,19 +365,19 @@
     }
 
     // Load playlist if this is a playlist video
-    if (isPlaylistVideo && treeName && npub) {
-      loadPlaylistForVideo();
+    if (isPlaylistVideo && treeName && npub && rootCidParam) {
+      loadPlaylistForVideo(rootCidParam);
     }
   }
 
   /** Load playlist from parent directory */
-  async function loadPlaylistForVideo() {
+  async function loadPlaylistForVideo(playlistRootCid: CID) {
     if (!treeName || !npub || !currentVideoId) return;
 
     console.log('[VideoView] Loading playlist for video:', currentVideoId, 'from', treeName);
 
-    // Load the playlist using the playlist tree (same as treeName for playlist videos)
-    const result = await loadPlaylistFromVideo(npub, treeName, currentVideoId);
+    // Load the playlist using the already-resolved root CID (don't resolve again)
+    const result = await loadPlaylist(npub, treeName, playlistRootCid, currentVideoId);
 
     if (result) {
       console.log('[VideoView] Loaded playlist with', result.items.length, 'videos');
