@@ -507,6 +507,183 @@ test.describe('yt-dlp Batch Upload', () => {
     expect(result.videoCount).toBe(0);
   });
 
+  test('playlist displays in Playlists section on profile page', async ({ page }) => {
+    test.slow();
+
+    await page.goto('/video.html#/');
+    await disableOthersPool(page);
+    await ensureLoggedIn(page);
+
+    // Wait for app to fully initialize
+    await page.waitForTimeout(1000);
+
+    // Create a playlist (channel with 2+ videos) and publish it
+    const result = await page.evaluate(async () => {
+      const { getTree } = await import('/src/store.ts');
+      const { nostrStore } = await import('/src/nostr.ts');
+      const { updateLocalRootCacheHex } = await import('/src/treeRootCache.ts');
+      const hashtree = await import('/node_modules/hashtree/dist/index.js');
+      const { toHex, videoChunker, cid } = hashtree;
+
+      const tree = getTree();
+      // Use Svelte 5 store subscription
+      let npub: string = '';
+      const unsub = nostrStore.subscribe((state: any) => { npub = state.npub; });
+      unsub();
+
+      // Create 2 videos for the playlist
+      const videos = [
+        { id: 'playlistVid1', title: 'Playlist Video 1' },
+        { id: 'playlistVid2', title: 'Playlist Video 2' },
+      ];
+
+      const rootEntries: Array<{ name: string; cid: any; size: number }> = [];
+
+      for (const video of videos) {
+        const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
+
+        // Create video file
+        const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
+        const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+        await streamWriter.append(videoData);
+        const videoResult = await streamWriter.finalize();
+        videoEntries.push({
+          name: 'video.mp4',
+          cid: cid(videoResult.hash, videoResult.key),
+          size: videoResult.size,
+        });
+
+        // Create video directory
+        const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+        rootEntries.push({
+          name: video.id,
+          cid: videoDirResult.cid,
+          size: videoEntries.reduce((sum, e) => sum + e.size, 0),
+        });
+      }
+
+      // Create root playlist directory
+      const rootDirResult = await tree.putDirectory(rootEntries, { public: true });
+
+      // Save to local cache (simulating publish)
+      const treeName = 'videos/E2E Test Playlist';
+      updateLocalRootCacheHex(npub, treeName, toHex(rootDirResult.cid.hash), undefined, 'public');
+
+      return { npub, treeName, rootHash: toHex(rootDirResult.cid.hash) };
+    });
+
+    // Navigate to profile page
+    await page.goto(`/video.html#/${result.npub}`);
+
+    // Wait for the profile to load and playlist detection to complete
+    await page.waitForTimeout(2000);
+
+    // Check for Playlists section
+    const playlistsHeading = page.locator('h2:has-text("Playlists")');
+    const isPlaylistsVisible = await playlistsHeading.isVisible().catch(() => false);
+
+    // Take screenshot for debugging
+    await page.screenshot({ path: 'e2e/screenshots/profile-playlist-test.png' });
+
+    // Check what's actually rendered
+    const pageContent = await page.evaluate(() => {
+      const headings = Array.from(document.querySelectorAll('h2')).map(h => h.textContent);
+      const playlistCards = document.querySelectorAll('[class*="PlaylistCard"]').length;
+      const videoCards = document.querySelectorAll('[class*="VideoCard"]').length;
+      return { headings, playlistCards, videoCards };
+    });
+
+    console.log('Profile page content:', pageContent);
+    console.log('Playlists heading visible:', isPlaylistsVisible);
+
+    // The playlist should be shown in the Playlists section
+    expect(isPlaylistsVisible).toBe(true);
+  });
+
+  test('playlist video shows playlist sidebar widget', async ({ page }) => {
+    test.slow();
+
+    await page.goto('/video.html#/');
+    await disableOthersPool(page);
+    await ensureLoggedIn(page);
+
+    // Wait for app to fully initialize
+    await page.waitForTimeout(1000);
+
+    // Create a playlist and navigate to a video in it
+    const result = await page.evaluate(async () => {
+      const { getTree } = await import('/src/store.ts');
+      const { nostrStore } = await import('/src/nostr.ts');
+      const { updateLocalRootCacheHex } = await import('/src/treeRootCache.ts');
+      const hashtree = await import('/node_modules/hashtree/dist/index.js');
+      const { toHex, videoChunker, cid } = hashtree;
+
+      const tree = getTree();
+      let npub: string = '';
+      const unsub = nostrStore.subscribe((state: any) => { npub = state.npub; });
+      unsub();
+
+      // Create 2 videos for the playlist
+      const videos = [
+        { id: 'widgetVid1', title: 'Widget Video 1' },
+        { id: 'widgetVid2', title: 'Widget Video 2' },
+      ];
+
+      const rootEntries: Array<{ name: string; cid: any; size: number }> = [];
+
+      for (const video of videos) {
+        const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
+
+        const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
+        const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+        await streamWriter.append(videoData);
+        const videoResult = await streamWriter.finalize();
+        videoEntries.push({
+          name: 'video.mp4',
+          cid: cid(videoResult.hash, videoResult.key),
+          size: videoResult.size,
+        });
+
+        const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+        rootEntries.push({
+          name: video.id,
+          cid: videoDirResult.cid,
+          size: videoEntries.reduce((sum, e) => sum + e.size, 0),
+        });
+      }
+
+      const rootDirResult = await tree.putDirectory(rootEntries, { public: true });
+      const treeName = 'videos/E2E Widget Playlist';
+      updateLocalRootCacheHex(npub, treeName, toHex(rootDirResult.cid.hash), undefined, 'public');
+
+      return { npub, treeName, firstVideoId: 'widgetVid1' };
+    });
+
+    // Navigate to the first video in the playlist
+    const videoUrl = `/video.html#/${result.npub}/${encodeURIComponent(result.treeName)}/${result.firstVideoId}`;
+    await page.goto(videoUrl);
+
+    // Wait for playlist sidebar to load
+    await page.waitForTimeout(3000);
+
+    // Take screenshot
+    await page.screenshot({ path: 'e2e/screenshots/playlist-widget-test.png' });
+
+    // Check for playlist sidebar by looking for playlist name header
+    const playlistHeader = page.locator('text=E2E Widget Playlist');
+    const isWidgetVisible = await playlistHeader.isVisible().catch(() => false);
+
+    // Alternative: check for "2 videos" text
+    const videoCountText = page.locator('text=2 videos');
+    const hasVideoCount = await videoCountText.isVisible().catch(() => false);
+
+    console.log('Playlist widget visible:', isWidgetVisible);
+    console.log('Video count visible:', hasVideoCount);
+
+    // Playlist sidebar should show
+    expect(isWidgetVisible || hasVideoCount).toBe(true);
+  });
+
   test('extracts video ID correctly from various filename formats', async ({ page }) => {
     await page.goto('/video.html#/');
 
