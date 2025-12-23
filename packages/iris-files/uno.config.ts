@@ -35,6 +35,10 @@ export default defineConfig({
     // Peer blocking icons
     'i-lucide-ban',
     'i-lucide-check',
+    // Playlist control icons
+    'i-lucide-shuffle',
+    'i-lucide-repeat',
+    'i-lucide-repeat-1',
   ],
   presets: [
     presetUno(),

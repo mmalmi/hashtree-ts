@@ -21,7 +21,7 @@
   import VideoComments from './VideoComments.svelte';
   import PlaylistSidebar from './PlaylistSidebar.svelte';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
-  import { currentPlaylist, loadPlaylistFromVideo, playNext, autoPlayEnabled } from '../../stores/playlist';
+  import { currentPlaylist, loadPlaylistFromVideo, playNext, repeatMode, shuffleEnabled } from '../../stores/playlist';
   import type { CID, LinkType } from 'hashtree';
   import { toHex, nhashEncode } from 'hashtree';
   import { getNpubFileUrl, getNhashFileUrl } from '../../lib/mediaUrl';
@@ -41,7 +41,8 @@
   // Playlist state
   let showPlaylistSidebar = $state(true);
   let playlist = $derived($currentPlaylist);
-  let autoPlay = $derived($autoPlayEnabled);
+  let repeat = $derived($repeatMode);
+  let shuffle = $derived($shuffleEnabled);
 
   interface Props {
     npub?: string;
@@ -107,15 +108,35 @@
     updateVideoPosition(videoFullPath, videoRef.currentTime);
   }
 
-  // Clear position when video ends and auto-play next
+  // Clear position when video ends and handle auto-play/repeat
   function handleEnded() {
     if (videoFullPath) {
       clearVideoPosition(videoFullPath);
     }
 
-    // Auto-play next video if enabled and we're in a playlist
-    if (autoPlay && playlist && playlist.items.length > 1) {
-      const nextUrl = playNext();
+    // Handle repeat mode
+    if (repeat === 'one') {
+      // Repeat current video
+      if (videoRef) {
+        videoRef.currentTime = 0;
+        videoRef.play();
+      }
+      return;
+    }
+
+    // Auto-play next video (always enabled for playlists, like YouTube)
+    if (playlist && playlist.items.length > 1) {
+      // Check if we're at the end and repeat is off
+      const isLastVideo = playlist.currentIndex === playlist.items.length - 1;
+      const shouldWrap = repeat === 'all' || shuffle;
+
+      if (isLastVideo && !shouldWrap && !shuffle) {
+        // End of playlist, repeat off, not shuffling - stop
+        console.log('[VideoView] End of playlist, stopping');
+        return;
+      }
+
+      const nextUrl = playNext({ wrap: shouldWrap });
       if (nextUrl) {
         console.log('[VideoView] Auto-playing next video');
         window.location.hash = nextUrl;

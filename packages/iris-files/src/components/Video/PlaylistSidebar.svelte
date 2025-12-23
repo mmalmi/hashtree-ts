@@ -4,7 +4,16 @@
    * Desktop: sidebar on the right
    * Mobile: horizontal scroll below video
    */
-  import { currentPlaylist, playAt, autoPlayEnabled, formatDuration } from '../../stores/playlist';
+  import {
+    currentPlaylist,
+    playAt,
+    formatDuration,
+    shuffleEnabled,
+    repeatMode,
+    toggleShuffle,
+    cycleRepeatMode,
+    type RepeatMode,
+  } from '../../stores/playlist';
 
   interface Props {
     onClose?: () => void;
@@ -14,7 +23,8 @@
   let { onClose, mobile = false }: Props = $props();
 
   let playlist = $derived($currentPlaylist);
-  let autoPlay = $derived($autoPlayEnabled);
+  let shuffle = $derived($shuffleEnabled);
+  let repeat = $derived($repeatMode);
 
   function handleVideoClick(index: number) {
     const url = playAt(index);
@@ -23,8 +33,15 @@
     }
   }
 
-  function toggleAutoPlay() {
-    autoPlayEnabled.update(v => !v);
+  function getRepeatIcon(mode: RepeatMode): string {
+    if (mode === 'one') return 'i-lucide-repeat-1';
+    return 'i-lucide-repeat';
+  }
+
+  function getRepeatTitle(mode: RepeatMode): string {
+    if (mode === 'none') return 'Repeat: Off';
+    if (mode === 'all') return 'Repeat: All';
+    return 'Repeat: One';
   }
 </script>
 
@@ -39,15 +56,20 @@
           <span class="font-medium text-text-1 truncate text-sm">{playlist.name}</span>
           <span class="text-xs text-text-3 shrink-0">({playlist.currentIndex + 1}/{playlist.items.length})</span>
         </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <span class="text-xs text-text-3">Auto</span>
+        <div class="flex items-center gap-1 shrink-0">
           <button
-            onclick={toggleAutoPlay}
-            class="w-8 h-4 rounded-full transition-colors {autoPlay ? 'bg-accent' : 'bg-surface-3'}"
+            onclick={toggleShuffle}
+            class="btn-ghost p-1.5 {shuffle ? 'text-accent' : 'text-text-3'}"
+            title={shuffle ? 'Shuffle: On' : 'Shuffle: Off'}
           >
-            <span
-              class="block w-3 h-3 rounded-full bg-white shadow transition-transform {autoPlay ? 'translate-x-4' : 'translate-x-0.5'}"
-            ></span>
+            <span class="i-lucide-shuffle text-sm"></span>
+          </button>
+          <button
+            onclick={cycleRepeatMode}
+            class="btn-ghost p-1.5 {repeat !== 'none' ? 'text-accent' : 'text-text-3'}"
+            title={getRepeatTitle(repeat)}
+          >
+            <span class="{getRepeatIcon(repeat)} text-sm"></span>
           </button>
         </div>
       </div>
@@ -107,16 +129,21 @@
         {/if}
       </div>
 
-      <!-- Auto-play toggle -->
-      <div class="px-3 py-2 border-b border-surface-3 flex items-center justify-between">
-        <span class="text-sm text-text-2">Auto-play</span>
+      <!-- Shuffle & Repeat controls -->
+      <div class="px-3 py-2 border-b border-surface-3 flex items-center justify-end gap-1">
         <button
-          onclick={toggleAutoPlay}
-          class="w-10 h-5 rounded-full transition-colors {autoPlay ? 'bg-accent' : 'bg-surface-3'}"
+          onclick={toggleShuffle}
+          class="btn-ghost p-2 {shuffle ? 'text-accent' : 'text-text-3'}"
+          title={shuffle ? 'Shuffle: On' : 'Shuffle: Off'}
         >
-          <span
-            class="block w-4 h-4 rounded-full bg-white shadow transition-transform {autoPlay ? 'translate-x-5' : 'translate-x-0.5'}"
-          ></span>
+          <span class="i-lucide-shuffle text-lg"></span>
+        </button>
+        <button
+          onclick={cycleRepeatMode}
+          class="btn-ghost p-2 {repeat !== 'none' ? 'text-accent' : 'text-text-3'}"
+          title={getRepeatTitle(repeat)}
+        >
+          <span class="{getRepeatIcon(repeat)} text-lg"></span>
         </button>
       </div>
 

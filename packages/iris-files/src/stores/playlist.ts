@@ -30,8 +30,34 @@ export interface Playlist {
 // Current playlist state
 export const currentPlaylist = writable<Playlist | null>(null);
 
-// Auto-play setting
-export const autoPlayEnabled = writable<boolean>(true);
+// Repeat modes: 'none' = stop at end, 'all' = loop playlist, 'one' = loop current video
+export type RepeatMode = 'none' | 'all' | 'one';
+export const repeatMode = writable<RepeatMode>('none');
+
+// Shuffle mode: when enabled, playNext picks a random video
+export const shuffleEnabled = writable<boolean>(false);
+
+// Cycle through repeat modes
+export function cycleRepeatMode(): RepeatMode {
+  let newMode: RepeatMode = 'none';
+  repeatMode.update(mode => {
+    if (mode === 'none') newMode = 'all';
+    else if (mode === 'all') newMode = 'one';
+    else newMode = 'none';
+    return newMode;
+  });
+  return newMode;
+}
+
+// Toggle shuffle
+export function toggleShuffle(): boolean {
+  let enabled = false;
+  shuffleEnabled.update(v => {
+    enabled = !v;
+    return enabled;
+  });
+  return enabled;
+}
 
 /**
  * Load playlist from a video tree that has subdirectories
@@ -159,14 +185,40 @@ export async function loadPlaylist(
 
 /**
  * Navigate to next video in playlist
+ * @param options.shuffle Override shuffle setting (for auto-play)
+ * @param options.wrap Whether to wrap around to start (for repeat all)
  */
-export function playNext(): string | null {
+export function playNext(options?: { shuffle?: boolean; wrap?: boolean }): string | null {
   const playlist = get(currentPlaylist);
   if (!playlist || playlist.items.length === 0) return null;
 
-  const nextIndex = (playlist.currentIndex + 1) % playlist.items.length;
-  const nextItem = playlist.items[nextIndex];
+  const shuffle = options?.shuffle ?? get(shuffleEnabled);
+  const wrap = options?.wrap ?? true;
 
+  let nextIndex: number;
+
+  if (shuffle) {
+    // Pick random video (different from current if possible)
+    if (playlist.items.length === 1) {
+      nextIndex = 0;
+    } else {
+      do {
+        nextIndex = Math.floor(Math.random() * playlist.items.length);
+      } while (nextIndex === playlist.currentIndex);
+    }
+  } else {
+    // Sequential: go to next
+    nextIndex = playlist.currentIndex + 1;
+    if (nextIndex >= playlist.items.length) {
+      if (wrap) {
+        nextIndex = 0;
+      } else {
+        return null; // End of playlist
+      }
+    }
+  }
+
+  const nextItem = playlist.items[nextIndex];
   currentPlaylist.update(p => p ? { ...p, currentIndex: nextIndex } : null);
 
   // Return URL hash for navigation
