@@ -17,7 +17,6 @@
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
   import { getTree } from '../../store';
   import { getLocalRootCache, getLocalRootKey } from '../../treeRootCache';
-  import { getRefResolver } from '../../refResolver';
   import type { CID } from 'hashtree';
 
   interface PlaylistInfo {
@@ -105,16 +104,21 @@
 
     for (const t of treesToCheck) {
       try {
-        // Try to resolve the tree root
+        // Use rootHash from trees store if available, otherwise try local cache
         let rootCid: CID | null = null;
 
-        const localHash = getLocalRootCache(npub!, t.name);
-        if (localHash) {
-          const localKey = getLocalRootKey(npub!, t.name);
-          rootCid = { hash: localHash, key: localKey };
+        if (t.rootHash) {
+          // Tree has rootHash from Nostr - use it directly
+          const hashBytes = new Uint8Array(t.rootHash.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+          const keyBytes = t.linkKey ? new Uint8Array(t.linkKey.match(/.{2}/g)!.map(b => parseInt(b, 16))) : undefined;
+          rootCid = { hash: hashBytes, key: keyBytes };
         } else {
-          const resolver = getRefResolver();
-          rootCid = await resolver.resolve(npub!, t.name);
+          // Fallback to local cache
+          const localHash = getLocalRootCache(npub!, t.name);
+          if (localHash) {
+            const localKey = getLocalRootKey(npub!, t.name);
+            rootCid = { hash: localHash, key: localKey };
+          }
         }
 
         if (!rootCid) continue;
