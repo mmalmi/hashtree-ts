@@ -82,6 +82,7 @@ export class WebRTCStore implements Store {
   private pools: { follows: PoolConfig; other: PoolConfig };
   private peerClassifier: PeerClassifier;
   private getFollowedPubkeys: (() => string[]) | null;
+  private isPeerBlocked: ((pubkey: string) => boolean) | null;
   private signer: EventSigner;
   private encrypt: EventEncrypter;
   private decrypt: EventDecrypter;
@@ -116,6 +117,8 @@ export class WebRTCStore implements Store {
     this.peerClassifier = config.peerClassifier ?? (() => 'other');
     // Function to get followed pubkeys for subscription filtering
     this.getFollowedPubkeys = config.getFollowedPubkeys ?? null;
+    // Function to check if a peer is blocked
+    this.isPeerBlocked = config.isPeerBlocked ?? null;
 
     // Use pool config if provided, otherwise fall back to legacy config or defaults
     if (config.pools) {
@@ -480,6 +483,12 @@ export class WebRTCStore implements Store {
       return;
     }
 
+    // Skip blocked peers
+    if (this.isPeerBlocked?.(senderPubkey)) {
+      this.log('Ignoring hello from blocked peer:', senderPubkey.slice(0, 8));
+      return;
+    }
+
     // Check if we already have this peer
     if (this.peers.has(peerId.toString())) {
       return;
@@ -508,6 +517,12 @@ export class WebRTCStore implements Store {
   private async handleOffer(peerId: PeerId, msg: SignalingMessage): Promise<void> {
     // Skip self (exact same peerId)
     if (peerId.toString() === this.myPeerId.toString()) {
+      return;
+    }
+
+    // Skip blocked peers
+    if (this.isPeerBlocked?.(peerId.pubkey)) {
+      this.log('Ignoring offer from blocked peer:', peerId.pubkey.slice(0, 8));
       return;
     }
 
@@ -751,6 +766,22 @@ export class WebRTCStore implements Store {
       pool,
       isConnected: peer.isConnected, // Includes data channel state
     }));
+  }
+
+  /**
+   * Disconnect all peers with a given pubkey
+   * Used when blocking a peer to immediately disconnect them
+   */
+  disconnectPeerByPubkey(pubkey: string): void {
+    for (const [peerIdStr, peerInfo] of this.peers) {
+      if (peerInfo.peer.pubkey === pubkey) {
+        this.log('Disconnecting blocked peer:', pubkey.slice(0, 8));
+        peerInfo.peer.close();
+        this.peers.delete(peerIdStr);
+        this.emit({ type: 'peer-disconnected', peerId: peerIdStr });
+      }
+    }
+    this.emit({ type: 'update' });
   }
 
   /**

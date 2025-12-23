@@ -6,7 +6,7 @@
   import { onMount } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { nostrStore, type RelayStatus, getNsec } from '../nostr';
-  import { appStore, formatBytes, formatBandwidth, updateStorageStats, refreshWebRTCStats, getLifetimeStats } from '../store';
+  import { appStore, formatBytes, formatBandwidth, updateStorageStats, refreshWebRTCStats, getLifetimeStats, blockPeer, unblockPeer } from '../store';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { syncedStorageStore, refreshSyncedStorage } from '../stores/chunkMetadata';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS, DEFAULT_IMGPROXY_SETTINGS } from '../stores/settings';
@@ -206,6 +206,9 @@
   let perPeerStats = $derived(appState.perPeerStats);
   let uploadBandwidth = $derived(appState.uploadBandwidth);
   let downloadBandwidth = $derived(appState.downloadBandwidth);
+
+  // Blocked peers from settings
+  let blockedPeers = $derived($settingsStore.blockedPeers);
 
   // Lifetime stats (recalculated on each render when webrtcStats changes)
   let lifetimeStats = $derived.by(() => {
@@ -693,25 +696,42 @@
         <div class="bg-surface-2 rounded divide-y divide-surface-3">
           {#each peerList as peer (peer.peerId)}
             {@const peerStats = getPeerStats(peer.peerId)}
-            <a
-              href="#/{nip19.npubEncode(peer.pubkey)}"
-              class="flex flex-col p-3 hover:bg-surface-3 transition-colors no-underline"
-            >
+            <div class="flex flex-col p-3 hover:bg-surface-3 transition-colors">
               <div class="flex items-center gap-2 text-sm">
                 <span
                   class="w-2 h-2 rounded-full shrink-0"
                   style="background: {stateColor(peer.state)}"
                 ></span>
-                <UserRow
-                  pubkey={peer.pubkey}
-                  description={peer.isSelf ? 'You' : `${peer.state}${peer.pool === 'follows' ? ' (follow)' : ''}`}
-                  avatarSize={32}
-                  showBadge
-                  class="flex-1 min-w-0"
-                />
+                <a
+                  href="#/{nip19.npubEncode(peer.pubkey)}"
+                  class="flex-1 min-w-0 no-underline"
+                >
+                  <UserRow
+                    pubkey={peer.pubkey}
+                    description={peer.isSelf ? 'You' : `${peer.state}${peer.pool === 'follows' ? ' (follow)' : ''}`}
+                    avatarSize={32}
+                    showBadge
+                    class="flex-1 min-w-0"
+                  />
+                </a>
                 <span class="text-xs text-muted font-mono shrink-0">
                   {getPeerUuid(peer.peerId).slice(0, 8)}
                 </span>
+                {#if !peer.isSelf}
+                  <button
+                    onclick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (confirm('Block this peer? They will be disconnected and won\'t be able to connect again.')) {
+                        blockPeer(peer.pubkey);
+                      }
+                    }}
+                    class="btn-ghost p-1 text-text-3 hover:text-danger shrink-0"
+                    title="Block peer"
+                  >
+                    <span class="i-lucide-ban text-sm"></span>
+                  </button>
+                {/if}
               </div>
               <!-- Per-peer stats -->
               {#if peerStats && peer.state === 'connected'}
@@ -734,8 +754,42 @@
                   {/if}
                 </div>
               {/if}
-            </a>
+            </div>
           {/each}
+        </div>
+      {/if}
+
+      <!-- Blocked Peers -->
+      {#if blockedPeers.length > 0}
+        <div class="mt-4">
+          <h4 class="text-xs font-medium text-muted uppercase tracking-wide mb-2">
+            Blocked ({blockedPeers.length})
+          </h4>
+          <div class="bg-surface-2 rounded divide-y divide-surface-3">
+            {#each blockedPeers as pubkey (pubkey)}
+              <div class="flex items-center gap-2 p-2">
+                <a
+                  href="#/{nip19.npubEncode(pubkey)}"
+                  class="flex-1 min-w-0 no-underline"
+                >
+                  <UserRow
+                    {pubkey}
+                    description="Blocked"
+                    avatarSize={28}
+                    showBadge
+                    class="flex-1 min-w-0"
+                  />
+                </a>
+                <button
+                  onclick={() => unblockPeer(pubkey)}
+                  class="btn-ghost p-1 text-text-3 hover:text-success shrink-0"
+                  title="Unblock peer"
+                >
+                  <span class="i-lucide-check text-sm"></span>
+                </button>
+              </div>
+            {/each}
+          </div>
         </div>
       {/if}
     </div>

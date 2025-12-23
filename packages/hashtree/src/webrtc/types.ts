@@ -159,6 +159,9 @@ export interface WebRTCStoreConfig {
   // Tried in order after all WebRTC peers fail
   // Example: [new BlossomStore({ servers: ['https://hashtree.iris.to'] })]
   fallbackStores?: import('../types.js').Store[];
+  // Function to check if a peer is blocked (by pubkey)
+  // Blocked peers won't be connected to
+  isPeerBlocked?: (pubkey: string) => boolean;
 }
 
 export interface PeerStatus {

@@ -374,6 +374,8 @@ export function initWebRTC(
     // Function to get followed pubkeys for subscription filtering
     // When others pool is disabled, only subscribe to hellos from these pubkeys
     getFollowedPubkeys,
+    // Function to check if a peer is blocked
+    isPeerBlocked: (peerPubkey: string) => settingsStore.isPeerBlocked(peerPubkey),
     // Fallback to Blossom HTTP server when WebRTC peers don't have the data
     // Pass signer so writes can be authenticated (NIP-98)
     fallbackStores: [new BlossomStore({
@@ -449,6 +451,19 @@ export function stopWebRTC() {
 // Get WebRTC store for P2P fetching
 export function getWebRTCStore(): WebRTCStore | null {
   return webrtcStore;
+}
+
+// Block a peer: add to blocked list and immediately disconnect
+export function blockPeer(pubkey: string): void {
+  settingsStore.blockPeer(pubkey);
+  if (webrtcStore) {
+    webrtcStore.disconnectPeerByPubkey(pubkey);
+  }
+}
+
+// Unblock a peer
+export function unblockPeer(pubkey: string): void {
+  settingsStore.unblockPeer(pubkey);
 }
 
 // Refresh WebRTC stats (call periodically to update UI)

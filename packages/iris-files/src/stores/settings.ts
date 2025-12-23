@@ -178,6 +178,9 @@ export interface SettingsState {
   // Network settings
   network: NetworkSettings;
   networkLoaded: boolean;
+
+  // Blocked peers (pubkeys)
+  blockedPeers: string[];
 }
 
 function createSettingsStore() {
@@ -209,6 +212,9 @@ function createSettingsStore() {
     // Network settings
     network: DEFAULT_NETWORK_SETTINGS,
     networkLoaded: false,
+
+    // Blocked peers
+    blockedPeers: [],
   });
 
   return {
@@ -291,6 +297,27 @@ function createSettingsStore() {
       });
     },
 
+    blockPeer: (pubkey: string) => {
+      update(state => {
+        if (state.blockedPeers.includes(pubkey)) return state;
+        const updated = [...state.blockedPeers, pubkey];
+        db.settings.put({ key: 'blockedPeers', value: updated }).catch(console.error);
+        return { ...state, blockedPeers: updated };
+      });
+    },
+
+    unblockPeer: (pubkey: string) => {
+      update(state => {
+        const updated = state.blockedPeers.filter(p => p !== pubkey);
+        db.settings.put({ key: 'blockedPeers', value: updated }).catch(console.error);
+        return { ...state, blockedPeers: updated };
+      });
+    },
+
+    isPeerBlocked: (pubkey: string): boolean => {
+      return get(settingsStore).blockedPeers.includes(pubkey);
+    },
+
     // Get current state synchronously
     getState: (): SettingsState => get(settingsStore),
 
@@ -309,13 +336,14 @@ export const useSettingsStore = settingsStore;
 // Load settings from Dexie on startup
 async function loadSettings() {
   try {
-    const [poolsRow, uploadRow, editorRow, syncRow, networkRow, imgproxyRow] = await Promise.all([
+    const [poolsRow, uploadRow, editorRow, syncRow, networkRow, imgproxyRow, blockedPeersRow] = await Promise.all([
       db.settings.get('pools'),
       db.settings.get('upload'),
       db.settings.get('editor'),
       db.settings.get('sync'),
       db.settings.get('network'),
       db.settings.get('imgproxy'),
+      db.settings.get('blockedPeers'),
     ]);
 
     const updates: Partial<SettingsState> = { poolsLoaded: true, networkLoaded: true };
@@ -385,6 +413,10 @@ async function loadSettings() {
         key: imgproxy.key ?? DEFAULT_IMGPROXY_SETTINGS.key,
         salt: imgproxy.salt ?? DEFAULT_IMGPROXY_SETTINGS.salt,
       };
+    }
+
+    if (blockedPeersRow?.value && Array.isArray(blockedPeersRow.value)) {
+      updates.blockedPeers = blockedPeersRow.value as string[];
     }
 
     settingsStore.setState(updates);
