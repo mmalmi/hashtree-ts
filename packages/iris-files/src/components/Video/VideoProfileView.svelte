@@ -87,7 +87,8 @@
   let videoTrees = $derived(trees.filter(t => t.name.startsWith('videos/')));
 
   // Track which trees are playlists (detected asynchronously)
-  let playlistInfo = $state<Map<string, { videoCount: number; thumbnailUrl?: string }>>(new Map());
+  // Using plain object for better Svelte 5 reactivity (Maps don't track well)
+  let playlistInfo = $state<Record<string, { videoCount: number; thumbnailUrl?: string }>>({});
 
   // Detect playlists when trees change
   $effect(() => {
@@ -100,7 +101,7 @@
 
   async function detectPlaylists(treesToCheck: typeof videoTrees) {
     const tree = getTree();
-    const newPlaylistInfo = new Map<string, { videoCount: number; thumbnailUrl?: string }>();
+    const newPlaylistInfo: Record<string, { videoCount: number; thumbnailUrl?: string }> = {};
 
     for (const t of treesToCheck) {
       try {
@@ -155,7 +156,7 @@
         }
 
         if (videoCount >= 2) {
-          newPlaylistInfo.set(t.name, { videoCount, thumbnailUrl: firstThumbnailUrl });
+          newPlaylistInfo[t.name] = { videoCount, thumbnailUrl: firstThumbnailUrl };
         }
       } catch (e) {
         // Ignore errors
@@ -165,10 +166,14 @@
     playlistInfo = newPlaylistInfo;
   }
 
+  // Get playlist tree names as a Set for efficient lookup
+  // Using Object.keys() ensures Svelte tracks the object
+  let playlistTreeNames = $derived(new Set(Object.keys(playlistInfo)));
+
   // Combined list of videos and playlists
   let videos = $derived(
     videoTrees
-      .filter(t => !playlistInfo.has(t.name)) // Exclude playlists
+      .filter(t => !playlistTreeNames.has(t.name)) // Exclude playlists
       .map(t => ({
         key: `/${npub}/${t.name}`,
         title: t.name.slice(7),
@@ -183,9 +188,9 @@
 
   let playlists = $derived(
     videoTrees
-      .filter(t => playlistInfo.has(t.name))
+      .filter(t => playlistTreeNames.has(t.name))
       .map(t => {
-        const info = playlistInfo.get(t.name);
+        const info = playlistInfo[t.name];
         return {
           key: `/${npub}/${t.name}`,
           title: t.name.slice(7),
