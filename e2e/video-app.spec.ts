@@ -9,18 +9,37 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * Helper to ensure user is logged in
  */
 async function ensureLoggedIn(page: any) {
-  // Check if already logged in (Upload button visible)
-  const uploadBtn = page.locator('button:has-text("Create")');
-  const isVisible = await uploadBtn.isVisible().catch(() => false);
+  // Check if already logged in (Create button visible)
+  const createBtn = page.locator('button:has-text("Create")');
+  const isVisible = await createBtn.isVisible().catch(() => false);
 
   if (!isVisible) {
     // Need to login - try clicking New button
     const newBtn = page.getByRole('button', { name: /New/i });
     if (await newBtn.isVisible().catch(() => false)) {
       await newBtn.click();
-      await expect(uploadBtn).toBeVisible({ timeout: 15000 });
+      await expect(createBtn).toBeVisible({ timeout: 15000 });
     }
   }
+}
+
+/**
+ * Helper to open the video upload modal
+ * The Create button opens a dropdown with options - click "Upload Video" to open modal
+ */
+async function openUploadModal(page: any) {
+  // Click Create button to open dropdown
+  const createBtn = page.locator('button:has-text("Create")');
+  await expect(createBtn).toBeVisible({ timeout: 15000 });
+  await createBtn.click();
+
+  // Wait for dropdown and click "Upload Video" option
+  const uploadOption = page.locator('button:has-text("Upload Video")').first();
+  await expect(uploadOption).toBeVisible({ timeout: 5000 });
+  await uploadOption.click();
+
+  // Wait for modal to appear
+  await expect(page.getByRole('heading', { name: 'Upload Video' })).toBeVisible({ timeout: 10000 });
 }
 
 /**
@@ -66,19 +85,12 @@ test.describe('Iris Video App', () => {
     await disableOthersPool(page);
     await ensureLoggedIn(page);
 
-    // Wait for Upload button
-    const uploadBtn = page.locator('button:has-text("Create")');
-    await expect(uploadBtn).toBeVisible({ timeout: 15000 });
-
     // Close any open modal first (press Escape)
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
 
-    // Click Upload button to open modal
-    await uploadBtn.click();
-
-    // Modal should appear with "Upload Video" heading
-    await expect(page.getByRole('heading', { name: 'Upload Video' })).toBeVisible({ timeout: 30000 });
+    // Open upload modal via dropdown
+    await openUploadModal(page);
 
     // Should have file selection prompt
     await expect(page.locator('text=Click to select a video file')).toBeVisible();
@@ -94,17 +106,10 @@ test.describe('Iris Video App', () => {
     await disableOthersPool(page);
     await ensureLoggedIn(page);
 
-    // Wait for Upload button
-    const uploadBtn = page.locator('button:has-text("Create")');
-    await expect(uploadBtn).toBeVisible({ timeout: 15000 });
-
-    // Close any modal and click Upload
+    // Close any modal and open upload modal
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
-    await uploadBtn.click();
-
-    // Wait for modal
-    await expect(page.getByRole('heading', { name: 'Upload Video' })).toBeVisible({ timeout: 30000 });
+    await openUploadModal(page);
 
     // Upload the test video file
     const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
@@ -187,13 +192,9 @@ test.describe('Iris Video App', () => {
     await ensureLoggedIn(page);
 
     // Upload a video first
-    const uploadBtn = page.locator('button:has-text("Create")');
-    await expect(uploadBtn).toBeVisible({ timeout: 15000 });
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
-    await uploadBtn.click();
-
-    await expect(page.getByRole('heading', { name: 'Upload Video' })).toBeVisible({ timeout: 30000 });
+    await openUploadModal(page);
 
     const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
     const fileInput = page.locator('input[type="file"][accept="video/*"]');
@@ -231,9 +232,6 @@ test.describe('Iris Video App', () => {
     await disableOthersPool(page);
     await ensureLoggedIn(page);
 
-    const uploadBtn = page.locator('button:has-text("Create")');
-    await expect(uploadBtn).toBeVisible({ timeout: 15000 });
-
     // Get the user's npub
     const npub = await page.evaluate(() => (window as any).__nostrStore?.getState()?.npub);
     expect(npub).toBeTruthy();
@@ -241,7 +239,7 @@ test.describe('Iris Video App', () => {
     // Upload a video first
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
-    await uploadBtn.click();
+    await openUploadModal(page);
 
     const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
     await page.locator('input[type="file"][accept="video/*"]').setInputFiles(testVideoPath);
@@ -278,13 +276,10 @@ test.describe('Iris Video App', () => {
     await disableOthersPool(page);
     await ensureLoggedIn(page);
 
-    const uploadBtn = page.locator('button:has-text("Create")');
-    await expect(uploadBtn).toBeVisible({ timeout: 15000 });
-
     // Upload a video first
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
-    await uploadBtn.click();
+    await openUploadModal(page);
 
     const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
     await page.locator('input[type="file"][accept="video/*"]').setInputFiles(testVideoPath);
@@ -326,13 +321,10 @@ test.describe('Iris Video App', () => {
     await disableOthersPool(page);
     await ensureLoggedIn(page);
 
-    const uploadBtn = page.locator('button:has-text("Create")');
-    await expect(uploadBtn).toBeVisible({ timeout: 15000 });
-
     // Upload a video first
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
-    await uploadBtn.click();
+    await openUploadModal(page);
 
     const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
     await page.locator('input[type="file"][accept="video/*"]').setInputFiles(testVideoPath);
@@ -374,13 +366,10 @@ test.describe('Iris Video App', () => {
     await disableOthersPool(page);
     await ensureLoggedIn(page);
 
-    const uploadBtn = page.locator('button:has-text("Create")');
-    await expect(uploadBtn).toBeVisible({ timeout: 15000 });
-
     // Upload a video first
     await page.keyboard.press('Escape');
     await page.waitForTimeout(200);
-    await uploadBtn.click();
+    await openUploadModal(page);
 
     const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
     await page.locator('input[type="file"][accept="video/*"]').setInputFiles(testVideoPath);
@@ -477,11 +466,17 @@ test.describe('Iris Video App', () => {
     }
 
     // Upload a video on page1 (this will navigate to video page with npub in URL)
-    const uploadBtn1 = page1.locator('button:has-text("Create")');
-    await expect(uploadBtn1).toBeVisible({ timeout: 15000 });
     await page1.keyboard.press('Escape');
     await page1.waitForTimeout(200);
-    await uploadBtn1.click();
+
+    // Open upload modal via dropdown
+    const createBtn1 = page1.locator('button:has-text("Create")');
+    await expect(createBtn1).toBeVisible({ timeout: 15000 });
+    await createBtn1.click();
+    const uploadOption1 = page1.locator('button:has-text("Upload Video")').first();
+    await expect(uploadOption1).toBeVisible({ timeout: 5000 });
+    await uploadOption1.click();
+    await expect(page1.getByRole('heading', { name: 'Upload Video' })).toBeVisible({ timeout: 10000 });
 
     const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
     await page1.locator('input[type="file"][accept="video/*"]').setInputFiles(testVideoPath);
