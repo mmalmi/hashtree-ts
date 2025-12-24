@@ -200,18 +200,23 @@ test.describe('Hashtree Explorer', () => {
     // Now edit to new content
     await page.getByRole('button', { name: 'Edit' }).click();
     await expect(page.locator('textarea')).toBeVisible({ timeout: 5000 });
+
+    // Clear and retype to ensure the change is detected
+    await page.locator('textarea').clear();
     await page.locator('textarea').fill('Updated content');
+
     await page.getByRole('button', { name: 'Save' }).click();
-    await page.waitForTimeout(500);
+
+    // Wait for save to complete by checking that Save button becomes disabled
+    // (disabled when content matches savedContent, meaning save completed)
+    await expect(page.getByRole('button', { name: /Save/ })).toBeDisabled({ timeout: 5000 });
 
     // Exit edit mode
     await page.getByRole('button', { name: 'Done' }).click();
 
-    // Click the file to reload content (needed after edits)
-    await page.getByRole('link', { name: 'persist.txt' }).click();
-
-    // Verify updated content
-    await expect(page.locator('pre')).toHaveText('Updated content', { timeout: 5000 });
+    // Poll for the updated content to appear in preview
+    // The file viewer should reload content after the store updates
+    await expect(page.locator('pre')).toHaveText('Updated content', { timeout: 15000 });
 
     // Navigate to homepage
     await page.getByRole('link', { name: 'Iris' }).click();
