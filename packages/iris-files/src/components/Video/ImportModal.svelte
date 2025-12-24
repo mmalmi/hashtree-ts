@@ -34,6 +34,20 @@
   let batchTotalSize = $state(0);
   let visibility = $state<'public' | 'unlisted' | 'private'>('public');
   let sourceUrl = $state('');
+  let isValidUrl = $derived(() => {
+    const url = sourceUrl.trim();
+    if (!url) return true; // Empty is valid (optional field)
+    if (/\s/.test(url)) return false; // No whitespace allowed
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+      // Hostname must have a dot (real domain) and not be a protocol name
+      if (!parsed.hostname || !parsed.hostname.includes('.')) return false;
+      return true;
+    } catch {
+      return false;
+    }
+  });
 
   // Upload state
   let uploading = $state(false);
@@ -309,7 +323,7 @@
                   <input
                     type="text"
                     bind:value={sourceUrl}
-                    class="w-full bg-surface-0 border border-surface-3 rounded-lg p-2 text-text-1 text-sm font-mono focus:border-accent focus:outline-none mb-2"
+                    class="w-full bg-surface-0 border rounded-lg p-2 text-text-1 text-sm font-mono focus:outline-none mb-2 {isValidUrl() ? 'border-surface-3 focus:border-accent' : 'border-red-500'}"
                     placeholder="https://www.youtube.com/watch?v=... or @channel or playlist"
                   />
                   <div class="relative">
