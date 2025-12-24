@@ -8,6 +8,7 @@
   import {
     currentPlaylist,
     playAt,
+    playNext,
     formatDuration,
     shuffleEnabled,
     repeatMode,
@@ -26,6 +27,16 @@
   let playlist = $derived($currentPlaylist);
   let shuffle = $derived($shuffleEnabled);
   let repeat = $derived($repeatMode);
+
+  // Minimized state (desktop only)
+  let minimized = $state(false);
+
+  // Get next video info for minimized view
+  let nextVideo = $derived.by(() => {
+    if (!playlist || playlist.items.length === 0) return null;
+    const nextIndex = (playlist.currentIndex + 1) % playlist.items.length;
+    return playlist.items[nextIndex];
+  });
 
   // Action to scroll current item into view
   function scrollIfCurrent(node: HTMLElement, isCurrent: boolean) {
@@ -69,26 +80,24 @@
     <!-- Mobile: Horizontal scroll below video -->
     <div class="bg-surface-1 rounded-lg overflow-hidden">
       <!-- Header -->
-      <div class="p-2 flex items-center justify-between">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="i-lucide-list-video text-accent shrink-0"></span>
-          <span class="font-medium text-text-1 truncate text-sm">{playlist.name}</span>
-          <span class="text-xs text-text-3 shrink-0">({playlist.currentIndex + 1}/{playlist.items.length})</span>
-        </div>
-        <div class="flex items-center gap-1 shrink-0">
-          <button
-            onclick={toggleShuffle}
-            class="btn-ghost p-1.5 {shuffle ? 'text-accent' : 'text-text-3'}"
-            title={shuffle ? 'Shuffle: On' : 'Shuffle: Off'}
-          >
-            <span class="i-lucide-shuffle text-sm"></span>
-          </button>
+      <div class="p-2 flex items-center gap-2">
+        <span class="i-lucide-list-video text-accent shrink-0"></span>
+        <span class="font-medium text-text-1 truncate text-sm">{playlist.name}</span>
+        <span class="text-xs text-text-3 shrink-0">({playlist.currentIndex + 1}/{playlist.items.length})</span>
+        <div class="flex items-center gap-1 ml-auto shrink-0">
           <button
             onclick={cycleRepeatMode}
             class="btn-ghost p-1.5 {repeat !== 'none' ? 'text-accent' : 'text-text-3'}"
             title={getRepeatTitle(repeat)}
           >
             <span class="{getRepeatIcon(repeat)} text-sm"></span>
+          </button>
+          <button
+            onclick={toggleShuffle}
+            class="btn-ghost p-1.5 {shuffle ? 'text-accent' : 'text-text-3'}"
+            title={shuffle ? 'Shuffle: On' : 'Shuffle: Off'}
+          >
+            <span class="i-lucide-shuffle text-sm"></span>
           </button>
         </div>
       </div>
@@ -138,79 +147,94 @@
     <div class="bg-surface-1 rounded-lg overflow-hidden flex flex-col h-full">
       <!-- Header -->
       <div class="p-3 border-b border-surface-3 flex items-center justify-between">
-        <div class="min-w-0">
+        <div class="min-w-0 flex-1">
           <h3 class="font-medium text-text-1 truncate">{playlist.name}</h3>
           <p class="text-xs text-text-3">{playlist.currentIndex + 1}/{playlist.items.length}</p>
         </div>
-        {#if onClose}
-          <button onclick={onClose} class="btn-ghost p-1 shrink-0">
-            <span class="i-lucide-x text-lg"></span>
+        <button onclick={() => minimized = !minimized} class="btn-ghost p-1 shrink-0" title={minimized ? 'Expand' : 'Minimize'}>
+          <span class="{minimized ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'} text-lg"></span>
+        </button>
+      </div>
+
+      {#if minimized}
+        <!-- Minimized view: just show next video -->
+        {#if nextVideo}
+          <button
+            onclick={() => {
+              const url = playNext();
+              if (url) window.location.hash = url;
+            }}
+            class="p-2 flex items-center gap-2 hover:bg-surface-2 text-left"
+          >
+            <span class="text-xs text-text-3">Next:</span>
+            <span class="text-sm text-text-1 truncate flex-1">{nextVideo.title}</span>
+            <span class="i-lucide-play text-text-3 shrink-0"></span>
           </button>
         {/if}
-      </div>
-
-      <!-- Shuffle & Repeat controls -->
-      <div class="px-3 py-2 border-b border-surface-3 flex items-center justify-end gap-1">
-        <button
-          onclick={toggleShuffle}
-          class="btn-ghost p-2 {shuffle ? 'text-accent' : 'text-text-3'}"
-          title={shuffle ? 'Shuffle: On' : 'Shuffle: Off'}
-        >
-          <span class="i-lucide-shuffle text-lg"></span>
-        </button>
-        <button
-          onclick={cycleRepeatMode}
-          class="btn-ghost p-2 {repeat !== 'none' ? 'text-accent' : 'text-text-3'}"
-          title={getRepeatTitle(repeat)}
-        >
-          <span class="{getRepeatIcon(repeat)} text-lg"></span>
-        </button>
-      </div>
-
-      <!-- Video list -->
-      <div class="flex-1 overflow-auto">
-        {#each playlist.items as item, i}
-          {@const isCurrent = i === playlist.currentIndex}
+      {:else}
+        <!-- Loop & Shuffle controls -->
+        <div class="px-3 py-2 border-b border-surface-3 flex items-center gap-1">
           <button
-            use:scrollIfCurrent={isCurrent}
-            onclick={() => handleVideoClick(i)}
-            class="w-full flex gap-2 p-2 text-left hover:bg-surface-2 transition-colors {isCurrent ? 'bg-surface-2' : ''}"
+            onclick={cycleRepeatMode}
+            class="btn-ghost p-2 {repeat !== 'none' ? 'text-accent' : 'text-text-3'}"
+            title={getRepeatTitle(repeat)}
           >
-            <!-- Index or playing indicator -->
-            <div class="w-6 shrink-0 flex items-center justify-center text-xs text-text-3">
-              {#if isCurrent}
-                <span class="i-lucide-play text-accent"></span>
-              {:else}
-                {i + 1}
-              {/if}
-            </div>
-
-            <!-- Thumbnail -->
-            <div class="w-24 h-14 shrink-0 bg-surface-3 rounded overflow-hidden">
-              {#if item.thumbnailUrl}
-                <img
-                  src={item.thumbnailUrl}
-                  alt=""
-                  class="w-full h-full object-cover"
-                  loading="lazy"
-                />
-              {:else}
-                <div class="w-full h-full flex items-center justify-center">
-                  <span class="i-lucide-video text-text-3"></span>
-                </div>
-              {/if}
-            </div>
-
-            <!-- Info -->
-            <div class="flex-1 min-w-0">
-              <p class="text-sm text-text-1 line-clamp-2 {isCurrent ? 'text-accent' : ''}">{item.title}</p>
-              {#if item.duration}
-                <p class="text-xs text-text-3 mt-0.5">{formatDuration(item.duration)}</p>
-              {/if}
-            </div>
+            <span class="{getRepeatIcon(repeat)} text-lg"></span>
           </button>
-        {/each}
-      </div>
+          <button
+            onclick={toggleShuffle}
+            class="btn-ghost p-2 {shuffle ? 'text-accent' : 'text-text-3'}"
+            title={shuffle ? 'Shuffle: On' : 'Shuffle: Off'}
+          >
+            <span class="i-lucide-shuffle text-lg"></span>
+          </button>
+        </div>
+
+        <!-- Video list -->
+        <div class="flex-1 overflow-auto">
+          {#each playlist.items as item, i}
+            {@const isCurrent = i === playlist.currentIndex}
+            <button
+              use:scrollIfCurrent={isCurrent}
+              onclick={() => handleVideoClick(i)}
+              class="w-full flex gap-2 p-2 text-left hover:bg-surface-2 transition-colors {isCurrent ? 'bg-surface-2' : ''}"
+            >
+              <!-- Index or playing indicator -->
+              <div class="w-6 shrink-0 flex items-center justify-center text-xs text-text-3">
+                {#if isCurrent}
+                  <span class="i-lucide-play text-accent"></span>
+                {:else}
+                  {i + 1}
+                {/if}
+              </div>
+
+              <!-- Thumbnail -->
+              <div class="w-24 h-14 shrink-0 bg-surface-3 rounded overflow-hidden">
+                {#if item.thumbnailUrl}
+                  <img
+                    src={item.thumbnailUrl}
+                    alt=""
+                    class="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                {:else}
+                  <div class="w-full h-full flex items-center justify-center">
+                    <span class="i-lucide-video text-text-3"></span>
+                  </div>
+                {/if}
+              </div>
+
+              <!-- Info -->
+              <div class="flex-1 min-w-0">
+                <p class="text-sm text-text-1 line-clamp-2 {isCurrent ? 'text-accent' : ''}">{item.title}</p>
+                {#if item.duration}
+                  <p class="text-xs text-text-3 mt-0.5">{formatDuration(item.duration)}</p>
+                {/if}
+              </div>
+            </button>
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 {/if}

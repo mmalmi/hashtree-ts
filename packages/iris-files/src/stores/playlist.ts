@@ -154,8 +154,8 @@ export async function loadPlaylist(
     // Only create playlist if we have multiple videos
     if (videoItems.length < 2) return null;
 
-    // Sort by title
-    videoItems.sort((a, b) => a.title.localeCompare(b.title));
+    // Sort by folder name (id) for consistent ordering with initial navigation
+    videoItems.sort((a, b) => a.id.localeCompare(b.id));
 
     // Find current index
     let currentIndex = 0;
