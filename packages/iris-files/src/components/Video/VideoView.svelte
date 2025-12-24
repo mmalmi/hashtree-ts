@@ -14,7 +14,7 @@
   import type { TreeVisibility } from 'hashtree';
   import { deleteTree } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
-  import { addRecent, updateVideoPosition, getVideoPosition, clearVideoPosition } from '../../stores/recents';
+  import { addRecent, updateVideoPosition, getVideoPosition, clearVideoPosition, updateRecentLabel } from '../../stores/recents';
   import { Avatar, Name } from '../User';
   import { Truncate } from '../ui';
   import VisibilityIcon from '../VisibilityIcon.svelte';
@@ -345,24 +345,30 @@
       return;
     }
 
-    // Load metadata in background (don't block video playback)
-    // For playlist videos, load from the video subdirectory
-    loadMetadata(videoDirCid, tree);
-
     // Add to recents - use full path for playlist videos
-    if (npub && treeName) {
-      const recentPath = isPlaylistVideo && currentVideoId
+    // Compute recentPath first so we can pass it to loadMetadata
+    const recentPath = npub && treeName
+      ? (isPlaylistVideo && currentVideoId
         ? `/${npub}/${treeName}/${currentVideoId}`
-        : `/${npub}/${treeName}`;
+        : `/${npub}/${treeName}`)
+      : null;
+
+    if (recentPath) {
       addRecent({
         type: 'tree',
         path: recentPath,
         label: videoTitle || currentVideoId || videoPath || 'Video',
-        npub,
-        treeName: isPlaylistVideo ? `${treeName}/${currentVideoId}` : treeName,
+        npub: npub!,
+        treeName: treeName!,
+        videoId: isPlaylistVideo ? currentVideoId : undefined,
         visibility: videoVisibility,
       });
     }
+
+    // Load metadata in background (don't block video playback)
+    // For playlist videos, load from the video subdirectory
+    // Pass recentPath so we can update the label when title loads
+    loadMetadata(videoDirCid, tree, recentPath || undefined);
 
     // Load playlist if this is a playlist video
     if (isPlaylistVideo && treeName && npub && rootCidParam) {
@@ -385,7 +391,7 @@
   }
 
   /** Load title and description in background */
-  async function loadMetadata(rootCid: CID, tree: ReturnType<typeof getTree>) {
+  async function loadMetadata(rootCid: CID, tree: ReturnType<typeof getTree>, recentPath?: string) {
     // Load title.txt
     try {
       const titleResult = await tree.resolvePath(rootCid, 'title.txt');
@@ -393,6 +399,10 @@
         const titleData = await tree.readFile(titleResult.cid);
         if (titleData) {
           videoTitle = new TextDecoder().decode(titleData);
+          // Update recent label with loaded title
+          if (recentPath && videoTitle) {
+            updateRecentLabel(recentPath, videoTitle);
+          }
         }
       }
     } catch {}

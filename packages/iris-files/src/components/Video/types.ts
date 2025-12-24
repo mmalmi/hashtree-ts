@@ -23,6 +23,10 @@ export interface VideoItem {
   ownerPubkey: string | null;
   ownerNpub: string | null;
   treeName: string;
+  /** For playlist videos: the video folder name within the playlist tree */
+  videoId?: string;
+  /** Root hash (hex) for playlist detection */
+  hashHex?: string;
   visibility?: string;
   href: string;
   timestamp?: number;

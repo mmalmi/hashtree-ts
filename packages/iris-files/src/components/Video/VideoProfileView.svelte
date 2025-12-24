@@ -17,6 +17,7 @@
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
   import { getTree } from '../../store';
   import { getLocalRootCache, getLocalRootKey } from '../../treeRootCache';
+  import { getPlaylistCache, setPlaylistCache } from '../../stores/playlistCache';
   import type { CID } from 'hashtree';
 
   interface PlaylistInfo {
@@ -72,7 +73,7 @@
 
   // User's trees
   let treesStore = $derived(createTreesStore(npub));
-  let trees = $state<Array<{ name: string; visibility?: string; rootHash?: string; linkKey?: string }>>([]);
+  let trees = $state<Array<{ name: string; visibility?: string; hashHex?: string; linkKey?: string }>>([]);
 
   $effect(() => {
     const store = treesStore;
@@ -104,12 +105,12 @@
 
     for (const t of treesToCheck) {
       try {
-        // Use rootHash from trees store if available, otherwise try local cache
+        // Get hash - either from Nostr or local cache
+        let hashHex: string | null = t.hashHex || null;
         let rootCid: CID | null = null;
 
-        if (t.rootHash) {
-          // Tree has rootHash from Nostr - use it directly
-          const hashBytes = new Uint8Array(t.rootHash.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+        if (hashHex) {
+          const hashBytes = new Uint8Array(hashHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
           const keyBytes = t.linkKey ? new Uint8Array(t.linkKey.match(/.{2}/g)!.map(b => parseInt(b, 16))) : undefined;
           rootCid = { hash: hashBytes, key: keyBytes };
         } else {
@@ -118,14 +119,28 @@
           if (localHash) {
             const localKey = getLocalRootKey(npub!, t.name);
             rootCid = { hash: localHash, key: localKey };
+            // Convert to hex for cache lookup
+            hashHex = Array.from(localHash).map(b => b.toString(16).padStart(2, '0')).join('');
           }
         }
 
-        if (!rootCid) continue;
+        if (!rootCid || !hashHex) continue;
 
-        // List directory contents
+        // Check persistent cache first
+        const cached = getPlaylistCache(npub!, t.name, hashHex);
+        if (cached) {
+          if (cached.isPlaylist) {
+            newPlaylistInfo[t.name] = { videoCount: cached.videoCount, thumbnailUrl: cached.thumbnailUrl };
+          }
+          continue;
+        }
+
+        // Not cached - detect from tree
         const entries = await tree.listDirectory(rootCid);
-        if (!entries || entries.length === 0) continue;
+        if (!entries || entries.length === 0) {
+          setPlaylistCache(npub!, t.name, hashHex, false, 0);
+          continue;
+        }
 
         // Check if entries are directories with video files (playlist)
         let videoCount = 0;
@@ -141,7 +156,6 @@
             );
             if (hasVideo) {
               videoCount++;
-              // Get thumbnail from first video
               if (!firstThumbnailUrl) {
                 const thumbEntry = subEntries?.find(e =>
                   e.name.startsWith('thumbnail.') ||
@@ -159,7 +173,11 @@
           }
         }
 
-        if (videoCount >= 2) {
+        // Cache the result
+        const isPlaylist = videoCount >= 2;
+        setPlaylistCache(npub!, t.name, hashHex, isPlaylist, videoCount, firstThumbnailUrl);
+
+        if (isPlaylist) {
           newPlaylistInfo[t.name] = { videoCount, thumbnailUrl: firstThumbnailUrl };
         }
       } catch (e) {

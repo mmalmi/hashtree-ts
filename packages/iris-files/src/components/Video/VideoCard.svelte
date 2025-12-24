@@ -14,16 +14,21 @@
     ownerPubkey?: string | null;
     ownerNpub?: string | null;
     treeName?: string | null;
+    /** For playlist videos: the video folder name within the playlist tree */
+    videoId?: string | null;
     visibility?: string;
   }
 
-  let { href, title, duration, ownerPubkey, ownerNpub, treeName, visibility }: Props = $props();
+  let { href, title, duration, ownerPubkey, ownerNpub, treeName, videoId, visibility }: Props = $props();
 
   // Use SW URL for thumbnail - browser caches this automatically
-  // No need for blob URLs or manual loading
-  let thumbnailUrl = $derived(
-    ownerNpub && treeName ? getNpubFileUrl(ownerNpub, treeName, 'thumbnail.jpg') : null
-  );
+  // For playlist videos, include videoId in the file path: videoId/thumbnail.jpg
+  let thumbnailUrl = $derived.by(() => {
+    if (!ownerNpub || !treeName) return null;
+    // For playlist videos, videoId is a subfolder containing the thumbnail
+    const filePath = videoId ? `${videoId}/thumbnail.jpg` : 'thumbnail.jpg';
+    return getNpubFileUrl(ownerNpub, treeName, filePath);
+  });
 
   let thumbnailError = $state(false);
 

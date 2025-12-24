@@ -21,6 +21,8 @@ export interface RecentItem {
   npub?: string;
   /** Optional tree name */
   treeName?: string;
+  /** Optional video ID for playlist videos (folder name within playlist tree) */
+  videoId?: string;
   /** Optional visibility for tree/file types */
   visibility?: TreeVisibility;
   /** Optional link key for unlisted trees */
@@ -107,6 +109,22 @@ export function updateRecentVisibility(path: string, visibility: TreeVisibility)
   recentsStore.update(current => {
     const updated = current.map(item =>
       item.path === path ? { ...item, visibility } : item
+    );
+    saveRecents(updated);
+    return updated;
+  });
+}
+
+/**
+ * Update a recent item's label by path
+ * Used to update video title after metadata loads asynchronously
+ */
+export function updateRecentLabel(path: string, label: string) {
+  const normalizedPath = path.normalize('NFC');
+  const normalizedLabel = label.normalize('NFC');
+  recentsStore.update(current => {
+    const updated = current.map(item =>
+      item.path.normalize('NFC') === normalizedPath ? { ...item, label: normalizedLabel } : item
     );
     saveRecents(updated);
     return updated;

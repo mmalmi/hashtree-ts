@@ -38,9 +38,15 @@
 
   function buildHref(item: RecentItem): string {
     // Encode treeName in path: /npub/treeName -> /npub/encodedTreeName
-    const encodedPath = item.treeName
-      ? `/${item.npub}/${encodeURIComponent(item.treeName)}`
-      : item.path;
+    // For playlist videos, encode treeName and videoId separately
+    let encodedPath: string;
+    if (item.treeName) {
+      encodedPath = item.videoId
+        ? `/${item.npub}/${encodeURIComponent(item.treeName)}/${encodeURIComponent(item.videoId)}`
+        : `/${item.npub}/${encodeURIComponent(item.treeName)}`;
+    } else {
+      encodedPath = item.path;
+    }
     const base = `#${encodedPath}`;
     return item.linkKey ? `${base}?k=${item.linkKey}` : base;
   }

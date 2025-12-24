@@ -8,12 +8,21 @@
   import { ndk, nostrStore } from '../../nostr';
   import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
   import { createFollowsStore } from '../../stores';
+  import { getTree } from '../../store';
+  import { getPlaylistCache, setPlaylistCache } from '../../stores/playlistCache';
+  import type { CID } from 'hashtree';
 
   // Default pubkey to use for fallback content (sirius)
   const DEFAULT_CONTENT_PUBKEY = '4523be58d395b1b196a9b8c82b038b6895cb02b683d0c253a955068dba1facd0';
   const MIN_FOLLOWS_THRESHOLD = 5;
   import VideoCard from './VideoCard.svelte';
+  import PlaylistCard from './PlaylistCard.svelte';
   import type { VideoItem } from './types';
+
+  interface PlaylistInfo {
+    videoCount: number;
+    thumbnailUrl?: string;
+  }
 
   /** Encode tree name for use in URL path */
   function encodeTreeNameForUrl(treeName: string): string {
@@ -38,10 +47,12 @@
       .filter(r => r.treeName?.startsWith('videos/'))
       .map(r => ({
         key: r.path,
-        title: r.treeName ? r.treeName.slice(7) : r.label,
+        // For playlist videos (with videoId), use label; otherwise extract from treeName
+        title: r.videoId ? r.label : (r.treeName ? r.treeName.slice(7) : r.label),
         ownerPubkey: r.npub ? npubToPubkey(r.npub) : null,
         ownerNpub: r.npub,
         treeName: r.treeName,
+        videoId: r.videoId,
         visibility: r.visibility,
         href: buildRecentHref(r),
         timestamp: r.timestamp,
@@ -49,6 +60,90 @@
       .filter((v, i, arr) => arr.findIndex(x => x.href.normalize('NFC') === v.href.normalize('NFC')) === i)
       .slice(0, 10)
   );
+
+  // Playlist detection for feed videos
+  let feedPlaylistInfo = $state<Record<string, PlaylistInfo>>({});
+
+  async function detectPlaylistsInFeed(videos: VideoItem[]) {
+    const tree = getTree();
+    const newPlaylistInfo: Record<string, PlaylistInfo> = { ...feedPlaylistInfo };
+    let changed = false;
+
+    for (const video of videos) {
+      // Skip if already in local state or no hash
+      if (newPlaylistInfo[video.key] !== undefined || !video.hashHex || !video.ownerNpub) continue;
+
+      // Check persistent cache first
+      const cached = getPlaylistCache(video.ownerNpub, video.treeName, video.hashHex);
+      if (cached) {
+        if (cached.isPlaylist) {
+          newPlaylistInfo[video.key] = { videoCount: cached.videoCount, thumbnailUrl: cached.thumbnailUrl };
+        } else {
+          newPlaylistInfo[video.key] = { videoCount: 0 };
+        }
+        changed = true;
+        continue;
+      }
+
+      // Not cached - detect from tree
+      try {
+        const hashBytes = new Uint8Array(video.hashHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+        const rootCid: CID = { hash: hashBytes };
+
+        const entries = await tree.listDirectory(rootCid);
+        if (!entries || entries.length === 0) {
+          setPlaylistCache(video.ownerNpub, video.treeName, video.hashHex, false, 0);
+          newPlaylistInfo[video.key] = { videoCount: 0 };
+          changed = true;
+          continue;
+        }
+
+        // Check if entries are directories with video files
+        let videoCount = 0;
+        let firstThumbnailUrl: string | undefined;
+
+        for (const entry of entries) {
+          try {
+            const subEntries = await tree.listDirectory(entry.cid);
+            const hasVideo = subEntries?.some(e =>
+              e.name.startsWith('video.') ||
+              e.name.endsWith('.mp4') ||
+              e.name.endsWith('.webm')
+            );
+            if (hasVideo) {
+              videoCount++;
+              if (!firstThumbnailUrl) {
+                const thumbEntry = subEntries?.find(e =>
+                  e.name.startsWith('thumbnail.') ||
+                  e.name.endsWith('.jpg') ||
+                  e.name.endsWith('.webp') ||
+                  e.name.endsWith('.png')
+                );
+                if (thumbEntry) {
+                  firstThumbnailUrl = `/htree/${video.ownerNpub}/${encodeURIComponent(video.treeName)}/${encodeURIComponent(entry.name)}/${encodeURIComponent(thumbEntry.name)}`;
+                }
+              }
+            }
+          } catch {
+            // Not a directory
+          }
+        }
+
+        // Cache and store the result
+        const isPlaylist = videoCount >= 2;
+        setPlaylistCache(video.ownerNpub, video.treeName, video.hashHex, isPlaylist, videoCount, firstThumbnailUrl);
+
+        newPlaylistInfo[video.key] = { videoCount, thumbnailUrl: firstThumbnailUrl };
+        changed = true;
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    if (changed) {
+      feedPlaylistInfo = newPlaylistInfo;
+    }
+  }
 
   // Get user's follows
   let follows = $state<string[]>([]);
@@ -210,6 +305,7 @@
         ownerPubkey,
         ownerNpub,
         treeName: dTag,
+        hashHex: hashTag, // Store for playlist detection
         visibility,
         href: `#/${ownerNpub}/${encodeTreeNameForUrl(dTag)}`,
         timestamp: event.created_at || 0,
@@ -219,7 +315,11 @@
       const allVideos = Array.from(videosByKey.values());
       allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
-      untrack(() => { followedUsersVideos = allVideos; });
+      untrack(() => {
+        followedUsersVideos = allVideos;
+        // Trigger playlist detection for new videos
+        detectPlaylistsInFeed(allVideos);
+      });
     });
 
     untrack(() => {
@@ -475,9 +575,16 @@
     // Encode treeName in path: /npub/treeName -> /npub/encodedTreeName
     // Normalize Unicode to avoid duplicates from different representations (e.g., ä vs a+combining)
     const normalizedTreeName = item.treeName?.normalize('NFC');
-    const encodedPath = normalizedTreeName
-      ? `/${item.npub}/${encodeURIComponent(normalizedTreeName)}`
-      : item.path;
+    const normalizedVideoId = item.videoId?.normalize('NFC');
+    let encodedPath: string;
+    if (normalizedTreeName) {
+      // For playlist videos, encode treeName and videoId separately
+      encodedPath = normalizedVideoId
+        ? `/${item.npub}/${encodeURIComponent(normalizedTreeName)}/${encodeURIComponent(normalizedVideoId)}`
+        : `/${item.npub}/${encodeURIComponent(normalizedTreeName)}`;
+    } else {
+      encodedPath = item.path;
+    }
     const base = `#${encodedPath}`;
     return item.linkKey ? `${base}?k=${item.linkKey}` : base;
   }
@@ -509,6 +616,7 @@
                   ownerPubkey={video.ownerPubkey}
                   ownerNpub={video.ownerNpub}
                   treeName={video.treeName}
+                  videoId={video.videoId}
                   visibility={video.visibility}
                 />
               </div>
@@ -526,15 +634,30 @@
         <h2 class="text-lg font-semibold text-text-1 mb-3">Feed</h2>
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {#each feedVideos as video (video.href)}
-            <VideoCard
-              href={video.href}
-              title={video.title}
-              duration={video.duration}
-              ownerPubkey={video.ownerPubkey}
-              ownerNpub={video.ownerNpub}
-              treeName={video.treeName}
-              visibility={video.visibility}
-            />
+            {@const playlistInfo = feedPlaylistInfo[video.key]}
+            {#if playlistInfo && playlistInfo.videoCount >= 2}
+              <PlaylistCard
+                href={video.href}
+                title={video.title}
+                videoCount={playlistInfo.videoCount}
+                thumbnailUrl={playlistInfo.thumbnailUrl}
+                ownerPubkey={video.ownerPubkey}
+                ownerNpub={video.ownerNpub}
+                treeName={video.treeName}
+                visibility={video.visibility}
+              />
+            {:else}
+              <VideoCard
+                href={video.href}
+                title={video.title}
+                duration={video.duration}
+                ownerPubkey={video.ownerPubkey}
+                ownerNpub={video.ownerNpub}
+                treeName={video.treeName}
+                videoId={video.videoId}
+                visibility={video.visibility}
+              />
+            {/if}
           {/each}
         </div>
 
