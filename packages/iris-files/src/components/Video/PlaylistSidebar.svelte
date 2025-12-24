@@ -15,6 +15,7 @@
     type RepeatMode,
   } from '../../stores/playlist';
   import { formatDuration } from '../../utils/format';
+  import { nostrStore, deleteTree } from '../../nostr';
 
   interface Props {
     mobile?: boolean;
@@ -25,6 +26,30 @@
   let playlist = $derived($currentPlaylist);
   let shuffle = $derived($shuffleEnabled);
   let repeat = $derived($repeatMode);
+
+  let currentUserNpub = $derived($nostrStore.npub);
+  let isOwner = $derived(playlist && currentUserNpub === playlist.npub);
+  let deleting = $state(false);
+
+  async function handleDeletePlaylist() {
+    if (!playlist) return;
+
+    if (!confirm(`Delete playlist "${playlist.name}"? This will remove the entire playlist and all its videos.`)) {
+      return;
+    }
+
+    deleting = true;
+    try {
+      await deleteTree(playlist.treeName);
+      // Navigate to profile after deletion
+      window.location.hash = `#/${playlist.npub}`;
+    } catch (err) {
+      console.error('Failed to delete playlist:', err);
+      alert('Failed to delete playlist');
+    } finally {
+      deleting = false;
+    }
+  }
 
   // Action to scroll current item into view
   function scrollIfCurrent(node: HTMLElement, isCurrent: boolean) {
@@ -87,6 +112,20 @@
           >
             <span class="i-lucide-shuffle text-sm"></span>
           </button>
+          {#if isOwner}
+            <button
+              onclick={handleDeletePlaylist}
+              disabled={deleting}
+              class="btn-ghost p-1.5 text-text-3 hover:text-danger"
+              title="Delete playlist"
+            >
+              {#if deleting}
+                <span class="i-lucide-loader-2 animate-spin text-sm"></span>
+              {:else}
+                <span class="i-lucide-trash-2 text-sm"></span>
+              {/if}
+            </button>
+          {/if}
         </div>
       </div>
 
@@ -135,8 +174,26 @@
     <div class="bg-surface-1 rounded-lg overflow-hidden flex flex-col h-full">
       <!-- Header -->
       <div class="p-3 border-b border-surface-3">
-        <h3 class="font-medium text-text-1 truncate">{playlist.name}</h3>
-        <p class="text-xs text-text-3">{playlist.currentIndex + 1}/{playlist.items.length}</p>
+        <div class="flex items-start justify-between gap-2">
+          <div class="min-w-0">
+            <h3 class="font-medium text-text-1 truncate">{playlist.name}</h3>
+            <p class="text-xs text-text-3">{playlist.currentIndex + 1}/{playlist.items.length}</p>
+          </div>
+          {#if isOwner}
+            <button
+              onclick={handleDeletePlaylist}
+              disabled={deleting}
+              class="btn-ghost p-1.5 text-text-3 hover:text-danger shrink-0"
+              title="Delete playlist"
+            >
+              {#if deleting}
+                <span class="i-lucide-loader-2 animate-spin"></span>
+              {:else}
+                <span class="i-lucide-trash-2"></span>
+              {/if}
+            </button>
+          {/if}
+        </div>
       </div>
 
       <!-- Loop & Shuffle controls -->
