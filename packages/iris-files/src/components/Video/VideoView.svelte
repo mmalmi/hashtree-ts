@@ -79,6 +79,7 @@
   let loading = $state(true);
   let showLoading = $state(false);  // Delayed loading indicator
   let loadingTimer: ReturnType<typeof setTimeout> | null = null;
+  let rootTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   let error = $state<string | null>(null);
   let videoTitle = $state<string>('');
   let videoDescription = $state<string>('');
@@ -245,6 +246,44 @@
     };
   });
 
+  // Timeout for tree root resolution - show error if not resolved within 15 seconds
+  $effect(() => {
+    const cid = rootCid;
+    const currentTreeName = treeName;
+
+    // Clear any existing timeout
+    if (rootTimeoutTimer) {
+      clearTimeout(rootTimeoutTimer);
+      rootTimeoutTimer = null;
+    }
+
+    if (cid) {
+      // Root resolved - no timeout needed
+      return;
+    }
+
+    if (!currentTreeName) {
+      // No tree name - nothing to resolve
+      return;
+    }
+
+    // Start timeout for root resolution (e.g., Nostr event not found on relays)
+    rootTimeoutTimer = setTimeout(() => {
+      if (!rootCid && loading && !error) {
+        error = 'Video not found. The video metadata may not be available from your relays.';
+        loading = false;
+        console.warn('[VideoView] Tree root resolution timeout for:', currentTreeName);
+      }
+    }, 15000);
+
+    return () => {
+      if (rootTimeoutTimer) {
+        clearTimeout(rootTimeoutTimer);
+        rootTimeoutTimer = null;
+      }
+    };
+  });
+
   // No blob URL cleanup needed - using SW URLs
 
   async function loadVideo(rootCidParam: CID) {
@@ -261,7 +300,12 @@
     if (isPlaylistVideo && currentVideoId) {
       // Navigate to the video subdirectory within the playlist
       try {
-        const videoDir = await tree.resolvePath(rootCidParam, currentVideoId);
+        // Add timeout to prevent hanging if Blossom is unreachable
+        const resolvePromise = tree.resolvePath(rootCidParam, currentVideoId);
+        const timeoutPromise = new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('Timeout: Video data not available from network')), 30000)
+        );
+        const videoDir = await Promise.race([resolvePromise, timeoutPromise]);
         if (videoDir) {
           videoDirCid = videoDir.cid;
           videoPathPrefix = `${currentVideoId}/`;
@@ -271,7 +315,7 @@
           return;
         }
       } catch (e) {
-        error = `Failed to load video: ${e}`;
+        error = e instanceof Error ? e.message : `Failed to load video: ${e}`;
         loading = false;
         return;
       }
