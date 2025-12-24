@@ -3,7 +3,7 @@
    * PullRequestsView - Lists pull requests for a repository using NIP-34
    * Layout matches TreeRoute: FileBrowser on left, content on right
    */
-  import { routeStore, createTreesStore, currentDirCidStore } from '../../stores';
+  import { routeStore, treeRootStore, createTreesStore, currentDirCidStore } from '../../stores';
   import { createPullRequestsStore, filterByStatus, countByStatus } from '../../stores/nip34';
   import { createGitInfoStore } from '../../stores/git';
   import { open as openNewPullRequestModal } from './NewPullRequestModal.svelte';
@@ -24,6 +24,8 @@
   let { npub, repoName }: Props = $props();
 
   let route = $derived($routeStore);
+  let rootCid = $derived($treeRootStore);
+  let currentPath = $derived(route.path);
   let dirCid = $derived($currentDirCidStore);
 
   // Git info for branch selection in PR modal

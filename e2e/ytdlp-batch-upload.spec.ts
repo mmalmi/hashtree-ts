@@ -106,8 +106,7 @@ test.describe('yt-dlp Batch Upload', () => {
     expect(channelName).toBe('My Channel Name');
   });
 
-  test.skip('opens upload modal and shows folder selection option', async ({ page }) => {
-    // TODO: "Select folder" button not implemented in current VideoUploadModal
+  test('opens upload modal and shows file selection option', async ({ page }) => {
     await page.goto('/video.html#/');
     await disableOthersPool(page);
     await ensureLoggedIn(page);
@@ -119,11 +118,11 @@ test.describe('yt-dlp Batch Upload', () => {
     // Open upload modal via dropdown
     await openUploadModal(page);
 
-    // Should have folder selection button
-    await expect(page.getByRole('button', { name: 'Select folder' })).toBeVisible();
+    // Should have file selection prompt
+    await expect(page.locator('text=Click to select a video file')).toBeVisible();
 
-    // Should have drag & drop hint
-    await expect(page.locator('text=drag & drop files/folders')).toBeVisible();
+    // Should have file input for video selection
+    await expect(page.locator('input[type="file"][accept="video/*"]')).toBeAttached();
 
     // Take screenshot
     await page.screenshot({ path: 'e2e/screenshots/ytdlp-upload-modal.png' });

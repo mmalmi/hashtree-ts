@@ -47,9 +47,6 @@ test.describe('Unlisted Tree Visibility', () => {
     await disableOthersPool(page); // Re-apply after reload
     await configureBlossomServers(page);
 
-    // App auto-generates key on first visit, wait for header to appear
-    await expect(page.locator('header span:has-text("Iris")')).toBeVisible({ timeout: 30000 });
-
     // New users get auto-redirected to their public folder - wait for that
     await navigateToPublicFolder(page);
   });

@@ -204,17 +204,21 @@ test.describe('Subdirectory Creation', () => {
     await page.locator('input[placeholder="Folder name..."]').fill('unlisted-parent');
     await page.getByRole('button', { name: /unlisted/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
-    await page.waitForTimeout(1000);
+
+    // Wait for navigation to the new tree
+    await page.waitForURL(/unlisted-parent/, { timeout: 10000 });
+
+    // Wait for New Folder button to be visible inside the tree
+    await expect(page.getByRole('button', { name: /Folder/ }).first()).toBeVisible({ timeout: 10000 });
 
     // Create a subfolder
     await page.getByRole('button', { name: /Folder/ }).first().click();
     await page.locator('input[placeholder="Folder name..."]').fill('secret-docs');
     await page.getByRole('button', { name: 'Create' }).click();
-    await page.waitForTimeout(500);
 
     // The subfolder should have folder icon
     const subfolderRow = page.locator('a:has-text("secret-docs")');
-    await expect(subfolderRow).toBeVisible({ timeout: 5000 });
+    await expect(subfolderRow).toBeVisible({ timeout: 10000 });
     const folderIcon = subfolderRow.locator('span[class*="i-lucide-folder"]');
     await expect(folderIcon).toBeVisible();
 

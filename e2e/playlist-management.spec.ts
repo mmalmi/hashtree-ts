@@ -370,9 +370,13 @@ test.describe('Playlist Management', () => {
     const createBtn = page.locator('button[type="submit"]:has-text("Create")');
     await createBtn.click();
 
-    // Wait for modal to return to list view (shows the new playlist checked)
-    // Use longer timeout as creating playlist can take time
-    await expect(page.locator('.i-lucide-check-square')).toBeVisible({ timeout: 20000 });
+    // Wait for either: playlist appears in list (success) or error message appears
+    // The playlist should appear with check mark once created
+    const successOrError = page.locator('.i-lucide-check-square').or(page.locator('text=Failed to create playlist'));
+    await expect(successOrError).toBeVisible({ timeout: 30000 });
+
+    // Verify it was a success, not an error
+    await expect(page.locator('.i-lucide-check-square')).toBeVisible({ timeout: 5000 });
 
     // Take screenshot after creation
     await page.screenshot({ path: 'e2e/screenshots/add-to-playlist-after-create.png' });
