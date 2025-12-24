@@ -309,14 +309,7 @@
                 </div>
 
                 <div>
-                  <p class="text-xs text-text-3 mb-1">2. Create a backup folder</p>
-                  <code class="block bg-surface-0 rounded p-2 text-sm text-text-1 font-mono">
-                    mkdir backup; cd backup
-                  </code>
-                </div>
-
-                <div>
-                  <p class="text-xs text-text-3 mb-1">3. Download videos (optional: paste URL below)</p>
+                  <p class="text-xs text-text-3 mb-1">2. Download videos (optional: paste URL below)</p>
                   <input
                     type="text"
                     bind:value={sourceUrl}
@@ -338,7 +331,7 @@
                 </div>
 
                 <div>
-                  <p class="text-xs text-text-3 mb-1">4. Select the backup folder below</p>
+                  <p class="text-xs text-text-3 mb-1">3. Select the downloaded folder below</p>
                 </div>
               </div>
             </div>
