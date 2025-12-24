@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool, waitForAppReady } from './test-utils.js';
 
 // Helper to navigate to accounts page
 async function navigateToAccountsPage(page: any) {
@@ -35,6 +35,7 @@ test.describe('Multi-Account Management', () => {
     });
 
     await page.reload();
+    await waitForAppReady(page); // Wait for page to load after reload
     await disableOthersPool(page); // Re-apply after reload
     await navigateToPublicFolder(page);
   });

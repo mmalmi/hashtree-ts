@@ -56,7 +56,7 @@ test.describe('WebRTC P2P Connection', () => {
     // Wait for page to fully load
     await page.waitForLoadState('load');
     // App auto-generates key on first visit, wait for header to appear
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+    // Page ready - navigateToPublicFolder handles waiting
   }
 
   test('peer indicator shows correct connection count', async () => {

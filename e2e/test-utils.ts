@@ -19,11 +19,22 @@ export function setupPageErrorHandler(page: any) {
 }
 
 /**
+ * Wait for the app to be ready (header visible).
+ * Call this after page.reload() before calling disableOthersPool or configureBlossomServers.
+ */
+export async function waitForAppReady(page: any) {
+  await expect(page.locator('header').first()).toBeVisible({ timeout: 30000 });
+}
+
+/**
  * Wait for new user setup to complete and navigate to public folder.
  * New users get three default folders created (public, link, private).
  * This function waits for setup, then clicks into the public folder.
  */
 export async function navigateToPublicFolder(page: any) {
+  // First wait for the app to be ready - look for the Iris header
+  await expect(page.locator('header').first()).toBeVisible({ timeout: 30000 });
+
   // Wait for the public folder link to appear in the tree list (indicates setup complete)
   // This can take a while for new users since default folders are created async
   // and published to Nostr fire-and-forget style

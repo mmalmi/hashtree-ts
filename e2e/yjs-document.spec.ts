@@ -41,7 +41,7 @@ test.describe('Yjs Document Viewer', () => {
     await page.reload();
     await page.waitForTimeout(500);
     await configureBlossomServers(page);
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
+    // Page ready - navigateToPublicFolder handles waiting
     await navigateToPublicFolder(page);
   });
 

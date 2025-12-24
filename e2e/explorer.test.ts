@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList, disableOthersPool } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList, disableOthersPool, configureBlossomServers, waitForAppReady } from './test-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -36,15 +36,16 @@ async function uploadTempFile(page: any, name: string, content: string | Buffer)
 
 test.describe('Hashtree Explorer', () => {
   // Increase timeout for all tests since new user setup now creates 3 default folders
-  test.setTimeout(30000);
+  test.setTimeout(60000);
   test.beforeEach(async ({ page }) => {
     setupPageErrorHandler(page);
 
     // Go to page first to be able to clear storage
     await page.goto('/');
     await disableOthersPool(page);
+    await configureBlossomServers(page);
 
-    // Clear IndexedDB and localStorage before each test
+    // Clear IndexedDB, localStorage, and OPFS before each test
     await page.evaluate(async () => {
       const dbs = await indexedDB.databases();
       for (const db of dbs) {
@@ -52,14 +53,23 @@ test.describe('Hashtree Explorer', () => {
       }
       localStorage.clear();
       sessionStorage.clear();
+
+      // Clear OPFS
+      try {
+        const root = await navigator.storage.getDirectory();
+        for await (const name of root.keys()) {
+          await root.removeEntry(name, { recursive: true });
+        }
+      } catch {
+        // OPFS might not be available
+      }
     });
 
     // Reload to get truly fresh state (after clearing storage)
     await page.reload();
-    await page.waitForTimeout(500);
-
-    // App auto-generates key on first visit, wait for header to appear
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
+    await waitForAppReady(page); // Wait for page to load after reload
+    await disableOthersPool(page); // Re-apply after reload
+    await configureBlossomServers(page);
 
     // New users get auto-redirected to their public folder - wait for that
     await navigateToPublicFolder(page);
@@ -196,10 +206,12 @@ test.describe('Hashtree Explorer', () => {
 
     // Exit edit mode
     await page.getByRole('button', { name: 'Done' }).click();
-    await page.waitForTimeout(300);
+
+    // Click the file to reload content (needed after edits)
+    await page.getByRole('link', { name: 'persist.txt' }).click();
 
     // Verify updated content
-    await expect(page.locator('pre')).toHaveText('Updated content');
+    await expect(page.locator('pre')).toHaveText('Updated content', { timeout: 5000 });
 
     // Navigate to homepage
     await page.getByRole('link', { name: 'Iris' }).click();

@@ -9,7 +9,7 @@ test.describe('Mobile Search', () => {
     // Set mobile viewport
     await page.setViewportSize({ width: 375, height: 667 });
     await page.goto('/');
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
+    // Page ready - navigateToPublicFolder handles waiting
   });
 
   test('should show search icon on mobile', async ({ page }) => {

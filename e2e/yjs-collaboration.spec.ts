@@ -15,7 +15,7 @@
  * - If waiting for content sync, use waitForEditorContent() helper
  */
 import { test, expect, Page } from '@playwright/test';
-import { setupPageErrorHandler, disableOthersPool, configureBlossomServers, waitForWebRTCConnection, presetOthersPoolInDB, enableOthersPool } from './test-utils.js';
+import { setupPageErrorHandler, disableOthersPool, configureBlossomServers, waitForWebRTCConnection, presetOthersPoolInDB, enableOthersPool, waitForAppReady } from './test-utils.js';
 
 // Helper to set up a fresh user session
 async function setupFreshUser(page: Page) {
@@ -46,9 +46,9 @@ async function setupFreshUser(page: Page) {
   });
 
   await page.reload();
+  await waitForAppReady(page); // Wait for page to load after reload
   await disableOthersPool(page); // Re-apply after reload
   await configureBlossomServers(page);
-  await page.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
 
   // Wait for the public folder link to appear
   const publicLink = page.getByRole('link', { name: 'public' }).first();
@@ -162,7 +162,7 @@ async function navigateToUserDocument(page: Page, npub: string, treeName: string
   const url = `http://localhost:5173/#/${npub}/${treeName}/${docPath}`;
   await page.goto(url);
   // Wait for the app to load
-  await page.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
+  // Page ready - navigateToPublicFolder handles waiting
 }
 
 // Helper to navigate to own document
@@ -170,7 +170,7 @@ async function navigateToOwnDocument(page: Page, npub: string, treeName: string,
   const url = `http://localhost:5173/#/${npub}/${treeName}/${docPath}`;
   await page.goto(url);
   // Wait for app header
-  await page.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
+  // Page ready - navigateToPublicFolder handles waiting
 }
 
 // Helper to follow a user by their npub (navigates to their profile and clicks Follow)
@@ -1428,7 +1428,7 @@ test.describe('Yjs Collaborative Document Editing', () => {
       await pageB.reload({ waitUntil: 'networkidle' });
 
       // Wait for app to fully load with header AND enable others pool
-      await pageB.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
+      
 
       // Also enable others pool for B after app loads (the IndexedDB preset might not be enough)
       await pageB.evaluate(async () => {

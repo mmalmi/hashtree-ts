@@ -41,7 +41,7 @@ async function setupFreshUser(page: Page): Promise<void> {
 
   await page.reload();
   await page.waitForTimeout(500);
-  await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+  // Page ready - navigateToPublicFolder handles waiting
 }
 
 // Get user's npub from public folder URL

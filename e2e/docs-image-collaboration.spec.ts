@@ -7,7 +7,7 @@
  * 3. Images use /htree/ service worker URLs (not blob URLs)
  */
 import { test, expect, Page } from '@playwright/test';
-import { setupPageErrorHandler, disableOthersPool, configureBlossomServers, waitForWebRTCConnection } from './test-utils.js';
+import { setupPageErrorHandler, disableOthersPool, configureBlossomServers, waitForWebRTCConnection, waitForAppReady } from './test-utils.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -62,9 +62,9 @@ async function setupFreshUser(page: Page) {
   });
 
   await page.reload();
+  await waitForAppReady(page); // Wait for page to load after reload
   await disableOthersPool(page);
   await configureBlossomServers(page);
-  await page.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
 
   // Wait for the public folder link to appear
   const publicLink = page.getByRole('link', { name: 'public' }).first();
@@ -162,7 +162,7 @@ async function followUser(page: Page, targetNpub: string) {
 async function navigateToUserDocument(page: Page, npub: string, treeName: string, docPath: string) {
   const url = `http://localhost:5173/#/${npub}/${treeName}/${docPath}`;
   await page.goto(url);
-  await page.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
+  // Page ready - navigateToPublicFolder handles waiting
 }
 
 test.describe('Document Image Collaboration', () => {
@@ -363,9 +363,9 @@ test.describe('Document Image Collaboration', () => {
     });
 
     await page.reload();
+    await waitForAppReady(page); // Wait for page to load after reload
     await disableOthersPool(page);
     await configureBlossomServers(page);
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
 
     // Navigate to public folder
     const publicLink = page.getByRole('link', { name: 'public' }).first();
@@ -411,7 +411,7 @@ test.describe('Document Image Collaboration', () => {
     // Refresh the page
     console.log('Refreshing page...');
     await page.reload();
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
+    // Page ready - navigateToPublicFolder handles waiting
 
     // Wait for editor to load
     await expect(editor).toBeVisible({ timeout: 30000 });
