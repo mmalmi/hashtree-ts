@@ -91,8 +91,8 @@ export class DexieStore implements Store {
    */
   async keys(): Promise<Hash[]> {
     try {
-      const entries = await this.db.blobs.toArray();
-      return entries.map(e => fromHex(e.hashHex));
+      const hexKeys = await this.db.blobs.toCollection().primaryKeys();
+      return hexKeys.map(hex => fromHex(hex));
     } catch (e) {
       console.error('[DexieStore] keys error:', e);
       return [];
@@ -127,8 +127,11 @@ export class DexieStore implements Store {
    */
   async totalBytes(): Promise<number> {
     try {
-      const entries = await this.db.blobs.toArray();
-      return entries.reduce((sum, e) => sum + e.data.length, 0);
+      let total = 0;
+      await this.db.blobs.each(e => {
+        total += e.data.length;
+      });
+      return total;
     } catch (e) {
       console.error('[DexieStore] totalBytes error:', e);
       return 0;
