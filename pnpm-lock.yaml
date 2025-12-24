@@ -269,6 +269,9 @@ importers:
       svelte-check:
         specifier: ^4.1.4
         version: 4.3.4(picomatch@4.0.3)(svelte@5.45.6)(typescript@5.9.3)
+      svelte-render-scan:
+        specifier: ^1.1.0
+        version: 1.1.0(svelte@5.45.6)
       typescript:
         specifier: ^5.3.0
         version: 5.9.3
@@ -3800,6 +3803,11 @@ packages:
     peerDependenciesMeta:
       svelte:
         optional: true
+
+  svelte-render-scan@1.1.0:
+    resolution: {integrity: sha512-9S73wEtcnn9Hn0HsOSufm+AC+3Es2rMXoWMEWk6Fa3w3yORBg6khOSsZ8+kj/rY4BJRZTyjuFQBytFPGC8YHGQ==}
+    peerDependencies:
+      svelte: ^5.0.0
 
   svelte@5.45.6:
     resolution: {integrity: sha512-V3aVXthzPyPt1UB1wLEoXnEXpwPsvs7NHrR0xkCor8c11v71VqBj477MClqPZYyrcXrAH21sNGhOj9FJvSwXfQ==}
@@ -8149,6 +8157,10 @@ snapshots:
       postcss-scss: 4.0.9(postcss@8.5.6)
       postcss-selector-parser: 7.1.1
     optionalDependencies:
+      svelte: 5.45.6
+
+  svelte-render-scan@1.1.0(svelte@5.45.6):
+    dependencies:
       svelte: 5.45.6
 
   svelte@5.45.6:

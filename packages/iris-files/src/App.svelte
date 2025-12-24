@@ -10,6 +10,12 @@
   import Router from './components/Router.svelte';
   import { currentPath, initRouter, getQueryParams } from './lib/router.svelte';
 
+  const isDev = import.meta.env.DEV;
+  let RenderScan: typeof import('svelte-render-scan').RenderScan | null = $state(null);
+  if (isDev) {
+    import('svelte-render-scan').then(m => RenderScan = m.RenderScan);
+  }
+
   // Modal components
   import CreateModal from './components/Modals/CreateModal.svelte';
   import RenameModal from './components/Modals/RenameModal.svelte';
@@ -92,4 +98,7 @@
   <NewIssueModal />
   <BlossomPushModal />
   <Toast />
+  {#if RenderScan}
+    <RenderScan initialEnabled={false} />
+  {/if}
 </div>

@@ -12,6 +12,12 @@
   import DocsRouter from './components/Docs/DocsRouter.svelte';
   import { currentPath, initRouter } from './lib/router.svelte';
 
+  const isDev = import.meta.env.DEV;
+  let RenderScan: typeof import('svelte-render-scan').RenderScan | null = $state(null);
+  if (isDev) {
+    import('svelte-render-scan').then(m => RenderScan = m.RenderScan);
+  }
+
   // Modal components
   import ShareModal from './components/Modals/ShareModal.svelte';
   import CollaboratorsModal from './components/Modals/CollaboratorsModal.svelte';
@@ -53,4 +59,7 @@
   <ForkModal />
   <BlossomPushModal />
   <Toast />
+  {#if RenderScan}
+    <RenderScan initialEnabled={false} />
+  {/if}
 </div>

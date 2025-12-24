@@ -14,6 +14,12 @@
   import { currentPath, initRouter } from './lib/router.svelte';
   import { nostrStore } from './nostr';
 
+  const isDev = import.meta.env.DEV;
+  let RenderScan: typeof import('svelte-render-scan').RenderScan | null = $state(null);
+  if (isDev) {
+    import('svelte-render-scan').then(m => RenderScan = m.RenderScan);
+  }
+
   // Modal components
   import ShareModal from './components/Modals/ShareModal.svelte';
   import ForkModal from './components/Modals/ForkModal.svelte';
@@ -103,4 +109,7 @@
   <VideoUploadModal />
   <ImportModal />
   <Toast />
+  {#if RenderScan}
+    <RenderScan initialEnabled={false} />
+  {/if}
 </div>
