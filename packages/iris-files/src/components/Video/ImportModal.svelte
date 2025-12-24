@@ -291,7 +291,7 @@
 
               <div class="space-y-3">
                 <div>
-                  <p class="text-xs text-text-3 mb-1">1. Install yt-dlp</p>
+                  <p class="text-xs text-text-3 mb-1">1. Install yt-dlp (or use <a href="https://ytdlp.online/" target="_blank" rel="noopener" class="text-accent hover:underline">web version</a>)</p>
                   <code class="block bg-surface-0 rounded p-2 text-sm text-text-1 font-mono">
                     pip install yt-dlp
                   </code>
