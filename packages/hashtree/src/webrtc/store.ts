@@ -93,6 +93,8 @@ export class WebRTCStore implements Store {
   private subscriptions: ReturnType<SimplePool['subscribe']>[] = [];
   private helloSubscription: ReturnType<SimplePool['subscribe']> | null = null;
   private peers = new Map<string, PeerInfo>();
+  // Track pubkeys we're currently connecting to in 'other' pool (prevents race conditions)
+  private pendingOtherPubkeys = new Set<string>();
   private helloInterval: ReturnType<typeof setInterval> | null = null;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private eventHandlers = new Set<WebRTCStoreEventHandler>();
@@ -191,8 +193,12 @@ export class WebRTCStore implements Store {
   /**
    * Check if we already have a connection from a pubkey in the 'other' pool.
    * In the 'other' pool, we only allow 1 instance per pubkey.
+   * Also checks pendingOtherPubkeys to prevent race conditions.
    */
   private hasOtherPoolPubkey(pubkey: string): boolean {
+    if (this.pendingOtherPubkeys.has(pubkey)) {
+      return true;
+    }
     for (const { peer, pool } of this.peers.values()) {
       if (pool === 'other' && peer.pubkey === pubkey) {
         return true;
@@ -258,6 +264,7 @@ export class WebRTCStore implements Store {
       peer.close();
     }
     this.peers.clear();
+    this.pendingOtherPubkeys.clear();
   }
 
   /**
@@ -528,7 +535,15 @@ export class WebRTCStore implements Store {
 
     // Tie-breaking: lower UUID initiates
     if (this.myPeerId.uuid < peerUuid) {
-      await this.connectToPeer(peerId, pool);
+      // Mark as pending before async operation to prevent race conditions
+      if (pool === 'other') {
+        this.pendingOtherPubkeys.add(senderPubkey);
+      }
+      try {
+        await this.connectToPeer(peerId, pool);
+      } finally {
+        this.pendingOtherPubkeys.delete(senderPubkey);
+      }
     }
   }
 
@@ -559,13 +574,17 @@ export class WebRTCStore implements Store {
       return;
     }
 
+    // Mark as pending before any async gaps to prevent race conditions
+    if (pool === 'other' && !this.peers.has(peerIdStr)) {
+      this.pendingOtherPubkeys.add(peerId.pubkey);
+    }
+
     // Clean up existing connection if any
     const existing = this.peers.get(peerIdStr);
     if (existing) {
       existing.peer.close();
       this.peers.delete(peerIdStr);
     }
-
 
     const peer = new Peer({
       peerId,
@@ -584,6 +603,8 @@ export class WebRTCStore implements Store {
     });
 
     this.peers.set(peerIdStr, { peer, pool });
+    // Clear pending now that peer is in the map
+    this.pendingOtherPubkeys.delete(peerId.pubkey);
     await peer.handleSignaling(msg, this.myPeerId.uuid);
   }
 
