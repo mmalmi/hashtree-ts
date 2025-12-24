@@ -21,16 +21,32 @@
 
   let { href, title, duration, ownerPubkey, ownerNpub, treeName, videoId, visibility }: Props = $props();
 
+  // Thumbnail extensions to try in order of preference
+  const THUMB_EXTENSIONS = ['jpg', 'webp', 'png'];
+
+  // Current extension index to try
+  let thumbExtIndex = $state(0);
+
   // Use SW URL for thumbnail - browser caches this automatically
-  // For playlist videos, include videoId in the file path: videoId/thumbnail.jpg
+  // For playlist videos, include videoId in the file path: videoId/thumbnail.{ext}
   let thumbnailUrl = $derived.by(() => {
     if (!ownerNpub || !treeName) return null;
+    const ext = THUMB_EXTENSIONS[thumbExtIndex] || 'jpg';
     // For playlist videos, videoId is a subfolder containing the thumbnail
-    const filePath = videoId ? `${videoId}/thumbnail.jpg` : 'thumbnail.jpg';
+    const filePath = videoId ? `${videoId}/thumbnail.${ext}` : `thumbnail.${ext}`;
     return getNpubFileUrl(ownerNpub, treeName, filePath);
   });
 
   let thumbnailError = $state(false);
+
+  // Try next extension on error
+  function handleThumbnailError() {
+    if (thumbExtIndex < THUMB_EXTENSIONS.length - 1) {
+      thumbExtIndex++;
+    } else {
+      thumbnailError = true;
+    }
+  }
 
   // Format duration as MM:SS or HH:MM:SS
   function formatDuration(seconds: number): string {
@@ -55,7 +71,7 @@
         src={thumbnailUrl}
         alt=""
         class="w-full h-full object-cover"
-        onerror={() => thumbnailError = true}
+        onerror={handleThumbnailError}
       />
     {:else}
       <span class="i-lucide-video text-2xl text-text-3"></span>
