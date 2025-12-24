@@ -217,12 +217,13 @@ export class BlossomStore implements StoreWithMeta {
       throw new Error('All write servers are in backoff');
     }
 
-    // For large blobs, check if they already exist before uploading
+    // For large blobs, check if they already exist on write servers before uploading
+    // Only check write servers - we want to ensure data is on servers we control
     if (data.length >= EXISTENCE_CHECK_THRESHOLD) {
-      const exists = await this.has(hash);
-      if (exists) {
+      const existsOnWriteServer = await this.hasOnWriteServers(hash);
+      if (existsOnWriteServer) {
         this.log({ operation: 'put', server: 'all', hash: hashHex, success: true, bytes: 0 });
-        return false; // Already exists, skip upload
+        return false; // Already exists on write server, skip upload
       }
     }
 
@@ -351,6 +352,47 @@ export class BlossomStore implements StoreWithMeta {
     for (const server of this.servers) {
       // Skip write-only servers (read defaults to true if not specified)
       if (server.read === false) {
+        continue;
+      }
+      // Skip servers in backoff
+      if (this.isServerInBackoff(server.url)) {
+        continue;
+      }
+
+      try {
+        const response = await fetch(`${server.url}/${hashHex}.bin`, {
+          method: 'HEAD',
+        });
+        if (response.ok) {
+          this.log({ operation: 'has', server: server.url, hash: hashHex, success: true });
+          this.recordSuccess(server.url);
+          return true;
+        }
+        // 404 is expected, not an error - don't backoff
+        // Other errors trigger backoff
+        if (response.status !== 404 && response.status >= 500) {
+          this.recordError(server.url);
+        }
+      } catch (e) {
+        this.log({ operation: 'has', server: server.url, hash: hashHex, success: false, error: e instanceof Error ? e.message : 'Network error' });
+        this.recordError(server.url);
+        continue;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if hash exists on write-enabled servers only
+   * Used before upload to avoid skipping uploads based on read-only server existence
+   */
+  private async hasOnWriteServers(hash: Hash): Promise<boolean> {
+    const hashHex = toHex(hash);
+
+    for (const server of this.servers) {
+      // Only check write-enabled servers
+      if (!server.write) {
         continue;
       }
       // Skip servers in backoff
