@@ -262,7 +262,7 @@
   }
 
   let ytdlpCommand = $derived(
-    `yt-dlp ${sourceUrl.trim() || 'URL'} --write-info-json --write-thumbnail --format mp4`
+    `yt-dlp ${sourceUrl.trim() || 'URL'} -P backup --write-info-json --write-thumbnail --format mp4`
   );
 
   let copied = $state(false);
@@ -331,7 +331,7 @@
                 </div>
 
                 <div>
-                  <p class="text-xs text-text-3 mb-1">3. Select the downloaded folder below</p>
+                  <p class="text-xs text-text-3 mb-1">3. Select the "backup" folder below</p>
                 </div>
               </div>
             </div>
