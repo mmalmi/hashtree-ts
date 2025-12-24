@@ -21,11 +21,11 @@ test.describe('Settings page', () => {
     setupPageErrorHandler(page);
     await page.goto('/#/settings');
 
-    // Wait for settings page to load
-    await expect(page.locator('text=Blossom Servers')).toBeVisible({ timeout: 10000 });
+    // Wait for settings page to load - section is now called "File Servers"
+    await expect(page.locator('text=File Servers')).toBeVisible({ timeout: 10000 });
 
-    // Click Edit button for blossom servers
-    const blossomSection = page.locator('div').filter({ hasText: /^Blossom Servers/ }).first();
+    // Click Edit button for file servers (blossom)
+    const blossomSection = page.locator('div').filter({ hasText: /^File Servers/ }).first();
     const editBtn = blossomSection.locator('button', { hasText: 'Edit' });
     await expect(editBtn).toBeVisible({ timeout: 5000 });
     await editBtn.click();

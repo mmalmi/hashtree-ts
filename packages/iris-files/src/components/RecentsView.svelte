@@ -39,8 +39,20 @@
   function buildHref(item: RecentItem): string {
     // Encode treeName in path: /npub/treeName -> /npub/encodedTreeName
     // For playlist videos, encode treeName and videoId separately
+    // For files, use the full path which includes the file
     let encodedPath: string;
-    if (item.treeName) {
+    if (item.type === 'file' && item.path) {
+      // Files use the full path (includes file name)
+      // Extract parts and encode properly: /npub/treeName/path/to/file
+      const pathParts = item.path.split('/').filter(Boolean);
+      if (pathParts.length >= 2) {
+        const npub = pathParts[0];
+        const rest = pathParts.slice(1).map(p => encodeURIComponent(p)).join('/');
+        encodedPath = `/${npub}/${rest}`;
+      } else {
+        encodedPath = item.path;
+      }
+    } else if (item.treeName) {
       encodedPath = item.videoId
         ? `/${item.npub}/${encodeURIComponent(item.treeName)}/${encodeURIComponent(item.videoId)}`
         : `/${item.npub}/${encodeURIComponent(item.treeName)}`;

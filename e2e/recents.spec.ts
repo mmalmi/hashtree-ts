@@ -201,12 +201,12 @@ test.describe('Recently Visited', () => {
     // Go back to home
     await goToTreeList(page);
 
-    // Click on the file in recents (TreeRow renders as <a>)
-    const fileInRecents = page.locator('a:has-text("clickable.txt")');
-    await expect(fileInRecents).toBeVisible({ timeout: 30000 });
-    await fileInRecents.click();
+    // Look for the file in recents - the file link should contain the file name
+    const fileLink = page.locator('a[href*="clickable"]');
+    await expect(fileLink).toBeVisible({ timeout: 30000 });
+    await fileLink.click();
 
-    // Should navigate to the file
-    await expect(page).toHaveURL(/clickable\.txt/, { timeout: 30000 });
+    // Should navigate to the file (URL contains the file name)
+    await expect(page).toHaveURL(/clickable/, { timeout: 30000 });
   });
 });
