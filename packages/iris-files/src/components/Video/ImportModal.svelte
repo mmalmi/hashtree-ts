@@ -33,6 +33,7 @@
   let channelName = $state('');
   let batchTotalSize = $state(0);
   let visibility = $state<'public' | 'unlisted' | 'private'>('public');
+  let sourceUrl = $state('');
 
   // Upload state
   let uploading = $state(false);
@@ -52,6 +53,7 @@
       channelName = '';
       batchTotalSize = 0;
       visibility = 'public';
+      sourceUrl = '';
       uploading = false;
       progress = 0;
       progressMessage = '';
@@ -245,8 +247,12 @@
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   }
 
+  let ytdlpCommand = $derived(
+    `yt-dlp ${sourceUrl.trim() || 'URL'} --write-info-json --write-thumbnail --format mp4`
+  );
+
   function copyCommand() {
-    navigator.clipboard.writeText('yt-dlp https://www.youtube.com/@CHANNEL/videos --write-info-json --write-thumbnail --format mp4');
+    navigator.clipboard.writeText(ytdlpCommand);
   }
 </script>
 
@@ -273,12 +279,11 @@
           <div class="space-y-4">
             <div class="bg-surface-2 rounded-lg p-4">
               <h3 class="font-medium text-text-1 mb-2 flex items-center gap-2">
-                <span class="i-lucide-terminal"></span>
-                Using yt-dlp
+                <span class="i-lucide-hard-drive-download"></span>
+                Backup Your Videos
               </h3>
               <p class="text-text-2 text-sm mb-3">
-                Download videos from YouTube using <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener" class="text-accent hover:underline">yt-dlp</a>,
-                then import the entire folder here.
+                Use <a href="https://github.com/yt-dlp/yt-dlp" target="_blank" rel="noopener" class="text-accent hover:underline">yt-dlp</a> to backup videos from YouTube, Vimeo, TikTok, Twitter/X, Twitch, Instagram and <a href="https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md" target="_blank" rel="noopener" class="text-accent hover:underline">thousands of other sites</a>.
               </p>
 
               <div class="space-y-3">
@@ -290,10 +295,23 @@
                 </div>
 
                 <div>
-                  <p class="text-xs text-text-3 mb-1">2. Download a channel/playlist with metadata</p>
+                  <p class="text-xs text-text-3 mb-1">2. Create a backup folder</p>
+                  <code class="block bg-surface-0 rounded p-2 text-sm text-text-1 font-mono">
+                    mkdir backup; cd backup
+                  </code>
+                </div>
+
+                <div>
+                  <p class="text-xs text-text-3 mb-1">3. Download a channel or playlist (optional: paste URL below)</p>
+                  <input
+                    type="text"
+                    bind:value={sourceUrl}
+                    class="w-full bg-surface-0 border border-surface-3 rounded-lg p-2 text-text-1 text-sm font-mono focus:border-accent focus:outline-none mb-2"
+                    placeholder="https://www.youtube.com/@CHANNEL/videos"
+                  />
                   <div class="relative">
                     <code class="block bg-surface-0 rounded p-2 pr-10 text-sm text-text-1 font-mono break-all">
-                      yt-dlp https://www.youtube.com/@CHANNEL/videos --write-info-json --write-thumbnail --format mp4
+                      {ytdlpCommand}
                     </code>
                     <button
                       onclick={copyCommand}
@@ -306,7 +324,7 @@
                 </div>
 
                 <div>
-                  <p class="text-xs text-text-3 mb-1">3. Select the downloaded folder below</p>
+                  <p class="text-xs text-text-3 mb-1">4. Select the backup folder below</p>
                 </div>
               </div>
             </div>
@@ -326,7 +344,7 @@
                 <span class="i-lucide-folder-open"></span>
                 Select Folder
               </button>
-              <p class="text-text-3 text-xs mt-2">Choose the folder containing yt-dlp downloads</p>
+              <p class="text-text-3 text-xs mt-2">Choose the folder containing your yt-dlp backup</p>
             </div>
           </div>
 
