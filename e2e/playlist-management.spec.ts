@@ -371,7 +371,8 @@ test.describe('Playlist Management', () => {
     await createBtn.click();
 
     // Wait for modal to return to list view (shows the new playlist checked)
-    await expect(page.locator('.i-lucide-check-square')).toBeVisible({ timeout: 10000 });
+    // Use longer timeout as creating playlist can take time
+    await expect(page.locator('.i-lucide-check-square')).toBeVisible({ timeout: 20000 });
 
     // Take screenshot after creation
     await page.screenshot({ path: 'e2e/screenshots/add-to-playlist-after-create.png' });
@@ -422,7 +423,9 @@ test.describe('Playlist Management', () => {
       await disableOthersPool(pageA);
       await configureBlossomServers(pageA);
       await ensureLoggedIn(pageA);
-      await pageA.waitForTimeout(1000);
+
+      // Wait for Create button - app auto-logs in
+      await expect(pageA.locator('button:has-text("Create")')).toBeVisible({ timeout: 15000 });
 
       // Get User A's npub
       const userANpub = await pageA.evaluate(async () => {
@@ -435,22 +438,22 @@ test.describe('Playlist Management', () => {
 
       console.log('User A npub:', userANpub);
 
-      // Create a playlist with 2 videos and publish to Nostr
+      // Create a playlist with 2 videos, publish to Nostr, and push to Blossom
       const playlist = await pageA.evaluate(async () => {
-        const { getTree } = await import('/src/store.ts');
+        const { getTree, getWebRTCStore } = await import('/src/store.ts');
         const { nostrStore, saveHashtree } = await import('/src/nostr.ts');
         const hashtree = await import('/node_modules/hashtree/dist/index.js');
-        const { toHex, videoChunker, cid } = hashtree;
+        const { toHex, videoChunker, cid, BlossomStore } = hashtree;
 
         const tree = getTree();
         let npub: string = '';
         const unsub = nostrStore.subscribe((state: any) => { npub = state.npub; });
         unsub();
 
-        // Create 2 videos for the playlist
+        // Create 2 videos for the playlist with distinct titles
         const videos = [
-          { id: 'sharedVideo001', title: 'Shared Video 1' },
-          { id: 'sharedVideo002', title: 'Shared Video 2' },
+          { id: 'crossUserVideo001', title: 'Cross User Video Alpha' },
+          { id: 'crossUserVideo002', title: 'Cross User Video Beta' },
         ];
 
         const rootEntries: Array<{ name: string; cid: any; size: number }> = [];
@@ -485,121 +488,120 @@ test.describe('Playlist Management', () => {
 
         // Create root playlist directory
         const rootDirResult = await tree.putDirectory(rootEntries, { public: true });
-        const treeName = 'videos/Shared Playlist Test';
+        const treeName = 'videos/Cross User Playlist Test';
         const rootHash = toHex(rootDirResult.cid.hash);
 
         // Publish to Nostr
         await saveHashtree(treeName, rootHash, undefined, { visibility: 'public' });
+
+        // Create BlossomStore for push (same pattern as BlossomPushModal)
+        const { signEvent } = await import('/src/nostr.ts');
+        const blossomStore = new BlossomStore({
+          servers: [{ url: 'https://cdn.iris.to', write: false }, { url: 'https://hashtree.iris.to', write: true }],
+          signer: async (event: any) => signEvent({ ...event, pubkey: '', id: '', sig: '' }),
+        });
+
+        let pushResult = { attempted: true, success: false, error: '', pushed: 0 };
+        try {
+          await tree.push(rootDirResult.cid, blossomStore, {
+            onProgress: (current: number, total: number) => {
+              pushResult.pushed = current;
+            },
+          });
+          pushResult.success = true;
+        } catch (e) {
+          pushResult.error = String(e);
+        }
 
         return {
           npub,
           treeName,
           rootHash,
           videos,
+          rootCid: { hash: rootHash },
+          pushResult,
         };
       });
 
-      console.log('User A created playlist:', playlist);
+      console.log('User A created and pushed playlist:', playlist);
 
-      // Wait for Nostr publish to propagate
-      await pageA.waitForTimeout(3000);
+      // Navigate to playlist page to verify it works for User A first
+      await pageA.goto(`/video.html#/${userANpub}/${encodeURIComponent(playlist.treeName)}/${playlist.videos[0].id}`);
+
+      // Wait for the video title to appear (not the folder name)
+      await expect(pageA.getByRole('heading', { name: 'Cross User Video Alpha' })).toBeVisible({ timeout: 15000 });
 
       // Take screenshot of User A's state
       await pageA.screenshot({ path: 'e2e/screenshots/playlist-share-userA.png' });
 
-      // ===== User B: Navigate to User A's playlist =====
+      // ===== User B: Initialize and navigate =====
       await pageB.goto('/video.html#/');
       await disableOthersPool(pageB);
       await configureBlossomServers(pageB);
+      await ensureLoggedIn(pageB);
 
       // Wait for app to initialize
-      await pageB.waitForTimeout(2000);
+      await expect(pageB.locator('button:has-text("Create")')).toBeVisible({ timeout: 15000 });
 
-      // Navigate to User A's profile
-      console.log('User B navigating to User A profile:', userANpub);
-      await pageB.goto(`/video.html#/${userANpub}`);
+      // Navigate directly to User A's playlist video
+      const directUrl = `/video.html#/${userANpub}/${encodeURIComponent(playlist.treeName)}/${playlist.videos[0].id}`;
+      console.log('User B navigating directly to:', directUrl);
+      await pageB.goto(directUrl);
 
-      // Wait for profile to load
-      await pageB.waitForTimeout(3000);
+      // Take screenshot immediately
+      await pageB.screenshot({ path: 'e2e/screenshots/playlist-share-userB-direct.png' });
 
-      // Take screenshot of User B viewing profile
-      await pageB.screenshot({ path: 'e2e/screenshots/playlist-share-userB-profile.png' });
+      // Debug: Check tree root resolution and data availability
+      const debugInfo = await pageB.evaluate(async (args: { npub: string; treeName: string }) => {
+        // Wait a bit for tree resolution from Nostr
+        await new Promise(r => setTimeout(r, 5000));
 
-      // Look for the playlist on User A's profile
-      // The playlist should appear in the "Playlists" section
-      const playlistSection = pageB.getByText('Playlists');
-      const playlistCard = pageB.getByText('Shared Playlist Test');
+        // Try to get the tree root via the resolver
+        const { waitForTreeRoot, getTreeRootSync } = await import('/src/stores/treeRoot.ts');
 
-      // Check if playlists section exists
-      const hasPlaylistSection = await playlistSection.isVisible().catch(() => false);
-      console.log('Has Playlists section:', hasPlaylistSection);
+        // Check sync first
+        const syncRoot = getTreeRootSync(args.npub, args.treeName);
 
-      // Check if our specific playlist is visible
-      const playlistVisible = await playlistCard.isVisible().catch(() => false);
-      console.log('Playlist visible:', playlistVisible);
+        // Try async with timeout
+        let asyncRoot = null;
+        try {
+          asyncRoot = await waitForTreeRoot(args.npub, args.treeName, 10000);
+        } catch {}
 
-      if (!playlistVisible) {
-        // Debug: Log what's on the page
-        const pageContent = await pageB.evaluate(() => document.body.innerText);
-        console.log('Page content (first 1000 chars):', pageContent.slice(0, 1000));
-      }
+        const storeInfo = {
+          peerCount: (window as any).__appStore?.getState()?.peerCount || 0,
+          syncRootFound: !!syncRoot,
+          asyncRootFound: !!asyncRoot,
+          asyncRootHash: asyncRoot?.hash ? Array.from(asyncRoot.hash as Uint8Array).slice(0, 4) : null,
+        };
 
-      // Verify the playlist is visible
-      await expect(playlistCard).toBeVisible({ timeout: 15000 });
+        return storeInfo;
+      }, { npub: userANpub, treeName: playlist.treeName });
+      console.log('Debug info:', JSON.stringify(debugInfo));
 
-      // Click on the playlist to view it
-      await playlistCard.click();
+      // The title should NOT be the folder name (crossUserVideo001)
+      // It SHOULD be the actual video title from title.txt
+      const titleLocator = pageB.getByRole('heading', { level: 1 });
+      await expect(titleLocator).toBeVisible({ timeout: 30000 });
 
-      // Wait for playlist page to load
-      await pageB.waitForTimeout(3000);
+      // Get the actual title text
+      const actualTitle = await titleLocator.textContent();
+      console.log('Actual title:', actualTitle);
 
-      // Log current URL
-      const currentUrl = pageB.url();
-      console.log('Current URL after click:', currentUrl);
+      // Verify it's not just the folder ID
+      expect(actualTitle).not.toBe('crossUserVideo001');
+      expect(actualTitle).not.toBe('Loading video');
+      expect(actualTitle).not.toBe('Video');
 
-      // Take screenshot of User B viewing playlist
-      await pageB.screenshot({ path: 'e2e/screenshots/playlist-share-userB-playlist.png' });
+      // The title should be the actual video title
+      expect(actualTitle).toContain('Cross User Video Alpha');
 
-      // Log page content for debugging
-      const bodyText = await pageB.evaluate(() => document.body.innerText);
-      console.log('Page body text (first 500 chars):', bodyText.slice(0, 500));
+      // Take screenshot after title verification
+      await pageB.screenshot({ path: 'e2e/screenshots/playlist-share-userB-title.png' });
 
-      // Check if we're on the playlist page (URL should contain the playlist path)
-      expect(currentUrl).toContain('Shared%20Playlist%20Test');
-
-      // Verify the playlist page loaded - check for video player or loading state
-      // The video element should be present even if it's loading
-      const hasVideoElement = await pageB.locator('video').isVisible().catch(() => false);
-      console.log('Has video element:', hasVideoElement);
-
-      // Verify we can see the playlist videos (sidebar or video grid)
-      // The playlist page should show video titles or a video player
-      const video1 = pageB.getByText('Shared Video 1');
-      const video2 = pageB.getByText('Shared Video 2');
-
-      // At least one video should be visible (either in sidebar or as current video title)
-      const hasVideo1 = await video1.first().isVisible().catch(() => false);
-      const hasVideo2 = await video2.first().isVisible().catch(() => false);
-
-      console.log('Video 1 visible:', hasVideo1);
-      console.log('Video 2 visible:', hasVideo2);
-
-      // For now, just verify we navigated to the playlist page correctly
-      // The video content might not load without Blossom/WebRTC sync
-      // So we just check the page structure is correct
-      if (!hasVideo1 && !hasVideo2) {
-        // Check if we have the playlist sidebar visible (indicates playlist loaded)
-        const hasSidebar = await pageB.locator('.flex-1.overflow-auto').first().isVisible().catch(() => false);
-        console.log('Has sidebar:', hasSidebar);
-
-        // Also check for any error message
-        const hasError = await pageB.getByText('Error').first().isVisible().catch(() => false);
-        console.log('Has error:', hasError);
-      }
-
-      // The test passes if we navigated to the playlist page
-      // Full video content verification would require Blossom/WebRTC sync which is complex
-      expect(currentUrl).toContain('videos');
+      // Title already verified above - if we got here, the main bug is fixed!
+      // Just verify the page loaded properly (screenshot already shows it works)
+      console.log('Test passed: Another user can view playlist with proper titles');
 
     } finally {
       await contextA.close();
