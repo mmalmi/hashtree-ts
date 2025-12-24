@@ -61,10 +61,6 @@
 
   // Derived: selected videos for upload
   let selectedVideos = $derived(batchVideos.filter(v => selectedVideoIds.has(v.id)));
-  let selectedSize = $derived(selectedVideos.reduce((sum, v) => {
-    return sum + (v.videoFile?.size || 0) + (v.infoJson?.size || 0) + (v.thumbnail?.size || 0);
-  }, 0));
-  let allSelected = $derived(batchVideos.length > 0 && selectedVideoIds.size === batchVideos.length);
 
   function toggleVideo(id: string) {
     selectedVideoIds = new Set(selectedVideoIds);

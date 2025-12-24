@@ -74,9 +74,6 @@
     return `videos/${videoPath}`;
   });
 
-  // For playlist sidebar loading
-  let parentTreeName = $derived(isPlaylistVideo ? treeName : null);
-
   let videoSrc = $state<string>('');  // SW URL (not blob!)
   let videoFileName = $state<string>('');  // For MIME type detection
   let loading = $state(true);
@@ -202,7 +199,7 @@
   // For playlist videos, rootCid is the same but videoPath changes
   $effect(() => {
     const cid = rootCid;
-    const path = videoPath; // Subscribe to videoPath changes
+    videoPath; // Subscribe to videoPath changes
     const isPlaylist = isPlaylistVideo; // Capture reactively
     if (cid) {
       // Reset state for new video
@@ -905,7 +902,7 @@
   <!-- Desktop Playlist Sidebar -->
   {#if playlist && showPlaylistSidebar && playlist.items.length > 1}
     <div class="w-80 shrink-0 border-l border-surface-3 hidden lg:block">
-      <PlaylistSidebar onClose={() => showPlaylistSidebar = false} />
+      <PlaylistSidebar />
     </div>
   {/if}
 </div>

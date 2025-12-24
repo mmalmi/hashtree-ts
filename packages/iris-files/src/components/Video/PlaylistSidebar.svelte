@@ -8,7 +8,6 @@
   import {
     currentPlaylist,
     playAt,
-    playNext,
     formatDuration,
     shuffleEnabled,
     repeatMode,
@@ -18,25 +17,14 @@
   } from '../../stores/playlist';
 
   interface Props {
-    onClose?: () => void;
     mobile?: boolean;
   }
 
-  let { onClose, mobile = false }: Props = $props();
+  let { mobile = false }: Props = $props();
 
   let playlist = $derived($currentPlaylist);
   let shuffle = $derived($shuffleEnabled);
   let repeat = $derived($repeatMode);
-
-  // Minimized state (desktop only)
-  let minimized = $state(false);
-
-  // Get next video info for minimized view
-  let nextVideo = $derived.by(() => {
-    if (!playlist || playlist.items.length === 0) return null;
-    const nextIndex = (playlist.currentIndex + 1) % playlist.items.length;
-    return playlist.items[nextIndex];
-  });
 
   // Action to scroll current item into view
   function scrollIfCurrent(node: HTMLElement, isCurrent: boolean) {
@@ -146,33 +134,12 @@
     <!-- Desktop: Vertical sidebar -->
     <div class="bg-surface-1 rounded-lg overflow-hidden flex flex-col h-full">
       <!-- Header -->
-      <div class="p-3 border-b border-surface-3 flex items-center justify-between">
-        <div class="min-w-0 flex-1">
-          <h3 class="font-medium text-text-1 truncate">{playlist.name}</h3>
-          <p class="text-xs text-text-3">{playlist.currentIndex + 1}/{playlist.items.length}</p>
-        </div>
-        <button onclick={() => minimized = !minimized} class="btn-ghost p-1 shrink-0" title={minimized ? 'Expand' : 'Minimize'}>
-          <span class="{minimized ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'} text-lg"></span>
-        </button>
+      <div class="p-3 border-b border-surface-3">
+        <h3 class="font-medium text-text-1 truncate">{playlist.name}</h3>
+        <p class="text-xs text-text-3">{playlist.currentIndex + 1}/{playlist.items.length}</p>
       </div>
 
-      {#if minimized}
-        <!-- Minimized view: just show next video -->
-        {#if nextVideo}
-          <button
-            onclick={() => {
-              const url = playNext();
-              if (url) window.location.hash = url;
-            }}
-            class="p-2 flex items-center gap-2 hover:bg-surface-2 text-left"
-          >
-            <span class="text-xs text-text-3">Next:</span>
-            <span class="text-sm text-text-1 truncate flex-1">{nextVideo.title}</span>
-            <span class="i-lucide-play text-text-3 shrink-0"></span>
-          </button>
-        {/if}
-      {:else}
-        <!-- Loop & Shuffle controls -->
+      <!-- Loop & Shuffle controls -->
         <div class="px-3 py-2 border-b border-surface-3 flex items-center gap-1">
           <button
             onclick={cycleRepeatMode}
@@ -234,7 +201,6 @@
             </button>
           {/each}
         </div>
-      {/if}
     </div>
   {/if}
 {/if}

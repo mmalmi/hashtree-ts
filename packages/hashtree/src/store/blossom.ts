@@ -77,9 +77,6 @@ const MAX_HASH_ATTEMPTS = 4; // Give up after this many attempts per hash
 /** Size threshold for existence check before upload (256KB) */
 const EXISTENCE_CHECK_THRESHOLD = 256 * 1024;
 
-/** Number of parallel uploads */
-const PARALLEL_UPLOADS = 4;
-
 /** Per-hash failure tracking */
 interface HashAttempts {
   attempts: number;

@@ -11,12 +11,10 @@
     videoCount: number;
     thumbnailUrl?: string;
     ownerPubkey?: string | null;
-    ownerNpub?: string;
-    treeName?: string;
     visibility?: string;
   }
 
-  let { href, title, videoCount, thumbnailUrl, ownerPubkey, ownerNpub, treeName, visibility }: Props = $props();
+  let { href, title, videoCount, thumbnailUrl, ownerPubkey, visibility }: Props = $props();
 </script>
 
 <a {href} class="block no-underline group">

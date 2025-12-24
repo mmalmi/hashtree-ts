@@ -643,8 +643,6 @@
                 videoCount={playlistInfo.videoCount}
                 thumbnailUrl={playlistInfo.thumbnailUrl}
                 ownerPubkey={video.ownerPubkey}
-                ownerNpub={video.ownerNpub}
-                treeName={video.treeName}
                 visibility={video.visibility}
               />
             {:else}

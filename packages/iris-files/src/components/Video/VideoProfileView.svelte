@@ -182,7 +182,7 @@
         if (isPlaylist) {
           newPlaylistInfo[t.name] = { videoCount, thumbnailUrl: firstThumbnailUrl };
         }
-      } catch (e) {
+      } catch {
         // Ignore errors
       }
     }
@@ -365,8 +365,6 @@
               videoCount={playlist.videoCount}
               thumbnailUrl={playlist.thumbnailUrl}
               ownerPubkey={playlist.ownerPubkey}
-              ownerNpub={playlist.ownerNpub}
-              treeName={playlist.treeName}
               visibility={playlist.visibility}
             />
           {/each}
