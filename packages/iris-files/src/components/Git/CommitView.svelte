@@ -4,6 +4,7 @@
    * Displays commit message, author, date, and diff
    * Uses getLog to find commits (since git show is not supported by wasm-git)
    */
+  import { SvelteSet } from 'svelte/reactivity';
   import { getLog, runGitCommand } from '../../utils/git';
   import { routeStore, treeRootStore, createTreesStore, currentDirCidStore } from '../../stores';
   import FileBrowser from '../FileBrowser.svelte';
@@ -111,7 +112,7 @@
               diff = diffResult.output;
               // Parse stats from diff
               const diffLines = diff.split('\n');
-              const filesSet = new Set<string>();
+              const filesSet = new SvelteSet<string>();
               for (const line of diffLines) {
                 if (line.startsWith('diff --git')) {
                   const match = line.match(/diff --git a\/(.*) b\/(.*)/);
@@ -130,7 +131,7 @@
             if (!diffResult.error && diffResult.output) {
               diff = diffResult.output;
               const diffLines = diff.split('\n');
-              const filesSet = new Set<string>();
+              const filesSet = new SvelteSet<string>();
               for (const line of diffLines) {
                 if (line.startsWith('diff --git')) {
                   const match = line.match(/diff --git a\/(.*) b\/(.*)/);

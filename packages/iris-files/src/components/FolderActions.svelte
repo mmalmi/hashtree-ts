@@ -5,6 +5,7 @@
    */
   import { nhashEncode, toHex, LinkType } from 'hashtree';
   import type { CID } from 'hashtree';
+  import { SvelteMap } from 'svelte/reactivity';
   import { openCreateModal, openRenameModal, openForkModal, openShareModal, openBlossomPushModal } from '../stores/modals';
   import { uploadFiles, uploadDirectory } from '../stores/upload';
   import { deleteCurrentFolder, buildRouteUrl } from '../actions';
@@ -103,7 +104,7 @@
 
       // Build the .git directory in hashtree
       // First, organize files by directory
-      const dirMap = new Map<string, Array<{ name: string; cid: CID; size: number; type: LinkType }>>();
+      const dirMap = new SvelteMap<string, Array<{ name: string; cid: CID; size: number; type: LinkType }>>();
       dirMap.set('.git', []);
 
       // Create directory entries

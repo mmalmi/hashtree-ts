@@ -62,7 +62,7 @@
 
 <!-- Video list with checkboxes -->
 <div class="max-h-64 overflow-auto space-y-1 border border-surface-3 rounded-lg p-2">
-  {#each videos as video}
+  {#each videos as video (video.id)}
     {@const isSelected = selectedIds.has(video.id)}
     {@const isCurrentlyUploading = currentUploadingId === video.id}
     <label class="flex items-center gap-2 text-sm p-1.5 rounded cursor-pointer hover:bg-surface-3 {isCurrentlyUploading ? 'bg-accent/20' : ''} {!isSelected ? 'opacity-50' : ''}">

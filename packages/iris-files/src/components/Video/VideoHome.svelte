@@ -4,6 +4,7 @@
    * YouTube-style home with horizontal sections and infinite feed
    */
   import { onMount, untrack } from 'svelte';
+  import { SvelteSet, SvelteMap } from 'svelte/reactivity';
   import { nip19 } from 'nostr-tools';
   import { ndk, nostrStore } from '../../nostr';
   import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
@@ -166,7 +167,7 @@
     }
 
     // Otherwise, augment with default pubkey + its follows
-    const combined = new Set(follows);
+    const combined = new SvelteSet(follows);
     combined.add(DEFAULT_CONTENT_PUBKEY); // Include the default user itself
     fallbackFollows.forEach(pk => combined.add(pk));
 
@@ -250,7 +251,7 @@
     });
 
     // Include self + follows (deduplicated)
-    const pubkeysToCheck = new Set(currentFollows);
+    const pubkeysToCheck = new SvelteSet(currentFollows);
     if (myPubkey) {
       pubkeysToCheck.add(myPubkey);
     }
@@ -264,7 +265,7 @@
     const authors = Array.from(pubkeysToCheck);
 
     // Track videos by d-tag (treeName) to handle updates
-    const videosByKey = new Map<string, VideoItem>();
+    const videosByKey = new SvelteMap<string, VideoItem>();
 
     // Single subscription for all authors' hashtree events
     const sub = ndk.subscribe({
@@ -352,9 +353,9 @@
     const authors = currentFollows;
 
     // Track videos by identifier to dedupe
-    const videosByKey = new Map<string, VideoItem>();
+    const videosByKey = new SvelteMap<string, VideoItem>();
     // Track seen event IDs
-    const seenEventIds = new Set<string>();
+    const seenEventIds = new SvelteSet<string>();
 
     // Parse video identifier from 'i' tag and create VideoItem
     // Format: "npub.../videos%2FVideoName" or just "nhash..."
@@ -471,7 +472,7 @@
 
   // Combine all discovered videos for the feed (unique)
   let feedVideos = $derived.by(() => {
-    const seen = new Set<string>();
+    const seen = new SvelteSet<string>();
     const result: VideoItem[] = [];
 
     // Add followed users' videos first

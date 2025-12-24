@@ -3,9 +3,10 @@
    * VideoUploadModal - Upload video files with metadata
    * Supports single video upload and batch upload from yt-dlp directories
    */
+  import { SvelteSet } from 'svelte/reactivity';
   import { modalsStore, closeVideoUploadModal } from '../../stores/modals';
   import { nostrStore, saveHashtree } from '../../nostr';
-  import { toHex, videoChunker, cid } from 'hashtree';
+  import { toHex, videoChunker, cid, type CID } from 'hashtree';
   import { getTree } from '../../store';
   import { addRecent } from '../../stores/recents';
   import { storeLinkKey } from '../../stores/trees';
@@ -54,7 +55,7 @@
 
   // Batch upload state
   let batchVideos = $state<YtDlpVideo[]>([]);
-  let selectedVideoIds = $state<Set<string>>(new Set());
+  let selectedVideoIds = new SvelteSet<string>();
   let channelName = $state<string>('');
   let batchCurrentIndex = $state(0);
   let batchTotalSize = $state(0);
@@ -63,7 +64,6 @@
   let selectedVideos = $derived(batchVideos.filter(v => selectedVideoIds.has(v.id)));
 
   function toggleVideo(id: string) {
-    selectedVideoIds = new Set(selectedVideoIds);
     if (selectedVideoIds.has(id)) {
       selectedVideoIds.delete(id);
     } else {
@@ -72,11 +72,12 @@
   }
 
   function selectAll() {
-    selectedVideoIds = new Set(batchVideos.map(v => v.id));
+    selectedVideoIds.clear();
+    batchVideos.forEach(v => selectedVideoIds.add(v.id));
   }
 
   function deselectAll() {
-    selectedVideoIds = new Set();
+    selectedVideoIds.clear();
   }
 
   // Drag state
@@ -128,7 +129,8 @@
       mode = 'batch';
       batchVideos = result.videos;
       // Select all by default
-      selectedVideoIds = new Set(result.videos.map(v => v.id));
+      selectedVideoIds.clear();
+      result.videos.forEach(v => selectedVideoIds.add(v.id));
       channelName = result.channelName || '';
 
       // Calculate total size
@@ -370,7 +372,7 @@
       progress = 75;
 
       // Prepare directory entries
-      const entries: Array<{ name: string; cid: any; size?: number }> = [
+      const entries: Array<{ name: string; cid: CID; size?: number }> = [
         { name: videoFileName, cid: videoResult.cid, size: videoResult.size },
       ];
 
@@ -459,7 +461,7 @@
       const isPublic = visibility === 'public';
 
       // We'll build up entries for the root directory (one per video)
-      const rootEntries: Array<{ name: string; cid: any; size: number }> = [];
+      const rootEntries: Array<{ name: string; cid: CID; size: number }> = [];
 
       for (let i = 0; i < selectedVideos.length; i++) {
         if (abortController.signal.aborted) throw new Error('Cancelled');
@@ -470,7 +472,7 @@
         progress = Math.round(videoProgress);
         progressMessage = `Uploading ${i + 1}/${selectedVideos.length}: ${video.title}`;
 
-        const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
+        const videoEntries: Array<{ name: string; cid: CID; size: number }> = [];
 
         // Upload video file
         if (video.videoFile) {
@@ -610,7 +612,7 @@
     visibility = 'public';
     abortController = null;
     batchVideos = [];
-    selectedVideoIds = new Set();
+    selectedVideoIds.clear();
     channelName = '';
     batchCurrentIndex = 0;
     batchTotalSize = 0;
@@ -634,7 +636,7 @@
     title = '';
     description = '';
     batchVideos = [];
-    selectedVideoIds = new Set();
+    selectedVideoIds.clear();
     channelName = '';
     if (thumbnailUrl) {
       URL.revokeObjectURL(thumbnailUrl);

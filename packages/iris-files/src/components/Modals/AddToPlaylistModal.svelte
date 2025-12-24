@@ -333,7 +333,7 @@
           <!-- Playlist list with checkboxes -->
           <div class="space-y-1">
             {#if playlists.length > 0}
-              {#each playlists as playlistItem}
+              {#each playlists as playlistItem (playlistItem.name)}
                 <button
                   onclick={() => togglePlaylist(playlistItem)}
                   disabled={isPending(playlistItem.name)}

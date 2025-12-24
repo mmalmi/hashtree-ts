@@ -4,6 +4,9 @@
    * Truncates by line count or character count
    * Automatically highlights URLs as clickable links
    */
+
+  type TextSegment = { type: 'text'; content: string } | { type: 'link'; url: string };
+
   interface Props {
     text: string;
     maxLines?: number;
@@ -17,34 +20,50 @@
   // URL regex - matches http(s) URLs
   const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`\[\]]+/g;
 
-  /** Convert URLs in text to clickable links */
-  function linkify(input: string): string {
-    if (!highlightLinks) return escapeHtml(input);
+  /** Parse text into segments of plain text and links */
+  function parseSegments(input: string): TextSegment[] {
+    if (!highlightLinks) return [{ type: 'text', content: input }];
 
-    // Escape HTML first, then replace URLs
-    const escaped = escapeHtml(input);
-    return escaped.replace(URL_REGEX, (url) => {
-      // Clean up trailing punctuation that's likely not part of URL
-      let cleanUrl = url;
-      const trailingPunct = /[.,;:!?)]+$/;
-      const match = cleanUrl.match(trailingPunct);
-      let suffix = '';
-      if (match) {
-        suffix = match[0];
-        cleanUrl = cleanUrl.slice(0, -suffix.length);
+    const segments: TextSegment[] = [];
+    let lastIndex = 0;
+
+    // Reset regex state
+    URL_REGEX.lastIndex = 0;
+
+    let match;
+    while ((match = URL_REGEX.exec(input)) !== null) {
+      // Add text before this URL
+      if (match.index > lastIndex) {
+        segments.push({ type: 'text', content: input.slice(lastIndex, match.index) });
       }
-      return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">${cleanUrl}</a>${suffix}`;
-    });
-  }
 
-  /** Escape HTML special characters */
-  function escapeHtml(input: string): string {
-    return input
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+      // Clean up trailing punctuation that's likely not part of URL
+      let url = match[0];
+      const trailingPunct = /[.,;:!?)]+$/;
+      const punctMatch = url.match(trailingPunct);
+      let suffix = '';
+      if (punctMatch) {
+        suffix = punctMatch[0];
+        url = url.slice(0, -suffix.length);
+      }
+
+      // Add the link
+      segments.push({ type: 'link', url });
+
+      // Add the trailing punctuation as text if any
+      if (suffix) {
+        segments.push({ type: 'text', content: suffix });
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < input.length) {
+      segments.push({ type: 'text', content: input.slice(lastIndex) });
+    }
+
+    return segments;
   }
 
   let expanded = $state(false);
@@ -77,6 +96,7 @@
   });
 
   let isTruncated = $derived(!expanded && needsTruncation);
+  let segments = $derived(parseSegments(displayText));
 </script>
 
 <div class={className}>
@@ -88,7 +108,7 @@
       Show less
     </button>
   {/if}
-  <p class="whitespace-pre-wrap break-words">{@html linkify(displayText)}{#if isTruncated}...{/if}</p>
+  <p class="whitespace-pre-wrap break-words">{#each segments as segment (segment.type === 'link' ? segment.url : segment.content)}{#if segment.type === 'link'}<a href={segment.url} target="_blank" rel="noopener noreferrer" class="text-accent hover:underline">{segment.url}</a>{:else}{segment.content}{/if}{/each}{#if isTruncated}...{/if}</p>
   {#if needsTruncation}
     <button
       onclick={() => expanded = !expanded}

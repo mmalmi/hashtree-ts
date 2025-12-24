@@ -5,6 +5,7 @@
    * Filter to social graph (users with follow distance) on by default, toggleable
    */
   import { untrack } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import { nip19 } from 'nostr-tools';
   import { ndk, nostrStore } from '../../nostr';
   import { Avatar, Name } from '../User';
@@ -43,7 +44,7 @@
   let submitting = $state(false);
   let showUnknown = $state(true); // Show all comments by default
   let subscription = $state<NDKSubscription | null>(null);
-  const seenIds = new Set<string>();
+  const seenIds = new SvelteSet<string>();
 
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
   let userPubkey = $derived($nostrStore.pubkey);

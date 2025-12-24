@@ -92,7 +92,7 @@
 
       <!-- Horizontal scroll list -->
       <div class="flex gap-2 overflow-x-auto pb-2 px-2 scrollbar-hide">
-        {#each playlist.items as item, i}
+        {#each playlist.items as item, i (item.href)}
           {@const isCurrent = i === playlist.currentIndex}
           <button
             use:scrollIfCurrent={isCurrent}
@@ -159,7 +159,7 @@
 
         <!-- Video list -->
         <div class="flex-1 overflow-auto">
-          {#each playlist.items as item, i}
+          {#each playlist.items as item, i (item.href)}
             {@const isCurrent = i === playlist.currentIndex}
             <button
               use:scrollIfCurrent={isCurrent}

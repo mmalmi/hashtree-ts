@@ -3,12 +3,29 @@
  * Shared between all app entry points
  */
 
+// Extend window interface for test helpers
+declare global {
+  interface Window {
+    __testHelpers?: { uploadSingleFile: unknown; followPubkey: unknown };
+    __localStore?: unknown;
+    __getWebRTCStore?: unknown;
+    __getSocialGraph?: unknown;
+    __socialGraph?: unknown;
+    __settingsStore?: unknown;
+    __setPoolSettings?: (pools: Record<string, unknown>) => void;
+    __getMyPubkey?: () => string | null;
+    __hashtree?: unknown;
+    __getTreeRoot?: () => string | null;
+    webrtcStore?: unknown;
+  }
+}
+
 export function setupTestHelpers(): void {
   if (typeof window === 'undefined') return;
 
   import('../actions/index').then(({ uploadSingleFile }) => {
     import('../stores/follows').then(({ followPubkey }) => {
-      (window as any).__testHelpers = { uploadSingleFile, followPubkey };
+      window.__testHelpers = { uploadSingleFile, followPubkey };
     });
   });
 
@@ -17,12 +34,12 @@ export function setupTestHelpers(): void {
       get: () => webrtcStore,
       configurable: true,
     });
-    (window as any).__localStore = localStore;
-    (window as any).__getWebRTCStore = getWebRTCStore;
+    window.__localStore = localStore;
+    window.__getWebRTCStore = getWebRTCStore;
   });
 
   import('../utils/socialGraph').then(({ getSocialGraph }) => {
-    (window as any).__getSocialGraph = getSocialGraph;
+    window.__getSocialGraph = getSocialGraph;
     Object.defineProperty(window, '__socialGraph', {
       get: () => getSocialGraph(),
       configurable: true,
@@ -30,22 +47,22 @@ export function setupTestHelpers(): void {
   });
 
   import('../stores/settings').then(({ settingsStore }) => {
-    (window as any).__settingsStore = settingsStore;
-    (window as any).__setPoolSettings = (pools: any) => settingsStore.setPoolSettings(pools);
+    window.__settingsStore = settingsStore;
+    window.__setPoolSettings = (pools: Record<string, unknown>) => settingsStore.setPoolSettings(pools);
   });
 
   import('../nostr').then(({ useNostrStore }) => {
-    (window as any).__getMyPubkey = () => useNostrStore.getState().pubkey;
+    window.__getMyPubkey = () => useNostrStore.getState().pubkey;
   });
 
   import('hashtree').then((hashtree) => {
-    (window as any).__hashtree = hashtree;
+    window.__hashtree = hashtree;
   });
 
   import('../stores').then(({ treeRootStore }) => {
     import('svelte/store').then(({ get }) => {
       import('hashtree').then(({ toHex }) => {
-        (window as any).__getTreeRoot = () => {
+        window.__getTreeRoot = () => {
           const rootCid = get(treeRootStore);
           return rootCid?.hash ? toHex(rootCid.hash) : null;
         };

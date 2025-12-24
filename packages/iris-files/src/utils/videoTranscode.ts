@@ -3,8 +3,10 @@
  * Lazy-loads FFmpeg only when needed (for non-webm/mp4 files)
  */
 
-let ffmpegInstance: any = null;
-let loadingPromise: Promise<any> | null = null;
+import type { FFmpeg } from '@ffmpeg/ffmpeg';
+
+let ffmpegInstance: FFmpeg | null = null;
+let loadingPromise: Promise<FFmpeg> | null = null;
 
 /**
  * Check if transcoding is supported (requires SharedArrayBuffer)
@@ -170,7 +172,7 @@ const FFMPEG_NHASH = 'nhash1qqs0297vyhmzhu6nq6xuynxwtrfgsqrrttll0utaeykat7gxrtkf
  * Lazy load FFmpeg WASM from hashtree via service worker
  * Content-addressed storage ensures integrity and enables caching
  */
-async function loadFFmpeg(): Promise<any> {
+async function loadFFmpeg(): Promise<FFmpeg> {
   if (ffmpegInstance) return ffmpegInstance;
   if (loadingPromise) return loadingPromise;
 

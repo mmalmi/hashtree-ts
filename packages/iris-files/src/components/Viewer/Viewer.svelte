@@ -4,6 +4,7 @@
    * Port of React Viewer component
    */
   import { toHex, nhashEncode, LinkType } from 'hashtree';
+  import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { routeStore, treeRootStore, currentDirCidStore, directoryEntriesStore, currentHash, createTreesStore, addRecent, isViewingFileStore, resolvingPathStore, recentlyChangedFiles } from '../../stores';
   import { getTree, decodeAsText, formatBytes } from '../../store';
   import { nostrStore, npubToPubkey } from '../../nostr';
@@ -316,7 +317,7 @@
   function exitEditMode() {
     // Remove ?edit=1 from URL
     const hashBase = window.location.hash.split('?')[0];
-    const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+    const params = new SvelteURLSearchParams(window.location.hash.split('?')[1] || '');
     params.delete('edit');
     const queryString = params.toString();
     window.location.hash = queryString ? `${hashBase}?${queryString}` : hashBase;
@@ -325,7 +326,7 @@
   function enterEditMode() {
     // Add ?edit=1 to URL
     const hashBase = window.location.hash.split('?')[0];
-    const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
+    const params = new SvelteURLSearchParams(window.location.hash.split('?')[1] || '');
     params.set('edit', '1');
     window.location.hash = `${hashBase}?${params.toString()}`;
   }

@@ -10,6 +10,7 @@
    *
    * No MSE needed - the browser handles everything!
    */
+  import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { recentlyChangedFiles } from '../../stores/recentlyChanged';
   import { currentHash } from '../../stores';
   import type { CID } from 'hashtree';
@@ -67,7 +68,7 @@
     const qIdx = window.location.hash.indexOf('?');
     if (qIdx === -1) return;
 
-    const params = new URLSearchParams(window.location.hash.slice(qIdx + 1));
+    const params = new SvelteURLSearchParams(window.location.hash.slice(qIdx + 1));
     if (!params.has('live')) return;
 
     params.delete('live');

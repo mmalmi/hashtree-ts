@@ -6,6 +6,7 @@
    * Mounts the parent directory from hashtree as the DOS C: drive.
    */
   import { LinkType, toHex, type CID } from 'hashtree';
+  import { SvelteMap } from 'svelte/reactivity';
   import { getTree } from '../../store';
   import { saveBinaryFile } from '../../actions/file';
 
@@ -452,7 +453,7 @@ echo.
           canvas.addEventListener('keydown', resumeAudio, { once: true });
 
           // Sync files back to hashtree on exit
-          const originalHashes = new Map<string, string>();
+          const originalHashes = new SvelteMap<string, string>();
           for (const [path, data] of Object.entries(collectedFiles!.files)) {
             const hash = await crypto.subtle.digest('SHA-256', data);
             originalHashes.set(path, toHex(new Uint8Array(hash)));

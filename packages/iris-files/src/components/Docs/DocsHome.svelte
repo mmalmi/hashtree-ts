@@ -5,6 +5,7 @@
    * Similar to Google Docs home page
    */
   import { nip19 } from 'nostr-tools';
+  import { SvelteSet } from 'svelte/reactivity';
   import { nostrStore } from '../../nostr';
   import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
   import { createTreesStore } from '../../stores';
@@ -68,7 +69,7 @@
 
   // Merge recents and own docs, deduplicate by treeName, recents first
   let allDocs = $derived.by(() => {
-    const seen = new Set<string>();
+    const seen = new SvelteSet<string>();
     const result: typeof recentDocs = [];
 
     // Add recents first (they have timestamps)

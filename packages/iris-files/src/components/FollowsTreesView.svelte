@@ -4,6 +4,7 @@
    * Displays a flat list of trees sorted by created_at (most recent first)
    */
   import { nip19 } from 'nostr-tools';
+  import { SvelteMap } from 'svelte/reactivity';
   import { nostrStore } from '../nostr';
   import { createFollowsStore } from '../stores/follows';
   import { createTreesStore, type TreeEntry } from '../stores/trees';
@@ -50,7 +51,7 @@
 
     // Limit to first 50 follows to avoid too many subscriptions
     const limitedFollows = follows.slice(0, 50);
-    const treesMap = new Map<string, TreeEntry[]>();
+    const treesMap = new SvelteMap<string, TreeEntry[]>();
 
     // Initialize with empty arrays
     limitedFollows.forEach(pk => treesMap.set(pk, []));

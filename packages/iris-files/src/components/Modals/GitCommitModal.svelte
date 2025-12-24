@@ -4,6 +4,7 @@
    * Shows status (staged, unstaged, untracked files) and allows commit
    */
   import { LinkType, type CID } from 'hashtree';
+  import { SvelteMap } from 'svelte/reactivity';
   import { modalsStore, closeGitCommitModal } from '../../stores/modals';
   import { createGitStatusStore } from '../../stores/git';
   import { commit } from '../../utils/git';
@@ -195,7 +196,7 @@
       }
 
       // Build .git directory from commit result
-      const gitDirMap = new Map<string, Array<{ name: string; cid: CID; size: number; type: LinkType }>>();
+      const gitDirMap = new SvelteMap<string, Array<{ name: string; cid: CID; size: number; type: LinkType }>>();
       gitDirMap.set('.git', []);
 
       // Create directory entries for subdirectories
