@@ -4,6 +4,7 @@
    * Desktop: sidebar on the right
    * Mobile: horizontal scroll below video
    */
+  import { tick } from 'svelte';
   import {
     currentPlaylist,
     playAt,
@@ -25,6 +26,24 @@
   let playlist = $derived($currentPlaylist);
   let shuffle = $derived($shuffleEnabled);
   let repeat = $derived($repeatMode);
+
+  // Action to scroll current item into view
+  function scrollIfCurrent(node: HTMLElement, isCurrent: boolean) {
+    if (isCurrent) {
+      tick().then(() => {
+        node.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+      });
+    }
+    return {
+      update(newIsCurrent: boolean) {
+        if (newIsCurrent) {
+          tick().then(() => {
+            node.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+          });
+        }
+      }
+    };
+  }
 
   function handleVideoClick(index: number) {
     const url = playAt(index);
@@ -79,6 +98,7 @@
         {#each playlist.items as item, i}
           {@const isCurrent = i === playlist.currentIndex}
           <button
+            use:scrollIfCurrent={isCurrent}
             onclick={() => handleVideoClick(i)}
             class="shrink-0 w-32 text-left rounded overflow-hidden {isCurrent ? 'ring-2 ring-accent' : ''}"
           >
@@ -152,6 +172,7 @@
         {#each playlist.items as item, i}
           {@const isCurrent = i === playlist.currentIndex}
           <button
+            use:scrollIfCurrent={isCurrent}
             onclick={() => handleVideoClick(i)}
             class="w-full flex gap-2 p-2 text-left hover:bg-surface-2 transition-colors {isCurrent ? 'bg-surface-2' : ''}"
           >

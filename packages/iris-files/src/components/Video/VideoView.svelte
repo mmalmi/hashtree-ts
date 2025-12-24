@@ -313,7 +313,8 @@
       try {
         const dir = await tree.listDirectory(rootCidParam);
         if (dir && dir.length > 0) {
-          // Check first entry to see if it's a directory with a video
+          // Collect all video directories
+          const videoEntries: { name: string }[] = [];
           for (const entry of dir) {
             try {
               const subDir = await tree.listDirectory(entry.cid);
@@ -324,16 +325,26 @@
                 e.name.endsWith('.mkv')
               );
               if (hasVideo) {
-                // This is a playlist! Navigate to the first video
-                const firstVideoId = entry.name;
-                const playlistUrl = `#/${npub}/${encodeURIComponent(treeName)}/${encodeURIComponent(firstVideoId)}`;
-                console.log('[VideoView] Detected playlist, navigating to first video:', playlistUrl);
-                window.location.hash = playlistUrl;
-                return;
+                videoEntries.push({ name: entry.name });
               }
             } catch {
               // Not a directory, continue
             }
+          }
+
+          if (videoEntries.length > 0) {
+            // Sort alphabetically to match playlist order
+            videoEntries.sort((a, b) => a.name.localeCompare(b.name));
+
+            // Pick first video, or random if shuffle is on
+            const startIndex = shuffle && videoEntries.length > 1
+              ? Math.floor(Math.random() * videoEntries.length)
+              : 0;
+            const startVideoId = videoEntries[startIndex].name;
+            const playlistUrl = `#/${npub}/${encodeURIComponent(treeName)}/${encodeURIComponent(startVideoId)}`;
+            console.log('[VideoView] Detected playlist, navigating to video:', playlistUrl);
+            window.location.hash = playlistUrl;
+            return;
           }
         }
       } catch {}

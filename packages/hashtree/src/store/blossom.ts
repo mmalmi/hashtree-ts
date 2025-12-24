@@ -74,6 +74,12 @@ const BASE_BACKOFF_MS = 1000; // 1 second
 const MAX_BACKOFF_MS = 60000; // 1 minute
 const MAX_HASH_ATTEMPTS = 4; // Give up after this many attempts per hash
 
+/** Size threshold for existence check before upload (256KB) */
+const EXISTENCE_CHECK_THRESHOLD = 256 * 1024;
+
+/** Number of parallel uploads */
+const PARALLEL_UPLOADS = 4;
+
 /** Per-hash failure tracking */
 interface HashAttempts {
   attempts: number;
@@ -212,6 +218,15 @@ export class BlossomStore implements StoreWithMeta {
       // All servers in backoff - count as an attempt
       this.recordHashFailure(hashHex);
       throw new Error('All write servers are in backoff');
+    }
+
+    // For large blobs, check if they already exist before uploading
+    if (data.length >= EXISTENCE_CHECK_THRESHOLD) {
+      const exists = await this.has(hash);
+      if (exists) {
+        this.log({ operation: 'put', server: 'all', hash: hashHex, success: true, bytes: 0 });
+        return false; // Already exists, skip upload
+      }
     }
 
     const authHeader = await this.createAuthHeader('upload', hash, contentType);

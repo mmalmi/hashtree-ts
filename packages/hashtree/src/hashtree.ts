@@ -429,6 +429,8 @@ export class HashTree {
     options?: {
       onProgress?: (current: number, total: number) => void;
       onBlock?: (hash: Hash, status: 'success' | 'skipped' | 'error', error?: Error) => void;
+      /** Number of parallel uploads (default: 4) */
+      concurrency?: number;
     }
   ): Promise<{
     cid: CID;
@@ -451,12 +453,14 @@ export class HashTree {
     let skipped = 0;
     let failed = 0;
     let bytes = 0;
+    let completed = 0;
     const errors: Array<{ hash: Hash; error: Error }> = [];
 
-    for (let i = 0; i < blocks.length; i++) {
-      const { hash, data } = blocks[i];
-      options?.onProgress?.(i + 1, blocks.length);
+    const concurrency = options?.concurrency ?? 4;
 
+    // Process blocks in parallel with limited concurrency
+    const processBlock = async (block: { hash: Hash; data: Uint8Array }) => {
+      const { hash, data } = block;
       try {
         // Put to target store - it may return false/skip if already exists
         const isNew = await targetStore.put(hash, data);
@@ -473,6 +477,28 @@ export class HashTree {
         const error = e instanceof Error ? e : new Error(String(e));
         errors.push({ hash, error });
         options?.onBlock?.(hash, 'error', error);
+      }
+      completed++;
+      options?.onProgress?.(completed, blocks.length);
+    };
+
+    // Run with limited concurrency
+    const queue = [...blocks];
+    const active: Promise<void>[] = [];
+
+    while (queue.length > 0 || active.length > 0) {
+      // Start new tasks up to concurrency limit
+      while (active.length < concurrency && queue.length > 0) {
+        const block = queue.shift()!;
+        const promise = processBlock(block).then(() => {
+          active.splice(active.indexOf(promise), 1);
+        });
+        active.push(promise);
+      }
+
+      // Wait for at least one to complete before continuing
+      if (active.length > 0) {
+        await Promise.race(active);
       }
     }
 
