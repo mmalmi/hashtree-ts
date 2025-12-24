@@ -3,6 +3,7 @@
    * PlaylistCard - Card for displaying a playlist in grids
    * Shows thumbnail with YouTube-style stacked effect and playlist overlay
    */
+  import { Avatar, Name } from '../User';
 
   interface Props {
     href: string;
@@ -50,17 +51,28 @@
     </div>
   </div>
 
-  <div class="mt-2">
-    <h3 class="text-sm font-medium text-text-1 line-clamp-2 leading-tight group-hover:text-accent transition-colors">
-      {title}
-    </h3>
-    <div class="flex items-center gap-1 mt-1 text-xs text-text-3">
-      <span class="i-lucide-list-video text-xs"></span>
-      <span>Playlist</span>
-      {#if visibility && visibility !== 'public'}
-        <span class="text-text-3">·</span>
-        <span class="capitalize">{visibility}</span>
-      {/if}
+  <!-- Info - compact like YouTube VideoCard -->
+  <div class="pt-2 pb-1 flex gap-2">
+    {#if ownerPubkey}
+      <div class="shrink-0">
+        <Avatar pubkey={ownerPubkey} size={24} />
+      </div>
+    {/if}
+    <div class="min-w-0 flex-1">
+      <h3 class="text-xs font-medium text-text-1 line-clamp-2 leading-tight group-hover:text-accent transition-colors">
+        {title}
+      </h3>
+      <div class="flex items-center gap-1 text-[10px] text-text-3 mt-0.5">
+        {#if ownerPubkey}
+          <Name pubkey={ownerPubkey} />
+          <span>·</span>
+        {/if}
+        <span>{videoCount} video{videoCount === 1 ? '' : 's'}</span>
+        {#if visibility && visibility !== 'public'}
+          <span>·</span>
+          <span class="capitalize">{visibility}</span>
+        {/if}
+      </div>
     </div>
   </div>
 </a>

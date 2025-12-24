@@ -10,7 +10,7 @@
   import { getTree } from '../../store';
   import { ndk, nostrStore } from '../../nostr';
   import { treeRootStore, createTreesStore } from '../../stores';
-  import { openShareModal, openBlossomPushModal } from '../../stores/modals';
+  import { openShareModal, openBlossomPushModal, openAddToPlaylistModal } from '../../stores/modals';
   import type { TreeVisibility } from 'hashtree';
   import { deleteTree } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
@@ -85,7 +85,8 @@
   let error = $state<string | null>(null);
   let videoTitle = $state<string>('');
   let videoDescription = $state<string>('');
-  let videoCid = $state<CID | null>(null);
+  let videoCid = $state<CID | null>(null);  // CID of the video FILE (video.mp4)
+  let videoFolderCid = $state<CID | null>(null);  // CID of the video FOLDER (contains video.mp4, title.txt, etc.)
   let videoVisibility = $state<TreeVisibility>('public');
   let videoRef: HTMLVideoElement | undefined = $state();
 
@@ -202,6 +203,7 @@
   $effect(() => {
     const cid = rootCid;
     const path = videoPath; // Subscribe to videoPath changes
+    const isPlaylist = isPlaylistVideo; // Capture reactively
     if (cid) {
       // Reset state for new video
       videoSrc = '';
@@ -209,6 +211,14 @@
       videoDescription = '';
       loading = true;
       error = null;
+
+      // Clear playlist if navigating to a non-playlist video
+      if (!isPlaylist) {
+        untrack(() => {
+          currentPlaylist.set(null);
+        });
+      }
+
       untrack(() => loadVideo(cid));
     }
   });
@@ -269,6 +279,9 @@
         return;
       }
     }
+
+    // Store the video folder CID (for adding to other playlists)
+    videoFolderCid = videoDirCid;
 
     // Try common video filenames immediately (don't wait for directory listing)
     const commonNames = ['video.webm', 'video.mp4', 'video.mov'];
@@ -454,18 +467,103 @@
     openBlossomPushModal(rootCid, title, true);
   }
 
+  function handleSaveToPlaylist() {
+    // Use videoFolderCid which is the video folder (contains video.mp4, title.txt, etc.)
+    // For single videos: videoFolderCid = rootCid (the video tree root)
+    // For playlist videos: videoFolderCid = the specific video subfolder
+    const cidToSave = videoFolderCid || rootCid;
+    if (!cidToSave) return;
+    // Estimate size (we don't have exact size, but it's not critical)
+    openAddToPlaylistModal(cidToSave, title, 0);
+  }
+
   async function handleDelete() {
     if (!treeName || deleting) return;
     if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
 
     deleting = true;
     try {
-      await deleteTree(treeName);
-      window.location.hash = '#/';
+      if (isPlaylistVideo && currentVideoId && rootCid) {
+        // Delete only this video from the playlist (not the whole playlist)
+        await deletePlaylistVideo();
+      } else {
+        // Delete the entire tree (single video)
+        await deleteTree(treeName);
+        window.location.hash = '#/';
+      }
     } catch (e) {
       console.error('Failed to delete video:', e);
       alert('Failed to delete video');
       deleting = false;
+    }
+  }
+
+  /**
+   * Delete a single video from a playlist without removing the whole playlist
+   */
+  async function deletePlaylistVideo() {
+    if (!npub || !treeName || !currentVideoId || !rootCid) return;
+
+    const tree = getTree();
+
+    // Get the current playlist root CID (the parent directory)
+    const { getLocalRootCache, getLocalRootKey } = await import('../../treeRootCache');
+    const playlistRootHash = getLocalRootCache(npub, treeName);
+    if (!playlistRootHash) {
+      throw new Error('Playlist root not found');
+    }
+
+    const playlistRootKey = getLocalRootKey(npub, treeName);
+    const playlistCid = playlistRootKey
+      ? { hash: playlistRootHash, key: playlistRootKey }
+      : { hash: playlistRootHash };
+
+    // Remove the video entry from the playlist
+    const newPlaylistCid = await tree.removeEntry(playlistCid, [], currentVideoId);
+
+    // Check how many videos remain (directories containing videos)
+    const remainingEntries = await tree.listDirectory(newPlaylistCid);
+    // Filter for directories - type can be LinkType.Dir (2) or check by inspecting contents
+    const remainingVideos: typeof remainingEntries = [];
+    for (const entry of remainingEntries) {
+      try {
+        // Try to list as directory - if it works, it's a directory
+        const subEntries = await tree.listDirectory(entry.cid);
+        const hasVideo = subEntries?.some(e =>
+          e.name.startsWith('video.') ||
+          e.name.endsWith('.mp4') ||
+          e.name.endsWith('.webm') ||
+          e.name.endsWith('.mkv')
+        );
+        if (hasVideo) {
+          remainingVideos.push(entry);
+        }
+      } catch {
+        // Not a directory, skip
+      }
+    }
+
+    if (remainingVideos.length === 0) {
+      // No videos left - delete the whole playlist
+      await deleteTree(treeName);
+      window.location.hash = '#/';
+    } else {
+      // Update the playlist root with the new CID
+      updateLocalRootCacheHex(
+        npub,
+        treeName,
+        toHex(newPlaylistCid.hash),
+        newPlaylistCid.key ? toHex(newPlaylistCid.key) : undefined,
+        videoVisibility
+      );
+
+      // Clear the current playlist from store to force reload
+      const { clearPlaylist } = await import('../../stores/playlist');
+      clearPlaylist();
+
+      // Navigate to the next video in the playlist
+      const nextVideoId = remainingVideos[0].name;
+      window.location.hash = `#/${npub}/${encodeURIComponent(treeName)}/${encodeURIComponent(nextVideoId)}`;
     }
   }
 
@@ -534,9 +632,17 @@
     }
   }
 
-  
+
   // Video identifier for reactions (npub/treeName format - path to video directory)
-  let videoIdentifier = $derived(npub && treeName ? `${npub}/${treeName}` : null);
+  // For playlist videos, include the videoId to target the specific video, not the whole playlist
+  let videoIdentifier = $derived.by(() => {
+    if (!npub || !treeName) return null;
+    // For playlist videos, include the video folder ID in the identifier
+    if (isPlaylistVideo && currentVideoId) {
+      return `${npub}/${treeName}/${currentVideoId}`;
+    }
+    return `${npub}/${treeName}`;
+  });
 
   // Subscribe to likes for this video
   $effect(() => {
@@ -711,6 +817,17 @@
                 {#if likes.size > 0}
                   <span class="text-sm">{likes.size}</span>
                 {/if}
+              </button>
+            {/if}
+            <!-- Save to playlist button -->
+            {#if isLoggedIn}
+              <button
+                onclick={handleSaveToPlaylist}
+                class="btn-ghost p-2"
+                title="Add to playlist"
+                disabled={!rootCid}
+              >
+                <span class="i-lucide-bookmark text-lg"></span>
               </button>
             {/if}
             <button onclick={handleShare} class="btn-ghost p-2" title="Share">

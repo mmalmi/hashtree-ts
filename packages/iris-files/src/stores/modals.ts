@@ -102,6 +102,15 @@ interface BlossomPushTarget {
   isDirectory: boolean;
 }
 
+interface AddToPlaylistTarget {
+  /** CID of the video to add (includes hash + key for unlisted) */
+  videoCid: CID;
+  /** Title of the video (for display) */
+  videoTitle: string;
+  /** Size of the video directory */
+  videoSize: number;
+}
+
 interface ModalState {
   showCreateModal: boolean;
   createModalType: ModalType;
@@ -134,6 +143,8 @@ interface ModalState {
   showBlossomPushModal: boolean;
   blossomPushTarget: BlossomPushTarget | null;
   showVideoUploadModal: boolean;
+  showAddToPlaylistModal: boolean;
+  addToPlaylistTarget: AddToPlaylistTarget | null;
   modalInput: string;
 }
 
@@ -169,6 +180,8 @@ const initialState: ModalState = {
   showBlossomPushModal: false,
   blossomPushTarget: null,
   showVideoUploadModal: false,
+  showAddToPlaylistModal: false,
+  addToPlaylistTarget: null,
   modalInput: '',
 };
 
@@ -337,4 +350,12 @@ export function closeVideoUploadModal() {
   modalsStore.update(s => ({ ...s, showVideoUploadModal: false }));
 }
 
-export type { ArchiveFileInfo, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, GitShellTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget, BlossomPushTarget };
+export function openAddToPlaylistModal(videoCid: CID, videoTitle: string, videoSize: number) {
+  modalsStore.update(s => ({ ...s, showAddToPlaylistModal: true, addToPlaylistTarget: { videoCid, videoTitle, videoSize }, modalInput: '' }));
+}
+
+export function closeAddToPlaylistModal() {
+  modalsStore.update(s => ({ ...s, showAddToPlaylistModal: false, addToPlaylistTarget: null, modalInput: '' }));
+}
+
+export type { ArchiveFileInfo, ExtractTarget, ExtractLocation, GitignoreTarget, GitHistoryTarget, GitShellTarget, CollaboratorsTarget, UnsavedChangesTarget, NewPullRequestTarget, NewIssueTarget, GitCommitTarget, BlossomPushTarget, AddToPlaylistTarget };

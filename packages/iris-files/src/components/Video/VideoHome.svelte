@@ -130,7 +130,8 @@
         }
 
         // Cache and store the result
-        const isPlaylist = videoCount >= 2;
+        // A tree is a playlist if it has video subdirectories (even just 1)
+        const isPlaylist = videoCount >= 1;
         setPlaylistCache(video.ownerNpub, video.treeName, video.hashHex, isPlaylist, videoCount, firstThumbnailUrl);
 
         newPlaylistInfo[video.key] = { videoCount, thumbnailUrl: firstThumbnailUrl };
@@ -635,7 +636,7 @@
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {#each feedVideos as video (video.href)}
             {@const playlistInfo = feedPlaylistInfo[video.key]}
-            {#if playlistInfo && playlistInfo.videoCount >= 2}
+            {#if playlistInfo && playlistInfo.videoCount >= 1}
               <PlaylistCard
                 href={video.href}
                 title={video.title}

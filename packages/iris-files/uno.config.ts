@@ -39,6 +39,14 @@ export default defineConfig({
     'i-lucide-shuffle',
     'i-lucide-repeat',
     'i-lucide-repeat-1',
+    // Add to playlist modal icons
+    'i-lucide-bookmark',
+    'i-lucide-list-video',
+    'i-lucide-video',
+    'i-lucide-loader-2',
+    'i-lucide-plus',
+    'i-lucide-check-square',
+    'i-lucide-square',
   ],
   presets: [
     presetUno(),

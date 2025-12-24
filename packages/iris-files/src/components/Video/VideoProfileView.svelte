@@ -174,7 +174,9 @@
         }
 
         // Cache the result
-        const isPlaylist = videoCount >= 2;
+        // A tree is a playlist if it has video subdirectories (even just 1)
+        // This distinguishes playlists from single videos where video.mp4 is at root level
+        const isPlaylist = videoCount >= 1;
         setPlaylistCache(npub!, t.name, hashHex, isPlaylist, videoCount, firstThumbnailUrl);
 
         if (isPlaylist) {

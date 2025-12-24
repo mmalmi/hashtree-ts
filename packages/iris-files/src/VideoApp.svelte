@@ -19,6 +19,7 @@
   import ForkModal from './components/Modals/ForkModal.svelte';
   import BlossomPushModal from './components/Modals/BlossomPushModal.svelte';
   import VideoUploadModal from './components/Video/VideoUploadModal.svelte';
+  import AddToPlaylistModal from './components/Modals/AddToPlaylistModal.svelte';
 
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
 
@@ -68,5 +69,6 @@
   <ShareModal />
   <ForkModal />
   <BlossomPushModal />
+  <AddToPlaylistModal />
   <Toast />
 </div>

@@ -99,6 +99,17 @@ export function getLocalRootKey(npub: string, treeName: string): Hash | undefine
 }
 
 /**
+ * Get all entries from the local root cache
+ */
+export function getAllLocalRoots(): Map<string, { hash: Hash; key?: Hash; visibility?: TreeVisibility }> {
+  const result = new Map<string, { hash: Hash; key?: Hash; visibility?: TreeVisibility }>();
+  for (const [key, entry] of localRootCache.entries()) {
+    result.set(key, { hash: entry.hash, key: entry.key, visibility: entry.visibility });
+  }
+  return result;
+}
+
+/**
  * Get full cache entry
  */
 export function getLocalRootEntry(npub: string, treeName: string): CacheEntry | undefined {
