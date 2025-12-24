@@ -251,8 +251,11 @@
     `yt-dlp ${sourceUrl.trim() || 'URL'} --write-info-json --write-thumbnail --format mp4`
   );
 
+  let copied = $state(false);
   function copyCommand() {
     navigator.clipboard.writeText(ytdlpCommand);
+    copied = true;
+    setTimeout(() => copied = false, 2000);
   }
 </script>
 
@@ -302,12 +305,12 @@
                 </div>
 
                 <div>
-                  <p class="text-xs text-text-3 mb-1">3. Download a channel or playlist (optional: paste URL below)</p>
+                  <p class="text-xs text-text-3 mb-1">3. Download videos (optional: paste URL below)</p>
                   <input
                     type="text"
                     bind:value={sourceUrl}
                     class="w-full bg-surface-0 border border-surface-3 rounded-lg p-2 text-text-1 text-sm font-mono focus:border-accent focus:outline-none mb-2"
-                    placeholder="https://www.youtube.com/@CHANNEL/videos"
+                    placeholder="https://www.youtube.com/watch?v=... or @channel or playlist"
                   />
                   <div class="relative">
                     <code class="block bg-surface-0 rounded p-2 pr-10 text-sm text-text-1 font-mono break-all">
@@ -316,9 +319,9 @@
                     <button
                       onclick={copyCommand}
                       class="absolute right-2 top-1/2 -translate-y-1/2 btn-ghost p-1"
-                      title="Copy command"
+                      title={copied ? 'Copied!' : 'Copy command'}
                     >
-                      <span class="i-lucide-copy text-sm"></span>
+                      <span class={copied ? 'i-lucide-check text-sm text-green-500' : 'i-lucide-copy text-sm'}></span>
                     </button>
                   </div>
                 </div>
