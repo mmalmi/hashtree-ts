@@ -61,19 +61,42 @@ test.describe('Iris Video App', () => {
     await page.screenshot({ path: 'e2e/screenshots/video-home.png' });
   });
 
-  test('shows feed content for new user with no follows', async ({ page }) => {
+  test('shows feed content for new user after uploading video', async ({ page }) => {
+    test.slow(); // Video upload takes time
+
     await page.goto('/video.html#/');
     await disableOthersPool(page);
+    await ensureLoggedIn(page);
 
-    // Login as new user (no follows)
-    const newBtn = page.getByRole('button', { name: /New/i });
-    if (await newBtn.isVisible().catch(() => false)) {
-      await newBtn.click();
-      // Wait for login to complete
-      await expect(page.locator('button:has-text("Create")')).toBeVisible({ timeout: 15000 });
-    }
+    // Close any modal and open upload modal
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    await openUploadModal(page);
 
-    // Should show "Feed" section (fallback content from default user for users with <5 follows)
+    // Upload the test video file
+    const testVideoPath = path.join(__dirname, 'fixtures', 'Big_Buck_Bunny_360_10s_1MB.mp4');
+    const fileInput = page.locator('input[type="file"][accept="video/*"]');
+    await fileInput.setInputFiles(testVideoPath);
+
+    // Title should be pre-filled from filename
+    const titleInput = page.locator('input[placeholder="Video title"]');
+    await expect(titleInput).toHaveValue('Big_Buck_Bunny_360_10s_1MB', { timeout: 5000 });
+
+    // Change title to something unique
+    const videoTitle = `Feed Test Video ${Date.now()}`;
+    await titleInput.fill(videoTitle);
+
+    // Click Upload button
+    await page.locator('.fixed button:has-text("Upload")').click();
+
+    // Wait for upload to complete
+    await page.waitForURL(/\/video\.html#\/npub.*\/videos%2F/, { timeout: 60000 });
+
+    // Navigate back to home
+    await page.locator('a[href="#/"]').first().click();
+    await page.waitForURL(/\/video\.html#\/$/, { timeout: 10000 });
+
+    // Should show "Feed" section with our uploaded video
     await expect(page.locator('text=Feed')).toBeVisible({ timeout: 30000 });
 
     // Take screenshot of feed content
