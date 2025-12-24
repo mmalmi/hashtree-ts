@@ -487,9 +487,9 @@
   // Handle collaborators
   function handleCollaborators() {
     if (isOwnTree) {
-      openCollaboratorsModal(collaborators, saveCollaborators);
+      openCollaboratorsModal({ npubs: collaborators, onSave: saveCollaborators });
     } else {
-      openCollaboratorsModal(collaborators);
+      openCollaboratorsModal({ npubs: collaborators });
     }
   }
 

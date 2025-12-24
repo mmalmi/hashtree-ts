@@ -458,7 +458,7 @@
         </span>
       {:else if totalChanges > 0}
         <button
-          onclick={() => openGitCommitModal(gitCid, handleCommit)}
+          onclick={() => openGitCommitModal({ dirCid: gitCid, onCommit: handleCommit })}
           class="btn-ghost flex items-center gap-1 px-2 h-8 text-sm"
           title="{totalChanges} uncommitted change{totalChanges !== 1 ? 's' : ''}"
         >
@@ -479,7 +479,7 @@
 
     <!-- Shell button -->
     <button
-      onclick={() => openGitShellModal(gitCid, canEdit, canEdit ? handleGitChange : undefined)}
+      onclick={() => openGitShellModal({ dirCid: gitCid, canEdit, onChange: canEdit ? handleGitChange : undefined })}
       class="btn-ghost flex items-center gap-1 px-2 h-8 text-sm"
       title="Git Shell"
     >
@@ -489,7 +489,7 @@
 
     <!-- Commits count (clickable) -->
     <button
-      onclick={() => openGitHistoryModal(gitCid, canEdit, canEdit ? handleCheckout : undefined)}
+      onclick={() => openGitHistoryModal({ dirCid: gitCid, canEdit, onCheckout: canEdit ? handleCheckout : undefined })}
       class="flex items-center gap-1.5 text-sm text-text-2 hover:text-accent bg-transparent b-0 cursor-pointer"
     >
       <span class="i-lucide-history text-text-3"></span>

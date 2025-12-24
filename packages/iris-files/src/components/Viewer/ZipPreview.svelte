@@ -107,7 +107,7 @@
   function handleExtract() {
     if (!unzipped) return;
 
-    // Convert to ArchiveFileInfo format
+    // Convert to ArchiveFileInfo format (just name and size for display)
     const archiveFiles: ArchiveFileInfo[] = [];
     for (const [name, content] of Object.entries(unzipped)) {
       // Skip Mac OS X metadata and directories
@@ -119,13 +119,12 @@
       }
       archiveFiles.push({
         name,
-        data: content,
         size: content.length,
       });
     }
 
-    // Open extract modal with the files (no originalData since ZIP already exists)
-    openExtractModal(filename, archiveFiles);
+    // Open extract modal with the archive data
+    openExtractModal({ archiveName: filename, files: archiveFiles, archiveData: data, commonRoot: null });
   }
 </script>
 

@@ -72,10 +72,10 @@
   }
 
   function handleNewIssue() {
-    openNewIssueModal(npub, repoName, () => {
+    openNewIssueModal({ npub, repoName, onCreate: () => {
       // Refresh the list after creating
       issuesStore.refresh();
-    });
+    }});
   }
 
   function getIssueHref(issue: Issue): string {

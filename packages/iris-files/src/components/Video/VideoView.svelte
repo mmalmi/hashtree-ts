@@ -517,7 +517,7 @@
     const cidToSave = videoFolderCid || rootCid;
     if (!cidToSave) return;
     // Estimate size (we don't have exact size, but it's not critical)
-    openAddToPlaylistModal(cidToSave, title, 0);
+    openAddToPlaylistModal({ videoCid: cidToSave, videoTitle: title, videoSize: 0 });
   }
 
   async function handleDelete() {

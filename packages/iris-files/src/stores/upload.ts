@@ -195,7 +195,7 @@ export async function uploadFiles(files: FileList): Promise<void> {
           setUploadProgress(null);
           // Pass archive data for extraction later (one file at a time)
           // Include commonRoot so modal knows if files already have a root folder
-          openExtractModal(file.name, archiveInfo.files, data, archiveInfo.commonRoot);
+          openExtractModal({ archiveName: file.name, files: archiveInfo.files, archiveData: data, commonRoot: archiveInfo.commonRoot });
           // Don't continue with normal upload - the modal will handle it
           return;
         }

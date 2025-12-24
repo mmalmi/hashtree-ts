@@ -84,7 +84,9 @@
   }
 
   function handleNewPR() {
-    openNewPullRequestModal(npub, repoName, {
+    openNewPullRequestModal({
+      npub,
+      repoName,
       branches: gitInfo.branches,
       currentBranch: gitInfo.currentBranch || undefined,
       onCreate: () => {
