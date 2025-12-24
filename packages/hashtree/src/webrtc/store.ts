@@ -189,6 +189,19 @@ export class WebRTCStore implements Store {
   }
 
   /**
+   * Check if we already have a connection from a pubkey in the 'other' pool.
+   * In the 'other' pool, we only allow 1 instance per pubkey.
+   */
+  private hasOtherPoolPubkey(pubkey: string): boolean {
+    for (const { peer, pool } of this.peers.values()) {
+      if (pool === 'other' && peer.pubkey === pubkey) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Start the WebRTC store - connect to relays and begin peer discovery
    */
   start(): void {
@@ -508,6 +521,11 @@ export class WebRTCStore implements Store {
       return;
     }
 
+    // In 'other' pool, only allow 1 instance per pubkey
+    if (pool === 'other' && this.hasOtherPoolPubkey(senderPubkey)) {
+      return;
+    }
+
     // Tie-breaking: lower UUID initiates
     if (this.myPeerId.uuid < peerUuid) {
       await this.connectToPeer(peerId, pool);
@@ -533,6 +551,11 @@ export class WebRTCStore implements Store {
 
     // Check if we can accept (unless we already have this peer)
     if (!this.peers.has(peerIdStr) && !this.canAcceptPeer(pool)) {
+      return;
+    }
+
+    // In 'other' pool, only allow 1 instance per pubkey (unless we already have this exact peer)
+    if (!this.peers.has(peerIdStr) && pool === 'other' && this.hasOtherPoolPubkey(peerId.pubkey)) {
       return;
     }
 
