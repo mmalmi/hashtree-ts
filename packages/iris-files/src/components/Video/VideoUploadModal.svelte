@@ -568,16 +568,8 @@
         storeLinkKey(userNpub, treeName, result.linkKey);
       }
 
-      // Add to recents
-      addRecent({
-        type: 'tree',
-        path: `/${userNpub}/${treeName}`,
-        label: channelName.trim(),
-        npub: userNpub,
-        treeName,
-        visibility,
-        linkKey: result.linkKey,
-      });
+      // Don't add playlists to recents - only individual videos get added when watched
+      // Users can find their playlists on their profile page
 
       // Navigate to the channel
       uploading = false;
