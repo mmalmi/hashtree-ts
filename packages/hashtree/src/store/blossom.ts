@@ -77,6 +77,9 @@ const MAX_HASH_ATTEMPTS = 4; // Give up after this many attempts per hash
 /** Size threshold for existence check before upload (256KB) */
 const EXISTENCE_CHECK_THRESHOLD = 256 * 1024;
 
+/** Timeout for HEAD requests (5 seconds) */
+const HEAD_TIMEOUT_MS = 5000;
+
 /** Per-hash failure tracking */
 interface HashAttempts {
   attempts: number;
@@ -362,6 +365,7 @@ export class BlossomStore implements StoreWithMeta {
       try {
         const response = await fetch(`${server.url}/${hashHex}.bin`, {
           method: 'HEAD',
+          signal: AbortSignal.timeout(HEAD_TIMEOUT_MS),
         });
         if (response.ok) {
           this.log({ operation: 'has', server: server.url, hash: hashHex, success: true });
@@ -403,6 +407,7 @@ export class BlossomStore implements StoreWithMeta {
       try {
         const response = await fetch(`${server.url}/${hashHex}.bin`, {
           method: 'HEAD',
+          signal: AbortSignal.timeout(HEAD_TIMEOUT_MS),
         });
         if (response.ok) {
           this.log({ operation: 'has', server: server.url, hash: hashHex, success: true });
