@@ -599,9 +599,44 @@ test.describe('Playlist Management', () => {
       // Take screenshot after title verification
       await pageB.screenshot({ path: 'e2e/screenshots/playlist-share-userB-title.png' });
 
-      // Title already verified above - if we got here, the main bug is fixed!
-      // Just verify the page loaded properly (screenshot already shows it works)
-      console.log('Test passed: Another user can view playlist with proper titles');
+      // Verify playlist sidebar shows both videos
+      // Desktop sidebar uses "1/2" without parentheses, mobile uses "(1/2)"
+      // Check for desktop version which should be visible in default viewport
+      const desktopSidebar = pageB.locator('.hidden.lg\\:block');
+      await expect(desktopSidebar).toBeVisible({ timeout: 10000 });
+
+      // Verify playlist name is visible in sidebar
+      await expect(desktopSidebar.getByText('Cross User Playlist Test')).toBeVisible({ timeout: 5000 });
+
+      // Verify both videos appear in the sidebar
+      await expect(desktopSidebar.getByText('Cross User Video Alpha')).toBeVisible({ timeout: 5000 });
+      await expect(desktopSidebar.getByText('Cross User Video Beta')).toBeVisible({ timeout: 5000 });
+
+      // Take screenshot after sidebar verification
+      await pageB.screenshot({ path: 'e2e/screenshots/playlist-share-userB-sidebar.png' });
+
+      // ===== Navigate to User A's profile and verify playlist appears as playlist =====
+      await pageB.goto(`/video.html#/${userANpub}`);
+      await pageB.waitForTimeout(3000);
+
+      // Take screenshot of profile
+      await pageB.screenshot({ path: 'e2e/screenshots/playlist-share-userB-profile.png' });
+
+      // Profile should show "Playlists" section with the playlist (not as a single video)
+      const playlistsSection = pageB.getByText('Playlists');
+      const isPlaylistsSectionVisible = await playlistsSection.isVisible({ timeout: 10000 }).catch(() => false);
+
+      console.log('Profile has Playlists section:', isPlaylistsSectionVisible);
+
+      // The playlist should appear with the playlist icon/video count
+      const playlistCard = pageB.getByText('Cross User Playlist Test');
+      await expect(playlistCard).toBeVisible({ timeout: 10000 });
+
+      // Check that it shows video count (indicates it's recognized as a playlist)
+      const videoCountText = pageB.getByText(/2 video/i);
+      await expect(videoCountText).toBeVisible({ timeout: 10000 });
+
+      console.log('Test passed: Another user can view playlist with full experience');
 
     } finally {
       await contextA.close();

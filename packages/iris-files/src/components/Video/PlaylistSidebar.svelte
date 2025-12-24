@@ -8,13 +8,13 @@
   import {
     currentPlaylist,
     playAt,
-    formatDuration,
     shuffleEnabled,
     repeatMode,
     toggleShuffle,
     cycleRepeatMode,
     type RepeatMode,
   } from '../../stores/playlist';
+  import { formatDuration } from '../../utils/format';
 
   interface Props {
     mobile?: boolean;
