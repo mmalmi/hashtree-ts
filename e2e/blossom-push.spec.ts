@@ -28,7 +28,7 @@ test.describe('Blossom Push', () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     // Should show server selection with write-enabled servers from defaults
-    await expect(modal.locator('text=Push to Blossom')).toBeVisible();
+    await expect(modal.locator('text=Push to File Servers')).toBeVisible();
     // Should show at least one server checkbox (blossom.iris.to)
     await expect(modal.locator('input[type="checkbox"]').first()).toBeVisible();
 
