@@ -25,6 +25,7 @@
     rootCid: CID;
     containsVideo: boolean;
     videoEntryName: string | null; // Name of entry if video is in playlist
+    visibility?: 'public' | 'unlisted' | 'private'; // Original visibility to preserve
   }
 
   // State
@@ -140,6 +141,7 @@
               rootCid,
               containsVideo,
               videoEntryName,
+              visibility: treeEntry.visibility,
             });
           }
         } catch {
@@ -165,12 +167,12 @@
         // Remove from playlist
         const newRoot = await tree.removeEntry(playlist.rootCid, [], playlist.videoEntryName);
 
-        // Save and publish to Nostr
+        // Save and publish to Nostr, preserving original visibility
         await saveHashtree(
           playlist.name,
           toHex(newRoot.hash),
           newRoot.key ? toHex(newRoot.key) : undefined,
-          { visibility: 'public' }
+          { visibility: playlist.visibility || 'public' }
         );
 
         // Update local state
@@ -192,12 +194,12 @@
           LinkType.Dir
         );
 
-        // Save and publish to Nostr
+        // Save and publish to Nostr, preserving original visibility
         await saveHashtree(
           playlist.name,
           toHex(newRoot.hash),
           newRoot.key ? toHex(newRoot.key) : undefined,
-          { visibility: 'public' }
+          { visibility: playlist.visibility || 'public' }
         );
 
         // Update local state
