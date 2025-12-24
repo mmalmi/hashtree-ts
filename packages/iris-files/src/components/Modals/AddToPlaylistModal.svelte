@@ -1,20 +1,37 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * AddToPlaylistModal - Add/remove a video to/from playlists
    * Uses CID (hash + key) to create a reference to the video
    * Shows which playlists already contain the video (like YouTube)
    */
-  import { modalsStore, closeAddToPlaylistModal, setModalInput } from '../../stores/modals';
+  import type { CID } from 'hashtree';
+
+  export interface AddToPlaylistTarget {
+    videoCid: CID;
+    videoTitle: string;
+    videoSize: number;
+  }
+
+  let show = $state(false);
+  let target = $state<AddToPlaylistTarget | null>(null);
+
+  export function open(t: AddToPlaylistTarget) {
+    target = t;
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    target = null;
+  }
+</script>
+
+<script lang="ts">
   import { nostrStore, saveHashtree } from '../../nostr';
   import { getTree } from '../../store';
   import { createTreesStore, type TreeEntry } from '../../stores/trees';
   import { toHex, LinkType, cid as makeCid } from 'hashtree';
   import { hasVideoFile, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
-  import type { CID } from 'hashtree';
-
-  let show = $derived($modalsStore.showAddToPlaylistModal);
-  let target = $derived($modalsStore.addToPlaylistTarget);
-  let modalInput = $derived($modalsStore.modalInput);
 
   let npub = $derived($nostrStore.npub);
 
@@ -35,6 +52,7 @@
   let error = $state<string | null>(null);
   let createNew = $state(false);
   let inputRef = $state<HTMLInputElement | null>(null);
+  let modalInput = $state('');
 
   // Subscribe to trees store to get user's playlists
   let treesUnsubscribe: (() => void) | null = null;
@@ -51,6 +69,7 @@
       pendingOps = new Set();
       error = null;
       createNew = false;
+      modalInput = '';
       // Unsubscribe from trees store
       if (treesUnsubscribe) {
         treesUnsubscribe();
@@ -263,7 +282,7 @@
 
       // Go back to list view
       createNew = false;
-      setModalInput('');
+      modalInput = '';
     } catch (e) {
       console.error('Failed to create playlist:', e);
       error = e instanceof Error ? e.message : 'Failed to create playlist';
@@ -280,12 +299,12 @@
 {#if show && target}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onclick={closeAddToPlaylistModal}>
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onclick={close}>
     <div class="bg-surface-1 rounded-lg shadow-lg w-full max-w-md mx-4" onclick={(e) => e.stopPropagation()}>
       <!-- Header -->
       <div class="p-4 border-b border-surface-3 flex items-center justify-between">
         <h2 class="text-lg font-semibold">Save to playlist</h2>
-        <button onclick={closeAddToPlaylistModal} class="btn-ghost p-1">
+        <button onclick={close} class="btn-ghost p-1">
           <span class="i-lucide-x text-lg"></span>
         </button>
       </div>
@@ -307,7 +326,7 @@
                 type="text"
                 placeholder="My Playlist"
                 value={modalInput}
-                oninput={(e) => setModalInput((e.target as HTMLInputElement).value)}
+                oninput={(e) => modalInput = (e.target as HTMLInputElement).value}
                 class="input w-full"
               />
             </div>
@@ -378,7 +397,7 @@
           <span class="i-lucide-video text-sm mr-1"></span>
           {target.videoTitle}
         </p>
-        <button onclick={closeAddToPlaylistModal} class="btn-ghost text-sm">
+        <button onclick={close} class="btn-ghost text-sm">
           Done
         </button>
       </div>

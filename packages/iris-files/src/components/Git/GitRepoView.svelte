@@ -7,7 +7,9 @@
   import { getTree, decodeAsText } from '../../store';
   import { routeStore } from '../../stores';
   import { createGitLogStore, createGitStatusStore } from '../../stores/git';
-  import { openGitHistoryModal, openGitShellModal, openGitCommitModal } from '../../stores/modals/git';
+  import { open as openGitHistoryModal } from '../Modals/GitHistoryModal.svelte';
+  import { open as openGitShellModal } from '../Modals/GitShellModal.svelte';
+  import { open as openGitCommitModal } from '../Modals/GitCommitModal.svelte';
   import { getFileLastCommits } from '../../utils/git';
   import FolderActions from '../FolderActions.svelte';
   import ReadmePanel from '../Viewer/ReadmePanel.svelte';

@@ -1,13 +1,25 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * ShareModal - unified sharing options with QR code, copy link, and native share
    */
+  let show = $state(false);
+  let url = $state<string | null>(null);
+
+  export function open(shareUrl: string) {
+    url = shareUrl;
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    url = null;
+  }
+</script>
+
+<script lang="ts">
   import QRCode from 'qrcode';
-  import { showShareModal, shareUrl, closeShareModal } from '../../stores/modals/share';
   import CopyText from '../CopyText.svelte';
 
-  let show = $derived($showShareModal);
-  let url = $derived($shareUrl);
   let qrDataUrl = $state<string | null>(null);
 
   // Generate QR code when modal opens
@@ -26,7 +38,7 @@
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         (document.activeElement as HTMLElement)?.blur();
-        closeShareModal();
+        close();
       }
     };
 
@@ -61,7 +73,7 @@
   <div
     class="fixed inset-0 bg-black/70 flex-center z-1000 overflow-auto"
     onclick={(e) => {
-      if (e.target === e.currentTarget) closeShareModal();
+      if (e.target === e.currentTarget) close();
     }}
     data-testid="share-modal-backdrop"
   >
@@ -70,7 +82,7 @@
       data-testid="share-modal"
     >
       <!-- QR Code - click to close -->
-      <div class="cursor-pointer" onclick={closeShareModal}>
+      <div class="cursor-pointer" onclick={close}>
         {#if qrDataUrl}
           <img
             src={qrDataUrl}

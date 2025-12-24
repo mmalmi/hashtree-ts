@@ -7,7 +7,7 @@
   import { formatBytes } from '../../store';
   import { nostrStore } from '../../nostr';
   import { routeStore, directoryEntriesStore } from '../../stores';
-  import { openShareModal } from '../../stores/modals/share';
+  import { open as openShareModal } from '../Modals/ShareModal.svelte';
   import {
     streamStore,
     startPreview,

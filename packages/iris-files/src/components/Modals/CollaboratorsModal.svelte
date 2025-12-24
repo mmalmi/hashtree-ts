@@ -1,4 +1,4 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * Modal for managing document collaborators/editors
    * Features:
@@ -7,12 +7,28 @@
    * - QR Scanner for adding npubs
    * - Search through followed users with Fuse.js
    */
-  import {
-    showCollaboratorsModal,
-    collaboratorsTarget,
-    closeCollaboratorsModal,
-    openShareModal,
-  } from '../../stores/modals/share';
+
+  export interface CollaboratorsTarget {
+    npubs: string[];
+    onSave?: (npubs: string[]) => void;
+  }
+
+  let show = $state(false);
+  let target = $state<CollaboratorsTarget | null>(null);
+
+  export function open(t: CollaboratorsTarget) {
+    target = t;
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    target = null;
+  }
+</script>
+
+<script lang="ts">
+  import { open as openShareModal } from './ShareModal.svelte';
   import { nip19 } from 'nostr-tools';
   import Fuse from 'fuse.js';
   import { UserRow } from '../User';
@@ -20,9 +36,6 @@
   import { createFollowsStore } from '../../stores/follows';
   import QRScanner from '../QRScanner.svelte';
   import CopyText from '../CopyText.svelte';
-
-  let show = $derived($showCollaboratorsModal);
-  let target = $derived($collaboratorsTarget);
 
   // Local state for editing
   let localNpubs = $state<string[]>([]);
@@ -241,7 +254,7 @@
   }
 
   function handleClose() {
-    closeCollaboratorsModal();
+    close();
   }
 
   // Handle ESC key

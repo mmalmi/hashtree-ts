@@ -1,14 +1,30 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * Modal for creating a new issue
    */
-  import { modalsStore } from '../../stores/modals/store';
-  import { closeNewIssueModal } from '../../stores/modals/git';
-  import { createIssue } from '../../nip34';
 
-  let modalState = $derived($modalsStore);
-  let isOpen = $derived(modalState.showNewIssueModal);
-  let target = $derived(modalState.newIssueTarget);
+  export interface NewIssueTarget {
+    npub: string;
+    repoName: string;
+    onCreate?: (issue: { id: string; title: string }) => void;
+  }
+
+  let isOpen = $state(false);
+  let target = $state<NewIssueTarget | null>(null);
+
+  export function open(t: NewIssueTarget) {
+    target = t;
+    isOpen = true;
+  }
+
+  export function close() {
+    isOpen = false;
+    target = null;
+  }
+</script>
+
+<script lang="ts">
+  import { createIssue } from '../../nip34';
 
   let title = $state('');
   let description = $state('');
@@ -21,7 +37,7 @@
     description = '';
     labels = '';
     error = null;
-    closeNewIssueModal();
+    close();
   }
 
   async function handleSubmit(e: Event) {

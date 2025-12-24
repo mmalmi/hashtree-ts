@@ -9,7 +9,7 @@
   import { nostrStore } from '../../nostr';
   import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
   import { createTreesStore } from '../../stores';
-  import { openCreateModal } from '../../stores/modals/file';
+  import { open as openCreateModal } from '../Modals/CreateModal.svelte';
   import DocCard from './DocCard.svelte';
 
   /** Encode tree name for use in URL path */

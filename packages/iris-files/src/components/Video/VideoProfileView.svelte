@@ -7,7 +7,7 @@
   import { nostrStore } from '../../nostr';
   import { createTreesStore, createProfileStore } from '../../stores';
     import { followPubkey, unfollowPubkey, getFollowsSync, createFollowsStore } from '../../stores/follows';
-  import { openShareModal } from '../../stores/modals/share';
+  import { open as openShareModal } from '../Modals/ShareModal.svelte';
   import { Avatar, Name } from '../User';
   import VideoCard from './VideoCard.svelte';
   import PlaylistCard from './PlaylistCard.svelte';

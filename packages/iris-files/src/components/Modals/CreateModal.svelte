@@ -1,25 +1,39 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * Modal for creating new files, folders, or trees
-   * Port of React CreateModal component
    */
-  import { setModalInput, modalInput as modalInputStore } from '../../stores/modals/store';
-  import {
-    showCreateModal,
-    createModalType,
-    createTreeVisibility as createTreeVisibilityStore,
-    closeCreateModal,
-    setCreateTreeVisibility,
-  } from '../../stores/modals/file';
+  import type { TreeVisibility } from 'hashtree';
+
+  export type ModalType = 'file' | 'folder' | 'tree' | 'document';
+
+  let show = $state(false);
+  let modalType = $state<ModalType>('file');
+  let treeVisibility = $state<TreeVisibility>('public');
+  let modalInput = $state('');
+
+  export function open(type: ModalType, visibility: TreeVisibility = 'public') {
+    modalType = type;
+    treeVisibility = visibility;
+    modalInput = '';
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    modalInput = '';
+  }
+
+  export function setVisibility(v: TreeVisibility) {
+    treeVisibility = v;
+  }
+</script>
+
+<script lang="ts">
   import { createFile, createFolder, createTree, createDocument } from '../../actions';
   import { routeStore } from '../../stores';
   import { navigate } from '../../lib/router.svelte';
   import VisibilityPicker from './VisibilityPicker.svelte';
 
-  let show = $derived($showCreateModal);
-  let modalInput = $derived($modalInputStore);
-  let modalType = $derived($createModalType);
-  let treeVisibility = $derived($createTreeVisibilityStore);
   let route = $derived($routeStore);
 
   let isCreating = $state(false);
@@ -52,13 +66,13 @@
       isCreating = true;
       await createTree(name, treeVisibility);
       isCreating = false;
-      closeCreateModal();
+      close();
     } else if (isDocument) {
       isCreating = true;
       if (route.npub && route.treeName) {
         // Add document to existing tree
         await createDocument(name);
-        closeCreateModal();
+        close();
         const newPath = [...route.path, name].map(encodeURIComponent).join('/');
         const linkKeyParam = route.linkKey ? `?k=${route.linkKey}` : '';
         window.location.hash = `/${route.npub}/${route.treeName}/${newPath}${linkKeyParam}`;
@@ -66,7 +80,7 @@
         // Create new tree as a document (from docs home)
         const { createDocumentTree } = await import('../../actions/tree');
         const result = await createDocumentTree(name, treeVisibility);
-        closeCreateModal();
+        close();
         if (result.npub && result.treeName) {
           const linkKeyParam = result.linkKey ? `?k=${result.linkKey}` : '';
           navigate(`/${result.npub}/${encodeURIComponent(result.treeName)}${linkKeyParam}`);
@@ -75,15 +89,15 @@
       isCreating = false;
     } else if (isFolder) {
       createFolder(name);
-      closeCreateModal();
+      close();
     } else {
       createFile(name, '');
-      closeCreateModal();
+      close();
     }
   }
 
   function handleKeyDown(e: KeyboardEvent) {
-    if (e.key === 'Escape') closeCreateModal();
+    if (e.key === 'Escape') close();
     if (e.key === 'Enter') handleSubmit();
   }
 </script>
@@ -93,7 +107,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-    onclick={closeCreateModal}
+    onclick={close}
   >
     <div
       class="bg-surface-1 rounded-lg shadow-lg p-6 w-full max-w-md mx-4"
@@ -105,8 +119,7 @@
         <input
           bind:this={inputRef}
           type="text"
-          value={modalInput}
-          oninput={(e) => setModalInput((e.target as HTMLInputElement).value)}
+          bind:value={modalInput}
           placeholder={placeholder}
           class="input w-full mb-4"
         />
@@ -114,12 +127,12 @@
         <!-- Visibility picker for trees and new documents -->
         {#if isTree || (isDocument && !route.treeName)}
           <div class="mt-4 mb-4">
-            <VisibilityPicker value={treeVisibility} onchange={setCreateTreeVisibility} />
+            <VisibilityPicker value={treeVisibility} onchange={setVisibility} />
           </div>
         {/if}
 
         <div class="flex justify-end gap-2">
-          <button type="button" onclick={closeCreateModal} class="btn-ghost">Cancel</button>
+          <button type="button" onclick={close} class="btn-ghost">Cancel</button>
           <button type="submit" class="btn-success" disabled={isCreating}>
             {isCreating ? 'Creating...' : 'Create'}
           </button>

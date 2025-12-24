@@ -10,6 +10,7 @@
   import MobileSearch from './components/MobileSearch.svelte';
   import Toast from './components/Toast.svelte';
   import VideoRouter from './components/Video/VideoRouter.svelte';
+  import Dropdown from './components/ui/Dropdown.svelte';
   import { currentPath, initRouter } from './lib/router.svelte';
   import { nostrStore } from './nostr';
 
@@ -18,16 +19,30 @@
   import ForkModal from './components/Modals/ForkModal.svelte';
   import BlossomPushModal from './components/Modals/BlossomPushModal.svelte';
   import AddToPlaylistModal from './components/Modals/AddToPlaylistModal.svelte';
+  import VideoUploadModal, { open as openVideoUploadModal } from './components/Video/VideoUploadModal.svelte';
+  import ImportModal, { open as openImportModal } from './components/Video/ImportModal.svelte';
 
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
+  let createDropdownOpen = $state(false);
 
   // Initialize router on mount
   onMount(() => {
     initRouter();
   });
 
-  function handleCreate() {
+  function handleUploadVideo() {
+    createDropdownOpen = false;
+    openVideoUploadModal();
+  }
+
+  function handleLivestream() {
+    createDropdownOpen = false;
     window.location.hash = '#/create';
+  }
+
+  function handleImport() {
+    createDropdownOpen = false;
+    openImportModal();
   }
 </script>
 
@@ -43,14 +58,32 @@
       <MobileSearch />
       <div class="hidden md:block"><SearchInput /></div>
       {#if isLoggedIn}
-        <button
-          onclick={handleCreate}
-          class="btn-ghost p-2 flex items-center gap-1 rounded-full"
-          title="Create"
-        >
-          <span class="i-lucide-plus text-lg"></span>
-          <span class="hidden sm:inline text-sm">Create</span>
-        </button>
+        <Dropdown bind:open={createDropdownOpen} onClose={() => createDropdownOpen = false} align="right">
+          {#snippet trigger()}
+            <button
+              onclick={() => createDropdownOpen = !createDropdownOpen}
+              class="btn-ghost p-2 flex items-center gap-1 rounded-full"
+              title="Create"
+            >
+              <span class="i-lucide-plus text-lg"></span>
+              <span class="hidden sm:inline text-sm">Create</span>
+            </button>
+          {/snippet}
+          <div class="bg-surface-1 py-1">
+            <button onclick={handleUploadVideo} class="w-full px-4 py-2 text-left btn-ghost flex items-center gap-3">
+              <span class="i-lucide-upload text-lg"></span>
+              <span>Upload Video</span>
+            </button>
+            <button onclick={handleLivestream} class="w-full px-4 py-2 text-left btn-ghost flex items-center gap-3">
+              <span class="i-lucide-radio text-lg"></span>
+              <span>Livestream</span>
+            </button>
+            <button onclick={handleImport} class="w-full px-4 py-2 text-left btn-ghost flex items-center gap-3">
+              <span class="i-lucide-folder-input text-lg"></span>
+              <span>Import</span>
+            </button>
+          </div>
+        </Dropdown>
       {/if}
       <ConnectivityIndicator />
       <NostrLogin />
@@ -67,5 +100,7 @@
   <ForkModal />
   <BlossomPushModal />
   <AddToPlaylistModal />
+  <VideoUploadModal />
+  <ImportModal />
   <Toast />
 </div>

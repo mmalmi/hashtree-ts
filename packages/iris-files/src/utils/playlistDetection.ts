@@ -125,8 +125,8 @@ export async function detectPlaylist(rootCid: CID): Promise<PlaylistDetectionRes
  */
 export async function detectPlaylistWithDetails(
   rootCid: CID,
-  npub: string,
-  treeName: string
+  _npub: string,
+  _treeName: string
 ): Promise<PlaylistDetectionResult & { videos: PlaylistVideoInfo[] }> {
   const tree = getTree();
   const videos: PlaylistVideoInfo[] = [];

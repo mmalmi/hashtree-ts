@@ -8,8 +8,8 @@
   import { createProfileStore } from '../../stores/profile';
   import { createFollowsStore, followPubkey, unfollowPubkey } from '../../stores/follows';
   import { createTreesStore } from '../../stores';
-  import { openCreateModal } from '../../stores/modals/file';
-  import { openShareModal } from '../../stores/modals/share';
+  import { open as openCreateModal } from '../Modals/CreateModal.svelte';
+  import { open as openShareModal } from '../Modals/ShareModal.svelte';
   import { Avatar, Name, Badge, FollowedBy } from '../User';
   import CopyText from '../CopyText.svelte';
   import ProxyImg from '../ProxyImg.svelte';

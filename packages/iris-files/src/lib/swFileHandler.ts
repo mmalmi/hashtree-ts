@@ -83,7 +83,7 @@ function handleSwMessage(event: MessageEvent): void {
  */
 async function handleFileRequest(request: FileRequest, port: MessagePort): Promise<void> {
   try {
-    const { npub, nhash, treeName, path, start, end, mimeType, download } = request;
+    const { npub, nhash, treeName, path } = request;
 
     // Resolve the CID
     let cid: CID | null = null;

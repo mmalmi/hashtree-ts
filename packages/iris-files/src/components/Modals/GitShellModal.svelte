@@ -1,10 +1,31 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * Modal for running git commands in a repository
    * Supports both read-only commands (status, log, etc.) and write commands (commit, add, etc.)
    */
   import type { CID } from 'hashtree';
-  import { showGitShellModal, gitShellTarget, closeGitShellModal } from '../../stores/modals/git';
+
+  export interface GitShellTarget {
+    dirCid: CID;
+    canEdit: boolean;
+    onChange?: (newCid: CID) => void;
+  }
+
+  let show = $state(false);
+  let target = $state<GitShellTarget | null>(null);
+
+  export function open(t: GitShellTarget) {
+    target = t;
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    target = null;
+  }
+</script>
+
+<script lang="ts">
   import { getProfileSync } from '../../stores/profile';
   import { runGitCommand, applyGitChanges } from '../../utils/git';
   import { nostrStore } from '../../nostr';
@@ -15,9 +36,6 @@
     error?: string;
     wasWrite?: boolean;
   }
-
-  let show = $derived($showGitShellModal);
-  let target = $derived($gitShellTarget);
 
   let inputValue = $state('');
   let commandHistory = $state<CommandResult[]>([]);
@@ -39,7 +57,7 @@
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       e.preventDefault();
-      closeGitShellModal();
+      close();
     }
   }
 
@@ -258,7 +276,7 @@ Not supported:
 {#if show && target}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={closeGitShellModal}>
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={close}>
     <div
       class="bg-surface-1 rounded-lg shadow-lg w-full max-w-3xl mx-4 max-h-[80vh] flex flex-col"
       onclick={(e) => e.stopPropagation()}
@@ -274,7 +292,7 @@ Not supported:
           <button onclick={clearHistory} class="btn-ghost p-1 text-sm" title="Clear output">
             <span class="i-lucide-trash-2"></span>
           </button>
-          <button onclick={closeGitShellModal} class="btn-ghost p-1">
+          <button onclick={close} class="btn-ghost p-1">
             <span class="i-lucide-x text-lg"></span>
           </button>
         </div>

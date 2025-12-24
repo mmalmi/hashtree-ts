@@ -1,12 +1,36 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * Modal for handling .gitignore detection in directory uploads
    */
-  import { showGitignoreModal, gitignoreTarget, closeGitignoreModal } from '../../stores/modals/git';
-  import { formatBytes } from '../../store';
 
-  let show = $derived($showGitignoreModal);
-  let target = $derived($gitignoreTarget);
+  export interface FileWithPath {
+    file: File;
+    relativePath: string;
+  }
+
+  export interface GitignoreTarget {
+    dirName: string;
+    includedFiles: FileWithPath[];
+    excludedFiles: FileWithPath[];
+    onDecision: (useGitignore: boolean, remember: boolean) => void;
+  }
+
+  let show = $state(false);
+  let target = $state<GitignoreTarget | null>(null);
+
+  export function open(t: GitignoreTarget) {
+    target = t;
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    target = null;
+  }
+</script>
+
+<script lang="ts">
+  import { formatBytes } from '../../store';
 
   let rememberChoice = $state(false);
 
@@ -20,17 +44,17 @@
 
   function handleUseGitignore() {
     target?.onDecision(true, rememberChoice);
-    closeGitignoreModal();
+    close();
   }
 
   function handleUploadAll() {
     target?.onDecision(false, rememberChoice);
-    closeGitignoreModal();
+    close();
   }
 
   function handleClose() {
     target?.onDecision(false, false);
-    closeGitignoreModal();
+    close();
   }
 </script>
 

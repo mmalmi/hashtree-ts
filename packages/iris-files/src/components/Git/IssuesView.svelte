@@ -5,7 +5,7 @@
    */
   import { routeStore, treeRootStore, createTreesStore } from '../../stores';
   import { createIssuesStore, filterByStatus, countByStatus } from '../../stores/nip34';
-  import { openNewIssueModal } from '../../stores/modals/git';
+  import { open as openNewIssueModal } from './NewIssueModal.svelte';
   import { nostrStore } from '../../nostr';
   import { encodeEventId, type Issue, type ItemStatus } from '../../nip34';
   import ItemStatusBadge from './ItemStatusBadge.svelte';

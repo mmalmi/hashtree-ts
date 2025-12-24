@@ -1,13 +1,35 @@
+<script lang="ts" module>
+  /**
+   * Modal for forking a directory as a new tree
+   */
+  import type { CID, TreeVisibility } from 'hashtree';
+
+  export interface ForkTarget {
+    dirCid: CID;
+    suggestedName: string;
+  }
+
+  let show = $state(false);
+  let forkTarget = $state<ForkTarget | null>(null);
+  let modalInput = $state('');
+
+  export function open(dirCid: CID, suggestedName: string) {
+    forkTarget = { dirCid, suggestedName };
+    modalInput = suggestedName;
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    forkTarget = null;
+    modalInput = '';
+  }
+</script>
+
 <script lang="ts">
   import type { TreeVisibility } from 'hashtree';
-  import { setModalInput, modalInput as modalInputStore } from '../../stores/modals/store';
-  import { showForkModal, forkTarget as forkTargetStore, closeForkModal } from '../../stores/modals/file';
   import { forkTree } from '../../actions/tree';
   import VisibilityPicker from './VisibilityPicker.svelte';
-
-  let show = $derived($showForkModal);
-  let forkTarget = $derived($forkTargetStore);
-  let modalInput = $derived($modalInputStore);
 
   let isForking = $state(false);
   let error = $state('');
@@ -44,7 +66,7 @@
     try {
       const result = await forkTree(forkTarget.dirCid, name, visibility);
       if (result.success) {
-        closeForkModal();
+        close();
       } else {
         error = 'Failed to create fork. Please try again.';
       }
@@ -67,7 +89,7 @@
 {#if show && forkTarget}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={closeForkModal}>
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={close}>
     <div class="bg-surface-1 rounded-lg shadow-lg p-6 w-full max-w-md mx-4" onclick={(e) => e.stopPropagation()}>
       <h2 class="text-lg font-semibold mb-2">Fork as New Folder</h2>
       <p class="text-text-2 text-sm mb-4">
@@ -82,8 +104,7 @@
           bind:this={inputRef}
           id="fork-name"
           type="text"
-          value={modalInput}
-          oninput={(e) => setModalInput((e.target as HTMLInputElement).value)}
+          bind:value={modalInput}
           onkeydown={handleKeyDown}
           placeholder="Enter folder name..."
           class="w-full px-3 py-2 bg-surface-2 border border-surface-3 rounded text-text-1 placeholder:text-text-3 focus:outline-none focus:border-accent"
@@ -101,7 +122,7 @@
 
       <div class="flex justify-end gap-2">
         <button
-          onclick={closeForkModal}
+          onclick={close}
           class="btn-ghost px-4 py-2"
           disabled={isForking}
         >

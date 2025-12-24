@@ -1,13 +1,30 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * BlossomPushModal - Push directory/file contents to Blossom servers
-   * Uses BlossomStore from hashtree for uploads with proper auth and backoff
    */
-  import {
-    showBlossomPushModal,
-    blossomPushTarget,
-    closeBlossomPushModal,
-  } from '../../stores/modals/share';
+  import type { CID } from 'hashtree';
+
+  export interface BlossomPushTarget {
+    cid: CID;
+    name: string;
+    isDirectory: boolean;
+  }
+
+  let show = $state(false);
+  let target = $state<BlossomPushTarget | null>(null);
+
+  export function open(cid: CID, name: string, isDirectory: boolean) {
+    target = { cid, name, isDirectory };
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    target = null;
+  }
+</script>
+
+<script lang="ts">
   import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../../stores/settings';
   import { getTree } from '../../store';
   import { signEvent } from '../../nostr';
@@ -27,9 +44,6 @@
     selected: boolean;
     write: boolean;
   }
-
-  let show = $derived($showBlossomPushModal);
-  let target = $derived($blossomPushTarget);
 
   // State
   let phase = $state<'select' | 'pushing' | 'done'>('select');
@@ -71,7 +85,7 @@
         if (phase === 'pushing') {
           cancelled = true;
         } else {
-          closeBlossomPushModal();
+          close();
         }
       }
     };
@@ -163,7 +177,7 @@
   <div
     class="fixed inset-0 bg-black/70 flex-center z-1000 overflow-auto"
     onclick={(e) => {
-      if (e.target === e.currentTarget && phase !== 'pushing') closeBlossomPushModal();
+      if (e.target === e.currentTarget && phase !== 'pushing') close();
     }}
     data-modal-backdrop
     data-testid="blossom-push-modal-backdrop"
@@ -179,7 +193,7 @@
           Push to File Servers
         </h2>
         {#if phase !== 'pushing'}
-          <button onclick={closeBlossomPushModal} class="btn-ghost p-1">
+          <button onclick={close} class="btn-ghost p-1" title="Close">
             <span class="i-lucide-x"></span>
           </button>
         {/if}
@@ -215,7 +229,7 @@
           </div>
 
           <div class="flex justify-end gap-2">
-            <button onclick={closeBlossomPushModal} class="btn-ghost px-4 py-2">
+            <button onclick={close} class="btn-ghost px-4 py-2">
               Cancel
             </button>
             <button
@@ -300,7 +314,7 @@
             {/if}
 
             <button
-              onclick={closeBlossomPushModal}
+              onclick={close}
               class="btn-primary w-full py-2"
             >
               Done

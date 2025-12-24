@@ -1,27 +1,48 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * Modal for extracting archive files (ZIP)
-   * Shows options to extract to current directory, subdirectory, or keep as ZIP
    */
-  import { type ExtractLocation } from '../../stores/modals/store';
-  import {
-    showExtractModal,
-    extractTarget,
-    extractLocation,
-    closeExtractModal,
-    setExtractLocation,
-  } from '../../stores/modals/file';
+  export type ExtractLocation = 'current' | 'subdir';
+
+  export interface ArchiveFileInfo {
+    name: string;
+    size: number;
+  }
+
+  export interface ExtractTarget {
+    archiveName: string;
+    files: ArchiveFileInfo[];
+    archiveData: Uint8Array;
+    commonRoot: string | null;
+  }
+
+  let show = $state(false);
+  let target = $state<ExtractTarget | null>(null);
+  let location = $state<ExtractLocation>('subdir');
+
+  export function open(extractTarget: ExtractTarget) {
+    target = extractTarget;
+    location = 'subdir';
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    target = null;
+  }
+
+  export function setLocation(loc: ExtractLocation) {
+    location = loc;
+  }
+</script>
+
+<script lang="ts">
   import { uploadSingleFile, uploadExtractedFiles } from '../../actions/file';
   import { formatBytes } from '../../store';
-
-  let show = $derived($showExtractModal);
-  let target = $derived($extractTarget);
-  let location = $derived($extractLocation);
 
   let isProcessing = $state(false);
 
   // Get archive name without extension for subdirectory suggestion
-  // If archive has a common root, use that; otherwise use archive name without extension
   let suggestedSubdir = $derived.by(() => {
     if (!target?.archiveName) return '';
     if (target.commonRoot) return target.commonRoot;
@@ -30,10 +51,8 @@
     return dotIndex > 0 ? name.substring(0, dotIndex) : name;
   });
 
-  // Check if archive already has a common root folder
   let hasCommonRoot = $derived(!!target?.commonRoot);
 
-  // Total size of extracted files
   let totalSize = $derived.by(() => {
     if (!target?.files) return 0;
     return target.files.reduce((sum, f) => sum + f.size, 0);
@@ -43,19 +62,13 @@
     if (!target || isProcessing) return;
     isProcessing = true;
 
-    // Capture values before closing modal
     const archiveData = target.archiveData;
     const archiveName = target.archiveName;
-    // Only add subdirName if:
-    // 1. User selected 'subdir' option AND
-    // 2. Archive doesn't already have a common root folder
     const subdirName = (location === 'subdir' && !hasCommonRoot) ? suggestedSubdir : undefined;
 
-    // Close modal immediately so user sees progress
-    closeExtractModal();
+    close();
 
     try {
-      // Pass archive data and name - extraction happens inside
       await uploadExtractedFiles(archiveData, archiveName, subdirName);
     } catch (e) {
       console.error('Failed to extract files:', e);
@@ -68,27 +81,19 @@
 
     try {
       await uploadSingleFile(target.archiveName, target.archiveData);
-      closeExtractModal();
+      close();
     } catch (e) {
       console.error('Failed to upload ZIP:', e);
     } finally {
       isProcessing = false;
     }
   }
-
-  function handleCancel() {
-    closeExtractModal();
-  }
-
-  function handleLocationChange(loc: ExtractLocation) {
-    setExtractLocation(loc);
-  }
 </script>
 
 {#if show && target}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onclick={handleCancel}>
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onclick={close}>
     <div
       class="bg-surface-1 rounded-lg shadow-lg p-6 w-full max-w-md mx-4 max-h-[80vh] flex flex-col"
       onclick={(e) => e.stopPropagation()}
@@ -117,7 +122,6 @@
       <!-- Location options -->
       <div class="mb-4 space-y-2">
         {#if hasCommonRoot}
-          <!-- Archive already has a root folder, show simpler options -->
           <p class="text-sm text-text-2 mb-2">
             Archive contains folder: <span class="font-medium text-text-1">{suggestedSubdir}/</span>
           </p>
@@ -126,7 +130,7 @@
               type="radio"
               name="extract-location"
               checked={location === 'current'}
-              onchange={() => handleLocationChange('current')}
+              onchange={() => setLocation('current')}
               class="accent-accent"
             />
             <span class="text-sm">Extract here (creates <span class="font-medium text-text-1">{suggestedSubdir}/</span>)</span>
@@ -137,7 +141,7 @@
               type="radio"
               name="extract-location"
               checked={location === 'subdir'}
-              onchange={() => handleLocationChange('subdir')}
+              onchange={() => setLocation('subdir')}
               class="accent-accent"
             />
             <span class="text-sm">Extract to folder: <span class="font-medium text-text-1">{suggestedSubdir}/</span></span>
@@ -147,7 +151,7 @@
               type="radio"
               name="extract-location"
               checked={location === 'current'}
-              onchange={() => handleLocationChange('current')}
+              onchange={() => setLocation('current')}
               class="accent-accent"
             />
             <span class="text-sm">Extract to current directory</span>
@@ -157,7 +161,7 @@
 
       <!-- Action buttons -->
       <div class="flex justify-end gap-2 mt-auto">
-        <button onclick={handleCancel} class="btn-ghost" disabled={isProcessing}>
+        <button onclick={close} class="btn-ghost" disabled={isProcessing}>
           Cancel
         </button>
         <button onclick={handleKeepAsZip} class="btn-ghost" disabled={isProcessing}>

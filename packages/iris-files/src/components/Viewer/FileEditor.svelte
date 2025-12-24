@@ -4,7 +4,7 @@
    * Port of React Viewer edit functionality
    */
   import { saveFile } from '../../actions';
-  import { openUnsavedChangesModal } from '../../stores/modals/other';
+  import { open as openUnsavedChangesModal } from '../Modals/UnsavedChangesModal.svelte';
   import { settingsStore } from '../../stores/settings';
 
   interface Props {

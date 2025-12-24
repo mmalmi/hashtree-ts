@@ -9,8 +9,9 @@
   import { getTree, decodeAsText, formatBytes } from '../../store';
   import { nostrStore, npubToPubkey } from '../../nostr';
   import { deleteEntry } from '../../actions';
-  import { openRenameModal } from '../../stores/modals/file';
-  import { openShareModal, openBlossomPushModal } from '../../stores/modals/share';
+  import { open as openRenameModal } from '../Modals/RenameModal.svelte';
+  import { open as openShareModal } from '../Modals/ShareModal.svelte';
+  import { open as openBlossomPushModal } from '../Modals/BlossomPushModal.svelte';
   import { getNhashFileUrl } from '../../lib/mediaUrl';
   import DirectoryActions from './DirectoryActions.svelte';
   import FileEditor from './FileEditor.svelte';

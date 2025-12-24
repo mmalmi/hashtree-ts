@@ -6,7 +6,7 @@
   import { routeStore, createTreesStore, currentDirCidStore } from '../../stores';
   import { createPullRequestsStore, filterByStatus, countByStatus } from '../../stores/nip34';
   import { createGitInfoStore } from '../../stores/git';
-  import { openNewPullRequestModal } from '../../stores/modals/git';
+  import { open as openNewPullRequestModal } from './NewPullRequestModal.svelte';
   import { nostrStore } from '../../nostr';
   import { encodeEventId, type PullRequest, type ItemStatus } from '../../nip34';
   import ItemStatusBadge from './ItemStatusBadge.svelte';

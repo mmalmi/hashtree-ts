@@ -21,7 +21,7 @@
     formatBytes,
   } from './videoStreamState';
   import VideoComments from './VideoComments.svelte';
-  import { openShareModal } from '../../stores/modals/share';
+  import { open as openShareModal } from '../Modals/ShareModal.svelte';
 
   type TabType = 'upload' | 'stream';
 
@@ -499,7 +499,6 @@
       {/if}
     {:else}
       <!-- Stream preview -->
-      <!-- svelte-ignore a11y_media_has_caption -->
       <video
         bind:this={videoRef}
         autoplay

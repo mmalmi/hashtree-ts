@@ -4,8 +4,7 @@
    * Shows contents of a ZIP file and allows extraction to current dir or subdirectory
    */
   import { unzipSync } from 'fflate';
-  import { openExtractModal } from '../../stores/modals/file';
-  import type { ArchiveFileInfo } from '../../stores/modals/store';
+  import { open as openExtractModal, type ArchiveFileInfo } from '../Modals/ExtractModal.svelte';
 
   interface Props {
     data: Uint8Array;

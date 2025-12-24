@@ -1,12 +1,30 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * Modal for displaying git commit history
    */
-  import {
-    showGitHistoryModal,
-    gitHistoryTarget,
-    closeGitHistoryModal,
-  } from '../../stores/modals/git';
+  import type { CID } from 'hashtree';
+
+  export interface GitHistoryTarget {
+    dirCid: CID;
+    canEdit: boolean;
+    onCheckout?: (commitSha: string) => Promise<void>;
+  }
+
+  let show = $state(false);
+  let target = $state<GitHistoryTarget | null>(null);
+
+  export function open(t: GitHistoryTarget) {
+    target = t;
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    target = null;
+  }
+</script>
+
+<script lang="ts">
   import { createGitLogStore, type CommitInfo } from '../../stores/git';
   import { nhashEncode } from 'hashtree';
   import { checkoutCommit, getBranches } from '../../utils/git';
@@ -14,9 +32,6 @@
   function bytesToHex(bytes: Uint8Array): string {
     return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
   }
-
-  let show = $derived($showGitHistoryModal);
-  let target = $derived($gitHistoryTarget);
 
   // Commit loading state
   let currentDepth = $state(50);
@@ -76,7 +91,7 @@
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       e.preventDefault();
-      closeGitHistoryModal();
+      close();
     }
   }
 
@@ -129,7 +144,7 @@
     try {
       if (target.onCheckout) {
         await target.onCheckout(commitSha);
-        closeGitHistoryModal();
+        close();
       }
     } catch (err) {
       checkoutError = err instanceof Error ? err.message : String(err);
@@ -149,7 +164,7 @@
       if (target.onCheckout) {
         // Checkout branch by name (git will resolve to the branch's HEAD)
         await target.onCheckout(branchName);
-        closeGitHistoryModal();
+        close();
       }
     } catch (err) {
       checkoutError = err instanceof Error ? err.message : String(err);
@@ -182,7 +197,7 @@
 {#if show && target}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={closeGitHistoryModal}>
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={close}>
     <div class="bg-surface-1 rounded-lg shadow-lg w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col" onclick={(e) => e.stopPropagation()}>
       <!-- Header -->
       <div class="flex items-center justify-between p-4 b-b-1 b-b-solid b-b-surface-3">
@@ -190,7 +205,7 @@
           <span class="i-lucide-history"></span>
           Commit History
         </h2>
-        <button onclick={closeGitHistoryModal} class="btn-ghost p-1">
+        <button onclick={close} class="btn-ghost p-1">
           <span class="i-lucide-x text-lg"></span>
         </button>
       </div>
@@ -346,7 +361,7 @@
         <span class="text-sm text-text-3">
           {logState.commits.length} commit{logState.commits.length !== 1 ? 's' : ''}
         </span>
-        <button onclick={closeGitHistoryModal} class="btn-ghost">Close</button>
+        <button onclick={close} class="btn-ghost">Close</button>
       </div>
     </div>
   </div>

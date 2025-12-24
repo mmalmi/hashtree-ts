@@ -1,20 +1,38 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * Modal for creating git commits
    * Shows status (staged, unstaged, untracked files) and allows commit
    */
-  import { LinkType, type CID } from 'hashtree';
+  import type { CID } from 'hashtree';
+
+  export interface GitCommitTarget {
+    dirCid: CID;
+    onCommit?: (newCid: CID) => void;
+  }
+
+  let show = $state(false);
+  let target = $state<GitCommitTarget | null>(null);
+
+  export function open(t: GitCommitTarget) {
+    target = t;
+    show = true;
+  }
+
+  export function close() {
+    show = false;
+    target = null;
+  }
+</script>
+
+<script lang="ts">
+  import { LinkType } from 'hashtree';
   import { SvelteMap } from 'svelte/reactivity';
-  import { showGitCommitModal, gitCommitTarget, closeGitCommitModal } from '../../stores/modals/git';
   import { createGitStatusStore } from '../../stores/git';
   import { commit } from '../../utils/git';
   import { getTree } from '../../store';
   import { nostrStore } from '../../nostr';
   import { createProfileStore } from '../../stores/profile';
   import type { GitStatusResult } from '../../utils/wasmGit';
-
-  let show = $derived($showGitCommitModal);
-  let target = $derived($gitCommitTarget);
 
   // Get user info for commit author
   let nostrState = $derived($nostrStore);
@@ -69,7 +87,7 @@
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === 'Escape') {
       e.preventDefault();
-      closeGitCommitModal();
+      close();
     }
   }
 
@@ -252,7 +270,7 @@
         await target.onCommit(newDirCid);
       }
 
-      closeGitCommitModal();
+      close();
     } catch (err) {
       commitError = err instanceof Error ? err.message : String(err);
     } finally {
@@ -265,7 +283,7 @@
 {#if show && target}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={closeGitCommitModal}>
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onclick={close}>
     <div class="bg-surface-1 rounded-lg shadow-lg w-full max-w-xl mx-4 max-h-[80vh] flex flex-col" onclick={(e) => e.stopPropagation()}>
       <!-- Header -->
       <div class="flex items-center justify-between p-4 b-b-1 b-b-solid b-b-surface-3">
@@ -273,7 +291,7 @@
           <span class="i-lucide-git-commit"></span>
           Commit Changes
         </h2>
-        <button onclick={closeGitCommitModal} class="btn-ghost p-1">
+        <button onclick={close} class="btn-ghost p-1">
           <span class="i-lucide-x text-lg"></span>
         </button>
       </div>
@@ -380,7 +398,7 @@
           {selectedCount} of {totalChanges} file{totalChanges !== 1 ? 's' : ''} selected
         </span>
         <div class="flex gap-2">
-          <button onclick={closeGitCommitModal} class="btn-ghost">Cancel</button>
+          <button onclick={close} class="btn-ghost">Cancel</button>
           <button
             onclick={handleCommit}
             disabled={isCommitting || selectedCount === 0 || !commitMessage.trim()}

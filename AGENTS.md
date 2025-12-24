@@ -28,6 +28,13 @@ pnpm run test:e2e # E2E tests
 - UnoCSS: use `b-` prefix for borders
 - Buttons: ALWAYS use `btn-ghost` class (default) or `btn-primary`/`btn-danger`/`btn-success` for colored buttons (defined in uno.config.ts). Never use raw styles like `bg-transparent border-none` on buttons. For clickable elements that shouldn't look like buttons (e.g., avatar links), use `<a>` tags instead.
 
+## Verify Changes
+Always verify code changes pass lint and build before considering work complete:
+```bash
+pnpm run lint                   # Check for lint errors (silent if clean)
+pnpm run build > /dev/null      # Build (suppress verbose output, shows errors only)
+```
+
 ## Testing
 - Playwright runs its own dev server - no need to `pnpm run dev` when running tests
 - **Run tests selectively**: Full test suite takes ~5 minutes. Run only relevant tests during development:

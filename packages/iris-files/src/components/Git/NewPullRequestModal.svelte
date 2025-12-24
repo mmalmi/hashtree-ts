@@ -1,17 +1,35 @@
-<script lang="ts">
+<script lang="ts" module>
   /**
    * Modal for creating a new pull request
    * Supports:
    * - Branch selection via dropdowns when branches are available
    * - Cross-repo PRs with source repo specification (npub/path or nhash)
    */
-  import { modalsStore } from '../../stores/modals/store';
-  import { closeNewPullRequestModal } from '../../stores/modals/git';
-  import { createPullRequest } from '../../nip34';
 
-  let modalState = $derived($modalsStore);
-  let isOpen = $derived(modalState.showNewPullRequestModal);
-  let target = $derived(modalState.newPullRequestTarget);
+  export interface NewPullRequestTarget {
+    npub: string;
+    repoName: string;
+    branches?: string[];
+    currentBranch?: string;
+    onCreate?: (pr: { id: string; title: string }) => void;
+  }
+
+  let isOpen = $state(false);
+  let target = $state<NewPullRequestTarget | null>(null);
+
+  export function open(t: NewPullRequestTarget) {
+    target = t;
+    isOpen = true;
+  }
+
+  export function close() {
+    isOpen = false;
+    target = null;
+  }
+</script>
+
+<script lang="ts">
+  import { createPullRequest } from '../../nip34';
 
   // Available branches from the target (destination) repo
   let branches = $derived(target?.branches || []);
@@ -60,7 +78,7 @@
     showSourceRepo = false;
     targetBranch = '';
     error = null;
-    closeNewPullRequestModal();
+    close();
   }
 
   async function handleSubmit(e: Event) {
