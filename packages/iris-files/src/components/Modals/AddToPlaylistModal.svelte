@@ -9,6 +9,7 @@
   import { getTree } from '../../store';
   import { createTreesStore, type TreeEntry } from '../../stores/trees';
   import { toHex, LinkType, cid as makeCid } from 'hashtree';
+  import { hasVideoFile, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
   import type { CID } from 'hashtree';
 
   let show = $derived($modalsStore.showAddToPlaylistModal);
@@ -117,13 +118,7 @@
           for (const entry of entries) {
             try {
               const subEntries = await tree.listDirectory(entry.cid);
-              const hasVideo = subEntries?.some(e =>
-                e.name.startsWith('video.') ||
-                e.name.endsWith('.mp4') ||
-                e.name.endsWith('.webm') ||
-                e.name.endsWith('.mkv')
-              );
-              if (hasVideo) {
+              if (subEntries && hasVideoFile(subEntries)) {
                 videoCount++;
                 // Check if this entry's CID matches the target video CID
                 if (target && cidHashEquals(entry.cid, target.videoCid)) {
@@ -136,8 +131,8 @@
             }
           }
 
-          if (videoCount > 0) {
-            // It's a playlist with multiple videos
+          if (videoCount >= MIN_VIDEOS_FOR_STRUCTURE) {
+            // It's a playlist with video subdirectories
             foundPlaylists.push({
               name: treeEntry.name,
               displayName: treeEntry.name.replace(/^videos\//, ''),

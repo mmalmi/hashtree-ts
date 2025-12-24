@@ -3,12 +3,22 @@
  *
  * A playlist is detected when a video tree has subdirectories containing videos.
  * Each subdirectory becomes a playlist item with its own video, thumbnail, and metadata.
+ *
+ * Key thresholds (from playlistDetection.ts):
+ * - MIN_VIDEOS_FOR_STRUCTURE (1): Minimum to consider it a playlist structure
+ * - MIN_VIDEOS_FOR_SIDEBAR (2): Minimum to show playlist navigation sidebar
  */
 
 import { writable, get } from 'svelte/store';
 import { getTree } from '../store';
 import { getRefResolver } from '../refResolver';
 import { getLocalRootCache, getLocalRootKey } from '../treeRootCache';
+import {
+  MIN_VIDEOS_FOR_SIDEBAR,
+  hasVideoFile,
+  findThumbnailEntry,
+  buildThumbnailUrl,
+} from '../utils/playlistDetection';
 import type { CID } from 'hashtree';
 
 export interface PlaylistItem {
@@ -87,17 +97,7 @@ export async function loadPlaylist(
       // Skip non-directory entries (check by trying to list as directory)
       try {
         const subEntries = await tree.listDirectory(entry.cid);
-        if (!subEntries) continue;
-
-        // Check if this subdir contains a video file
-        const hasVideo = subEntries.some(e =>
-          e.name.startsWith('video.') ||
-          e.name.endsWith('.mp4') ||
-          e.name.endsWith('.webm') ||
-          e.name.endsWith('.mkv')
-        );
-
-        if (!hasVideo) continue;
+        if (!subEntries || !hasVideoFile(subEntries)) continue;
 
         // This is a video item - extract metadata
         const item: PlaylistItem = {
@@ -132,16 +132,10 @@ export async function loadPlaylist(
           }
         }
 
-        // Find thumbnail
-        const thumbEntry = subEntries.find(e =>
-          e.name.startsWith('thumbnail.') ||
-          e.name.endsWith('.jpg') ||
-          e.name.endsWith('.webp') ||
-          e.name.endsWith('.png')
-        );
+        // Find thumbnail using shared utility
+        const thumbEntry = findThumbnailEntry(subEntries);
         if (thumbEntry) {
-          // Build SW URL for thumbnail
-          item.thumbnailUrl = `/htree/${npub}/${encodeURIComponent(treeName)}/${encodeURIComponent(entry.name)}/${encodeURIComponent(thumbEntry.name)}`;
+          item.thumbnailUrl = buildThumbnailUrl(npub, treeName, entry.name, thumbEntry.name);
         }
 
         videoItems.push(item);
@@ -151,8 +145,8 @@ export async function loadPlaylist(
       }
     }
 
-    // Only create playlist if we have multiple videos
-    if (videoItems.length < 2) return null;
+    // Only show playlist sidebar if we have enough videos for navigation
+    if (videoItems.length < MIN_VIDEOS_FOR_SIDEBAR) return null;
 
     // Sort by folder name (id) for consistent ordering with initial navigation
     videoItems.sort((a, b) => a.id.localeCompare(b.id));

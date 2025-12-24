@@ -18,6 +18,7 @@
   import { getTree } from '../../store';
   import { getLocalRootCache, getLocalRootKey } from '../../treeRootCache';
   import { getPlaylistCache, setPlaylistCache } from '../../stores/playlistCache';
+  import { hasVideoFile, findThumbnailEntry, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
   import type { CID } from 'hashtree';
 
   interface PlaylistInfo {
@@ -149,20 +150,10 @@
         for (const entry of entries) {
           try {
             const subEntries = await tree.listDirectory(entry.cid);
-            const hasVideo = subEntries?.some(e =>
-              e.name.startsWith('video.') ||
-              e.name.endsWith('.mp4') ||
-              e.name.endsWith('.webm')
-            );
-            if (hasVideo) {
+            if (subEntries && hasVideoFile(subEntries)) {
               videoCount++;
               if (!firstThumbnailUrl) {
-                const thumbEntry = subEntries?.find(e =>
-                  e.name.startsWith('thumbnail.') ||
-                  e.name.endsWith('.jpg') ||
-                  e.name.endsWith('.webp') ||
-                  e.name.endsWith('.png')
-                );
+                const thumbEntry = findThumbnailEntry(subEntries);
                 if (thumbEntry) {
                   firstThumbnailUrl = `/htree/${npub}/${encodeURIComponent(t.name)}/${encodeURIComponent(entry.name)}/${encodeURIComponent(thumbEntry.name)}`;
                 }
@@ -174,9 +165,9 @@
         }
 
         // Cache the result
-        // A tree is a playlist if it has video subdirectories (even just 1)
+        // A tree is a playlist if it has video subdirectories
         // This distinguishes playlists from single videos where video.mp4 is at root level
-        const isPlaylist = videoCount >= 1;
+        const isPlaylist = videoCount >= MIN_VIDEOS_FOR_STRUCTURE;
         setPlaylistCache(npub!, t.name, hashHex, isPlaylist, videoCount, firstThumbnailUrl);
 
         if (isPlaylist) {

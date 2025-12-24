@@ -11,6 +11,7 @@
   import { createFollowsStore } from '../../stores';
   import { getTree } from '../../store';
   import { getPlaylistCache, setPlaylistCache } from '../../stores/playlistCache';
+  import { hasVideoFile, findThumbnailEntry, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
   import type { CID } from 'hashtree';
 
   // Default pubkey to use for fallback content (sirius)
@@ -106,20 +107,10 @@
         for (const entry of entries) {
           try {
             const subEntries = await tree.listDirectory(entry.cid);
-            const hasVideo = subEntries?.some(e =>
-              e.name.startsWith('video.') ||
-              e.name.endsWith('.mp4') ||
-              e.name.endsWith('.webm')
-            );
-            if (hasVideo) {
+            if (subEntries && hasVideoFile(subEntries)) {
               videoCount++;
               if (!firstThumbnailUrl) {
-                const thumbEntry = subEntries?.find(e =>
-                  e.name.startsWith('thumbnail.') ||
-                  e.name.endsWith('.jpg') ||
-                  e.name.endsWith('.webp') ||
-                  e.name.endsWith('.png')
-                );
+                const thumbEntry = findThumbnailEntry(subEntries);
                 if (thumbEntry) {
                   firstThumbnailUrl = `/htree/${video.ownerNpub}/${encodeURIComponent(video.treeName)}/${encodeURIComponent(entry.name)}/${encodeURIComponent(thumbEntry.name)}`;
                 }
@@ -131,8 +122,8 @@
         }
 
         // Cache and store the result
-        // A tree is a playlist if it has video subdirectories (even just 1)
-        const isPlaylist = videoCount >= 1;
+        // A tree is a playlist if it has video subdirectories
+        const isPlaylist = videoCount >= MIN_VIDEOS_FOR_STRUCTURE;
         setPlaylistCache(video.ownerNpub, video.treeName, video.hashHex, isPlaylist, videoCount, firstThumbnailUrl);
 
         newPlaylistInfo[video.key] = { videoCount, thumbnailUrl: firstThumbnailUrl };
