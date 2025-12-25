@@ -13,7 +13,6 @@
   import { open as openShareModal } from '../Modals/ShareModal.svelte';
   import { open as openBlossomPushModal } from '../Modals/BlossomPushModal.svelte';
   import { open as openAddToPlaylistModal } from '../Modals/AddToPlaylistModal.svelte';
-  import { open as openZapModal } from '../Modals/ZapModal.svelte';
   import type { TreeVisibility } from 'hashtree';
   import { deleteTree } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
@@ -29,6 +28,7 @@
   import { toHex, nhashEncode } from 'hashtree';
   import { getNpubFileUrl, getNhashFileUrl } from '../../lib/mediaUrl';
   import { NDKEvent, type NDKFilter } from '@nostr-dev-kit/ndk';
+  import { VideoZapButton } from '../Zaps';
 
   let deleting = $state(false);
   let editing = $state(false);
@@ -743,11 +743,6 @@
       liking = false;
     }
   }
-
-  function handleZap() {
-    if (!ownerPubkey) return;
-    openZapModal(ownerPubkey, videoIdentifier || undefined);
-  }
 </script>
 
 <div class="flex flex-1 overflow-hidden">
@@ -838,17 +833,6 @@
                 {/if}
               </button>
             {/if}
-            <!-- Zap button -->
-            {#if ownerPubkey && !isOwner}
-              <button
-                onclick={handleZap}
-                class="btn-ghost p-2 flex items-center gap-1 text-yellow-400 hover:text-yellow-300"
-                title="Send Zap"
-                data-testid="zap-button"
-              >
-                <span class="i-lucide-zap text-lg"></span>
-              </button>
-            {/if}
             <!-- Save to playlist button -->
             {#if isLoggedIn}
               <button
@@ -894,7 +878,7 @@
             <a href={`#/${npub}`} class="shrink-0">
               <Avatar pubkey={ownerPubkey} size={40} />
             </a>
-            <div class="min-w-0">
+            <div class="flex-1 min-w-0">
               <a href={`#/${npub}`} class="text-text-1 font-medium hover:text-accent no-underline">
                 <Name pubkey={ownerPubkey} />
               </a>
@@ -904,6 +888,9 @@
                 <VisibilityIcon visibility={videoVisibility} class="text-xs" />
               </div>
             </div>
+            {#if videoIdentifier}
+              <VideoZapButton {videoIdentifier} {ownerPubkey} {isOwner} />
+            {/if}
           {/if}
         </div>
 
