@@ -44,18 +44,18 @@
   }
 </script>
 
-{#if totalSats > 0 || !isOwner}
-  <button
-    onclick={handleZap}
-    class="flex items-center gap-2 px-3 py-1.5 rounded-full {isOwner ? 'bg-surface-1 cursor-default' : 'bg-surface-1 hover:bg-surface-2 cursor-pointer'} text-yellow-400"
-    disabled={isOwner}
-    data-testid="zap-button"
-  >
-    <span class="i-lucide-zap text-lg"></span>
-    {#if totalSats > 0}
-      <span class="font-semibold">{totalSats.toLocaleString()}</span>
-    {:else}
-      <span class="text-sm">Zap</span>
-    {/if}
-  </button>
-{/if}
+<button
+  onclick={handleZap}
+  class="flex items-center gap-2 px-3 py-1.5 rounded-full {isOwner ? 'bg-surface-1 cursor-default' : 'bg-surface-1 hover:bg-surface-2 cursor-pointer'} text-yellow-400"
+  disabled={isOwner}
+  data-testid="zap-button"
+>
+  <span class="i-lucide-zap text-lg"></span>
+  {#if totalSats > 0}
+    <span class="font-semibold">{totalSats.toLocaleString()}</span>
+  {:else if !isOwner}
+    <span class="text-sm">Zap</span>
+  {:else}
+    <span class="text-sm">0</span>
+  {/if}
+</button>
