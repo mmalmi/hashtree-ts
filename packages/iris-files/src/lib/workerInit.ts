@@ -7,6 +7,7 @@
 
 import { initWorkerAdapter, getWorkerAdapter } from '../workerAdapter';
 import { DEFAULT_NETWORK_SETTINGS } from '../stores/settings';
+import { refreshWebRTCStats } from '../store';
 
 // Import worker with Vite's ?worker query
 import HashTreeWorker from '../workers/hashtree.worker?worker';
@@ -38,6 +39,10 @@ export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<
 
     initialized = true;
     console.log('[WorkerInit] Hashtree worker ready');
+
+    // Start periodic peer stats polling for connectivity indicator
+    refreshWebRTCStats();
+    setInterval(refreshWebRTCStats, 2000);
   } catch (err) {
     console.error('[WorkerInit] Failed to initialize worker:', err);
     // Don't throw - app can still work without worker (fallback to main thread)

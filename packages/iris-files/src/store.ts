@@ -10,7 +10,7 @@ import { writable, get } from 'svelte/store';
 import { HashTree, LinkType, DexieStore } from 'hashtree';
 import { getWorkerStore } from './stores/workerStore';
 import { isWorkerReady } from './lib/workerInit';
-import { closeWorkerAdapter } from './workerAdapter';
+import { closeWorkerAdapter, getWorkerAdapter } from './workerAdapter';
 
 // Re-export LinkType for e2e tests that can't import 'hashtree' directly
 export { LinkType };
@@ -65,12 +65,22 @@ export interface StorageStats {
   bytes: number;
 }
 
+// Peer info for connectivity indicator
+export interface PeerInfo {
+  peerId: string;
+  pubkey: string;
+  state: 'connected' | 'disconnected';
+  pool: 'follows' | 'others';
+}
+
 // App state store interface (simplified - WebRTC stats come from worker)
 interface AppState {
   // Storage stats
   stats: StorageStats;
   // WebRTC peer count (from worker)
   peerCount: number;
+  // Peer list for connectivity indicator
+  peers: PeerInfo[];
 }
 
 // Create Svelte store for app state
@@ -78,6 +88,7 @@ function createAppStore() {
   const { subscribe, update } = writable<AppState>({
     stats: { items: 0, bytes: 0 },
     peerCount: 0,
+    peers: [],
   });
 
   return {
@@ -89,6 +100,10 @@ function createAppStore() {
 
     setPeerCount: (count: number) => {
       update(state => ({ ...state, peerCount: count }));
+    },
+
+    setPeers: (peers: PeerInfo[]) => {
+      update(state => ({ ...state, peers, peerCount: peers.filter(p => p.state === 'connected').length }));
     },
 
     // Get current state synchronously (for compatibility)
@@ -165,7 +180,34 @@ export const webrtcStore = null;
 export function getWebRTCStore() { return null; }
 export function blockPeer(_pubkey: string): void {}
 export function unblockPeer(_pubkey: string): void {}
-export function refreshWebRTCStats(): void {}
+
+// Refresh WebRTC stats from worker
+let followsSet: Set<string> | null = null;
+
+export async function refreshWebRTCStats(): Promise<void> {
+  const adapter = getWorkerAdapter();
+  if (!adapter) return;
+
+  try {
+    // Lazily load follows to avoid circular deps
+    if (!followsSet) {
+      const { getFollows } = await import('./stores/follows');
+      followsSet = new Set(getFollows());
+    }
+
+    const stats = await adapter.getPeerStats();
+    const peers: PeerInfo[] = stats.map(p => ({
+      peerId: p.peerId,
+      pubkey: p.pubkey,
+      state: p.connected ? 'connected' : 'disconnected',
+      pool: followsSet!.has(p.pubkey) ? 'follows' : 'others',
+    }));
+    appStore.setPeers(peers);
+  } catch {
+    // Worker not ready
+  }
+}
+
 export function getLifetimeStats() {
   return { bytesSent: 0, bytesReceived: 0, bytesForwarded: 0 };
 }

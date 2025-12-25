@@ -616,3 +616,6 @@ export function closeWorkerAdapter(): void {
     instance = null;
   }
 }
+
+// Re-export types for consumers
+export type { PeerStats, RelayStats };
