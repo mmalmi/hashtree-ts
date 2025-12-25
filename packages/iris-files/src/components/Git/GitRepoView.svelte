@@ -167,7 +167,7 @@
   let statusLoading = $state(true);
 
   // Track gitCid changes to reset status (use a ref to avoid triggering effects)
-  let lastGitCidRef = { current: gitCid };
+  let lastGitCidRef: { current: string | null } = { current: null };
 
   $effect(() => {
     const store = gitStatusStore;

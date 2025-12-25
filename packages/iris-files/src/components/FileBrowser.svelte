@@ -538,6 +538,8 @@
       data-testid="file-list"
       class="flex-1 overflow-auto pb-4 outline-none"
       tabindex="0"
+      role="listbox"
+      aria-label="File list"
       onkeydown={handleTreeListKeyDown}
     >
       {#if sortedTrees.length === 0}
@@ -602,6 +604,8 @@
       data-testid="file-list"
       class="flex-1 overflow-auto relative outline-none pb-4 {isDraggingOver ? 'bg-accent/10' : ''}"
       tabindex="0"
+      role="listbox"
+      aria-label="File list"
       onkeydown={handleKeyDown}
       ondragover={handleFileDragOver}
       ondragleave={handleFileDragLeave}

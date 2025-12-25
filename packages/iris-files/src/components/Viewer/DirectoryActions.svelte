@@ -236,6 +236,8 @@
 {:else}
   <div
     class="flex flex-col h-full"
+    role="region"
+    aria-label="Directory content"
     ondragover={handleFileDragOver}
     ondragleave={handleFileDragLeave}
     ondrop={handleFileDrop}
