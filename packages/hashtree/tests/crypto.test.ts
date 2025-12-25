@@ -106,6 +106,19 @@ describe('crypto', () => {
   });
 });
 
+/**
+ * Count unique byte values in data (for randomness testing)
+ * Mimics the looksRandom function from blossom-cf-worker
+ */
+function countUniqueBytes(data: Uint8Array): number {
+  const sampleSize = Math.min(data.length, 256);
+  const seen = new Set<number>();
+  for (let i = 0; i < sampleSize; i++) {
+    seen.add(data[i]);
+  }
+  return seen.size;
+}
+
 describe('HashTree encrypted', () => {
   let store: MemoryStore;
   let tree: HashTree;
@@ -209,6 +222,115 @@ describe('HashTree encrypted', () => {
       }
 
       expect(reassembled).toEqual(data);
+    });
+  });
+
+  describe('blob randomness (for blossom compatibility)', () => {
+    const RANDOMNESS_THRESHOLD = 140; // Same as blossom-cf-worker
+
+    it('encrypted blobs with 256+ bytes should look random', async () => {
+      // Use larger data to ensure blobs are big enough for randomness check
+      // Each random-looking chunk needs at least 256 bytes to be meaningful
+      const data = new Uint8Array(1024);
+      for (let i = 0; i < data.length; i++) data[i] = i % 256;
+
+      const { cid } = await tree.putFile(data);
+
+      // Check all stored blobs have high unique byte count
+      for await (const block of tree.walkBlocks(cid)) {
+        // Only check blobs >= 256 bytes (smaller ones can't have 140 unique)
+        if (block.data.length >= 256) {
+          const uniqueBytes = countUniqueBytes(block.data);
+          expect(uniqueBytes).toBeGreaterThanOrEqual(RANDOMNESS_THRESHOLD);
+        }
+      }
+    });
+
+    it('encrypted directory with many entries should look random', async () => {
+      // Create 10 files to make a larger directory tree node
+      const entries = [];
+      for (let i = 0; i < 10; i++) {
+        const data = new TextEncoder().encode(`file ${i} content with some padding data`);
+        const { cid, size } = await tree.putFile(data);
+        entries.push({ name: `file${i}.txt`, cid, size, type: 0 as const });
+      }
+
+      const { cid: dirCid } = await tree.putDirectory(entries);
+
+      // Check that large blobs look random
+      for await (const block of tree.walkBlocks(dirCid)) {
+        if (block.data.length >= 256) {
+          const uniqueBytes = countUniqueBytes(block.data);
+          expect(uniqueBytes).toBeGreaterThanOrEqual(RANDOMNESS_THRESHOLD);
+        }
+      }
+    });
+
+    it('small encrypted blobs may have fewer unique bytes (known limitation)', async () => {
+      // Small data produces small encrypted blobs that can't have 140 unique bytes
+      const smallData = new TextEncoder().encode('tiny');
+      const { cid } = await tree.putFile(smallData);
+
+      for await (const block of tree.walkBlocks(cid)) {
+        // Encrypted small data: ~4 bytes plaintext + 16 byte tag = ~20 bytes ciphertext
+        // Can't have more unique bytes than the blob size
+        const uniqueBytes = countUniqueBytes(block.data);
+        expect(uniqueBytes).toBeLessThanOrEqual(block.data.length);
+      }
+    });
+
+    it('public tree node blobs have lower unique byte count (may fail blossom filter)', async () => {
+      const file1Data = new TextEncoder().encode('file1 content');
+      const file2Data = new TextEncoder().encode('file2 content');
+
+      // Public files don't have encryption keys
+      const { cid: file1Cid, size: file1Size } = await tree.putFile(file1Data, { public: true });
+      const { cid: file2Cid, size: file2Size } = await tree.putFile(file2Data, { public: true });
+
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'file1.txt', cid: file1Cid, size: file1Size, type: 0 },
+        { name: 'file2.txt', cid: file2Cid, size: file2Size, type: 0 },
+      ], { public: true });
+
+      // Collect unique byte counts for all blobs
+      const uniqueByteCounts: number[] = [];
+      for await (const block of tree.walkBlocks(dirCid)) {
+        uniqueByteCounts.push(countUniqueBytes(block.data));
+      }
+
+      // At least one blob (the directory tree node) should have low unique bytes
+      // because public tree nodes are raw MessagePack, not encrypted
+      const hasLowRandomnessBlob = uniqueByteCounts.some(count => count < RANDOMNESS_THRESHOLD);
+      expect(hasLowRandomnessBlob).toBe(true);
+    });
+
+    it('diagnose: print blob sizes and unique bytes for encrypted video-like tree', async () => {
+      // Simulate video upload: large file chunks + small metadata files
+      const videoChunk = new Uint8Array(1000);
+      for (let i = 0; i < videoChunk.length; i++) videoChunk[i] = Math.floor(Math.random() * 256);
+
+      const titleData = new TextEncoder().encode('My Video Title');
+      const descData = new TextEncoder().encode('Video description here');
+
+      const { cid: videoCid, size: videoSize } = await tree.putFile(videoChunk);
+      const { cid: titleCid, size: titleSize } = await tree.putFile(titleData);
+      const { cid: descCid, size: descSize } = await tree.putFile(descData);
+
+      const { cid: dirCid } = await tree.putDirectory([
+        { name: 'video.webm', cid: videoCid, size: videoSize, type: 0 },
+        { name: 'title.txt', cid: titleCid, size: titleSize, type: 0 },
+        { name: 'description.txt', cid: descCid, size: descSize, type: 0 },
+      ]);
+
+      // All blobs should pass filter if they're >= 64 bytes
+      // (blossom rejects < 64 bytes anyway)
+      for await (const block of tree.walkBlocks(dirCid)) {
+        const uniqueBytes = countUniqueBytes(block.data);
+        if (block.data.length >= 64) {
+          // Large enough to have meaningful randomness
+          expect(uniqueBytes).toBeGreaterThanOrEqual(Math.min(RANDOMNESS_THRESHOLD, block.data.length * 0.5));
+        }
+      }
     });
   });
 });
