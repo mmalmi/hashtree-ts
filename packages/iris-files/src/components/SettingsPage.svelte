@@ -630,7 +630,7 @@
                 min="0"
                 max="100"
                 value={poolSettings.otherMax}
-                onchange={(e) => settingsStore.setPoolSettings({ otherMax: parseInt(e.currentTarget.value) || 10 })}
+                onchange={(e) => { const v = parseInt(e.currentTarget.value); settingsStore.setPoolSettings({ otherMax: isNaN(v) ? 10 : v }); }}
                 class="input text-sm"
               />
             </label>
@@ -641,7 +641,7 @@
                 min="0"
                 max="100"
                 value={poolSettings.otherSatisfied}
-                onchange={(e) => settingsStore.setPoolSettings({ otherSatisfied: parseInt(e.currentTarget.value) || 5 })}
+                onchange={(e) => { const v = parseInt(e.currentTarget.value); settingsStore.setPoolSettings({ otherSatisfied: isNaN(v) ? 5 : v }); }}
                 class="input text-sm"
               />
             </label>
