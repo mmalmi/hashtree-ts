@@ -233,6 +233,12 @@ export class WebRTCController {
       return;
     }
 
+    // In 'other' pool, only allow 1 connection per pubkey
+    if (pool === 'other' && this.hasOtherPoolPubkey(senderPubkey)) {
+      this.log(`Already have connection from ${senderPubkey.slice(0, 8)} in other pool`);
+      return;
+    }
+
     // Tie-breaking: lower UUID initiates
     const shouldInitiate = this.myPeerId.uuid < senderUuid;
     if (shouldInitiate) {
@@ -250,6 +256,11 @@ export class WebRTCController {
       const pool = this.classifyPeer(pubkey);
       if (!this.shouldConnect(pool)) {
         this.log(`Pool ${pool} at capacity, rejecting offer`);
+        return;
+      }
+      // In 'other' pool, only allow 1 connection per pubkey
+      if (pool === 'other' && this.hasOtherPoolPubkey(pubkey)) {
+        this.log(`Already have connection from ${pubkey.slice(0, 8)} in other pool, rejecting offer`);
         return;
       }
       peer = this.createPeer(peerId, pubkey, pool, 'inbound');
@@ -296,6 +307,19 @@ export class WebRTCController {
       }
     }
     return count;
+  }
+
+  /**
+   * Check if we already have a connection from this pubkey in the 'other' pool.
+   * In the 'other' pool, we only allow 1 connection per pubkey to prevent spam.
+   */
+  private hasOtherPoolPubkey(pubkey: string): boolean {
+    for (const peer of this.peers.values()) {
+      if (peer.pool === 'other' && peer.pubkey === pubkey && peer.state !== 'disconnected') {
+        return true;
+      }
+    }
+    return false;
   }
 
   private createPeer(peerId: string, pubkey: string, pool: PeerPool, direction: 'inbound' | 'outbound'): WorkerPeer {
