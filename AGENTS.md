@@ -32,11 +32,12 @@ pnpm run test:e2e # E2E tests
 - Buttons: use `btn-ghost` (default) or `btn-primary`/`btn-danger`/`btn-success`
 - Don't add comments that aren't relevant without context
 
-## Verify Changes
+## Verify & Commit
 ```bash
 pnpm run lint
 pnpm run build > /dev/null
 ```
+When build, lint, and relevant tests pass, commit the changes without asking.
 
 ## Testing
 - Playwright runs its own dev server
