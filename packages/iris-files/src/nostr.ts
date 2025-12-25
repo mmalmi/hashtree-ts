@@ -338,13 +338,6 @@ settingsStore.subscribe((state) => {
   }
 });
 
-// Restore session after module initialization completes
-// Using queueMicrotask to avoid circular import issues with store.ts
-// This ensures WebRTCStore is ready when components start fetching
-queueMicrotask(() => {
-  restoreSession().catch(console.error);
-});
-
 /**
  * Unified sign function - works with both nsec and extension login
  */
@@ -419,7 +412,7 @@ export async function restoreSession(): Promise<boolean> {
   }
 
   // No existing session - auto-generate a new key
-  generateNewKey();
+  await generateNewKey();
   return true;
 }
 
@@ -494,7 +487,7 @@ export async function loginWithExtension(): Promise<boolean> {
 /**
  * Login with nsec
  */
-export function loginWithNsec(nsec: string, save = true): boolean {
+export async function loginWithNsec(nsec: string, save = true): Promise<boolean> {
   try {
     const decoded = nip19.decode(nsec);
     if (decoded.type !== 'nsec') {
@@ -529,9 +522,9 @@ export function loginWithNsec(nsec: string, save = true): boolean {
       saveActiveAccountToStorage(pk);
     }
 
-    // Initialize worker with identity (convert secretKey to hex)
+    // Initialize worker with identity (convert secretKey to hex) - MUST await!
     const nsecHex = Array.from(secretKey).map(b => b.toString(16).padStart(2, '0')).join('');
-    initOrUpdateWorkerIdentity(pk, nsecHex).catch(console.error);
+    await initOrUpdateWorkerIdentity(pk, nsecHex);
 
     // Start background sync for followed users' trees
     startBackgroundSync();
@@ -546,7 +539,7 @@ export function loginWithNsec(nsec: string, save = true): boolean {
 /**
  * Generate new keypair
  */
-export function generateNewKey(): { nsec: string; npub: string } {
+export async function generateNewKey(): Promise<{ nsec: string; npub: string }> {
   secretKey = generateSecretKey();
   const pk = getPublicKey(secretKey);
   const nsec = nip19.nsecEncode(secretKey);
@@ -572,9 +565,9 @@ export function generateNewKey(): { nsec: string; npub: string } {
     saveActiveAccountToStorage(pk);
   }
 
-  // Initialize worker with identity
+  // Initialize worker with identity - MUST await!
   const nsecHex = Array.from(secretKey).map(b => b.toString(16).padStart(2, '0')).join('');
-  initOrUpdateWorkerIdentity(pk, nsecHex).catch(console.error);
+  await initOrUpdateWorkerIdentity(pk, nsecHex);
 
   // Create default folders for new user (public, link, private)
   // Do this BEFORE starting background sync so folders exist

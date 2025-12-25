@@ -60,7 +60,7 @@
     nsecError = null;
   }
 
-  function switchToAccount(account: Account) {
+  async function switchToAccount(account: Account) {
     if (account.pubkey === activeAccountPubkey) return;
 
     // Save as active
@@ -69,10 +69,10 @@
 
     // Log in with this account
     if (account.type === 'nsec' && account.nsec) {
-      loginWithNsec(account.nsec);
+      await loginWithNsec(account.nsec);
     } else {
       // For extension accounts, re-initialize from storage
-      restoreSession();
+      await restoreSession();
     }
   }
 
@@ -89,8 +89,8 @@
     confirmingRemove = null;
   }
 
-  function handleGenerateNew() {
-    generateNewKey();
+  async function handleGenerateNew() {
+    await generateNewKey();
   }
 
   async function handleExtensionLogin() {

@@ -24,13 +24,13 @@
     }
   }
 
-  function handleNsecLogin() {
+  async function handleNsecLogin() {
     error = '';
     if (!nsecInput.trim()) {
       error = 'Please enter an nsec';
       return;
     }
-    const success = loginWithNsec(nsecInput.trim());
+    const success = await loginWithNsec(nsecInput.trim());
     if (!success) {
       error = 'Invalid nsec';
     } else {
@@ -39,9 +39,9 @@
     }
   }
 
-  function handleGenerate() {
+  async function handleGenerate() {
     error = '';
-    generateNewKey();
+    await generateNewKey();
   }
 </script>
 
