@@ -52,7 +52,7 @@ async function createTestPlaylist(page: any, playlistName: string) {
 
       // Create video file
       const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
-      const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+      const streamWriter = tree.createStream({ chunker: videoChunker() });
       await streamWriter.append(videoData);
       const videoResult = await streamWriter.finalize();
       videoEntries.push({
@@ -63,11 +63,11 @@ async function createTestPlaylist(page: any, playlistName: string) {
 
       // Create title.txt
       const titleData = new TextEncoder().encode(video.title);
-      const titleResult = await tree.putFile(titleData, { public: true });
+      const titleResult = await tree.putFile(titleData, {});
       videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
 
       // Create video directory
-      const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+      const videoDirResult = await tree.putDirectory(videoEntries, {});
       rootEntries.push({
         name: video.id,
         cid: videoDirResult.cid,
@@ -76,7 +76,7 @@ async function createTestPlaylist(page: any, playlistName: string) {
     }
 
     // Create root playlist directory
-    const rootDirResult = await tree.putDirectory(rootEntries, { public: true });
+    const rootDirResult = await tree.putDirectory(rootEntries, {});
     const treeName = `videos/${name}`;
     updateLocalRootCacheHex(npub, treeName, toHex(rootDirResult.cid.hash), undefined, 'public');
 
@@ -235,7 +235,7 @@ test.describe('Playlist Management', () => {
 
       // Create video file
       const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
-      const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+      const streamWriter = tree.createStream({ chunker: videoChunker() });
       await streamWriter.append(videoData);
       const videoResult = await streamWriter.finalize();
       videoEntries.push({
@@ -246,11 +246,11 @@ test.describe('Playlist Management', () => {
 
       // Create title.txt
       const titleData = new TextEncoder().encode('Add To Playlist Test Video');
-      const titleResult = await tree.putFile(titleData, { public: true });
+      const titleResult = await tree.putFile(titleData, {});
       videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
 
       // Create video directory
-      const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+      const videoDirResult = await tree.putDirectory(videoEntries, {});
       const treeName = 'videos/Add To Playlist Test';
       updateLocalRootCacheHex(npub, treeName, toHex(videoDirResult.cid.hash), undefined, 'public');
 
@@ -306,7 +306,7 @@ test.describe('Playlist Management', () => {
       const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
 
       const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
-      const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+      const streamWriter = tree.createStream({ chunker: videoChunker() });
       await streamWriter.append(videoData);
       const videoResult = await streamWriter.finalize();
       videoEntries.push({
@@ -316,10 +316,10 @@ test.describe('Playlist Management', () => {
       });
 
       const titleData = new TextEncoder().encode('Source Video For Modal Playlist Test');
-      const titleResult = await tree.putFile(titleData, { public: true });
+      const titleResult = await tree.putFile(titleData, {});
       videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
 
-      const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+      const videoDirResult = await tree.putDirectory(videoEntries, {});
       const treeName = 'videos/Source Video Modal Test';
 
       // Use saveHashtree to properly publish to Nostr
@@ -469,7 +469,7 @@ test.describe('Playlist Management', () => {
 
           // Create video file (minimal mp4 header)
           const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
-          const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+          const streamWriter = tree.createStream({ chunker: videoChunker() });
           await streamWriter.append(videoData);
           const videoResult = await streamWriter.finalize();
           videoEntries.push({
@@ -480,11 +480,11 @@ test.describe('Playlist Management', () => {
 
           // Create title.txt
           const titleData = new TextEncoder().encode(video.title);
-          const titleResult = await tree.putFile(titleData, { public: true });
+          const titleResult = await tree.putFile(titleData, {});
           videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
 
           // Create video directory
-          const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+          const videoDirResult = await tree.putDirectory(videoEntries, {});
           rootEntries.push({
             name: video.id,
             cid: videoDirResult.cid,
@@ -493,7 +493,7 @@ test.describe('Playlist Management', () => {
         }
 
         // Create root playlist directory
-        const rootDirResult = await tree.putDirectory(rootEntries, { public: true });
+        const rootDirResult = await tree.putDirectory(rootEntries, {});
         const treeName = 'videos/Cross User Playlist Test';
         const rootHash = toHex(rootDirResult.cid.hash);
 
@@ -671,18 +671,18 @@ test.describe('Playlist Management', () => {
       const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
 
       const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
-      const videoResult = await tree.putFile(videoData, { public: true });
+      const videoResult = await tree.putFile(videoData, {});
       videoEntries.push({ name: 'video.mp4', cid: videoResult.cid, size: videoResult.size });
 
       const titleData = new TextEncoder().encode('Reference Test Video');
-      const titleResult = await tree.putFile(titleData, { public: true });
+      const titleResult = await tree.putFile(titleData, {});
       videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
 
-      const sourceVideoCid = await tree.putDirectory(videoEntries, { public: true });
+      const sourceVideoCid = await tree.putDirectory(videoEntries, {});
       const sourceVideoSize = videoEntries.reduce((sum, e) => sum + e.size, 0);
 
       // Create an empty playlist directory
-      const emptyPlaylist = await tree.putDirectory([], { public: true });
+      const emptyPlaylist = await tree.putDirectory([], {});
 
       // Use setEntry to add the video CID to the playlist
       const updatedPlaylist = await tree.setEntry(

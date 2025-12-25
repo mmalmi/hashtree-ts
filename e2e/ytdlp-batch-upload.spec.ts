@@ -216,7 +216,7 @@ test.describe('yt-dlp Batch Upload', () => {
         const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
 
         // Upload video file
-        const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+        const streamWriter = tree.createStream({ chunker: videoChunker() });
         await streamWriter.append(video.videoData);
         const videoResult = await streamWriter.finalize();
         videoEntries.push({
@@ -227,15 +227,15 @@ test.describe('yt-dlp Batch Upload', () => {
 
         // Upload info.json
         const infoData = new TextEncoder().encode(video.infoJson);
-        const infoResult = await tree.putFile(infoData, { public: true });
+        const infoResult = await tree.putFile(infoData, {});
         videoEntries.push({ name: 'info.json', cid: infoResult.cid, size: infoResult.size });
 
         // Upload thumbnail
-        const thumbResult = await tree.putFile(video.thumbData, { public: true });
+        const thumbResult = await tree.putFile(video.thumbData, {});
         videoEntries.push({ name: 'thumbnail.jpg', cid: thumbResult.cid, size: thumbResult.size });
 
         // Create video directory
-        const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+        const videoDirResult = await tree.putDirectory(videoEntries, {});
         rootEntries.push({
           name: video.id,
           cid: videoDirResult.cid,
@@ -244,7 +244,7 @@ test.describe('yt-dlp Batch Upload', () => {
       }
 
       // Create root channel directory
-      const rootDirResult = await tree.putDirectory(rootEntries, { public: true });
+      const rootDirResult = await tree.putDirectory(rootEntries, {});
 
       // Verify structure
       const channelEntries = await tree.listDirectory(rootDirResult.cid);
@@ -316,7 +316,7 @@ test.describe('yt-dlp Batch Upload', () => {
       const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
 
       // Upload video file
-      const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+      const streamWriter = tree.createStream({ chunker: videoChunker() });
       await streamWriter.append(video.videoData);
       const videoResult = await streamWriter.finalize();
       videoEntries.push({
@@ -327,7 +327,7 @@ test.describe('yt-dlp Batch Upload', () => {
 
       // Upload info.json
       const infoData = new TextEncoder().encode(video.infoJson);
-      const infoResult = await tree.putFile(infoData, { public: true });
+      const infoResult = await tree.putFile(infoData, {});
       videoEntries.push({ name: 'info.json', cid: infoResult.cid, size: infoResult.size });
 
       // Simulate what VideoUploadModal does: extract description and title
@@ -335,18 +335,18 @@ test.describe('yt-dlp Batch Upload', () => {
         const jsonParsed = JSON.parse(video.infoJson);
         if (jsonParsed.description && jsonParsed.description.trim()) {
           const descData = new TextEncoder().encode(jsonParsed.description.trim());
-          const descResult = await tree.putFile(descData, { public: true });
+          const descResult = await tree.putFile(descData, {});
           videoEntries.push({ name: 'description.txt', cid: descResult.cid, size: descResult.size });
         }
         if (jsonParsed.title && jsonParsed.title.trim()) {
           const titleData = new TextEncoder().encode(jsonParsed.title.trim());
-          const titleResult = await tree.putFile(titleData, { public: true });
+          const titleResult = await tree.putFile(titleData, {});
           videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
         }
       } catch {}
 
       // Create video directory
-      const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+      const videoDirResult = await tree.putDirectory(videoEntries, {});
 
       // Verify the contents
       const dirContents = await tree.listDirectory(videoDirResult.cid);
@@ -553,7 +553,7 @@ test.describe('yt-dlp Batch Upload', () => {
 
         // Create video file
         const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
-        const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+        const streamWriter = tree.createStream({ chunker: videoChunker() });
         await streamWriter.append(videoData);
         const videoResult = await streamWriter.finalize();
         videoEntries.push({
@@ -563,7 +563,7 @@ test.describe('yt-dlp Batch Upload', () => {
         });
 
         // Create video directory
-        const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+        const videoDirResult = await tree.putDirectory(videoEntries, {});
         rootEntries.push({
           name: video.id,
           cid: videoDirResult.cid,
@@ -572,7 +572,7 @@ test.describe('yt-dlp Batch Upload', () => {
       }
 
       // Create root playlist directory
-      const rootDirResult = await tree.putDirectory(rootEntries, { public: true });
+      const rootDirResult = await tree.putDirectory(rootEntries, {});
 
       // Save to local cache (simulating publish)
       const treeName = 'videos/E2E Test Playlist';
@@ -640,7 +640,7 @@ test.describe('yt-dlp Batch Upload', () => {
         const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
 
         const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
-        const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+        const streamWriter = tree.createStream({ chunker: videoChunker() });
         await streamWriter.append(videoData);
         const videoResult = await streamWriter.finalize();
         videoEntries.push({
@@ -649,7 +649,7 @@ test.describe('yt-dlp Batch Upload', () => {
           size: videoResult.size,
         });
 
-        const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+        const videoDirResult = await tree.putDirectory(videoEntries, {});
         rootEntries.push({
           name: video.id,
           cid: videoDirResult.cid,
@@ -657,7 +657,7 @@ test.describe('yt-dlp Batch Upload', () => {
         });
       }
 
-      const rootDirResult = await tree.putDirectory(rootEntries, { public: true });
+      const rootDirResult = await tree.putDirectory(rootEntries, {});
       const treeName = 'videos/E2E Widget Playlist';
       updateLocalRootCacheHex(npub, treeName, toHex(rootDirResult.cid.hash), undefined, 'public');
 
@@ -728,7 +728,7 @@ test.describe('yt-dlp Batch Upload', () => {
         const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
 
         const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
-        const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+        const streamWriter = tree.createStream({ chunker: videoChunker() });
         await streamWriter.append(videoData);
         const videoResult = await streamWriter.finalize();
         videoEntries.push({
@@ -739,7 +739,7 @@ test.describe('yt-dlp Batch Upload', () => {
 
         // Create title.txt with the real title
         const titleData = new TextEncoder().encode(video.title);
-        const titleWriter = tree.createStream({ public: true });
+        const titleWriter = tree.createStream({});
         await titleWriter.append(titleData);
         const titleResult = await titleWriter.finalize();
         videoEntries.push({
@@ -748,7 +748,7 @@ test.describe('yt-dlp Batch Upload', () => {
           size: titleResult.size,
         });
 
-        const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+        const videoDirResult = await tree.putDirectory(videoEntries, {});
         rootEntries.push({
           name: video.id,
           cid: videoDirResult.cid,
@@ -756,7 +756,7 @@ test.describe('yt-dlp Batch Upload', () => {
         });
       }
 
-      const rootDirResult = await tree.putDirectory(rootEntries, { public: true });
+      const rootDirResult = await tree.putDirectory(rootEntries, {});
       const treeName = 'videos/E2E Recents Playlist';
       updateLocalRootCacheHex(npub, treeName, toHex(rootDirResult.cid.hash), undefined, 'public');
 
@@ -847,7 +847,7 @@ test.describe('yt-dlp Batch Upload', () => {
 
         // Create video file
         const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
-        const streamWriter = tree.createStream({ public: true, chunker: videoChunker() });
+        const streamWriter = tree.createStream({ chunker: videoChunker() });
         await streamWriter.append(videoData);
         const videoResult = await streamWriter.finalize();
         videoEntries.push({
@@ -858,7 +858,7 @@ test.describe('yt-dlp Batch Upload', () => {
 
         // Create a simple thumbnail (1x1 red pixel JPEG header)
         const thumbData = new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46]);
-        const thumbWriter = tree.createStream({ public: true });
+        const thumbWriter = tree.createStream({});
         await thumbWriter.append(thumbData);
         const thumbResult = await thumbWriter.finalize();
         videoEntries.push({
@@ -869,7 +869,7 @@ test.describe('yt-dlp Batch Upload', () => {
 
         // Create title.txt with the real title
         const titleData = new TextEncoder().encode(video.title);
-        const titleWriter = tree.createStream({ public: true });
+        const titleWriter = tree.createStream({});
         await titleWriter.append(titleData);
         const titleResult = await titleWriter.finalize();
         videoEntries.push({
@@ -878,7 +878,7 @@ test.describe('yt-dlp Batch Upload', () => {
           size: titleResult.size,
         });
 
-        const videoDirResult = await tree.putDirectory(videoEntries, { public: true });
+        const videoDirResult = await tree.putDirectory(videoEntries, {});
         rootEntries.push({
           name: video.id,
           cid: videoDirResult.cid,
@@ -886,7 +886,7 @@ test.describe('yt-dlp Batch Upload', () => {
         });
       }
 
-      const rootDirResult = await tree.putDirectory(rootEntries, { public: true });
+      const rootDirResult = await tree.putDirectory(rootEntries, {});
       const treeName = 'videos/E2E Home Recents Playlist';
       updateLocalRootCacheHex(npub, treeName, toHex(rootDirResult.cid.hash), undefined, 'public');
 

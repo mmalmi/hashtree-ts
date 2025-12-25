@@ -85,7 +85,7 @@ test.describe('Chunk Boundary Video', () => {
 
         // If no tree exists yet, create an empty one
         if (!rootCid) {
-          const { cid } = await tree.putDirectory([], { public: true });
+          const { cid } = await tree.putDirectory([]);
           rootCid = cid;
         }
 
