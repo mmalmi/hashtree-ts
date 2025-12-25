@@ -155,7 +155,7 @@
 
         // Upload video file
         if (video.videoFile) {
-          const streamWriter = tree.createStream({ public: isPublic, chunker: videoChunker() });
+          const streamWriter = tree.createStream({ chunker: videoChunker() });
           const chunkSize = 1024 * 1024;
           const file = video.videoFile;
 
@@ -183,7 +183,7 @@
         // Upload info.json and extract description
         if (video.infoJson) {
           const data = new Uint8Array(await video.infoJson.arrayBuffer());
-          const result = await tree.putFile(data, { public: isPublic });
+          const result = await tree.putFile(data, {});
           videoEntries.push({ name: 'info.json', cid: result.cid, size: result.size });
 
           try {
@@ -191,12 +191,12 @@
             const infoData = JSON.parse(jsonText);
             if (infoData.description && infoData.description.trim()) {
               const descData = new TextEncoder().encode(infoData.description.trim());
-              const descResult = await tree.putFile(descData, { public: isPublic });
+              const descResult = await tree.putFile(descData, {});
               videoEntries.push({ name: 'description.txt', cid: descResult.cid, size: descResult.size });
             }
             if (infoData.title && infoData.title.trim()) {
               const titleData = new TextEncoder().encode(infoData.title.trim());
-              const titleResult = await tree.putFile(titleData, { public: isPublic });
+              const titleResult = await tree.putFile(titleData, {});
               videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
             }
           } catch {
@@ -207,13 +207,13 @@
         // Upload thumbnail
         if (video.thumbnail) {
           const data = new Uint8Array(await video.thumbnail.arrayBuffer());
-          const result = await tree.putFile(data, { public: isPublic });
+          const result = await tree.putFile(data, {});
           const ext = video.thumbnail.name.split('.').pop()?.toLowerCase() || 'jpg';
           videoEntries.push({ name: `thumbnail.${ext}`, cid: result.cid, size: result.size });
         }
 
         // Create video directory
-        const videoDirResult = await tree.putDirectory(videoEntries, { public: isPublic });
+        const videoDirResult = await tree.putDirectory(videoEntries, {});
 
         rootEntries.push({
           name: video.id,
@@ -225,7 +225,7 @@
       progress = 95;
       progressMessage = 'Creating channel...';
 
-      const rootDirResult = await tree.putDirectory(rootEntries, { public: isPublic });
+      const rootDirResult = await tree.putDirectory(rootEntries, {});
 
       progressMessage = 'Publishing...';
       const rootHash = toHex(rootDirResult.cid.hash);

@@ -260,7 +260,7 @@
       }];
 
       // Create the playlist directory
-      const result = await tree.putDirectory(entries, { public: true });
+      const result = await tree.putDirectory(entries, {});
 
       // Save and publish to Nostr
       await saveHashtree(

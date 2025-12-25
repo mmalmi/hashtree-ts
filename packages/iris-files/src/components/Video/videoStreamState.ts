@@ -128,7 +128,7 @@ export async function startRecording(
 
   // Reset state - use fixed small chunks for live streaming
   const tree = getTree();
-  const newStreamWriter = tree.createStream({ public: isPublic, chunker: fixedChunker(STREAM_CHUNK_SIZE) });
+  const newStreamWriter = tree.createStream({ chunker: fixedChunker(STREAM_CHUNK_SIZE) });
   setStreamWriter(newStreamWriter);
   setStreamStats({ chunks: 0, buffered: 0, totalSize: 0 });
 
@@ -204,11 +204,11 @@ async function checkAndPublish(): Promise<void> {
 
     // Add title
     const titleData = new TextEncoder().encode(currentStreamTitle.trim());
-    const titleResult = await tree.putFile(titleData, { public: isPublic });
+    const titleResult = await tree.putFile(titleData, {});
     entries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
 
     // Create directory and publish
-    const dirResult = await tree.putDirectory(entries, { public: isPublic });
+    const dirResult = await tree.putDirectory(entries, {});
     const rootHash = toHex(dirResult.cid.hash);
     const rootKey = dirResult.cid.key ? toHex(dirResult.cid.key) : undefined;
 
@@ -297,25 +297,25 @@ export async function stopRecording(
 
   // Upload title.txt
   const titleData = new TextEncoder().encode(title.trim());
-  const titleResult = await tree.putFile(titleData, { public: isPublic });
+  const titleResult = await tree.putFile(titleData, {});
   entries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
 
   // Upload description.txt if provided
   if (description.trim()) {
     const descData = new TextEncoder().encode(description.trim());
-    const descResult = await tree.putFile(descData, { public: isPublic });
+    const descResult = await tree.putFile(descData, {});
     entries.push({ name: 'description.txt', cid: descResult.cid, size: descResult.size });
   }
 
   // Upload thumbnail if available
   if (thumbnailBlob) {
     const thumbData = new Uint8Array(await thumbnailBlob.arrayBuffer());
-    const thumbResult = await tree.putFile(thumbData, { public: isPublic });
+    const thumbResult = await tree.putFile(thumbData, {});
     entries.push({ name: 'thumbnail.jpg', cid: thumbResult.cid, size: thumbResult.size });
   }
 
   // Create directory
-  const dirResult = await tree.putDirectory(entries, { public: isPublic });
+  const dirResult = await tree.putDirectory(entries, {});
 
   // Publish to Nostr
   const rootHash = toHex(dirResult.cid.hash);

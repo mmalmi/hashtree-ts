@@ -181,7 +181,7 @@
         progressMessage = 'Loading encoder...';
         progress = 5;
 
-        const streamWriter = tree.createStream({ public: isPublic, chunker: videoChunker() });
+        const streamWriter = tree.createStream({ chunker: videoChunker() });
 
         const result = await transcodeToMP4Streaming(
           selectedFile,
@@ -208,7 +208,7 @@
         progressMessage = 'Reading file...';
         progress = 10;
 
-        const streamWriter = tree.createStream({ public: isPublic, chunker: videoChunker() });
+        const streamWriter = tree.createStream({ chunker: videoChunker() });
         const chunkSize = 1024 * 1024;
 
         for (let offset = 0; offset < selectedFile.size; offset += chunkSize) {
@@ -241,25 +241,25 @@
       ];
 
       const titleData = new TextEncoder().encode(title.trim());
-      const titleResult = await tree.putFile(titleData, { public: isPublic });
+      const titleResult = await tree.putFile(titleData, {});
       entries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
 
       if (description.trim()) {
         const descData = new TextEncoder().encode(description.trim());
-        const descResult = await tree.putFile(descData, { public: isPublic });
+        const descResult = await tree.putFile(descData, {});
         entries.push({ name: 'description.txt', cid: descResult.cid, size: descResult.size });
       }
       progress = 80;
 
       if (thumbnailBlob) {
         const thumbData = new Uint8Array(await thumbnailBlob.arrayBuffer());
-        const thumbResult = await tree.putFile(thumbData, { public: isPublic });
+        const thumbResult = await tree.putFile(thumbData, {});
         entries.push({ name: 'thumbnail.jpg', cid: thumbResult.cid, size: thumbResult.size });
       }
       progress = 85;
 
       progressMessage = 'Creating video...';
-      const dirResult = await tree.putDirectory(entries, { public: isPublic });
+      const dirResult = await tree.putDirectory(entries, {});
       progress = 90;
 
       progressMessage = 'Publishing...';

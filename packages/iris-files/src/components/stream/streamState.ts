@@ -219,7 +219,7 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       markFilesChanged(new Set([filename]));
     } else {
       // Create new tree - public directory but with encrypted file entries
-      const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid!, size: fileSize }], { public: true })).cid;
+      const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid!, size: fileSize }], {})).cid;
       autosaveIfOwn(newRootCid);
       markFilesChanged(new Set([filename]));
     }
@@ -286,7 +286,7 @@ export async function stopRecording(): Promise<void> {
       autosaveIfOwn(newRootCid);
     } else {
       // Create new tree - public directory but with encrypted file entries
-      const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid, size: fileSize }], { public: true })).cid;
+      const newRootCid = (await tree.putDirectory([{ name: filename, cid: fileCid, size: fileSize }], {})).cid;
       autosaveIfOwn(newRootCid);
       window.location.hash = '#/';
     }

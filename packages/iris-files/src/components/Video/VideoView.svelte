@@ -610,13 +610,13 @@
 
       // Update title.txt
       const titleData = new TextEncoder().encode(editTitle.trim());
-      const titleResult = await tree.putFile(titleData, { public: isPublic });
+      const titleResult = await tree.putFile(titleData, {});
       currentRootCid = await tree.setEntry(currentRootCid, [], 'title.txt', titleResult.cid, titleResult.size, 0 as LinkType);
 
       // Update description.txt (or remove if empty)
       if (editDescription.trim()) {
         const descData = new TextEncoder().encode(editDescription.trim());
-        const descResult = await tree.putFile(descData, { public: isPublic });
+        const descResult = await tree.putFile(descData, {});
         currentRootCid = await tree.setEntry(currentRootCid, [], 'description.txt', descResult.cid, descResult.size, 0 as LinkType);
       } else {
         // Remove description if it exists and is now empty
