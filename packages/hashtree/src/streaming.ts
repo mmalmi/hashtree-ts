@@ -108,9 +108,11 @@ export class StreamWriter {
 
     if (this.isPublic) {
       // Public mode: store plaintext
+      // Capture size before store.put() which may transfer the buffer
+      const chunkSize = chunk.length;
       const hash = await sha256(chunk);
       await this.store.put(hash, chunk);
-      this.chunks.push({ hash, size: chunk.length, type: LinkType.Blob });
+      this.chunks.push({ hash, size: chunkSize, type: LinkType.Blob });
     } else {
       // Encrypted mode: CHK encrypt the chunk
       // Store PLAINTEXT size in link.size for correct range seeking
