@@ -20,6 +20,24 @@
   let totalSats = $derived(zaps.reduce((sum, z) => sum + z.amountSats, 0));
   let displayZaps = $derived(maxItems ? zaps.slice(0, maxItems) : zaps);
 
+  // Throttled total for smoother display
+  let displayedTotal = $state(0);
+  let throttleTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    const newTotal = totalSats;
+    if (displayedTotal === 0) {
+      // First load - show immediately
+      displayedTotal = newTotal;
+    } else if (throttleTimeout === null) {
+      // Throttle updates to every 500ms
+      throttleTimeout = setTimeout(() => {
+        displayedTotal = newTotal;
+        throttleTimeout = null;
+      }, 500);
+    }
+  });
+
   function formatTime(timestamp: number): string {
     const date = new Date(timestamp * 1000);
     const now = new Date();
@@ -51,7 +69,7 @@
       <span class="i-lucide-zap text-yellow-400 text-xl"></span>
       <div class="flex-1">
         <span class="font-semibold text-yellow-400" data-testid="zaps-total">
-          ⚡ {totalSats.toLocaleString()} sats
+          ⚡ {displayedTotal.toLocaleString()} sats
         </span>
         <span class="text-text-3 text-sm ml-2">
           from {zaps.length} zap{zaps.length !== 1 ? 's' : ''}
