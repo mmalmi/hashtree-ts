@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, disableOthersPool } from './test-utils';
 import path from 'path';
 import { fileURLToPath } from 'url';
+// Run tests in this file serially to avoid WebRTC/timing conflicts
+test.describe.configure({ mode: 'serial' });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 

@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, disableOthersPool } from './test-utils';
+// Run tests in this file serially to avoid WebRTC/timing conflicts
+test.describe.configure({ mode: 'serial' });
 
 /**
  * Test that the video home feed properly shows content from sirius's follows.

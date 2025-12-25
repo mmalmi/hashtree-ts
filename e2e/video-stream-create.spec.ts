@@ -11,6 +11,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import { setupPageErrorHandler, disableOthersPool } from './test-utils.js';
+// Run tests in this file serially to avoid WebRTC/timing conflicts
+test.describe.configure({ mode: 'serial' });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

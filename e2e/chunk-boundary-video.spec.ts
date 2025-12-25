@@ -9,6 +9,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import { setupPageErrorHandler } from './test-utils';
+// Run tests in this file serially to avoid WebRTC/timing conflicts
+test.describe.configure({ mode: 'serial' });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

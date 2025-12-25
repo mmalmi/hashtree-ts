@@ -15,11 +15,14 @@
 import { test, expect } from '@playwright/test';
 import { spawn, ChildProcess, execSync } from 'child_process';
 import { setupPageErrorHandler } from './test-utils.js';
-
-const LOCAL_RELAY = 'ws://localhost:4736';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { nip19, generateSecretKey, getPublicKey } from 'nostr-tools';
+
+// Run tests in this file serially to avoid WebRTC/timing conflicts
+test.describe.configure({ mode: 'serial' });
+
+const LOCAL_RELAY = 'ws://localhost:4736';
 
 // Simple bytesToHex implementation
 function bytesToHex(bytes: Uint8Array): string {

@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { setupPageErrorHandler, navigateToPublicFolder } from './test-utils.js';
+// Run tests in this file serially to avoid WebRTC/timing conflicts
+test.describe.configure({ mode: 'serial' });
 
 // Increase timeout for livestream tests
 test.setTimeout(60000);

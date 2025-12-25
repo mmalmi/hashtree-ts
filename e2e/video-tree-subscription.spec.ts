@@ -9,6 +9,8 @@
  */
 import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler } from './test-utils';
+// Run tests in this file serially to avoid WebRTC/timing conflicts
+test.describe.configure({ mode: 'serial' });
 
 test.describe('Video Tree Subscription', () => {
   test('viewer subscribes to correct tree name for video files', async ({ page }) => {

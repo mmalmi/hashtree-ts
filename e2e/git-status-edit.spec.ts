@@ -4,6 +4,8 @@ import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+// Run tests in this file serially to avoid WebRTC/timing conflicts
+test.describe.configure({ mode: 'serial' });
 
 const HASHTREE_RS_DIR = '/workspace/hashtree-rs';
 

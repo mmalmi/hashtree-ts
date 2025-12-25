@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool } from './test-utils.js';
+// Run tests in this file serially to avoid WebRTC/timing conflicts
+test.describe.configure({ mode: 'serial' });
 
 test.describe('Git commit view', () => {
   // Disable "others pool" to prevent WebRTC cross-talk from parallel tests

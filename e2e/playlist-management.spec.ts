@@ -1,5 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
 import { setupPageErrorHandler, disableOthersPool, configureBlossomServers } from './test-utils';
+// Run tests in this file serially to avoid WebRTC/timing conflicts
+test.describe.configure({ mode: 'serial' });
 
 /**
  * Tests for playlist management features:
