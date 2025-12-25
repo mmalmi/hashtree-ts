@@ -275,6 +275,33 @@ test.describe('WebRTC Live Fetch', () => {
         console.log('WARNING: Viewer did not receive expected hash from Nostr');
       }
 
+      // Wait for the file to be resolvable in the tree (ensures sync is complete)
+      await pageB.waitForFunction(
+        async (args: { npub: string; treeName: string; filename: string }) => {
+          const { getTreeRootSync } = await import('/src/stores/treeRoot.ts');
+          const { getTree } = await import('/src/store.ts');
+
+          const rootCid = getTreeRootSync(args.npub, args.treeName);
+          if (!rootCid) {
+            console.log('[Test] No tree root yet');
+            return false;
+          }
+
+          try {
+            const tree = getTree();
+            const entry = await tree.resolvePath(rootCid, args.filename.split('/'));
+            console.log('[Test] Resolved entry:', entry ? 'found' : 'not found');
+            return entry !== null;
+          } catch (e) {
+            console.log('[Test] Resolution error:', e);
+            return false;
+          }
+        },
+        { npub: npubA, treeName: 'public', filename: testFilename },
+        { timeout: 30000, polling: 500 }
+      );
+      console.log('File is resolvable in tree');
+
       // Check if file was fetched via normal fetch (goes through service worker)
       const fetchResult = await pageB.evaluate(async (url: string) => {
         // Use normal fetch - this goes through service worker which uses WebRTC/Blossom/local
