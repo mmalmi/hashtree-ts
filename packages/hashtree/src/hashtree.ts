@@ -451,32 +451,29 @@ export class HashTree {
       return { cid: id, pushed: 0, skipped: 0, failed: 0, bytes: 0, errors: [], cancelled: true };
     }
 
-    // Collect all blocks
-    const blocks: Array<{ hash: Hash; data: Uint8Array }> = [];
-    for await (const block of this.walkBlocks(id)) {
-      if (options?.signal?.aborted) {
-        return { cid: id, pushed: 0, skipped: 0, failed: 0, bytes: 0, errors: [], cancelled: true };
-      }
-      blocks.push(block);
-    }
-
     let pushed = 0;
     let skipped = 0;
     let failed = 0;
     let bytes = 0;
     let completed = 0;
+    let discovered = 0;
+    let walkDone = false;
     const errors: Array<{ hash: Hash; error: Error }> = [];
 
     const concurrency = options?.concurrency ?? 4;
 
-    // Process blocks in parallel with limited concurrency
+    // Bounded queue for producer-consumer pattern
+    const queue: Array<{ hash: Hash; data: Uint8Array }> = [];
+    const maxQueueSize = concurrency * 2;
+    let queueResolve: (() => void) | null = null;
+    let consumerResolve: (() => void) | null = null;
+
+    // Process a single block
     const processBlock = async (block: { hash: Hash; data: Uint8Array }) => {
-      // Check abort before processing
       if (options?.signal?.aborted) return;
 
       const { hash, data } = block;
       try {
-        // Put to target store - it may return false/skip if already exists
         const isNew = await targetStore.put(hash, data);
         if (isNew === false) {
           skipped++;
@@ -493,36 +490,81 @@ export class HashTree {
         options?.onBlock?.(hash, 'error', error);
       }
       completed++;
-      options?.onProgress?.(completed, blocks.length);
+      // Report progress: completed / discovered (discovered grows as we walk)
+      options?.onProgress?.(completed, discovered);
     };
 
-    // Run with limited concurrency
-    const queue = [...blocks];
-    const active: Promise<void>[] = [];
+    // Consumer: pull from queue and process
+    const runConsumer = async () => {
+      const active: Promise<void>[] = [];
 
-    while (queue.length > 0 || active.length > 0) {
-      // Check abort before starting new tasks
-      if (options?.signal?.aborted) {
-        break;
+      while (!walkDone || queue.length > 0 || active.length > 0) {
+        if (options?.signal?.aborted) break;
+
+        // Start new tasks from queue
+        while (active.length < concurrency && queue.length > 0) {
+          const block = queue.shift()!;
+          // Signal producer that queue has space
+          if (queueResolve && queue.length < maxQueueSize) {
+            queueResolve();
+            queueResolve = null;
+          }
+          const promise = processBlock(block).then(() => {
+            active.splice(active.indexOf(promise), 1);
+          });
+          active.push(promise);
+        }
+
+        // If queue empty but walk not done, wait for producer
+        if (queue.length === 0 && !walkDone && active.length < concurrency) {
+          await new Promise<void>(resolve => {
+            consumerResolve = resolve;
+          });
+          continue;
+        }
+
+        // Wait for at least one task to complete
+        if (active.length > 0) {
+          await Promise.race(active);
+        }
       }
 
-      // Start new tasks up to concurrency limit
-      while (active.length < concurrency && queue.length > 0) {
-        const block = queue.shift()!;
-        const promise = processBlock(block).then(() => {
-          active.splice(active.indexOf(promise), 1);
-        });
-        active.push(promise);
-      }
+      await Promise.all(active);
+    };
 
-      // Wait for at least one to complete before continuing
-      if (active.length > 0) {
-        await Promise.race(active);
-      }
-    }
+    // Producer: walk tree and push to queue
+    const runProducer = async () => {
+      for await (const block of this.walkBlocks(id)) {
+        if (options?.signal?.aborted) break;
 
-    // Wait for any remaining active tasks to complete
-    await Promise.all(active);
+        discovered++;
+
+        // Wait if queue is full
+        while (queue.length >= maxQueueSize) {
+          await new Promise<void>(resolve => {
+            queueResolve = resolve;
+          });
+          if (options?.signal?.aborted) break;
+        }
+
+        queue.push(block);
+
+        // Wake up consumer
+        if (consumerResolve) {
+          consumerResolve();
+          consumerResolve = null;
+        }
+      }
+      walkDone = true;
+      // Wake consumer one last time
+      if (consumerResolve) {
+        consumerResolve();
+        consumerResolve = null;
+      }
+    };
+
+    // Run producer and consumer in parallel
+    await Promise.all([runProducer(), runConsumer()]);
 
     return { cid: id, pushed, skipped, failed, bytes, errors, cancelled: options?.signal?.aborted ?? false };
   }
