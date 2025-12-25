@@ -12,6 +12,7 @@
 
 import { HashTree } from '../hashtree';
 import { DexieStore } from '../store/dexie';
+import { BlossomStore } from '../store/blossom';
 import type {
   WorkerRequest,
   WorkerResponse,
@@ -28,6 +29,7 @@ import type { EventTemplate } from 'nostr-tools';
 // Worker state
 let tree: HashTree | null = null;
 let store: DexieStore | null = null;
+let blossomStore: BlossomStore | null = null;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- stored for future config access
 let _config: WorkerConfig | null = null;
 let mediaPort: MessagePort | null = null;
@@ -199,6 +201,15 @@ async function handleInit(id: string, cfg: WorkerConfig) {
     webrtc.init(store);
     webrtc.start();
 
+    // Initialize Blossom fallback store
+    if (cfg.blossomServers && cfg.blossomServers.length > 0) {
+      blossomStore = new BlossomStore({
+        servers: cfg.blossomServers,
+        // No signer - read-only fallback
+      });
+      console.log('[Worker] Initialized BlossomStore with', cfg.blossomServers.length, 'servers');
+    }
+
     respond({ type: 'ready' });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
@@ -231,15 +242,25 @@ async function handleGet(id: string, hash: Uint8Array) {
     return;
   }
 
-  // Try local store first
+  // 1. Try local store first
   let data = await store.get(hash);
 
-  // If not found locally, try fetching from WebRTC peers
+  // 2. If not found locally, try fetching from WebRTC peers
   if (!data) {
     const webrtc = getWebRTCManager();
     data = await webrtc.get(hash);
 
     // Cache locally if found from peers
+    if (data) {
+      await store.put(hash, data);
+    }
+  }
+
+  // 3. If not found from peers, try Blossom servers
+  if (!data && blossomStore) {
+    data = await blossomStore.get(hash);
+
+    // Cache locally if found from Blossom
     if (data) {
       await store.put(hash, data);
     }

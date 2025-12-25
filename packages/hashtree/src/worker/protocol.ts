@@ -89,8 +89,9 @@ export type WorkerRequest =
 
 export interface WorkerConfig {
   relays: string[];
+  blossomServers?: string[];  // Blossom servers for fallback fetching
   pubkey?: string;  // User's pubkey for subscriptions
-  storeName?: string;  // OPFS directory name, defaults to 'hashtree'
+  storeName?: string;  // IndexedDB database name, defaults to 'hashtree-worker'
 }
 
 // ============================================================================

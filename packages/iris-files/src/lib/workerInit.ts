@@ -26,6 +26,7 @@ export async function initHashtreeWorker(): Promise<void> {
     await initWorkerAdapter(HashTreeWorker, {
       storeName: 'hashtree-worker',
       relays: DEFAULT_NETWORK_SETTINGS.relays,
+      blossomServers: DEFAULT_NETWORK_SETTINGS.blossomServers,
     });
 
     initialized = true;
