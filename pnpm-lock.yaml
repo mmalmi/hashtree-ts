@@ -127,6 +127,9 @@ importers:
       '@ffmpeg/util':
         specifier: ^0.12.2
         version: 0.12.2
+      '@msgpack/msgpack':
+        specifier: ^3.1.2
+        version: 3.1.2
       '@nostr-dev-kit/ndk':
         specifier: ^2.18.1
         version: 2.18.1(nostr-tools@2.18.2(typescript@5.9.3))

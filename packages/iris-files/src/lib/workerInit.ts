@@ -10,9 +10,8 @@ import { DEFAULT_NETWORK_SETTINGS, settingsStore } from '../stores/settings';
 import { refreshWebRTCStats } from '../store';
 import { get } from 'svelte/store';
 import { createFollowsStore, getFollowsSync } from '../stores/follows';
-
-// Worker URL for Vite - using recommended new URL() approach
-const workerUrl = new URL('../workers/hashtree.worker.ts', import.meta.url);
+// Import worker using Vite's ?worker query - returns a Worker constructor
+import HashtreeWorker from '../workers/hashtree.worker.ts?worker';
 
 let initialized = false;
 let lastPoolConfigHash = '';
@@ -124,7 +123,7 @@ export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<
 
     console.log('[WorkerInit] Starting hashtree worker...');
 
-    await initWorkerAdapter(workerUrl, {
+    await initWorkerAdapter(HashtreeWorker, {
       storeName: 'hashtree-worker',
       relays: DEFAULT_NETWORK_SETTINGS.relays,
       blossomServers: DEFAULT_NETWORK_SETTINGS.blossomServers,
