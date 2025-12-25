@@ -199,6 +199,18 @@ const webrtcStoreProxy = {
     const adapter = getWorkerAdapter();
     adapter?.sendHello();
   },
+  isFollowing: async (pubkey: string): Promise<boolean> => {
+    const adapter = getWorkerAdapter();
+    if (!adapter) return false;
+    // Get current user's pubkey
+    const myPubkey = get(appStore).pubkey;
+    if (!myPubkey) return false;
+    try {
+      return await adapter.isFollowing(myPubkey, pubkey);
+    } catch {
+      return false;
+    }
+  },
   getStats: async () => {
     const adapter = getWorkerAdapter();
     if (!adapter) {

@@ -91,9 +91,68 @@ test.describe('WebRTC Live Fetch', () => {
       }, npubA);
       await pageA.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
 
-      // Wait for WebRTC connections (need to wait for periodic hello interval to retry)
+      // Wait for follows to propagate to worker, then establish WebRTC connection
       console.log('\n=== Waiting for WebRTC connections ===');
-      await pageA.waitForTimeout(12000);
+
+      // Get hex pubkeys for follow verification
+      const pubkeyA = await pageA.evaluate(() => {
+        const store = (window as any).__nostrStore;
+        if (!store) return '';
+        let pubkey = '';
+        store.subscribe((s: { pubkey?: string }) => { pubkey = s?.pubkey || ''; })();
+        return pubkey;
+      });
+      const pubkeyB = await pageB.evaluate(() => {
+        const store = (window as any).__nostrStore;
+        if (!store) return '';
+        let pubkey = '';
+        store.subscribe((s: { pubkey?: string }) => { pubkey = s?.pubkey || ''; })();
+        return pubkey;
+      });
+
+      // Wait for follows to propagate to worker's socialGraph (condition-based, not time-based)
+      await Promise.all([
+        pageA.waitForFunction(
+          async (pk: string) => {
+            const store = (window as any).webrtcStore;
+            if (!store?.isFollowing) return false;
+            return await store.isFollowing(pk);
+          },
+          pubkeyB,
+          { timeout: 15000 }
+        ),
+        pageB.waitForFunction(
+          async (pk: string) => {
+            const store = (window as any).webrtcStore;
+            if (!store?.isFollowing) return false;
+            return await store.isFollowing(pk);
+          },
+          pubkeyA,
+          { timeout: 15000 }
+        ),
+      ]);
+      console.log('Follows confirmed in worker');
+
+      // Send hellos to initiate WebRTC connection
+      await Promise.all([
+        pageA.evaluate(() => (window as any).webrtcStore?.sendHello?.()),
+        pageB.evaluate(() => (window as any).webrtcStore?.sendHello?.()),
+      ]);
+
+      // Wait for at least 1 peer connection by querying worker directly (30s timeout for WebRTC negotiation)
+      await pageA.waitForFunction(
+        async () => {
+          const { getWorkerAdapter } = await import('/src/workerAdapter');
+          const adapter = getWorkerAdapter();
+          if (!adapter) return false;
+          const stats = await adapter.getPeerStats();
+          const connectedCount = stats.filter((p: { connected?: boolean }) => p.connected).length;
+          console.log('[Test] Connected peers:', connectedCount);
+          return connectedCount >= 1;
+        },
+        { timeout: 45000 }
+      );
+      console.log('WebRTC connection established');
 
       // Check peer status
       const getPeerStatus = async (page: any, label: string) => {
@@ -163,10 +222,6 @@ test.describe('WebRTC Live Fetch', () => {
       console.log(`Broadcaster published hash: ${publishedHash}`);
 
       console.log(`Broadcaster wrote and published: ${testFilename}`);
-
-      // Wait for Nostr propagation (throttle is 1 second)
-      console.log('\n=== Waiting for Nostr propagation ===');
-      await pageA.waitForTimeout(2000);
 
       // Viewer navigates to the file URL (discovers via URL, resolves via Nostr)
       console.log('\n=== Viewer navigating to file ===');

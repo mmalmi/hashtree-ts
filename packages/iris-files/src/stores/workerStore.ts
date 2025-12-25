@@ -28,11 +28,7 @@ export class WorkerStore implements Store {
       console.warn('[WorkerStore] Worker not ready, get failed');
       return null;
     }
-    const hashHex = Array.from(hash.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join('');
-    console.log('[WorkerStore] get:', hashHex);
-    const result = await adapter.get(hash);
-    console.log('[WorkerStore] get result:', hashHex, result ? `${result.length} bytes` : 'null');
-    return result;
+    return adapter.get(hash);
   }
 
   async has(hash: Hash): Promise<boolean> {

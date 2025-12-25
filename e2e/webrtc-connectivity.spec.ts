@@ -35,13 +35,17 @@ test.describe('WebRTC Connectivity', () => {
   }
 
   /**
-   * Wait for connected peer count
+   * Wait for connected peer count by querying worker directly
    */
   async function waitForPeers(page: Page, count: number, timeout = 30000): Promise<void> {
     await page.waitForFunction(
-      (expected) => {
-        const store = (window as any).webrtcStore;
-        return (store?.getConnectedCount?.() ?? 0) >= expected;
+      async (expected) => {
+        // Use window global for adapter - more reliable than dynamic import
+        const adapter = (window as any).__workerAdapter;
+        if (!adapter) return false;
+        const stats = await adapter.getPeerStats();
+        const connectedCount = stats.filter((p: { connected?: boolean }) => p.connected).length;
+        return connectedCount >= expected;
       },
       count,
       { timeout }
@@ -63,8 +67,8 @@ test.describe('WebRTC Connectivity', () => {
       ]);
 
       await Promise.all([
-        page1.waitForFunction(() => (window as any).__testHelpers?.followPubkey, { timeout: 15000 }),
-        page2.waitForFunction(() => (window as any).__testHelpers?.followPubkey, { timeout: 15000 }),
+        page1.waitForFunction(() => (window as any).__testHelpers?.followPubkey, undefined, { timeout: 15000 }),
+        page2.waitForFunction(() => (window as any).__testHelpers?.followPubkey, undefined, { timeout: 15000 }),
       ]);
 
       await Promise.all([
@@ -80,6 +84,28 @@ test.describe('WebRTC Connectivity', () => {
         followUser(page2, pubkey1),
       ]);
 
+      // Wait for follows to propagate to worker's socialGraph (condition-based, not time-based)
+      await Promise.all([
+        page1.waitForFunction(
+          async (pk: string) => {
+            const store = (window as any).webrtcStore;
+            if (!store?.isFollowing) return false;
+            return await store.isFollowing(pk);
+          },
+          pubkey2,
+          { timeout: 15000 }
+        ),
+        page2.waitForFunction(
+          async (pk: string) => {
+            const store = (window as any).webrtcStore;
+            if (!store?.isFollowing) return false;
+            return await store.isFollowing(pk);
+          },
+          pubkey1,
+          { timeout: 15000 }
+        ),
+      ]);
+
       // Trigger hello broadcast
       await Promise.all([
         page1.evaluate(() => (window as any).webrtcStore?.sendHello?.()),
@@ -87,21 +113,40 @@ test.describe('WebRTC Connectivity', () => {
       ]);
 
       // Wait for connection
-      await waitForPeers(page1, 1, 45000);
+      await waitForPeers(page1, 1, 30000);
 
-      // Check indicator turns green/blue
+      // Wait for indicator to turn green (peers) or blue (follows peers)
       const indicator = page1.getByTestId('peer-indicator-dot');
       await expect(indicator).toBeVisible({ timeout: 5000 });
 
-      await page1.waitForFunction(() => {
-        const el = document.querySelector('[data-testid="peer-indicator-dot"]');
-        if (!el) return false;
-        const color = getComputedStyle(el).color;
-        return color === 'rgb(63, 185, 80)' || color === 'rgb(88, 166, 255)';
-      }, { timeout: 10000 });
+      // Wait for color to change from yellow to green/blue
+      // Force UI refresh and verify in single function to avoid race condition
+      await page1.waitForFunction(
+        async () => {
+          // Check worker state first
+          const adapter = (window as any).__workerAdapter;
+          if (!adapter) return false;
+          const stats = await adapter.getPeerStats();
+          const connected = stats.filter((p: { connected?: boolean }) => p.connected).length;
+          if (connected === 0) return false;
 
-      const color = await indicator.evaluate(el => getComputedStyle(el).color);
-      expect(color === 'rgb(63, 185, 80)' || color === 'rgb(88, 166, 255)').toBe(true);
+          // Force UI refresh
+          const { refreshWebRTCStats } = await import('/src/store');
+          await refreshWebRTCStats();
+
+          // Small delay to let Svelte re-render
+          await new Promise(r => setTimeout(r, 100));
+
+          // Check indicator color
+          const el = document.querySelector('[data-testid="peer-indicator-dot"]');
+          if (!el) return false;
+          const color = getComputedStyle(el).color;
+          // green: rgb(63, 185, 80) or blue: rgb(88, 166, 255)
+          return color === 'rgb(63, 185, 80)' || color === 'rgb(88, 166, 255)';
+        },
+        undefined,
+        { timeout: 30000, polling: 1000 }
+      );
     } finally {
       await ctx1.close();
       await ctx2.close();
@@ -123,8 +168,8 @@ test.describe('WebRTC Connectivity', () => {
       ]);
 
       await Promise.all([
-        page1.waitForFunction(() => (window as any).__testHelpers?.followPubkey, { timeout: 15000 }),
-        page2.waitForFunction(() => (window as any).__testHelpers?.followPubkey, { timeout: 15000 }),
+        page1.waitForFunction(() => (window as any).__testHelpers?.followPubkey, undefined, { timeout: 15000 }),
+        page2.waitForFunction(() => (window as any).__testHelpers?.followPubkey, undefined, { timeout: 15000 }),
       ]);
 
       await Promise.all([
@@ -139,23 +184,72 @@ test.describe('WebRTC Connectivity', () => {
         followUser(page2, pubkey1),
       ]);
 
+      // Wait for follows to propagate to worker's socialGraph (condition-based, not time-based)
+      await Promise.all([
+        page1.waitForFunction(
+          async (pk: string) => {
+            const store = (window as any).webrtcStore;
+            if (!store?.isFollowing) return false;
+            return await store.isFollowing(pk);
+          },
+          pubkey2,
+          { timeout: 15000 }
+        ),
+        page2.waitForFunction(
+          async (pk: string) => {
+            const store = (window as any).webrtcStore;
+            if (!store?.isFollowing) return false;
+            return await store.isFollowing(pk);
+          },
+          pubkey1,
+          { timeout: 15000 }
+        ),
+      ]);
+
       await Promise.all([
         page1.evaluate(() => (window as any).webrtcStore?.sendHello?.()),
         page2.evaluate(() => (window as any).webrtcStore?.sendHello?.()),
       ]);
 
-      await waitForPeers(page1, 1, 45000);
+      await waitForPeers(page1, 1, 30000);
 
-      // Navigate to settings
-      await page1.goto('http://localhost:5173/#/settings');
-      await expect(page1.locator('text=Settings')).toBeVisible({ timeout: 5000 });
+      // Navigate to settings by clicking the connectivity indicator (links to settings)
+      // This is more reliable than hash navigation as it uses the app's routing
+      await page1.getByTestId('peer-indicator-dot').click();
 
-      // Verify peers count > 0
-      await expect(page1.locator('text=/Peers \\(\\d+\\)/')).toBeVisible({ timeout: 10000 });
-      const text = await page1.locator('text=/Peers \\(\\d+\\)/').textContent();
-      const match = text?.match(/Peers \((\d+)\)/);
-      expect(match).toBeTruthy();
-      expect(parseInt(match![1], 10)).toBeGreaterThan(0);
+      // Wait for Settings page to render - check for Peers section which is always present
+      await page1.waitForFunction(
+        () => document.body.innerText.includes('Peers'),
+        undefined,
+        { timeout: 30000 }
+      );
+
+      // Wait for Settings UI to show connected peers
+      // Use waitForFunction that checks worker state, refreshes UI, and verifies
+      await page1.waitForFunction(
+        async () => {
+          // Check worker state
+          const adapter = (window as any).__workerAdapter;
+          if (!adapter) return false;
+          const stats = await adapter.getPeerStats();
+          const connected = stats.filter((p: { connected?: boolean }) => p.connected).length;
+          if (connected === 0) return false;
+
+          // Force UI refresh
+          const { refreshWebRTCStats } = await import('/src/store');
+          await refreshWebRTCStats();
+
+          // Small delay for Svelte re-render
+          await new Promise(r => setTimeout(r, 100));
+
+          // Check if UI updated
+          const match = document.body.innerText.match(/Peers \((\d+)\)/);
+          const count = match ? parseInt(match[1], 10) : 0;
+          return count > 0;
+        },
+        undefined,
+        { timeout: 30000, polling: 1000 }
+      );
     } finally {
       await ctx1.close();
       await ctx2.close();

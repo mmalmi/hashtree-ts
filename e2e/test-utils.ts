@@ -220,6 +220,28 @@ export async function followUser(page: any, targetNpub: string) {
 }
 
 /**
+ * Wait for a pubkey to be in the worker's follows set.
+ * This is essential before sending WebRTC hellos - ensures the peer will be
+ * classified in the "follows" pool rather than "other" pool.
+ */
+export async function waitForFollowInWorker(page: any, pubkeyHex: string, timeoutMs: number = 15000): Promise<boolean> {
+  return page.waitForFunction(
+    (pk: string) => {
+      const store = (window as any).webrtcStore;
+      if (!store) return false;
+      // Check via internal API that exposes followsSet
+      const isFollowing = store.isFollowing?.(pk);
+      if (isFollowing) return true;
+      // Fallback: check directly if available
+      const followsSet = store.getFollowsSet?.();
+      return followsSet?.has?.(pk) ?? false;
+    },
+    pubkeyHex,
+    { timeout: timeoutMs }
+  ).then(() => true).catch(() => false);
+}
+
+/**
  * Wait for WebRTC connection to be established.
  * Polls until at least one peer is connected with data channel open.
  * Use this after users follow each other to ensure WebRTC is ready.

@@ -389,21 +389,12 @@ async function handleGet(id: string, hash: Uint8Array) {
     return;
   }
 
-  const hashHex = Array.from(hash.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join('');
-
   // 1. Try local store first
   let data = await store.get(hash);
-  if (data) {
-    console.log('[Worker] handleGet:', hashHex, 'found in local store');
-  }
 
   // 2. If not found locally, try WebRTC peers
   if (!data && webrtc) {
-    console.log('[Worker] handleGet:', hashHex, 'trying WebRTC, connectedPeers:', webrtc.getConnectedCount());
     data = await webrtc.get(hash);
-    console.log('[Worker] handleGet:', hashHex, 'WebRTC result:', data ? `${data.length} bytes` : 'null');
-
-    // Cache locally if found from peers
     if (data) {
       await store.put(hash, data);
     }
@@ -411,11 +402,7 @@ async function handleGet(id: string, hash: Uint8Array) {
 
   // 3. If not found from peers, try Blossom servers
   if (!data && blossomStore) {
-    console.log('[Worker] handleGet:', hashHex, 'trying Blossom');
     data = await blossomStore.get(hash);
-    console.log('[Worker] handleGet:', hashHex, 'Blossom result:', data ? `${data.length} bytes` : 'null');
-
-    // Cache locally if found from Blossom
     if (data) {
       await store.put(hash, data);
     }
