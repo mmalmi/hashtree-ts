@@ -60,6 +60,20 @@ export interface PeerInfo {
   pool: 'follows' | 'others';
 }
 
+// Detailed peer stats for getStats()
+export interface DetailedPeerStats {
+  peerId: string;
+  pubkey: string;
+  connected: boolean;
+  pool: 'follows' | 'other';
+  requestsSent: number;
+  requestsReceived: number;
+  responsesSent: number;
+  responsesReceived: number;
+  bytesSent: number;
+  bytesReceived: number;
+}
+
 // App state store interface (simplified - WebRTC stats come from worker)
 interface AppState {
   // Storage stats
@@ -182,7 +196,55 @@ const webrtcStoreProxy = {
     // Relays are managed by worker, no-op for now
   },
   sendHello: () => {
-    // Hello is automatic in worker
+    const adapter = getWorkerAdapter();
+    adapter?.sendHello();
+  },
+  getStats: async () => {
+    const adapter = getWorkerAdapter();
+    if (!adapter) {
+      return {
+        aggregate: { requestsSent: 0, requestsReceived: 0, responsesSent: 0, responsesReceived: 0, bytesSent: 0, bytesReceived: 0 },
+        perPeer: new Map(),
+      };
+    }
+
+    const peerStats = await adapter.getPeerStats();
+
+    // Aggregate stats from all peers
+    const aggregate = {
+      requestsSent: 0,
+      requestsReceived: 0,
+      responsesSent: 0,
+      responsesReceived: 0,
+      bytesSent: 0,
+      bytesReceived: 0,
+    };
+
+    const perPeer = new Map<string, DetailedPeerStats>();
+
+    for (const p of peerStats) {
+      aggregate.requestsSent += p.requestsSent;
+      aggregate.requestsReceived += p.requestsReceived;
+      aggregate.responsesSent += p.responsesSent;
+      aggregate.responsesReceived += p.responsesReceived;
+      aggregate.bytesSent += p.bytesSent;
+      aggregate.bytesReceived += p.bytesReceived;
+
+      perPeer.set(p.peerId, {
+        peerId: p.peerId,
+        pubkey: p.pubkey,
+        connected: p.connected,
+        pool: 'other', // Worker doesn't track pool in stats
+        requestsSent: p.requestsSent,
+        requestsReceived: p.requestsReceived,
+        responsesSent: p.responsesSent,
+        responsesReceived: p.responsesReceived,
+        bytesSent: p.bytesSent,
+        bytesReceived: p.bytesReceived,
+      });
+    }
+
+    return { aggregate, perPeer };
   },
 };
 export const webrtcStore = webrtcStoreProxy;

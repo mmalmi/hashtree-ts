@@ -39,6 +39,13 @@ let webrtc: WebRTCController | null = null;
 let _config: WorkerConfig | null = null;
 let mediaPort: MessagePort | null = null;
 
+// Follows set for WebRTC peer classification
+let followsSet = new Set<string>();
+
+function getFollows(): Set<string> {
+  return followsSet;
+}
+
 // Set up response sender for signing module
 setResponseSender((msg) => self.postMessage(msg));
 
@@ -126,6 +133,15 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
       // WebRTC pool configuration
       case 'setWebRTCPools':
         webrtc?.setPoolConfig(msg.pools);
+        respond({ type: 'void', id: msg.id });
+        break;
+      case 'sendWebRTCHello':
+        webrtc?.broadcastHello();
+        respond({ type: 'void', id: msg.id });
+        break;
+      case 'setFollows':
+        followsSet = new Set(msg.follows);
+        console.log('[Worker] Follows updated:', followsSet.size, 'pubkeys');
         respond({ type: 'void', id: msg.id });
         break;
 
@@ -225,6 +241,7 @@ async function handleInit(id: string, cfg: WorkerConfig) {
       sendSignaling: async (msg, recipientPubkey) => {
         await sendWebRTCSignaling(msg, recipientPubkey);
       },
+      getFollows, // Used to classify peers into follows/other pools
       debug: true,
     });
 
@@ -307,9 +324,17 @@ async function handleGet(id: string, hash: Uint8Array) {
   // 1. Try local store first
   let data = await store.get(hash);
 
-  // 2. NOTE: WebRTC not available in workers (runs in main thread instead)
+  // 2. If not found locally, try WebRTC peers
+  if (!data && webrtc) {
+    data = await webrtc.get(hash);
 
-  // 3. If not found locally, try Blossom servers
+    // Cache locally if found from peers
+    if (data) {
+      await store.put(hash, data);
+    }
+  }
+
+  // 3. If not found from peers, try Blossom servers
   if (!data && blossomStore) {
     data = await blossomStore.get(hash);
 
@@ -965,6 +990,8 @@ async function handleGetPeerStats(id: string) {
     connected: s.connected,
     requestsSent: s.requestsSent,
     requestsReceived: s.requestsReceived,
+    responsesSent: s.responsesSent,
+    responsesReceived: s.responsesReceived,
     bytesSent: s.bytesSent,
     bytesReceived: s.bytesReceived,
   }));

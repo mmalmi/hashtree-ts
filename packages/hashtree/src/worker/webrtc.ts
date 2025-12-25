@@ -167,6 +167,14 @@ export class WebRTCController {
   }
 
   /**
+   * Public method to trigger a hello broadcast.
+   * Used for testing to force peer discovery after follows are set up.
+   */
+  broadcastHello(): void {
+    this.sendHello();
+  }
+
+  /**
    * Handle incoming signaling message (from Nostr kind 25050)
    */
   async handleSignalingMessage(msg: SignalingMessage, senderPubkey: string): Promise<void> {
@@ -644,10 +652,25 @@ export class WebRTCController {
   }
 
   private async forwardRequest(hash: Uint8Array, excludePeerId: string, htl: number): Promise<void> {
+    const hashKey = hashToKey(hash);
+
     // Forward to all connected peers except the one who sent it
     for (const [peerId, peer] of this.peers) {
       if (peerId === excludePeerId) continue;
       if (!peer.dataChannelReady) continue;
+
+      // Set up pending request so we can process the response
+      const timeout = setTimeout(() => {
+        peer.pendingRequests.delete(hashKey);
+      }, this.requestTimeout);
+
+      peer.pendingRequests.set(hashKey, {
+        hash,
+        resolve: () => {
+          // Response will be pushed to original requester via pushToRequesters
+        },
+        timeout,
+      });
 
       const req = createRequest(hash, htl);
       const encoded = new Uint8Array(encodeRequest(req));
@@ -734,6 +757,8 @@ export class WebRTCController {
     pool: PeerPool;
     requestsSent: number;
     requestsReceived: number;
+    responsesSent: number;
+    responsesReceived: number;
     bytesSent: number;
     bytesReceived: number;
   }> {
@@ -744,6 +769,8 @@ export class WebRTCController {
       pool: peer.pool,
       requestsSent: peer.stats.requestsSent,
       requestsReceived: peer.stats.requestsReceived,
+      responsesSent: peer.stats.responsesSent,
+      responsesReceived: peer.stats.responsesReceived,
       bytesSent: peer.stats.bytesSent,
       bytesReceived: peer.stats.bytesReceived,
     }));

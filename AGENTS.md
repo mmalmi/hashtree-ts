@@ -53,3 +53,4 @@ pnpm run build > /dev/null
 - Use `test.slow()` for complex async operations
 - Multi-user WebRTC tests: users must follow each other, keep others pool at 0
 - Global timeout 30s, `test.slow()` triples to 90s
+- Full suite is slow - run specific tests when debugging: `pnpm run test:e2e -- e2e/specific.spec.ts`

@@ -42,6 +42,8 @@ export interface PeerStats {
   connected: boolean;
   requestsSent: number;
   requestsReceived: number;
+  responsesSent: number;
+  responsesReceived: number;
   bytesSent: number;
   bytesReceived: number;
 }
@@ -85,6 +87,8 @@ export type WorkerRequest =
 
   // WebRTC pool configuration
   | { type: 'setWebRTCPools'; id: string; pools: { follows: { max: number; satisfied: number }; other: { max: number; satisfied: number } } }
+  | { type: 'sendWebRTCHello'; id: string }
+  | { type: 'setFollows'; id: string; follows: string[] }
 
   // NIP-07 responses (main thread → worker, after signing/encryption)
   | { type: 'signed'; id: string; event?: SignedEvent; error?: string }

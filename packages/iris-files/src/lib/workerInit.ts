@@ -6,13 +6,90 @@
  */
 
 import { initWorkerAdapter, getWorkerAdapter } from '../workerAdapter';
-import { DEFAULT_NETWORK_SETTINGS } from '../stores/settings';
+import { DEFAULT_NETWORK_SETTINGS, settingsStore } from '../stores/settings';
 import { refreshWebRTCStats } from '../store';
+import { get } from 'svelte/store';
+import { createFollowsStore, getFollowsSync } from '../stores/follows';
 
 // Worker URL for Vite - using recommended new URL() approach
 const workerUrl = new URL('../workers/hashtree.worker.ts', import.meta.url);
 
 let initialized = false;
+let lastPoolConfigHash = '';
+let lastFollowsHash = '';
+let followsUnsubscribe: (() => void) | null = null;
+
+/**
+ * Sync pool settings from settings store to worker.
+ * Uses a hash to avoid duplicate updates.
+ */
+function syncPoolSettings(): void {
+  const adapter = getWorkerAdapter();
+  if (!adapter) return;
+
+  const settings = get(settingsStore);
+  const poolConfig = {
+    follows: { max: settings.pools.followsMax, satisfied: settings.pools.followsSatisfied },
+    other: { max: settings.pools.otherMax, satisfied: settings.pools.otherSatisfied },
+  };
+
+  // Hash to avoid duplicate updates
+  const configHash = JSON.stringify(poolConfig);
+  if (configHash === lastPoolConfigHash) return;
+  lastPoolConfigHash = configHash;
+
+  console.log('[WorkerInit] Syncing pool settings to worker:', poolConfig);
+  adapter.setWebRTCPools(poolConfig);
+}
+
+/**
+ * Sync follows list to worker for WebRTC peer classification.
+ */
+function syncFollows(follows: string[]): void {
+  const adapter = getWorkerAdapter();
+  if (!adapter) return;
+
+  // Hash to avoid duplicate updates
+  const followsHash = follows.join(',');
+  if (followsHash === lastFollowsHash) return;
+  lastFollowsHash = followsHash;
+
+  console.log('[WorkerInit] Syncing follows to worker:', follows.length, 'pubkeys');
+  adapter.setFollows(follows);
+}
+
+// Track follows store for cleanup
+let followsStoreDestroy: (() => void) | null = null;
+
+/**
+ * Set up follows subscription for the current user.
+ */
+function setupFollowsSubscription(pubkey: string): void {
+  // Clean up previous subscription
+  if (followsUnsubscribe) {
+    followsUnsubscribe();
+    followsUnsubscribe = null;
+  }
+  if (followsStoreDestroy) {
+    followsStoreDestroy();
+    followsStoreDestroy = null;
+  }
+
+  // Sync current follows if available
+  const currentFollows = getFollowsSync(pubkey);
+  if (currentFollows) {
+    syncFollows(currentFollows.follows);
+  }
+
+  // Create follows store and subscribe to changes
+  const followsStore = createFollowsStore(pubkey);
+  followsStoreDestroy = followsStore.destroy;
+  followsUnsubscribe = followsStore.subscribe((follows) => {
+    if (follows) {
+      syncFollows(follows.follows);
+    }
+  });
+}
 
 export interface WorkerInitIdentity {
   pubkey: string;
@@ -57,6 +134,24 @@ export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<
 
     initialized = true;
     console.log('[WorkerInit] Hashtree worker ready');
+
+    // Sync pool settings from settings store to worker
+    // Need to wait for settings to load from IndexedDB if not already loaded
+    const settings = get(settingsStore);
+    if (settings.poolsLoaded) {
+      syncPoolSettings();
+    }
+
+    // Subscribe to pool settings changes to keep worker in sync
+    // This handles both initial load and subsequent changes
+    settingsStore.subscribe(state => {
+      if (state.poolsLoaded && initialized) {
+        syncPoolSettings();
+      }
+    });
+
+    // Set up follows subscription for WebRTC peer classification
+    setupFollowsSubscription(identity.pubkey);
 
     // Start periodic peer stats polling for connectivity indicator
     refreshWebRTCStats();

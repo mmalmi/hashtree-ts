@@ -17,8 +17,12 @@ test.describe('WebRTC Request Forwarding', () => {
 
   /**
    * Clear storage and get a fresh session with auto-generated key
+   * Pre-sets pool config in IndexedDB BEFORE reload so WebRTC starts with correct limits
    */
-  async function setupFreshPeer(page: Page): Promise<string> {
+  async function setupFreshPeer(
+    page: Page,
+    poolConfig: { followsMax: number; followsSatisfied: number; otherMax: number; otherSatisfied: number }
+  ): Promise<string> {
     // Clear all storage
     await page.evaluate(async () => {
       localStorage.clear();
@@ -28,6 +32,36 @@ test.describe('WebRTC Request Forwarding', () => {
         if (db.name) indexedDB.deleteDatabase(db.name);
       }
     });
+
+    // Pre-set pool settings in IndexedDB BEFORE reload
+    // This ensures WebRTC initializes with correct pool limits
+    await page.evaluate(async (cfg) => {
+      const request = indexedDB.open('hashtree-settings', 1);
+      await new Promise<void>((resolve, reject) => {
+        request.onerror = () => reject(request.error);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains('settings')) {
+            db.createObjectStore('settings', { keyPath: 'key' });
+          }
+        };
+        request.onsuccess = () => {
+          const db = request.result;
+          const tx = db.transaction('settings', 'readwrite');
+          const store = tx.objectStore('settings');
+          store.put({
+            key: 'pools',
+            value: cfg
+          });
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      });
+    }, poolConfig);
+
     await page.reload();
     await page.waitForLoadState('load');
 
@@ -72,19 +106,23 @@ test.describe('WebRTC Request Forwarding', () => {
     page: Page,
     config: { followsMax: number; followsSatisfied: number; otherMax: number; otherSatisfied: number }
   ): Promise<void> {
-    await page.evaluate((cfg) => {
-      const settingsStore = (window as any).__settingsStore;
-      if (settingsStore?.setPools) {
-        settingsStore.setPools(cfg);
-      }
-      // Also update webrtc store directly
-      const webrtcStore = (window as any).webrtcStore;
-      if (webrtcStore?.setPoolConfig) {
-        webrtcStore.setPoolConfig({
-          follows: { maxConnections: cfg.followsMax, satisfiedConnections: cfg.followsSatisfied },
-          other: { maxConnections: cfg.otherMax, satisfiedConnections: cfg.otherSatisfied },
-        });
-      }
+    await page.evaluate(async (cfg) => {
+      // Update settings store
+      const { settingsStore } = await import('/src/stores/settings');
+      settingsStore.setPoolSettings({
+        followsMax: cfg.followsMax,
+        followsSatisfied: cfg.followsSatisfied,
+        otherMax: cfg.otherMax,
+        otherSatisfied: cfg.otherSatisfied,
+      });
+
+      // Update the worker's WebRTC pool config
+      const { getWorkerAdapter } = await import('/src/workerAdapter');
+      const adapter = getWorkerAdapter();
+      adapter?.setWebRTCPools({
+        follows: { max: cfg.followsMax, satisfied: cfg.followsSatisfied },
+        other: { max: cfg.otherMax, satisfied: cfg.otherSatisfied },
+      });
     }, config);
   }
 
@@ -231,9 +269,8 @@ test.describe('WebRTC Request Forwarding', () => {
       ]);
 
       console.log('\n=== Setting up Peer C (content provider) ===');
-      const pubkeyC = await setupFreshPeer(pageC);
+      const pubkeyC = await setupFreshPeer(pageC, poolConfig);
       await waitForHelpers(pageC);
-      await setPoolConfig(pageC, poolConfig);
       console.log(`Peer C pubkey: ${pubkeyC.slice(0, 16)}...`);
 
       // Store content on C
@@ -242,15 +279,13 @@ test.describe('WebRTC Request Forwarding', () => {
       console.log(`Content stored with hash: ${contentHash.slice(0, 16)}...`);
 
       console.log('\n=== Setting up Peer B (forwarder) ===');
-      const pubkeyB = await setupFreshPeer(pageB);
+      const pubkeyB = await setupFreshPeer(pageB, poolConfig);
       await waitForHelpers(pageB);
-      await setPoolConfig(pageB, poolConfig);
       console.log(`Peer B pubkey: ${pubkeyB.slice(0, 16)}...`);
 
       console.log('\n=== Setting up Peer A (requester) ===');
-      const pubkeyA = await setupFreshPeer(pageA);
+      const pubkeyA = await setupFreshPeer(pageA, poolConfig);
       await waitForHelpers(pageA);
-      await setPoolConfig(pageA, poolConfig);
       console.log(`Peer A pubkey: ${pubkeyA.slice(0, 16)}...`);
 
       console.log('\n=== Setting up follow relationships ===');
@@ -287,10 +322,11 @@ test.describe('WebRTC Request Forwarding', () => {
       await waitForPeers(pageA, 1, 30000);
 
       const aPeers = await getPeerInfo(pageA);
-      console.log('A connected peers:', JSON.stringify(aPeers));
+      console.log('A peers:', JSON.stringify(aPeers));
 
-      // Verify A is NOT connected to C directly
-      const aConnectedToPubkeys = aPeers.map(p => p.pubkey);
+      // Verify A is NOT directly CONNECTED to C (state === 'connected')
+      const aConnectedPeers = aPeers.filter(p => p.state === 'connected');
+      const aConnectedToPubkeys = aConnectedPeers.map(p => p.pubkey);
       const cPubkeyPrefix = pubkeyC.slice(0, 16) + '...';
       expect(aConnectedToPubkeys).not.toContain(cPubkeyPrefix);
       console.log('Verified: A is NOT directly connected to C');

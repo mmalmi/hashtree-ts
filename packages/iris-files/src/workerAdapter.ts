@@ -599,6 +599,31 @@ export class WorkerAdapter {
     } as WorkerRequest);
   }
 
+  /**
+   * Trigger a WebRTC hello broadcast for peer discovery.
+   * Used after follow relationships change to force peer discovery.
+   */
+  async sendHello(): Promise<void> {
+    const id = generateRequestId();
+    await this.request<{ error?: string }>({
+      type: 'sendWebRTCHello',
+      id,
+    } as WorkerRequest);
+  }
+
+  /**
+   * Update the follows list in the worker.
+   * Used for WebRTC peer classification (follows pool vs others pool).
+   */
+  async setFollows(follows: string[]): Promise<void> {
+    const id = generateRequestId();
+    await this.request<{ error?: string }>({
+      type: 'setFollows',
+      id,
+      follows,
+    } as WorkerRequest);
+  }
+
   // ============================================================================
   // Public API - Media Streaming
   // ============================================================================
