@@ -65,39 +65,17 @@ export const socialGraphStore = createSocialGraphStore();
 export const useSocialGraphStore = socialGraphStore;
 
 // ============================================================================
-// Initialization
+// Version callback setup (called after worker ready)
 // ============================================================================
 
-let resolveLoaded: ((value: boolean) => void) | null = null;
-let initialized = false;
-
-export const socialGraphLoaded = new Promise<boolean>((resolve) => {
-  resolveLoaded = resolve;
-});
-
-export async function initializeSocialGraph() {
-  if (initialized) return;
-
+export function setupVersionCallback() {
   const adapter = getWorkerAdapter();
-  if (!adapter) {
-    log('Worker adapter not available yet');
-    return;
-  }
-
-  // Set up version callback
-  adapter.onSocialGraphVersion((version) => {
-    socialGraphStore.setVersion(version);
-  });
-
-  const currentPublicKey = get(nostrStore).pubkey;
-  try {
-    const result = await adapter.initSocialGraph(currentPublicKey || DEFAULT_SOCIAL_GRAPH_ROOT);
-    log('initialized with', result.size, 'users');
-    initialized = true;
-    resolveLoaded?.(true);
-  } catch (err) {
-    console.error('[socialGraph] init error:', err);
-    resolveLoaded?.(false);
+  if (adapter) {
+    adapter.onSocialGraphVersion((version) => {
+      socialGraphStore.setVersion(version);
+      // Clear caches on version update
+      clearCaches();
+    });
   }
 }
 
@@ -248,13 +226,10 @@ export const followDistance = getFollowDistance;
 export const followedByFriends = getFollowedByFriends;
 export const follows = getFollows;
 
-// Current root pubkey (tracked for e2e tests)
-let currentRoot: string = DEFAULT_SOCIAL_GRAPH_ROOT;
-
 // Mock SocialGraph interface for backwards compatibility (e2e tests)
 export function getSocialGraph(): { getRoot: () => string } | null {
   return {
-    getRoot: () => currentRoot,
+    getRoot: () => get(nostrStore).pubkey || DEFAULT_SOCIAL_GRAPH_ROOT,
   };
 }
 
@@ -354,9 +329,5 @@ export async function setupSocialGraphSubscriptions() {
   });
 }
 
-// ============================================================================
-// Deferred initialization (after worker is ready)
-// ============================================================================
-
-// Note: initializeSocialGraph() should be called after worker adapter is initialized
-// This is handled in store.ts initialization
+// Worker handles SocialGraph init and kind:3 subscriptions internally
+// App waits for restoreSession() before mounting, so worker is ready

@@ -26,6 +26,7 @@ import {
   handleDecryptedResponse,
 } from './signing';
 import { WebRTCController } from './webrtc';
+import { SocialGraph, type NostrEvent as SocialGraphNostrEvent } from 'nostr-social-graph';
 
 // Kind for WebRTC signaling (ephemeral, gift-wrapped for directed messages)
 const SIGNALING_KIND = 25050;
@@ -44,6 +45,16 @@ let followsSet = new Set<string>();
 
 function getFollows(): Set<string> {
   return followsSet;
+}
+
+// SocialGraph state
+const DEFAULT_SOCIAL_GRAPH_ROOT = '4523be58d395b1b196a9b8c82b038b6895cb02b683d0c253a955068dba1facd0';
+let socialGraph: SocialGraph = new SocialGraph(DEFAULT_SOCIAL_GRAPH_ROOT);
+let socialGraphVersion = 0;
+
+function notifySocialGraphVersionUpdate() {
+  socialGraphVersion++;
+  self.postMessage({ type: 'socialGraphVersion', version: socialGraphVersion });
 }
 
 // Set up response sender for signing module
@@ -143,6 +154,35 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
         followsSet = new Set(msg.follows);
         console.log('[Worker] Follows updated:', followsSet.size, 'pubkeys');
         respond({ type: 'void', id: msg.id });
+        break;
+
+      // SocialGraph operations
+      case 'initSocialGraph':
+        handleInitSocialGraph(msg.id, msg.rootPubkey);
+        break;
+      case 'setSocialGraphRoot':
+        handleSetSocialGraphRoot(msg.id, msg.pubkey);
+        break;
+      case 'handleSocialGraphEvents':
+        handleSocialGraphEvents(msg.id, msg.events);
+        break;
+      case 'getFollowDistance':
+        handleGetFollowDistance(msg.id, msg.pubkey);
+        break;
+      case 'isFollowing':
+        handleIsFollowing(msg.id, msg.follower, msg.followed);
+        break;
+      case 'getFollows':
+        handleGetFollowsList(msg.id, msg.pubkey);
+        break;
+      case 'getFollowers':
+        handleGetFollowers(msg.id, msg.pubkey);
+        break;
+      case 'getFollowedByFriends':
+        handleGetFollowedByFriends(msg.id, msg.pubkey);
+        break;
+      case 'getSocialGraphSize':
+        handleGetSocialGraphSize(msg.id);
         break;
 
       // NIP-07 responses from main thread
@@ -251,6 +291,13 @@ async function handleInit(id: string, cfg: WorkerConfig) {
     webrtc.start();
     console.log('[Worker] WebRTC controller started');
 
+    // Initialize SocialGraph with user's pubkey as root
+    socialGraph = new SocialGraph(cfg.pubkey);
+    console.log('[Worker] SocialGraph initialized with root:', cfg.pubkey.slice(0, 16) + '...');
+
+    // Subscribe to kind:3 (contact list) events for social graph
+    setupSocialGraphSubscription(cfg.pubkey);
+
     respond({ type: 'ready' });
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
@@ -268,6 +315,11 @@ async function handleInit(id: string, cfg: WorkerConfig) {
 function handleSetIdentity(id: string, pubkey: string, nsec?: string) {
   setIdentity(pubkey, nsec);
   console.log('[Worker] Identity updated:', pubkey.slice(0, 16) + '...');
+
+  // Update SocialGraph root
+  socialGraph.setRoot(pubkey);
+  notifySocialGraphVersionUpdate();
+  console.log('[Worker] SocialGraph root updated:', pubkey.slice(0, 16) + '...');
 
   // Reinitialize Blossom with new signer
   if (_config?.blossomServers && _config.blossomServers.length > 0) {
@@ -1006,5 +1058,137 @@ async function handleGetRelayStats(id: string) {
   } catch {
     respond({ type: 'relayStats', id, stats: [] });
   }
+}
+
+// ============================================================================
+// SocialGraph Handlers
+// ============================================================================
+
+function handleInitSocialGraph(id: string, rootPubkey?: string) {
+  try {
+    if (rootPubkey) {
+      socialGraph = new SocialGraph(rootPubkey);
+    }
+    const size = socialGraph.size();
+    respond({ type: 'socialGraphInit', id, version: socialGraphVersion, size });
+  } catch (err) {
+    respond({ type: 'socialGraphInit', id, version: 0, size: 0, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+function handleSetSocialGraphRoot(id: string, pubkey: string) {
+  try {
+    socialGraph.setRoot(pubkey);
+    notifySocialGraphVersionUpdate();
+    respond({ type: 'void', id });
+  } catch (err) {
+    respond({ type: 'void', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+function handleSocialGraphEvents(id: string, events: SocialGraphNostrEvent[]) {
+  try {
+    let updated = false;
+    for (const event of events) {
+      socialGraph.handleEvent(event);
+      updated = true;
+    }
+    if (updated) {
+      notifySocialGraphVersionUpdate();
+    }
+    respond({ type: 'void', id });
+  } catch (err) {
+    respond({ type: 'void', id, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+function handleGetFollowDistance(id: string, pubkey: string) {
+  try {
+    const distance = socialGraph.getFollowDistance(pubkey);
+    respond({ type: 'followDistance', id, distance });
+  } catch (err) {
+    respond({ type: 'followDistance', id, distance: 1000, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+function handleIsFollowing(id: string, follower: string, followed: string) {
+  try {
+    const result = socialGraph.isFollowing(follower, followed);
+    respond({ type: 'isFollowingResult', id, result });
+  } catch (err) {
+    respond({ type: 'isFollowingResult', id, result: false, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+function handleGetFollowsList(id: string, pubkey: string) {
+  try {
+    const follows = socialGraph.getFollowedByUser(pubkey);
+    respond({ type: 'pubkeyList', id, pubkeys: Array.from(follows) });
+  } catch (err) {
+    respond({ type: 'pubkeyList', id, pubkeys: [], error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+function handleGetFollowers(id: string, pubkey: string) {
+  try {
+    const followers = socialGraph.getFollowersByUser(pubkey);
+    respond({ type: 'pubkeyList', id, pubkeys: Array.from(followers) });
+  } catch (err) {
+    respond({ type: 'pubkeyList', id, pubkeys: [], error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+function handleGetFollowedByFriends(id: string, pubkey: string) {
+  try {
+    const friendsFollowing = socialGraph.getFollowedByFriends(pubkey);
+    respond({ type: 'pubkeyList', id, pubkeys: Array.from(friendsFollowing) });
+  } catch (err) {
+    respond({ type: 'pubkeyList', id, pubkeys: [], error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+function handleGetSocialGraphSize(id: string) {
+  try {
+    const size = socialGraph.size();
+    respond({ type: 'socialGraphSize', id, size });
+  } catch (err) {
+    respond({ type: 'socialGraphSize', id, size: 0, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+// ============================================================================
+// SocialGraph Subscription
+// ============================================================================
+
+const KIND_CONTACTS = 3;
+
+/**
+ * Subscribe to kind:3 contact list events for social graph
+ */
+function setupSocialGraphSubscription(rootPubkey: string): void {
+  const nostr = getNostrManager();
+
+  // Track latest event per pubkey to avoid processing old events
+  const latestByPubkey = new Map<string, number>();
+
+  // Handle incoming kind:3 events
+  nostr.setOnEvent((subId, event) => {
+    if (subId === 'socialgraph-contacts' && event.kind === KIND_CONTACTS) {
+      const prevTime = latestByPubkey.get(event.pubkey) || 0;
+      if (event.created_at > prevTime) {
+        latestByPubkey.set(event.pubkey, event.created_at);
+        socialGraph.handleEvent(event as SocialGraphNostrEvent);
+        notifySocialGraphVersionUpdate();
+      }
+    }
+  });
+
+  // Subscribe to contact lists from root user's follows (2 degrees)
+  nostr.subscribe('socialgraph-contacts', [{
+    kinds: [KIND_CONTACTS],
+    authors: [rootPubkey],
+  }]);
+
+  console.log('[Worker] Subscribed to kind:3 events for social graph');
 }
 

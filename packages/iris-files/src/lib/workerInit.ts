@@ -10,6 +10,7 @@ import { DEFAULT_NETWORK_SETTINGS, settingsStore } from '../stores/settings';
 import { refreshWebRTCStats } from '../store';
 import { get } from 'svelte/store';
 import { createFollowsStore, getFollowsSync } from '../stores/follows';
+import { setupVersionCallback } from '../utils/socialGraph';
 // Import worker using Vite's ?worker query - returns a Worker constructor
 import HashtreeWorker from '../workers/hashtree.worker.ts?worker';
 
@@ -133,6 +134,9 @@ export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<
 
     initialized = true;
     console.log('[WorkerInit] Hashtree worker ready');
+
+    // Set up social graph version callback
+    setupVersionCallback();
 
     // Sync pool settings from settings store to worker
     // Need to wait for settings to load from IndexedDB if not already loaded

@@ -36,6 +36,14 @@ export interface SignedEvent extends UnsignedEvent {
   sig: string;
 }
 
+export interface SocialGraphEvent {
+  kind: number;
+  pubkey: string;
+  created_at: number;
+  tags: string[][];
+  content: string;
+}
+
 export interface PeerStats {
   peerId: string;
   pubkey: string;
@@ -90,6 +98,17 @@ export type WorkerRequest =
   | { type: 'sendWebRTCHello'; id: string }
   | { type: 'setFollows'; id: string; follows: string[] }
 
+  // SocialGraph
+  | { type: 'initSocialGraph'; id: string; rootPubkey?: string }
+  | { type: 'setSocialGraphRoot'; id: string; pubkey: string }
+  | { type: 'handleSocialGraphEvents'; id: string; events: SocialGraphEvent[] }
+  | { type: 'getFollowDistance'; id: string; pubkey: string }
+  | { type: 'isFollowing'; id: string; follower: string; followed: string }
+  | { type: 'getFollows'; id: string; pubkey: string }
+  | { type: 'getFollowers'; id: string; pubkey: string }
+  | { type: 'getFollowedByFriends'; id: string; pubkey: string }
+  | { type: 'getSocialGraphSize'; id: string }
+
   // NIP-07 responses (main thread → worker, after signing/encryption)
   | { type: 'signed'; id: string; event?: SignedEvent; error?: string }
   | { type: 'encrypted'; id: string; ciphertext?: string; error?: string }
@@ -139,6 +158,14 @@ export type WorkerResponse =
   // Stats
   | { type: 'peerStats'; id: string; stats: PeerStats[] }
   | { type: 'relayStats'; id: string; stats: RelayStats[] }
+
+  // SocialGraph responses
+  | { type: 'socialGraphInit'; id: string; version: number; size: number; error?: string }
+  | { type: 'socialGraphVersion'; version: number }
+  | { type: 'followDistance'; id: string; distance: number; error?: string }
+  | { type: 'isFollowingResult'; id: string; result: boolean; error?: string }
+  | { type: 'pubkeyList'; id: string; pubkeys: string[]; error?: string }
+  | { type: 'socialGraphSize'; id: string; size: number; error?: string }
 
   // NIP-07 requests (worker → main thread, needs extension)
   | { type: 'signEvent'; id: string; event: UnsignedEvent }
