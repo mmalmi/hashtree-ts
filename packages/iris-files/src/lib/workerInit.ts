@@ -9,8 +9,8 @@ import { initWorkerAdapter, getWorkerAdapter } from '../workerAdapter';
 import { DEFAULT_NETWORK_SETTINGS } from '../stores/settings';
 import { refreshWebRTCStats } from '../store';
 
-// Import worker with Vite's ?worker query
-import HashTreeWorker from '../workers/hashtree.worker?worker';
+// Worker URL for Vite - using recommended new URL() approach
+const workerUrl = new URL('../workers/hashtree.worker.ts', import.meta.url);
 
 let initialized = false;
 
@@ -29,7 +29,7 @@ export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<
   try {
     console.log('[WorkerInit] Starting hashtree worker...');
 
-    await initWorkerAdapter(HashTreeWorker, {
+    await initWorkerAdapter(workerUrl, {
       storeName: 'hashtree-worker',
       relays: DEFAULT_NETWORK_SETTINGS.relays,
       blossomServers: DEFAULT_NETWORK_SETTINGS.blossomServers,

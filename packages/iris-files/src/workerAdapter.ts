@@ -28,8 +28,8 @@ type PendingRequest = {
 type SubscriptionCallback = (event: SignedEvent) => void;
 type EoseCallback = () => void;
 
-// Worker constructor type - can be either a URL string or a Worker constructor from Vite
-type WorkerConstructor = string | (new () => Worker);
+// Worker constructor type - can be a URL object, URL string, or a Worker constructor from Vite
+type WorkerConstructor = URL | string | (new () => Worker);
 
 export class WorkerAdapter {
   private worker: Worker | null = null;
@@ -80,10 +80,14 @@ export class WorkerAdapter {
   }
 
   private spawnWorker() {
-    if (typeof this.workerFactory === 'string') {
+    if (this.workerFactory instanceof URL) {
+      // URL object - recommended approach
+      this.worker = new Worker(this.workerFactory, { type: 'module' });
+    } else if (typeof this.workerFactory === 'string') {
+      // URL string
       this.worker = new Worker(this.workerFactory, { type: 'module' });
     } else {
-      // Vite worker constructor
+      // Vite worker constructor from ?worker import
       this.worker = new this.workerFactory();
     }
     this.setupMessageHandler();
