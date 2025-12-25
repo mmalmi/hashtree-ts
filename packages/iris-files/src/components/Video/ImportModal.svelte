@@ -16,18 +16,19 @@
 
 <script lang="ts">
   import { SvelteSet } from 'svelte/reactivity';
-  import { nostrStore, saveHashtree } from '../../nostr';
-  import { toHex, videoChunker, cid } from 'hashtree';
-  import type { CID } from 'hashtree';
+  import { nostrStore, saveHashtree, signEvent } from '../../nostr';
+  import { toHex, videoChunker, cid, BlossomStore } from 'hashtree';
+  import type { CID, BlossomSigner } from 'hashtree';
   import { getTree } from '../../store';
   import { storeLinkKey } from '../../stores/trees';
   import { detectYtDlpDirectory, type YtDlpVideo } from '../../utils/ytdlp';
+  import { settingsStore, DEFAULT_NETWORK_SETTINGS } from '../../stores/settings';
 
   let userNpub = $derived($nostrStore.npub);
 
   // State
   let folderInput: HTMLInputElement | undefined = $state();
-  let mode = $state<'instructions' | 'preview' | 'uploading'>('instructions');
+  let mode = $state<'instructions' | 'preview' | 'uploading' | 'pushing'>('instructions');
   let batchVideos = $state<YtDlpVideo[]>([]);
   let selectedVideoIds = new SvelteSet<string>();
   let channelName = $state('');
@@ -55,6 +56,10 @@
   let progressMessage = $state('');
   let abortController = $state<AbortController | null>(null);
 
+  // Blossom push state
+  let pushProgress = $state({ current: 0, total: 0 });
+  let pushStats = $state({ pushed: 0, skipped: 0, failed: 0 });
+
   // Derived
   let selectedVideos = $derived(batchVideos.filter(v => selectedVideoIds.has(v.id)));
 
@@ -72,6 +77,8 @@
       progress = 0;
       progressMessage = '';
       abortController = null;
+      pushProgress = { current: 0, total: 0 };
+      pushStats = { pushed: 0, skipped: 0, failed: 0 };
     }
   });
 
@@ -225,10 +232,77 @@
         storeLinkKey(userNpub, treeName, result.linkKey);
       }
 
+      // Push to blossom servers
+      const settings = $settingsStore;
+      const blossomServers = settings.network?.blossomServers?.length > 0
+        ? settings.network.blossomServers
+        : DEFAULT_NETWORK_SETTINGS.blossomServers;
+      const writeServers = blossomServers.filter(s => s.write);
+
+      let blossomPushFailed = false;
+      if (writeServers.length > 0) {
+        mode = 'pushing';
+        progressMessage = 'Pushing to file servers...';
+        pushProgress = { current: 0, total: 0 };
+        pushStats = { pushed: 0, skipped: 0, failed: 0 };
+
+        // Create blossom signer
+        const signer: BlossomSigner = async (event) => {
+          const signed = await signEvent({
+            ...event,
+            pubkey: '',
+            id: '',
+            sig: '',
+          });
+          return signed;
+        };
+
+        const blossomStore = new BlossomStore({
+          servers: writeServers.map(s => ({ url: s.url, write: true })),
+          signer,
+        });
+
+        try {
+          const pushResult = await tree.push(rootDirResult.cid, blossomStore, {
+            signal: abortController?.signal,
+            onProgress: (current, total) => {
+              pushProgress = { current, total };
+            },
+          });
+
+          pushStats = {
+            pushed: pushResult.pushed,
+            skipped: pushResult.skipped,
+            failed: pushResult.failed,
+          };
+
+          if (pushResult.cancelled) {
+            throw new Error('Cancelled');
+          }
+
+          // Check if any blocks failed
+          if (pushResult.failed > 0) {
+            blossomPushFailed = true;
+          }
+        } catch (pushError) {
+          console.error('Blossom push failed:', pushError);
+          const msg = pushError instanceof Error ? pushError.message : 'Unknown error';
+          if (msg === 'Cancelled') {
+            throw pushError; // Re-throw cancellation
+          }
+          blossomPushFailed = true;
+        }
+      }
+
       uploading = false;
       progressMessage = '';
       const encodedTreeName = encodeURIComponent(treeName);
       const url = result.linkKey ? `#/${userNpub}/${encodedTreeName}?k=${result.linkKey}` : `#/${userNpub}/${encodedTreeName}`;
+
+      if (blossomPushFailed) {
+        alert('Videos saved locally! File server push had issues. You can retry later using the ☁️ button in folder actions.');
+      }
+
       window.location.hash = url;
       close();
     } catch (e) {
@@ -457,6 +531,29 @@
               ></div>
             </div>
           </div>
+
+        {:else if mode === 'pushing'}
+          <!-- Blossom push progress -->
+          <div class="space-y-4 py-8">
+            <div class="text-center">
+              <span class="i-lucide-upload-cloud text-4xl text-accent animate-pulse block mx-auto mb-4"></span>
+              <p class="text-text-1 font-medium">Pushing to file servers...</p>
+              <p class="text-text-3 text-sm mt-1">
+                {pushProgress.current} / {pushProgress.total} chunks
+              </p>
+            </div>
+            <div class="h-2 bg-surface-2 rounded-full overflow-hidden">
+              <div
+                class="h-full bg-accent transition-all duration-300"
+                style="width: {pushProgress.total > 0 ? (pushProgress.current / pushProgress.total * 100) : 0}%"
+              ></div>
+            </div>
+            {#if pushStats.pushed > 0 || pushStats.skipped > 0}
+              <div class="text-center text-xs text-text-3">
+                {pushStats.pushed} uploaded, {pushStats.skipped} already exist
+              </div>
+            {/if}
+          </div>
         {/if}
       </div>
 
@@ -478,6 +575,10 @@
             Upload {selectedVideos.length} Video{selectedVideos.length !== 1 ? 's' : ''}
           </button>
         {:else if mode === 'uploading'}
+          <button onclick={handleCancel} class="btn-ghost px-4 py-2">
+            Cancel
+          </button>
+        {:else if mode === 'pushing'}
           <button onclick={handleCancel} class="btn-ghost px-4 py-2">
             Cancel
           </button>

@@ -424,6 +424,13 @@ async function handlePut(id: string, hash: Uint8Array, data: Uint8Array) {
 
   const success = await store.put(hash, data);
   respond({ type: 'bool', id, value: success });
+
+  // Fire-and-forget push to blossom (don't await - optimistic upload)
+  if (blossomStore && success) {
+    blossomStore.put(hash, data).catch(() => {
+      // Silently ignore blossom errors - local storage succeeded
+    });
+  }
 }
 
 async function handleHas(id: string, hash: Uint8Array) {

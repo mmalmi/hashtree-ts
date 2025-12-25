@@ -431,6 +431,8 @@ export class HashTree {
       onBlock?: (hash: Hash, status: 'success' | 'skipped' | 'error', error?: Error) => void;
       /** Number of parallel uploads (default: 4) */
       concurrency?: number;
+      /** AbortSignal to cancel the push */
+      signal?: AbortSignal;
     }
   ): Promise<{
     cid: CID;
@@ -439,13 +441,22 @@ export class HashTree {
     failed: number;
     bytes: number;
     errors: Array<{ hash: Hash; error: Error }>;
+    cancelled: boolean;
   }> {
     // First pull to ensure all blocks are available locally
     await this.pull(id);
 
+    // Check if already aborted
+    if (options?.signal?.aborted) {
+      return { cid: id, pushed: 0, skipped: 0, failed: 0, bytes: 0, errors: [], cancelled: true };
+    }
+
     // Collect all blocks
     const blocks: Array<{ hash: Hash; data: Uint8Array }> = [];
     for await (const block of this.walkBlocks(id)) {
+      if (options?.signal?.aborted) {
+        return { cid: id, pushed: 0, skipped: 0, failed: 0, bytes: 0, errors: [], cancelled: true };
+      }
       blocks.push(block);
     }
 
@@ -460,6 +471,9 @@ export class HashTree {
 
     // Process blocks in parallel with limited concurrency
     const processBlock = async (block: { hash: Hash; data: Uint8Array }) => {
+      // Check abort before processing
+      if (options?.signal?.aborted) return;
+
       const { hash, data } = block;
       try {
         // Put to target store - it may return false/skip if already exists
@@ -487,6 +501,11 @@ export class HashTree {
     const active: Promise<void>[] = [];
 
     while (queue.length > 0 || active.length > 0) {
+      // Check abort before starting new tasks
+      if (options?.signal?.aborted) {
+        break;
+      }
+
       // Start new tasks up to concurrency limit
       while (active.length < concurrency && queue.length > 0) {
         const block = queue.shift()!;
@@ -502,7 +521,10 @@ export class HashTree {
       }
     }
 
-    return { cid: id, pushed, skipped, failed, bytes, errors };
+    // Wait for any remaining active tasks to complete
+    await Promise.all(active);
+
+    return { cid: id, pushed, skipped, failed, bytes, errors, cancelled: options?.signal?.aborted ?? false };
   }
 
   // Edit operations

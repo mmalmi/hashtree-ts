@@ -51,7 +51,8 @@
   let results = $state<PushResult[]>([]);
   let currentFile = $state<string>('');
   let progress = $state({ current: 0, total: 0 });
-  let cancelled = $state(false);
+  let abortController = $state<AbortController | null>(null);
+  let wasCancelled = $state(false);
 
   // Initialize servers from settings when modal opens
   $effect(() => {
@@ -62,7 +63,8 @@
       results = [];
       currentFile = '';
       progress = { current: 0, total: 0 };
-      cancelled = false;
+      abortController = null;
+      wasCancelled = false;
       return;
     }
 
@@ -83,7 +85,7 @@
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (phase === 'pushing') {
-          cancelled = true;
+          abortController?.abort();
         } else {
           close();
         }
@@ -116,7 +118,8 @@
     }
 
     phase = 'pushing';
-    cancelled = false;
+    abortController = new AbortController();
+    wasCancelled = false;
     results = [];
 
     // Create BlossomStore with only the selected servers
@@ -130,7 +133,8 @@
     // Use tree.push() which handles pull + walkBlocks + per-block uploads
     currentFile = 'Pushing...';
 
-    await tree.push(target.cid, blossomStore, {
+    const pushResult = await tree.push(target.cid, blossomStore, {
+      signal: abortController.signal,
       onProgress: (current, total) => {
         progress = { current, total };
       },
@@ -147,6 +151,7 @@
       },
     });
 
+    wasCancelled = pushResult.cancelled;
     phase = 'done';
     currentFile = '';
   }
@@ -267,7 +272,7 @@
             </div>
 
             <button
-              onclick={() => { cancelled = true; }}
+              onclick={() => abortController?.abort()}
               class="btn-ghost text-danger w-full py-2"
             >
               Cancel
@@ -297,7 +302,7 @@
               {formatBytes(stats.totalBytes)} total
             </div>
 
-            {#if cancelled}
+            {#if wasCancelled}
               <div class="text-sm text-warning text-center">Push was cancelled</div>
             {/if}
 
