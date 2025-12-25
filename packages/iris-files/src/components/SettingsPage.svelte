@@ -651,6 +651,34 @@
       <button onclick={() => settingsStore.resetPoolSettings()} class="btn-ghost mt-2 text-xs text-text-3">
         Reset to defaults
       </button>
+
+      <!-- Header Display Settings -->
+      <div class="bg-surface-2 rounded divide-y divide-surface-3 mt-3">
+        <label class="p-3 flex items-center justify-between cursor-pointer">
+          <div>
+            <span class="text-sm text-text-1">Show connectivity</span>
+            <p class="text-xs text-text-3">Display connection status in header</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={poolSettings.showConnectivity}
+            onchange={(e) => settingsStore.setPoolSettings({ showConnectivity: e.currentTarget.checked })}
+            class="w-4 h-4 accent-accent"
+          />
+        </label>
+        <label class="p-3 flex items-center justify-between cursor-pointer">
+          <div>
+            <span class="text-sm text-text-1">Show bandwidth</span>
+            <p class="text-xs text-text-3">Display upload/download rates in header</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={poolSettings.showBandwidth}
+            onchange={(e) => settingsStore.setPoolSettings({ showBandwidth: e.currentTarget.checked })}
+            class="w-4 h-4 accent-accent"
+          />
+        </label>
+      </div>
     </div>
 
     <!-- Peers -->

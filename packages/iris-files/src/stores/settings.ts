@@ -10,6 +10,9 @@ export interface PoolSettings {
   followsSatisfied: number;
   otherMax: number;
   otherSatisfied: number;
+  // Header display settings
+  showConnectivity: boolean;
+  showBandwidth: boolean;
 }
 
 // Gitignore behavior for directory uploads
@@ -37,6 +40,9 @@ export const DEFAULT_POOL_SETTINGS: PoolSettings = {
   // Disable others pool in test mode to prevent WebRTC interference between parallel tests
   otherMax: isTestMode ? 0 : 16,
   otherSatisfied: isTestMode ? 0 : 8,
+  // Header display settings
+  showConnectivity: true,
+  showBandwidth: false,
 };
 
 // Default upload settings
@@ -355,6 +361,8 @@ async function loadSettings() {
         followsSatisfied: pools.followsSatisfied ?? DEFAULT_POOL_SETTINGS.followsSatisfied,
         otherMax: pools.otherMax ?? DEFAULT_POOL_SETTINGS.otherMax,
         otherSatisfied: pools.otherSatisfied ?? DEFAULT_POOL_SETTINGS.otherSatisfied,
+        showConnectivity: pools.showConnectivity ?? DEFAULT_POOL_SETTINGS.showConnectivity,
+        showBandwidth: pools.showBandwidth ?? DEFAULT_POOL_SETTINGS.showBandwidth,
       };
     }
 

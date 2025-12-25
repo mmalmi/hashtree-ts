@@ -3,12 +3,14 @@
   import Logo from './components/Logo.svelte';
   import NostrLogin from './components/NostrLogin.svelte';
   import ConnectivityIndicator from './components/ConnectivityIndicator.svelte';
+  import BandwidthIndicator from './components/BandwidthIndicator.svelte';
   import SearchInput from './components/SearchInput.svelte';
   import MobileSearch from './components/MobileSearch.svelte';
   // import WalletLink from './components/WalletLink.svelte';
   import Toast from './components/Toast.svelte';
   import Router from './components/Router.svelte';
   import { currentPath, initRouter, getQueryParams } from './lib/router.svelte';
+  import { settingsStore } from './stores/settings';
 
   const isDev = import.meta.env.DEV;
   let RenderScan: typeof import('svelte-render-scan').RenderScan | null = $state(null);
@@ -49,6 +51,10 @@
   // Fullscreen state - check on each path change
   let fullscreen = $derived(isFullscreen());
 
+  // Header display settings
+  let showConnectivity = $derived($settingsStore.pools.showConnectivity);
+  let showBandwidth = $derived($settingsStore.pools.showBandwidth);
+
   // Initialize router on mount
   onMount(() => {
     initRouter();
@@ -71,7 +77,12 @@
     <div class="flex items-center gap-2 md:gap-3">
       <MobileSearch />
       <div class="hidden md:block"><SearchInput /></div>
-      <ConnectivityIndicator />
+      {#if showBandwidth}
+        <BandwidthIndicator />
+      {/if}
+      {#if showConnectivity}
+        <ConnectivityIndicator />
+      {/if}
       <!-- <WalletLink /> -->
       <NostrLogin />
     </div>
