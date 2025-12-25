@@ -43,6 +43,10 @@ function notifyListeners(pubkey: string, follows: Follows) {
 }
 
 async function fetchFollows(pubkey: string): Promise<void> {
+  if (!pubkey || pubkey.length !== 64) {
+    console.warn('[follows] Invalid pubkey:', pubkey);
+    return;
+  }
   if (pendingFetches.has(pubkey)) return;
 
   pendingFetches.add(pubkey);
