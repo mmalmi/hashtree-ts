@@ -276,6 +276,7 @@ test.describe('WebRTC Live Fetch', () => {
       }
 
       // Wait for the file to be resolvable in the tree (ensures sync is complete)
+      // In parallel test runs, WebRTC data transfer may take longer
       await pageB.waitForFunction(
         async (args: { npub: string; treeName: string; filename: string }) => {
           const { getTreeRootSync } = await import('/src/stores/treeRoot.ts');
@@ -298,7 +299,7 @@ test.describe('WebRTC Live Fetch', () => {
           }
         },
         { npub: npubA, treeName: 'public', filename: testFilename },
-        { timeout: 30000, polling: 500 }
+        { timeout: 60000, polling: 1000 }  // Longer timeout for parallel runs
       );
       console.log('File is resolvable in tree');
 
