@@ -3,51 +3,38 @@
  *
  * Storage architecture:
  * - WorkerStore: Primary storage, proxies to worker thread
- * - Worker owns: DexieStore (IndexedDB), WebRTC P2P, Nostr signaling
- * - Main thread: UI coordination only, no WebRTC
+ * - Worker owns: DexieStore (IndexedDB), Blossom fallback
+ * - Main thread: UI coordination only
  */
 import { writable, get } from 'svelte/store';
-import { HashTree, LinkType, DexieStore } from 'hashtree';
+import { HashTree, LinkType } from 'hashtree';
 import { getWorkerStore } from './stores/workerStore';
-import { isWorkerReady } from './lib/workerInit';
 import { closeWorkerAdapter, getWorkerAdapter } from './workerAdapter';
 
 // Re-export LinkType for e2e tests that can't import 'hashtree' directly
 export { LinkType };
 
-// Store instances
-// Primary: WorkerStore (proxies to worker thread with storage + WebRTC)
-// Fallback: DexieStore (main thread IndexedDB, used before worker is ready)
-const dexieStore = new DexieStore('hashtree-explorer');
-
-// Get the appropriate store based on worker readiness
-function getActiveStore() {
-  if (isWorkerReady()) {
-    return getWorkerStore();
-  }
-  return dexieStore;
-}
-
-// Export localStore for compatibility - uses worker when ready
+// Export localStore - always uses WorkerStore (no fallback)
+// Worker MUST be initialized before using storage
 export const localStore = {
   async put(hash: Uint8Array, data: Uint8Array): Promise<boolean> {
-    return getActiveStore().put(hash, data);
+    return getWorkerStore().put(hash, data);
   },
   async get(hash: Uint8Array): Promise<Uint8Array | null> {
-    return getActiveStore().get(hash);
+    return getWorkerStore().get(hash);
   },
   async has(hash: Uint8Array): Promise<boolean> {
-    return getActiveStore().has(hash);
+    return getWorkerStore().has(hash);
   },
   async delete(hash: Uint8Array): Promise<boolean> {
-    return getActiveStore().delete(hash);
+    return getWorkerStore().delete(hash);
   },
-  // Stats methods (only available on DexieStore)
+  // Stats methods - TODO: implement in worker
   async count(): Promise<number> {
-    return dexieStore.count();
+    return 0;
   },
   async totalBytes(): Promise<number> {
-    return dexieStore.totalBytes();
+    return 0;
   },
 };
 

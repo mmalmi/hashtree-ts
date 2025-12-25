@@ -370,17 +370,12 @@ self.addEventListener('fetch', (event: FetchEvent) => {
       return;
     }
 
-    // Worker and script requests need CORP header when COEP: credentialless is active
-    // Without CORP, workers are blocked due to the embedder policy
-    const needsCORP = event.request.destination === 'worker' ||
-      event.request.destination === 'sharedworker' ||
-      event.request.destination === 'script';
-    if (needsCORP) {
-      event.respondWith(
-        fetch(event.request).then(addCORPHeader)
-      );
-      return;
-    }
+    // In cross-origin isolated context, ALL same-origin resources need CORP headers
+    // This includes worker scripts and all their module imports
+    event.respondWith(
+      fetch(event.request).then(addCORPHeader)
+    );
+    return;
   }
 
   // Let workbox handle everything else (static assets, app routes)

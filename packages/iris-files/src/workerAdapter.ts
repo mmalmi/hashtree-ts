@@ -169,7 +169,15 @@ export class WorkerAdapter {
     if (!this.worker) return;
 
     this.worker.onerror = (error) => {
-      console.error('[WorkerAdapter] Worker crashed:', error);
+      // Try to get more details from the error event
+      const errorEvent = error as ErrorEvent;
+      console.error('[WorkerAdapter] Worker crashed:', {
+        message: errorEvent.message,
+        filename: errorEvent.filename,
+        lineno: errorEvent.lineno,
+        colno: errorEvent.colno,
+        error: errorEvent.error,
+      });
       this.handleWorkerCrash();
     };
   }

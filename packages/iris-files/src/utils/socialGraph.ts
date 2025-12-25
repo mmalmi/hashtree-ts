@@ -130,10 +130,18 @@ export const socialGraphLoaded = new Promise<boolean>((resolve) => {
 export async function initializeSocialGraph() {
   if (worker) return;
 
-  // Wait for service worker to be ready (needed for COOP/COEP headers)
+  // Wait for service worker to be controlling the page (needed for CORP headers in cross-origin isolated context)
   if ('serviceWorker' in navigator) {
     try {
       await navigator.serviceWorker.ready;
+      // If no controller yet, wait for it
+      if (!navigator.serviceWorker.controller) {
+        await new Promise<void>((resolve) => {
+          navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
+          // Also timeout in case we miss the event
+          setTimeout(resolve, 1000);
+        });
+      }
     } catch {
       // Continue anyway
     }

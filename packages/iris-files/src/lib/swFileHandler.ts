@@ -164,8 +164,10 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
 
       // Navigate to file
       const tree = getTree();
+      console.log('[SwFileHandler] Resolving path:', filePath, 'in tree with hash:', rootCid.hash.slice(0, 8));
       const entry = await tree.resolvePath(rootCid, filePath || '');
       if (!entry) {
+        console.warn('[SwFileHandler] File not found in tree:', filePath);
         port.postMessage({
           status: 404,
           headers: { 'Content-Type': 'text/plain' },
@@ -173,6 +175,7 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
         } as FileResponseHeaders);
         return;
       }
+      console.log('[SwFileHandler] Found file:', filePath, 'cid:', entry.cid.hash.slice(0, 8));
 
       cid = entry.cid;
     }

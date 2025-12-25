@@ -88,9 +88,16 @@ export type WorkerRequest =
   | { type: 'encrypted'; id: string; ciphertext?: string; error?: string }
   | { type: 'decrypted'; id: string; plaintext?: string; error?: string };
 
+/** Blossom server configuration */
+export interface BlossomServerConfig {
+  url: string;
+  read?: boolean;  // Whether to read from this server (default true)
+  write?: boolean; // Whether to write to this server
+}
+
 export interface WorkerConfig {
   relays: string[];
-  blossomServers?: string[];  // Blossom servers for fallback fetching
+  blossomServers?: BlossomServerConfig[];  // Blossom servers with read/write config
   pubkey: string;  // User's pubkey (required - user always logged in)
   nsec?: string;  // Hex-encoded secret key (only for nsec login, not extension)
   storeName?: string;  // IndexedDB database name, defaults to 'hashtree-worker'

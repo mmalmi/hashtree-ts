@@ -179,7 +179,7 @@ async function handleInit(id: string, cfg: WorkerConfig) {
     // Initialize Blossom store with signer for uploads
     if (cfg.blossomServers && cfg.blossomServers.length > 0) {
       blossomStore = new BlossomStore({
-        servers: cfg.blossomServers.map(url => ({ url, write: true })),
+        servers: cfg.blossomServers,  // Pass full config with read/write flags
         signer: createBlossomSigner(),
       });
       console.log('[Worker] Initialized BlossomStore with', cfg.blossomServers.length, 'servers');
@@ -208,7 +208,7 @@ function handleSetIdentity(id: string, pubkey: string, nsec?: string) {
   // Reinitialize Blossom with new signer
   if (_config?.blossomServers && _config.blossomServers.length > 0) {
     blossomStore = new BlossomStore({
-      servers: _config.blossomServers.map(url => ({ url, write: true })),
+      servers: _config.blossomServers,  // Pass full config with read/write flags
       signer: createBlossomSigner(),
     });
   }

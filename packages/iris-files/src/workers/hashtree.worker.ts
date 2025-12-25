@@ -4,6 +4,9 @@
  * This file is the entry point for Vite to bundle the hashtree worker.
  */
 
-// Import the worker code directly - this runs the worker's self.onmessage setup
-// Aliases don't work inside workers with Vite, must use relative path
+console.log('[hashtree.worker] Loading worker module...');
+
+// Static import of the worker module (relative path)
 import '../../../hashtree/src/worker/worker';
+
+console.log('[hashtree.worker] Worker module loaded');
