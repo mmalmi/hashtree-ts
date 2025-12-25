@@ -661,7 +661,7 @@
           </div>
           <input
             type="checkbox"
-            checked={poolSettings.showConnectivity}
+            checked={poolSettings.showConnectivity ?? true}
             onchange={(e) => settingsStore.setPoolSettings({ showConnectivity: e.currentTarget.checked })}
             class="w-4 h-4 accent-accent"
           />
@@ -673,7 +673,7 @@
           </div>
           <input
             type="checkbox"
-            checked={poolSettings.showBandwidth}
+            checked={poolSettings.showBandwidth ?? false}
             onchange={(e) => settingsStore.setPoolSettings({ showBandwidth: e.currentTarget.checked })}
             class="w-4 h-4 accent-accent"
           />

@@ -51,9 +51,9 @@
   // Fullscreen state - check on each path change
   let fullscreen = $derived(isFullscreen());
 
-  // Header display settings
-  let showConnectivity = $derived($settingsStore.pools.showConnectivity);
-  let showBandwidth = $derived($settingsStore.pools.showBandwidth);
+  // Header display settings (default to true/false if not yet loaded)
+  let showConnectivity = $derived($settingsStore.pools.showConnectivity ?? true);
+  let showBandwidth = $derived($settingsStore.pools.showBandwidth ?? false);
 
   // Initialize router on mount
   onMount(() => {
