@@ -139,7 +139,7 @@ test.describe('WebRTC Live Fetch', () => {
         pageB.evaluate(() => (window as any).webrtcStore?.sendHello?.()),
       ]);
 
-      // Wait for at least 1 peer connection by querying worker directly (30s timeout for WebRTC negotiation)
+      // Wait for at least 1 peer connection by querying worker directly (45s timeout for WebRTC negotiation)
       await pageA.waitForFunction(
         async () => {
           const { getWorkerAdapter } = await import('/src/workerAdapter');
@@ -150,6 +150,7 @@ test.describe('WebRTC Live Fetch', () => {
           console.log('[Test] Connected peers:', connectedCount);
           return connectedCount >= 1;
         },
+        undefined,  // no args
         { timeout: 45000 }
       );
       console.log('WebRTC connection established');
