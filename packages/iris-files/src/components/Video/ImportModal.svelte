@@ -28,7 +28,7 @@
 
   // State
   let folderInput: HTMLInputElement | undefined = $state();
-  let mode = $state<'instructions' | 'preview' | 'uploading' | 'pushing'>('instructions');
+  let mode = $state<'instructions' | 'preview' | 'uploading' | 'pushing' | 'done'>('instructions');
   let batchVideos = $state<YtDlpVideo[]>([]);
   let selectedVideoIds = new SvelteSet<string>();
   let channelName = $state('');
@@ -60,6 +60,10 @@
   let pushProgress = $state({ current: 0, total: 0 });
   let pushStats = $state({ pushed: 0, skipped: 0, failed: 0 });
 
+  // Done state
+  let resultUrl = $state('');
+  let blossomPushFailed = $state(false);
+
   // Derived
   let selectedVideos = $derived(batchVideos.filter(v => selectedVideoIds.has(v.id)));
 
@@ -79,6 +83,8 @@
       abortController = null;
       pushProgress = { current: 0, total: 0 };
       pushStats = { pushed: 0, skipped: 0, failed: 0 };
+      resultUrl = '';
+      blossomPushFailed = false;
     }
   });
 
@@ -239,7 +245,7 @@
         : DEFAULT_NETWORK_SETTINGS.blossomServers;
       const writeServers = blossomServers.filter(s => s.write);
 
-      let blossomPushFailed = false;
+      blossomPushFailed = false;
       if (writeServers.length > 0) {
         mode = 'pushing';
         progressMessage = 'Pushing to file servers...';
@@ -297,14 +303,14 @@
       uploading = false;
       progressMessage = '';
       const encodedTreeName = encodeURIComponent(treeName);
-      const url = result.linkKey ? `#/${userNpub}/${encodedTreeName}?k=${result.linkKey}` : `#/${userNpub}/${encodedTreeName}`;
+      resultUrl = result.linkKey ? `#/${userNpub}/${encodedTreeName}?k=${result.linkKey}` : `#/${userNpub}/${encodedTreeName}`;
 
       if (blossomPushFailed) {
-        alert('Videos saved locally! File server push had issues. You can retry later using the ☁️ button in folder actions.');
+        mode = 'done';
+      } else {
+        window.location.hash = resultUrl;
+        close();
       }
-
-      window.location.hash = url;
-      close();
     } catch (e) {
       console.error('Batch upload failed:', e);
       const message = e instanceof Error ? e.message : 'Unknown error';
@@ -554,6 +560,22 @@
               </div>
             {/if}
           </div>
+
+        {:else if mode === 'done'}
+          <!-- Done with warning -->
+          <div class="space-y-4 py-8">
+            <div class="text-center">
+              <span class="i-lucide-check-circle text-4xl text-green-500 block mx-auto mb-4"></span>
+              <p class="text-text-1 font-medium">Videos saved locally!</p>
+            </div>
+            {#if blossomPushFailed}
+              <div class="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 text-center">
+                <p class="text-yellow-400 text-sm">
+                  File server push had issues. You can retry later using the <span class="i-lucide-cloud inline-block align-middle"></span> button in folder actions.
+                </p>
+              </div>
+            {/if}
+          </div>
         {/if}
       </div>
 
@@ -581,6 +603,10 @@
         {:else if mode === 'pushing'}
           <button onclick={handleCancel} class="btn-ghost px-4 py-2">
             Cancel
+          </button>
+        {:else if mode === 'done'}
+          <button onclick={() => { window.location.hash = resultUrl; close(); }} class="btn-primary px-4 py-2">
+            View Videos
           </button>
         {/if}
       </div>
