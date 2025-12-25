@@ -1,7 +1,7 @@
 /**
  * Tree Root Cache
  *
- * Persists npub/treeName → CID mappings using OpfsStore.
+ * Persists npub/treeName → CID mappings using any Store implementation.
  * This allows quick resolution of tree roots without waiting for Nostr.
  *
  * Storage format:
@@ -10,10 +10,9 @@
  * - Value: MessagePack { hash, key?, visibility, updatedAt }
  */
 
-import type { CID } from '../types';
+import type { CID, Store } from '../types';
 import { sha256 } from '../hash';
 import { encode, decode } from '@msgpack/msgpack';
-import type { OpfsStore } from '../store/opfs';
 import type { TreeVisibility } from '../visibility';
 
 // Cached root entry
@@ -31,13 +30,13 @@ interface CachedRoot {
 const memoryCache = new Map<string, CachedRoot>();
 
 // Store reference
-let store: OpfsStore | null = null;
+let store: Store | null = null;
 
 /**
  * Initialize the cache with a store
  */
-export function initTreeRootCache(opfsStore: OpfsStore): void {
-  store = opfsStore;
+export function initTreeRootCache(storeImpl: Store): void {
+  store = storeImpl;
 }
 
 /**

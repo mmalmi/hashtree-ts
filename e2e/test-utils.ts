@@ -24,10 +24,12 @@ export function setupPageErrorHandler(page: any) {
  * This function waits for setup, then clicks into the public folder.
  */
 export async function navigateToPublicFolder(page: any) {
-  // Wait for the public folder link to appear in the tree list (indicates setup complete)
+  // Wait for any of the default folder links to appear (public, link, or private)
   // This can take a while for new users since default folders are created async
   // and published to Nostr fire-and-forget style
   const publicLink = page.getByRole('link', { name: 'public' }).first();
+
+  // Wait for public folder to appear
   await expect(publicLink).toBeVisible({ timeout: 30000 });
 
   // Click into the public folder

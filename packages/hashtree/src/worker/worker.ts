@@ -2,7 +2,7 @@
  * Hashtree Worker
  *
  * Dedicated worker that owns:
- * - HashTree + OpfsStore (storage)
+ * - HashTree + DexieStore (IndexedDB storage - better Safari support than OPFS)
  * - WebRTC peer connections (P2P data transfer)
  * - Nostr relay connections (signaling + tree roots)
  *
@@ -11,7 +11,7 @@
  */
 
 import { HashTree } from '../hashtree';
-import { OpfsStore } from '../store/opfs';
+import { DexieStore } from '../store/dexie';
 import type {
   WorkerRequest,
   WorkerResponse,
@@ -27,7 +27,7 @@ import type { EventTemplate } from 'nostr-tools';
 
 // Worker state
 let tree: HashTree | null = null;
-let store: OpfsStore | null = null;
+let store: DexieStore | null = null;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- stored for future config access
 let _config: WorkerConfig | null = null;
 let mediaPort: MessagePort | null = null;
@@ -162,10 +162,9 @@ async function handleInit(id: string, cfg: WorkerConfig) {
   try {
     _config = cfg;
 
-    // Initialize OPFS store
-    const storeName = cfg.storeName || 'hashtree';
-    store = new OpfsStore(storeName);
-    // OpfsStore self-initializes on first operation
+    // Initialize Dexie/IndexedDB store (better Safari support than OPFS)
+    const storeName = cfg.storeName || 'hashtree-worker';
+    store = new DexieStore(storeName);
 
     // Initialize HashTree with the store
     tree = new HashTree({ store });
@@ -173,7 +172,7 @@ async function handleInit(id: string, cfg: WorkerConfig) {
     // Initialize tree root cache
     initTreeRootCache(store);
 
-    console.log('[Worker] Initialized with store:', storeName);
+    console.log('[Worker] Initialized with DexieStore:', storeName);
 
     // Generate ephemeral identity for WebRTC signaling
     // This is a throwaway keypair - not the user's real identity
@@ -897,3 +896,4 @@ export async function requestDecrypt(pubkey: string, ciphertext: string): Promis
     }, 30000);
   });
 }
+
