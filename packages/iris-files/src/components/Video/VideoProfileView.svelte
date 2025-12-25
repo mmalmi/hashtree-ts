@@ -6,7 +6,7 @@
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../../nostr';
   import { createTreesStore, createProfileStore } from '../../stores';
-    import { followPubkey, unfollowPubkey, getFollowsSync, createFollowsStore } from '../../stores/follows';
+  import { followPubkey, unfollowPubkey, getFollowsSync, createFollowsStore } from '../../stores/follows';
   import { open as openShareModal } from '../Modals/ShareModal.svelte';
   import { Avatar, Name } from '../User';
   import VideoCard from './VideoCard.svelte';
@@ -14,11 +14,12 @@
   import ProxyImg from '../ProxyImg.svelte';
   import type { VideoItem } from './types';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
+  import { UserZaps } from '../Zaps';
   import { getTree } from '../../store';
   import { getLocalRootCache, getLocalRootKey } from '../../treeRootCache';
   import { getPlaylistCache, setPlaylistCache } from '../../stores/playlistCache';
   import { hasVideoFile, findThumbnailEntry, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
-  import type { CID } from 'hashtree';
+    import type { CID } from 'hashtree';
 
   interface PlaylistInfo {
     key: string;
@@ -394,5 +395,13 @@
         </div>
       {/if}
     </div>
+
+    <!-- Zaps received -->
+    {#if ownerPubkey}
+      <div class="pb-8">
+        <h2 class="text-lg font-semibold text-text-1 mb-4">Zaps Received</h2>
+        <UserZaps pubkey={ownerPubkey} maxItems={20} />
+      </div>
+    {/if}
   </div>
 </div>

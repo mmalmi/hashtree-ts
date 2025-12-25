@@ -3,18 +3,15 @@
    * ProfileView - displays user profile
    * Port of React ProfileView component
    */
-  import { untrack } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../nostr';
   import { createProfileStore } from '../stores/profile';
   import { createFollowsStore, followPubkey, unfollowPubkey } from '../stores/follows';
   import { open as openShareModal } from './Modals/ShareModal.svelte';
   import { Avatar, Name, Badge, FollowedBy } from './User';
-  import { ZapsList } from './Zaps';
   import CopyText from './CopyText.svelte';
   import ProxyImg from './ProxyImg.svelte';
   import { getFollowsMe, getFollowers, socialGraphStore } from '../utils/socialGraph';
-  import { subscribeToZaps, insertZapSorted, type Zap } from '../utils/zaps';
 
   interface Props {
     npub: string;
@@ -106,29 +103,6 @@
 
   let bannerError = $state(false);
   let followLoading = $state(false);
-
-  // Zaps state
-  let allZaps = $state<Zap[]>([]);
-  let zapCleanup = $state<(() => void) | null>(null);
-
-  // Subscribe to zaps for this profile
-  $effect(() => {
-    const pubkey = pubkeyHex;
-    if (!pubkey) return;
-
-    untrack(() => {
-      allZaps = [];
-      zapCleanup = subscribeToZaps({ '#p': [pubkey], limit: 100 }, (zap) => {
-        allZaps = insertZapSorted(allZaps, zap);
-      });
-    });
-
-    return () => {
-      if (zapCleanup) {
-        zapCleanup();
-      }
-    };
-  });
 
   function navigate(path: string) {
     window.location.hash = path;
@@ -275,12 +249,5 @@
       </a>
     {/if}
 
-    <!-- Zaps received -->
-    {#if allZaps.length > 0}
-      <div class="mt-6 border-t border-surface-3 pt-4">
-        <h2 class="text-lg font-semibold text-text-1 mb-3">Zaps Received</h2>
-        <ZapsList zaps={allZaps} maxItems={20} />
-      </div>
-    {/if}
   </div>
 </div>
