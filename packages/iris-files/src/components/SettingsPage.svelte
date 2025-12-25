@@ -275,7 +275,7 @@
 
   // Helper function to get peer stats
   function getPeerStats(peerId: string) {
-    return perPeerStats?.get(peerId)?.stats;
+    return perPeerStats?.get(peerId);
   }
 </script>
 

@@ -386,6 +386,18 @@ export class WebRTCController {
     this.log(`Closed peer: ${peerId.slice(0, 20)}`);
   }
 
+  /**
+   * Disconnect all peers with a specific pubkey (for blocking)
+   */
+  disconnectByPubkey(pubkey: string): void {
+    for (const [peerId, peer] of this.peers) {
+      if (peer.pubkey === pubkey) {
+        this.closePeer(peerId);
+      }
+    }
+    this.log(`Disconnected all peers with pubkey: ${pubkey.slice(0, 16)}`);
+  }
+
   // ============================================================================
   // Proxy Events
   // ============================================================================

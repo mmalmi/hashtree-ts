@@ -95,11 +95,13 @@ export type WorkerRequest =
   // Stats
   | { type: 'getPeerStats'; id: string }
   | { type: 'getRelayStats'; id: string }
+  | { type: 'getStorageStats'; id: string }
 
   // WebRTC pool configuration
   | { type: 'setWebRTCPools'; id: string; pools: { follows: { max: number; satisfied: number }; other: { max: number; satisfied: number } } }
   | { type: 'sendWebRTCHello'; id: string }
   | { type: 'setFollows'; id: string; follows: string[] }
+  | { type: 'blockPeer'; id: string; pubkey: string }
 
   // SocialGraph operations
   | { type: 'initSocialGraph'; id: string; rootPubkey?: string }
@@ -162,6 +164,7 @@ export type WorkerResponse =
   // Stats
   | { type: 'peerStats'; id: string; stats: PeerStats[] }
   | { type: 'relayStats'; id: string; stats: RelayStats[] }
+  | { type: 'storageStats'; id: string; items: number; bytes: number }
 
   // SocialGraph responses
   | { type: 'socialGraphReady'; id: string; version: number; size: number }

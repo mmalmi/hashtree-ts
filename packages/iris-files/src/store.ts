@@ -29,12 +29,25 @@ export const localStore = {
   async delete(hash: Uint8Array): Promise<boolean> {
     return getWorkerStore().delete(hash);
   },
-  // Stats methods - TODO: implement in worker
   async count(): Promise<number> {
-    return 0;
+    const adapter = getWorkerAdapter();
+    if (!adapter) return 0;
+    try {
+      const stats = await adapter.getStorageStats();
+      return stats.items;
+    } catch {
+      return 0;
+    }
   },
   async totalBytes(): Promise<number> {
-    return 0;
+    const adapter = getWorkerAdapter();
+    if (!adapter) return 0;
+    try {
+      const stats = await adapter.getStorageStats();
+      return stats.bytes;
+    } catch {
+      return 0;
+    }
   },
 };
 
@@ -261,8 +274,27 @@ const webrtcStoreProxy = {
 };
 export const webrtcStore = webrtcStoreProxy;
 export function getWebRTCStore() { return webrtcStoreProxy; }
-export function blockPeer(_pubkey: string): void {}
-export function unblockPeer(_pubkey: string): void {}
+
+export async function blockPeer(pubkey: string): Promise<void> {
+  // Import dynamically to avoid circular dependency
+  const { settingsStore } = await import('./stores/settings');
+  settingsStore.blockPeer(pubkey);
+  // Disconnect the peer via worker
+  const adapter = getWorkerAdapter();
+  if (adapter) {
+    try {
+      await adapter.blockPeer(pubkey);
+    } catch {
+      // Worker may not support blocking yet
+    }
+  }
+}
+
+export async function unblockPeer(pubkey: string): Promise<void> {
+  // Import dynamically to avoid circular dependency
+  const { settingsStore } = await import('./stores/settings');
+  settingsStore.unblockPeer(pubkey);
+}
 
 // Expose webrtcStore on window for test compatibility
 // Use defineProperty to allow testHelpers to override if needed

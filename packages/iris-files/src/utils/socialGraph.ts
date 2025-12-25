@@ -205,12 +205,26 @@ export function getFollowsMe(pubkey: string | null | undefined): boolean {
   return isFollowing(pubkey, myPubkey);
 }
 
+// Cached graph size (updated async)
+let graphSizeCache = 0;
+
 /**
  * Get the graph size
  */
 export function getGraphSize(): number {
-  // Return 0 sync, could add async fetch if needed
-  return 0;
+  // Trigger async fetch to update cache
+  const adapter = getWorkerAdapter();
+  if (adapter) {
+    adapter.getSocialGraphSize()
+      .then(size => {
+        if (size !== graphSizeCache) {
+          graphSizeCache = size;
+          socialGraphStore.incrementVersion();
+        }
+      })
+      .catch(() => {});
+  }
+  return graphSizeCache;
 }
 
 /**

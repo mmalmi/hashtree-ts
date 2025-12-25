@@ -138,6 +138,9 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
       case 'getRelayStats':
         await handleGetRelayStats(msg.id);
         break;
+      case 'getStorageStats':
+        await handleGetStorageStats(msg.id);
+        break;
 
       // WebRTC pool configuration
       case 'setWebRTCPools':
@@ -151,6 +154,10 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
       case 'setFollows':
         followsSet = new Set(msg.follows);
         console.log('[Worker] Follows updated:', followsSet.size, 'pubkeys');
+        respond({ type: 'void', id: msg.id });
+        break;
+      case 'blockPeer':
+        webrtc?.disconnectByPubkey(msg.pubkey);
         respond({ type: 'void', id: msg.id });
         break;
 
@@ -1072,6 +1079,16 @@ async function handleGetRelayStats(id: string) {
     respond({ type: 'relayStats', id, stats });
   } catch {
     respond({ type: 'relayStats', id, stats: [] });
+  }
+}
+
+async function handleGetStorageStats(id: string) {
+  try {
+    const items = store ? await store.count() : 0;
+    const bytes = store ? await store.totalBytes() : 0;
+    respond({ type: 'storageStats', id, items, bytes });
+  } catch {
+    respond({ type: 'storageStats', id, items: 0, bytes: 0 });
   }
 }
 

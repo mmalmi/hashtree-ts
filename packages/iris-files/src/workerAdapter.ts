@@ -612,6 +612,27 @@ export class WorkerAdapter {
     return response.stats;
   }
 
+  async getStorageStats(): Promise<{ items: number; bytes: number }> {
+    const id = generateRequestId();
+    const response = await this.request<{ items: number; bytes: number }>({
+      type: 'getStorageStats',
+      id,
+    });
+    return { items: response.items, bytes: response.bytes };
+  }
+
+  /**
+   * Block a peer by pubkey (disconnect and prevent reconnection)
+   */
+  async blockPeer(pubkey: string): Promise<void> {
+    const id = generateRequestId();
+    await this.request<{ error?: string }>({
+      type: 'blockPeer',
+      id,
+      pubkey,
+    } as WorkerRequest);
+  }
+
   /**
    * Set WebRTC pool configuration
    */
