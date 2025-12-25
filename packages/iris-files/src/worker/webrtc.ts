@@ -162,7 +162,10 @@ export class WebRTCController {
       type: 'hello',
       peerId: this.myPeerId.uuid,
     };
-    this.sendSignaling(msg);
+    console.log('[WebRTC] Calling sendSignaling for hello, myPeerId:', this.myPeerId.uuid.slice(0, 8));
+    this.sendSignaling(msg).catch(err => {
+      console.error('[WebRTC] sendSignaling error:', err);
+    });
     this.log('Sent hello');
   }
 

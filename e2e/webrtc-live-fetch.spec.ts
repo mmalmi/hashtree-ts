@@ -7,7 +7,7 @@
  * NO CHEATS - no passing hashes between pages via test parameters.
  */
 import { test, expect, chromium } from '@playwright/test';
-import { setupPageErrorHandler, followUser } from './test-utils';
+import { setupPageErrorHandler, followUser, disableOthersPool } from './test-utils';
 
 test.describe('WebRTC Live Fetch', () => {
   test('viewer fetches data from broadcaster via real Nostr + WebRTC flow', async () => {
@@ -36,7 +36,8 @@ test.describe('WebRTC Live Fetch', () => {
       const text = msg.text();
       if (text.includes('[WebRTC') || text.includes('Tree update') ||
           text.includes('Resolved') || text.includes('SwFileHandler') ||
-          text.includes('[Test]')) {
+          text.includes('[Test]') || text.includes('[Worker]') ||
+          text.includes('[WorkerStore]')) {
         console.log(`[B] ${text}`);
       }
     });
@@ -58,7 +59,8 @@ test.describe('WebRTC Live Fetch', () => {
           localStorage.clear();
         });
         await page.reload();
-        // Page ready - navigateToPublicFolder handles waiting
+        // Disable others pool to avoid connecting to random peers from parallel tests
+        await disableOthersPool(page);
       }
 
       // Get npubs
@@ -82,6 +84,10 @@ test.describe('WebRTC Live Fetch', () => {
       await followUser(pageA, npubB);
       await followUser(pageB, npubA);
       console.log('Mutual follows established');
+
+      // Navigate broadcaster back to their own tree for writing
+      await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
+      await pageA.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
 
       // Wait for WebRTC connections
       console.log('\n=== Waiting for WebRTC connections ===');

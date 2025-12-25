@@ -162,7 +162,10 @@ export class WebRTCController {
       type: 'hello',
       peerId: this.myPeerId.uuid,
     };
-    this.sendSignaling(msg);
+    console.log('[WebRTC] Calling sendSignaling for hello, myPeerId:', this.myPeerId.uuid.slice(0, 8));
+    this.sendSignaling(msg).catch(err => {
+      console.error('[WebRTC] sendSignaling error:', err);
+    });
     this.log('Sent hello');
   }
 
@@ -236,6 +239,8 @@ export class WebRTCController {
 
     // Check pool limits
     const pool = this.classifyPeer(senderPubkey);
+    const follows = this.classifyPeer.toString().includes('getFollows') ? 'uses getFollows' : 'inline';
+    console.log(`[WebRTC] handleHello from ${senderPubkey.slice(0, 8)}: pool=${pool}, poolConfig=`, this.poolConfig, `followsSize=${follows}`);
     if (!this.shouldConnect(pool)) {
       this.log(`Pool ${pool} at capacity, ignoring hello`);
       return;

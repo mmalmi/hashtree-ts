@@ -49,6 +49,7 @@ function getFollows(): Set<string> {
 
 // SocialGraph state
 const DEFAULT_SOCIAL_GRAPH_ROOT = '4523be58d395b1b196a9b8c82b038b6895cb02b683d0c253a955068dba1facd0';
+const KIND_CONTACTS = 3;  // kind:3 = contact list
 let socialGraph: SocialGraph = new SocialGraph(DEFAULT_SOCIAL_GRAPH_ROOT);
 let socialGraphVersion = 0;
 
@@ -273,6 +274,21 @@ async function handleInit(id: string, cfg: WorkerConfig) {
     nostr.init(cfg.relays);
     console.log('[Worker] NostrManager initialized with', cfg.relays.length, 'relays');
 
+    // Set up unified event handler for all subscriptions
+    nostr.setOnEvent((subId, event) => {
+      console.log('[Worker] NostrManager event:', subId, 'kind:', event.kind, 'from:', event.pubkey?.slice(0, 8));
+
+      // Route to WebRTC handler
+      if (subId.startsWith('webrtc-')) {
+        handleWebRTCSignalingEvent(event);
+      }
+
+      // Route to SocialGraph handler
+      if (subId === 'socialgraph-contacts' && event.kind === KIND_CONTACTS) {
+        handleSocialGraphEvent(event);
+      }
+    });
+
     // Initialize WebRTC controller (RTCPeerConnection runs in main thread proxy)
     webrtc = new WebRTCController({
       pubkey: cfg.pubkey,
@@ -373,12 +389,19 @@ async function handleGet(id: string, hash: Uint8Array) {
     return;
   }
 
+  const hashHex = Array.from(hash.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join('');
+
   // 1. Try local store first
   let data = await store.get(hash);
+  if (data) {
+    console.log('[Worker] handleGet:', hashHex, 'found in local store');
+  }
 
   // 2. If not found locally, try WebRTC peers
   if (!data && webrtc) {
+    console.log('[Worker] handleGet:', hashHex, 'trying WebRTC, connectedPeers:', webrtc.getConnectedCount());
     data = await webrtc.get(hash);
+    console.log('[Worker] handleGet:', hashHex, 'WebRTC result:', data ? `${data.length} bytes` : 'null');
 
     // Cache locally if found from peers
     if (data) {
@@ -388,7 +411,9 @@ async function handleGet(id: string, hash: Uint8Array) {
 
   // 3. If not found from peers, try Blossom servers
   if (!data && blossomStore) {
+    console.log('[Worker] handleGet:', hashHex, 'trying Blossom');
     data = await blossomStore.get(hash);
+    console.log('[Worker] handleGet:', hashHex, 'Blossom result:', data ? `${data.length} bytes` : 'null');
 
     // Cache locally if found from Blossom
     if (data) {
@@ -922,6 +947,7 @@ function watchTreeRootForStream(
 async function sendWebRTCSignaling(msg: import('../webrtc/types.js').SignalingMessage, recipientPubkey?: string): Promise<void> {
   try {
     const nostr = getNostrManager();
+    console.log('[Worker] sendWebRTCSignaling:', msg.type, recipientPubkey ? `to ${recipientPubkey.slice(0, 8)}` : 'broadcast');
 
     if (recipientPubkey) {
       // Directed message - gift wrap for privacy
@@ -931,10 +957,12 @@ async function sendWebRTCSignaling(msg: import('../webrtc/types.js').SignalingMe
         tags: [] as string[][],
       };
       const wrappedEvent = await giftWrap(innerEvent, recipientPubkey);
+      console.log('[Worker] Publishing wrapped event...');
       await nostr.publish(wrappedEvent);
     } else {
       // Hello message - broadcast with #l tag
       const expiration = Math.floor((Date.now() + 5 * 60 * 1000) / 1000); // 5 minutes
+      console.log('[Worker] Signing hello event...');
       const event = await signEvent({
         kind: SIGNALING_KIND,
         created_at: Math.floor(Date.now() / 1000),
@@ -945,7 +973,9 @@ async function sendWebRTCSignaling(msg: import('../webrtc/types.js').SignalingMe
         ],
         content: '',
       });
+      console.log('[Worker] Hello event signed, publishing...', event.id?.slice(0, 8));
       await nostr.publish(event);
+      console.log('[Worker] Hello event published');
     }
   } catch (err) {
     console.error('[Worker] Failed to send WebRTC signaling:', err);
@@ -959,12 +989,7 @@ function setupWebRTCSignalingSubscription(myPubkey: string): void {
   const nostr = getNostrManager();
   const since = Math.floor((Date.now() - 60000) / 1000); // Last minute
 
-  // Handle incoming signaling events
-  nostr.setOnEvent((subId, event) => {
-    if (subId.startsWith('webrtc-')) {
-      handleWebRTCSignalingEvent(event);
-    }
-  });
+  // NOTE: Don't call setOnEvent here - use the unified handler set up in handleInit
 
   // Subscribe to hello messages (broadcast discovery)
   nostr.subscribe('webrtc-hello', [{
@@ -1079,6 +1104,9 @@ function handleInitSocialGraph(id: string, rootPubkey?: string) {
 function handleSetSocialGraphRoot(id: string, pubkey: string) {
   try {
     socialGraph.setRoot(pubkey);
+    // Update followsSet for WebRTC peer classification
+    const follows = socialGraph.getFollowedByUser(pubkey);
+    followsSet = new Set(follows);
     notifySocialGraphVersionUpdate();
     respond({ type: 'void', id });
   } catch (err) {
@@ -1160,7 +1188,33 @@ function handleGetSocialGraphSize(id: string) {
 // SocialGraph Subscription
 // ============================================================================
 
-const KIND_CONTACTS = 3;
+// Track latest event per pubkey to avoid processing old events (for social graph)
+const socialGraphLatestByPubkey = new Map<string, number>();
+
+/**
+ * Handle incoming SocialGraph event (kind:3)
+ */
+function handleSocialGraphEvent(event: SignedEvent): void {
+  const rootPubkey = socialGraph.getRoot();
+
+  const prevTime = socialGraphLatestByPubkey.get(event.pubkey) || 0;
+  if (event.created_at > prevTime) {
+    socialGraphLatestByPubkey.set(event.pubkey, event.created_at);
+    socialGraph.handleEvent(event as SocialGraphNostrEvent);
+
+    // If this is the root user's contact list, update followsSet for WebRTC
+    if (event.pubkey === rootPubkey) {
+      const follows = socialGraph.getFollowedByUser(rootPubkey);
+      followsSet = new Set(follows);
+      console.log('[Worker] Follows updated:', followsSet.size, 'pubkeys');
+
+      // Broadcast hello so peers can re-classify with updated follows
+      webrtc?.broadcastHello();
+    }
+
+    notifySocialGraphVersionUpdate();
+  }
+}
 
 /**
  * Subscribe to kind:3 contact list events for social graph
@@ -1173,20 +1227,7 @@ function setupSocialGraphSubscription(rootPubkey: string): void {
 
   const nostr = getNostrManager();
 
-  // Track latest event per pubkey to avoid processing old events
-  const latestByPubkey = new Map<string, number>();
-
-  // Handle incoming kind:3 events
-  nostr.setOnEvent((subId, event) => {
-    if (subId === 'socialgraph-contacts' && event.kind === KIND_CONTACTS) {
-      const prevTime = latestByPubkey.get(event.pubkey) || 0;
-      if (event.created_at > prevTime) {
-        latestByPubkey.set(event.pubkey, event.created_at);
-        socialGraph.handleEvent(event as SocialGraphNostrEvent);
-        notifySocialGraphVersionUpdate();
-      }
-    }
-  });
+  // NOTE: Don't call setOnEvent here - use the unified handler set up in handleInit
 
   // Subscribe to contact lists from root user
   nostr.subscribe('socialgraph-contacts', [{

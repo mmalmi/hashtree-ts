@@ -79,6 +79,8 @@ export class NostrManager {
     // Close existing subscription with same ID if any
     this.unsubscribe(subId);
 
+    console.log('[NostrManager] Creating subscription:', subId, 'to relays:', this.relays, 'filters:', filters);
+
     // Convert our NostrFilter to nostr-tools Filter
     // Subscribe to each filter separately and track them
     const subs: ReturnType<SimplePool['subscribe']>[] = [];
@@ -101,26 +103,37 @@ export class NostrManager {
         }
       }
 
-      const sub = this.pool.subscribe(this.relays, poolFilter, {
-        onevent: (event: Event) => {
-          // Convert to SignedEvent
-          const signedEvent: SignedEvent = {
-            id: event.id,
-            pubkey: event.pubkey,
-            kind: event.kind,
-            content: event.content,
-            tags: event.tags,
-            created_at: event.created_at,
-            sig: event.sig,
-          };
+      try {
+        console.log('[NostrManager] pool.subscribe called with filter:', poolFilter);
+        const sub = this.pool.subscribe(this.relays, poolFilter, {
+          onevent: (event: Event) => {
+            console.log('[NostrManager] Received event:', event.kind, 'from:', event.pubkey?.slice(0, 8), 'id:', event.id?.slice(0, 8));
+            // Convert to SignedEvent
+            const signedEvent: SignedEvent = {
+              id: event.id,
+              pubkey: event.pubkey,
+              kind: event.kind,
+              content: event.content,
+              tags: event.tags,
+              created_at: event.created_at,
+              sig: event.sig,
+            };
 
-          this.onEvent?.(subId, signedEvent);
-        },
-        oneose: () => {
-          this.onEose?.(subId);
-        },
-      });
-      subs.push(sub);
+            this.onEvent?.(subId, signedEvent);
+          },
+          oneose: () => {
+            console.log('[NostrManager] EOSE for sub:', subId);
+            this.onEose?.(subId);
+          },
+          onerror: (err: Error) => {
+            console.error('[NostrManager] Subscription error:', subId, err);
+          },
+        });
+        console.log('[NostrManager] Subscription object:', typeof sub, sub);
+        subs.push(sub);
+      } catch (err) {
+        console.error('[NostrManager] Error creating subscription:', subId, err);
+      }
     }
 
     // Store all subs for this subscription ID

@@ -51,6 +51,7 @@ let mediaPort: MessagePort | null = null;
 let followsSet = new Set<string>();
 
 function getFollows(): Set<string> {
+  console.log('[Worker] getFollows() called, size:', followsSet.size, 'pubkeys:', Array.from(followsSet).map(p => p.slice(0, 8)));
   return followsSet;
 }
 
@@ -924,6 +925,7 @@ function watchTreeRootForStream(
 async function sendWebRTCSignaling(msg: import('../webrtc/types.js').SignalingMessage, recipientPubkey?: string): Promise<void> {
   try {
     const nostr = getNostrManager();
+    console.log('[Worker] sendWebRTCSignaling:', msg.type, recipientPubkey ? `to ${recipientPubkey.slice(0, 8)}` : 'broadcast');
 
     if (recipientPubkey) {
       // Directed message - gift wrap for privacy
@@ -933,10 +935,12 @@ async function sendWebRTCSignaling(msg: import('../webrtc/types.js').SignalingMe
         tags: [] as string[][],
       };
       const wrappedEvent = await giftWrap(innerEvent, recipientPubkey);
+      console.log('[Worker] Publishing wrapped event...');
       await nostr.publish(wrappedEvent);
     } else {
       // Hello message - broadcast with #l tag
       const expiration = Math.floor((Date.now() + 5 * 60 * 1000) / 1000); // 5 minutes
+      console.log('[Worker] Signing hello event...');
       const event = await signEvent({
         kind: SIGNALING_KIND,
         created_at: Math.floor(Date.now() / 1000),
@@ -947,7 +951,9 @@ async function sendWebRTCSignaling(msg: import('../webrtc/types.js').SignalingMe
         ],
         content: '',
       });
+      console.log('[Worker] Hello event signed, publishing...', event.id?.slice(0, 8));
       await nostr.publish(event);
+      console.log('[Worker] Hello event published');
     }
   } catch (err) {
     console.error('[Worker] Failed to send WebRTC signaling:', err);
@@ -963,6 +969,7 @@ function setupWebRTCSignalingSubscription(myPubkey: string): void {
 
   // Handle incoming signaling events
   nostr.setOnEvent((subId, event) => {
+    console.log('[Worker] NostrManager event:', subId, 'kind:', event.kind, 'from:', event.pubkey?.slice(0, 8));
     if (subId.startsWith('webrtc-')) {
       handleWebRTCSignalingEvent(event);
     }
@@ -989,9 +996,14 @@ function setupWebRTCSignalingSubscription(myPubkey: string): void {
  * Handle incoming WebRTC signaling event
  */
 async function handleWebRTCSignalingEvent(event: SignedEvent): Promise<void> {
+  console.log('[Worker] Received WebRTC signaling event from', event.pubkey.slice(0, 8), 'kind:', event.kind, 'tags:', event.tags);
+
   // Filter out old events
   const eventAge = Date.now() / 1000 - (event.created_at ?? 0);
-  if (eventAge > 60) return; // Ignore events older than 1 minute
+  if (eventAge > 60) {
+    console.log('[Worker] Ignoring old event, age:', eventAge);
+    return; // Ignore events older than 1 minute
+  }
 
   // Check expiration
   const expirationTag = event.tags.find(t => t[0] === 'expiration');
