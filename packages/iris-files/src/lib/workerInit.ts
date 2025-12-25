@@ -45,7 +45,7 @@ function syncPoolSettings(): void {
 /**
  * Sync follows list to worker for WebRTC peer classification.
  */
-function syncFollows(follows: string[]): void {
+async function syncFollows(follows: string[]): Promise<void> {
   const adapter = getWorkerAdapter();
   if (!adapter) return;
 
@@ -55,7 +55,7 @@ function syncFollows(follows: string[]): void {
   lastFollowsHash = followsHash;
 
   console.log('[WorkerInit] Syncing follows to worker:', follows.length, 'pubkeys');
-  adapter.setFollows(follows);
+  await adapter.setFollows(follows);
 }
 
 // Track follows store for cleanup
