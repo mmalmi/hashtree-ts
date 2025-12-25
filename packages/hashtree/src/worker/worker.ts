@@ -12,7 +12,8 @@
 import { HashTree } from '../hashtree';
 import { DexieStore } from '../store/dexie';
 import { BlossomStore } from '../store/blossom';
-import { WebRTCStore } from '../webrtc';
+// NOTE: WebRTC cannot run in workers - RTCPeerConnection is not available in workers
+// See: https://github.com/w3c/webrtc-extensions/issues/77
 import type { WorkerRequest, WorkerResponse, WorkerConfig, SignedEvent } from './protocol';
 import { initTreeRootCache, getCachedRoot, clearMemoryCache } from './treeRootCache';
 import { getNostrManager, closeNostrManager } from './nostr';
@@ -33,7 +34,7 @@ import {
 let tree: HashTree | null = null;
 let store: DexieStore | null = null;
 let blossomStore: BlossomStore | null = null;
-let webrtcStore: WebRTCStore | null = null;
+// WebRTC is not available in workers (RTCPeerConnection not defined)
 let _config: WorkerConfig | null = null;
 let mediaPort: MessagePort | null = null;
 
@@ -188,8 +189,7 @@ async function handleInit(id: string, cfg: WorkerConfig) {
       console.log('[Worker] Initialized BlossomStore with', cfg.blossomServers.length, 'servers');
     }
 
-    // Initialize WebRTC with adapter functions
-    initWebRTCStore(cfg.relays || []);
+    // NOTE: WebRTC not available in workers (RTCPeerConnection not defined)
 
     respond({ type: 'ready' });
   } catch (err) {
@@ -198,32 +198,9 @@ async function handleInit(id: string, cfg: WorkerConfig) {
   }
 }
 
-/**
- * Initialize WebRTCStore with adapter functions for signing/encryption
- */
-function initWebRTCStore(relays: string[]) {
-  const pubkey = getPubkey();
-  if (!pubkey || !store) return;
-
-  // Close existing store if any
-  if (webrtcStore) {
-    webrtcStore.stop();
-  }
-
-  webrtcStore = new WebRTCStore({
-    pubkey,
-    signer: (event) => signEvent(event),
-    encrypt,
-    decrypt,
-    giftWrap,
-    giftUnwrap,
-    relays,
-    localStore: store,
-    fallbackStores: blossomStore ? [blossomStore] : [],
-  });
-
-  console.log('[Worker] Initialized WebRTCStore');
-}
+// NOTE: WebRTC cannot run in workers - RTCPeerConnection is not available
+// See: https://github.com/w3c/webrtc-extensions/issues/77
+// WebRTC must run in main thread and proxy to worker for storage
 
 /**
  * Handle identity change (account switch)
@@ -240,8 +217,7 @@ function handleSetIdentity(id: string, pubkey: string, nsec?: string) {
     });
   }
 
-  // Restart WebRTC with new identity
-  initWebRTCStore(_config?.relays || []);
+  // NOTE: WebRTC not available in workers
 
   respond({ type: 'void', id });
 }
@@ -262,11 +238,7 @@ function createBlossomSigner() {
 }
 
 async function handleClose(id: string) {
-  // Close WebRTC connections
-  if (webrtcStore) {
-    webrtcStore.stop();
-    webrtcStore = null;
-  }
+  // NOTE: WebRTC not available in workers
   // Close Nostr connections
   closeNostrManager();
   // Clear identity
@@ -292,17 +264,9 @@ async function handleGet(id: string, hash: Uint8Array) {
   // 1. Try local store first
   let data = await store.get(hash);
 
-  // 2. If not found locally, try fetching from WebRTC peers
-  if (!data && webrtcStore) {
-    data = await webrtcStore.get(hash);
+  // 2. NOTE: WebRTC not available in workers (runs in main thread instead)
 
-    // Cache locally if found from peers
-    if (data) {
-      await store.put(hash, data);
-    }
-  }
-
-  // 3. If not found from peers, try Blossom servers
+  // 3. If not found locally, try Blossom servers
   if (!data && blossomStore) {
     data = await blossomStore.get(hash);
 
@@ -831,25 +795,8 @@ function watchTreeRootForStream(
 // ============================================================================
 
 async function handleGetPeerStats(id: string) {
-  try {
-    if (!webrtcStore) {
-      respond({ type: 'peerStats', id, stats: [] });
-      return;
-    }
-    const peers = webrtcStore.getPeers();
-    const stats = peers.map(p => ({
-      peerId: p.peerId,
-      pubkey: p.pubkey,
-      connected: p.state === 'connected',
-      requestsSent: 0,
-      requestsReceived: 0,
-      bytesSent: 0,
-      bytesReceived: 0,
-    }));
-    respond({ type: 'peerStats', id, stats });
-  } catch {
-    respond({ type: 'peerStats', id, stats: [] });
-  }
+  // NOTE: WebRTC not available in workers - peer stats come from main thread
+  respond({ type: 'peerStats', id, stats: [] });
 }
 
 async function handleGetRelayStats(id: string) {
