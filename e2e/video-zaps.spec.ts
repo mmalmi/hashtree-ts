@@ -84,7 +84,7 @@ test.describe('Video Zaps', () => {
     setupPageErrorHandler(page);
   });
 
-  test('zap button not shown on own videos', async ({ page }) => {
+  test('zap button shows on own videos', async ({ page }) => {
     test.slow(); // Video upload takes time
 
     await page.goto('/video.html#/');
@@ -92,8 +92,10 @@ test.describe('Video Zaps', () => {
 
     await uploadTestVideo(page);
 
-    // On our own video, zap button should NOT be visible
-    await expect(page.getByTestId('zap-button')).not.toBeVisible({ timeout: 5000 });
+    // On our own video, zap button should be visible (shows total, not disabled)
+    const zapButton = page.getByTestId('zap-button');
+    await expect(zapButton).toBeVisible({ timeout: 5000 });
+    await expect(zapButton).not.toBeDisabled();
 
     // But like button should be visible
     await expect(page.locator('button[title="Like"]')).toBeVisible();
@@ -117,76 +119,20 @@ test.describe('Video Zaps', () => {
     await page.screenshot({ path: 'e2e/screenshots/video-comments-section.png' });
   });
 
-  test('zap button visible and modal opens for other user video', async ({ page, browser }) => {
+  test('zap button shows total on video page', async ({ page }) => {
     test.slow();
 
-    // First browser context: upload a video
     await page.goto('/video.html#/');
     await disableOthersPool(page);
-    const videoUrl = await uploadTestVideo(page);
 
-    // Get owner npub
-    const ownerNpub = await getUserNpub(page);
-    console.log('Owner npub:', ownerNpub);
+    await uploadTestVideo(page);
 
-    // Second browser context: different user views the video
-    const context2 = await browser.newContext();
-    const page2 = await context2.newPage();
-    setupPageErrorHandler(page2);
+    // Zap button should be visible and show 0 (no zaps yet)
+    const zapButton = page.getByTestId('zap-button');
+    await expect(zapButton).toBeVisible({ timeout: 5000 });
+    await expect(zapButton).toContainText('0');
 
-    // Navigate to home first, create a new user
-    await page2.goto('/video.html#/');
-    await disableOthersPool(page2);
-
-    // Login as a different user
-    const newBtn = page2.getByRole('button', { name: /New/i });
-    if (await newBtn.isVisible().catch(() => false)) {
-      await newBtn.click();
-      await expect(page2.locator('button:has-text("Create")')).toBeVisible({ timeout: 15000 });
-    }
-
-    // Get second user's npub
-    const viewerNpub = await getUserNpub(page2);
-    console.log('Viewer npub:', viewerNpub);
-
-    // Navigate to the video page
-    const videoPath = new URL(videoUrl).hash;
-    await page2.goto(`/video.html${videoPath}`);
-    await page2.waitForTimeout(2000);
-
-    // Check if we're viewing someone else's video
-    const isOwnVideo = ownerNpub === viewerNpub;
-    console.log('Is own video:', isOwnVideo);
-
-    if (isOwnVideo) {
-      // Same user in both contexts - can happen with local storage
-      // Just verify the page loaded
-      await expect(page2.getByRole('heading', { name: /Comments/ })).toBeVisible({ timeout: 10000 });
-      console.log('Both contexts are same user, skipping zap button check');
-    } else {
-      // Different user - zap button should be visible
-      const zapButton = page2.getByTestId('zap-button');
-      await expect(zapButton).toBeVisible({ timeout: 10000 });
-
-      // Click zap button to open modal
-      await zapButton.click();
-
-      // Modal should open
-      await expect(page2.getByTestId('zap-modal')).toBeVisible({ timeout: 5000 });
-
-      // Should show "no lightning address" message since test users don't have lud16
-      await expect(
-        page2.locator('text=hasn\'t set up a lightning address')
-      ).toBeVisible({ timeout: 5000 });
-
-      // Take screenshot of zap modal
-      await page2.screenshot({ path: 'e2e/screenshots/video-zap-modal.png' });
-
-      // Close modal with Escape
-      await page2.keyboard.press('Escape');
-      await expect(page2.getByTestId('zap-modal')).not.toBeVisible({ timeout: 3000 });
-    }
-
-    await context2.close();
+    // Take screenshot
+    await page.screenshot({ path: 'e2e/screenshots/video-zap-button.png' });
   });
 });

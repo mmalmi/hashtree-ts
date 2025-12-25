@@ -27,6 +27,7 @@
   let profile = $state<{ lud16?: string } | null>(null);
   let hasLightningAddress = $derived(!!profile?.lud16);
   let canZap = $derived(!isOwner && hasLightningAddress);
+  let isDisabled = $derived(!isOwner && !hasLightningAddress); // Only disabled if other user has no lud16
 
   $effect(() => {
     if (!profileStore) return;
@@ -63,9 +64,9 @@
 
 <button
   onclick={handleZap}
-  class="flex items-center gap-2 px-3 py-1.5 rounded-full {canZap ? 'bg-surface-1 hover:bg-surface-2 cursor-pointer' : 'bg-surface-1 cursor-default'} text-yellow-400"
-  disabled={!canZap}
-  title={!hasLightningAddress && !isOwner ? 'No lightning address' : undefined}
+  class="flex items-center gap-2 px-3 py-1.5 rounded-full {isDisabled ? 'bg-surface-1 cursor-default opacity-50' : 'bg-surface-1 hover:bg-surface-2 cursor-pointer'} text-yellow-400"
+  disabled={isDisabled}
+  title={isDisabled ? 'No lightning address' : undefined}
   data-testid="zap-button"
 >
   <span class="i-lucide-zap text-lg"></span>
