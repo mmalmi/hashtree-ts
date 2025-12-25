@@ -231,7 +231,20 @@ async function handleGet(id: string, hash: Uint8Array) {
     return;
   }
 
-  const data = await store.get(hash);
+  // Try local store first
+  let data = await store.get(hash);
+
+  // If not found locally, try fetching from WebRTC peers
+  if (!data) {
+    const webrtc = getWebRTCManager();
+    data = await webrtc.get(hash);
+
+    // Cache locally if found from peers
+    if (data) {
+      await store.put(hash, data);
+    }
+  }
+
   if (data) {
     // Transfer the ArrayBuffer to avoid copying
     respondWithTransfer({ type: 'result', id, data }, [data.buffer]);
