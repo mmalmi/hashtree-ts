@@ -35,8 +35,8 @@ export const DEFAULT_POOL_SETTINGS: PoolSettings = {
   followsMax: 20,
   followsSatisfied: 10,
   // Disable others pool in test mode to prevent WebRTC interference between parallel tests
-  otherMax: isTestMode ? 0 : 10,
-  otherSatisfied: isTestMode ? 0 : 5,
+  otherMax: isTestMode ? 0 : 16,
+  otherSatisfied: isTestMode ? 0 : 8,
 };
 
 // Default upload settings
