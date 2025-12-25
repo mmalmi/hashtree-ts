@@ -326,7 +326,7 @@
         <!-- Current editors list -->
         {#if localNpubs.length > 0}
           <div class="space-y-2">
-            <label class="text-sm font-medium">Current editors:</label>
+            <span class="text-sm font-medium">Current editors:</span>
             <ul class="space-y-1 list-none m-0 p-0">
               {#each localNpubs as npub, index (npub)}
                 {@const pubkey = npubToPubkey(npub)}
@@ -362,7 +362,7 @@
         {#if pendingNpub && canEdit}
           {@const pendingPubkey = npubToPubkey(pendingNpub)}
           <div class="space-y-2">
-            <label class="text-sm font-medium">Add this editor?</label>
+            <span class="text-sm font-medium">Add this editor?</span>
             <div class="bg-surface-2 rounded p-3 space-y-3">
               <div class="flex items-center gap-3">
                 {#if pendingPubkey}
@@ -391,7 +391,7 @@
         {#if detectedNpub && !pendingNpub && canEdit}
           {@const detectedPubkey = npubToPubkey(detectedNpub)}
           <div class="space-y-2">
-            <label class="text-sm font-medium">Add this editor?</label>
+            <span class="text-sm font-medium">Add this editor?</span>
             <div class="bg-surface-2 rounded p-3 space-y-3">
               <div class="flex items-center gap-3">
                 {#if detectedPubkey}
@@ -426,7 +426,7 @@
         <!-- Add new editor (only if can edit and no pending) -->
         {#if canEdit && !pendingNpub}
           <div class="space-y-2">
-            <label class="text-sm font-medium">Add editor:</label>
+            <span class="text-sm font-medium">Add editor:</span>
 
             <!-- Search through follows -->
             {#if follows.length > 0}

@@ -15,9 +15,19 @@
 
   let { fileName, initialContent, onDone }: Props = $props();
 
-  let editContent = $state(initialContent);
-  let savedContent = $state(initialContent); // Track last saved content
+  let editContent = $state('');
+  let savedContent = $state(''); // Track last saved content
   let saving = $state(false);
+  let initialized = false;
+
+  // Initialize content from prop
+  $effect(() => {
+    if (!initialized && initialContent !== undefined) {
+      editContent = initialContent;
+      savedContent = initialContent;
+      initialized = true;
+    }
+  });
 
   // Get autosave setting from store
   let autoSaveEnabled = $derived($settingsStore.editor.autoSave);

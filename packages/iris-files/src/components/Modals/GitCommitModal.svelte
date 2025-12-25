@@ -291,7 +291,7 @@
           <span class="i-lucide-git-commit"></span>
           Commit Changes
         </h2>
-        <button onclick={close} class="btn-ghost p-1">
+        <button onclick={close} class="btn-ghost p-1" aria-label="Close">
           <span class="i-lucide-x text-lg"></span>
         </button>
       </div>

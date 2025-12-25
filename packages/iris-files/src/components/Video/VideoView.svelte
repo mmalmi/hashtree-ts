@@ -28,6 +28,7 @@
   import { toHex, nhashEncode } from 'hashtree';
   import { getNpubFileUrl, getNhashFileUrl } from '../../lib/mediaUrl';
   import { NDKEvent, type NDKFilter } from '@nostr-dev-kit/ndk';
+  import { VideoZapButton } from '../Zaps';
 
   let deleting = $state(false);
   let editing = $state(false);
@@ -877,7 +878,7 @@
             <a href={`#/${npub}`} class="shrink-0">
               <Avatar pubkey={ownerPubkey} size={40} />
             </a>
-            <div class="min-w-0">
+            <div class="flex-1 min-w-0">
               <a href={`#/${npub}`} class="text-text-1 font-medium hover:text-accent no-underline">
                 <Name pubkey={ownerPubkey} />
               </a>
@@ -887,6 +888,9 @@
                 <VisibilityIcon visibility={videoVisibility} class="text-xs" />
               </div>
             </div>
+            {#if videoIdentifier}
+              <VideoZapButton {videoIdentifier} {ownerPubkey} />
+            {/if}
           {/if}
         </div>
 

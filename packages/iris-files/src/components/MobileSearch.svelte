@@ -41,7 +41,7 @@
         class="p-2 text-text-2 hover:text-text-1 bg-transparent border-none cursor-pointer"
         aria-label="Close search"
       >
-        <span class="i-lucide-x text-lg" />
+        <span class="i-lucide-x text-lg"></span>
       </button>
     </div>
   {:else}
@@ -51,7 +51,7 @@
       class="p-2 text-text-2 hover:text-text-1 bg-transparent border-none cursor-pointer"
       aria-label="Search"
     >
-      <span class="i-lucide-search text-lg" />
+      <span class="i-lucide-search text-lg"></span>
     </button>
   {/if}
 </div>

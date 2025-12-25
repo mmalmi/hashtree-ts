@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, type Snippet } from 'svelte';
 
   interface Props {
     onLoadMore: () => void;
+    children: Snippet;
   }
 
-  let { onLoadMore }: Props = $props();
+  let { onLoadMore, children }: Props = $props();
 
   let sentinel: HTMLDivElement;
   let observer: IntersectionObserver | null = null;
@@ -49,5 +50,5 @@
   });
 </script>
 
-<slot />
-<div bind:this={sentinel} class="h-px" />
+{@render children()}
+<div bind:this={sentinel} class="h-px"></div>

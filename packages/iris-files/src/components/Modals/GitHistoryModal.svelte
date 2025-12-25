@@ -205,7 +205,7 @@
           <span class="i-lucide-history"></span>
           Commit History
         </h2>
-        <button onclick={close} class="btn-ghost p-1">
+        <button onclick={close} class="btn-ghost p-1" aria-label="Close">
           <span class="i-lucide-x text-lg"></span>
         </button>
       </div>

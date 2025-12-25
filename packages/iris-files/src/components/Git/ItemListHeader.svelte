@@ -18,15 +18,17 @@
 
   let isDropdownOpen = $state(false);
 
-  const filterOptions: Array<{ value: ItemStatus | 'all'; label: string; icon: string }> = [
-    { value: 'all', label: 'All', icon: 'i-lucide-list' },
-    { value: 'open', label: 'Open', icon: type === 'pr' ? 'i-lucide-git-pull-request' : 'i-lucide-circle-dot' },
-    { value: 'closed', label: 'Closed', icon: type === 'pr' ? 'i-lucide-git-pull-request-closed' : 'i-lucide-circle-x' },
-  ];
-
-  if (type === 'pr') {
-    filterOptions.splice(2, 0, { value: 'merged', label: 'Merged', icon: 'i-lucide-git-merge' });
-  }
+  const filterOptions = $derived.by(() => {
+    const options: Array<{ value: ItemStatus | 'all'; label: string; icon: string }> = [
+      { value: 'all', label: 'All', icon: 'i-lucide-list' },
+      { value: 'open', label: 'Open', icon: type === 'pr' ? 'i-lucide-git-pull-request' : 'i-lucide-circle-dot' },
+      { value: 'closed', label: 'Closed', icon: type === 'pr' ? 'i-lucide-git-pull-request-closed' : 'i-lucide-circle-x' },
+    ];
+    if (type === 'pr') {
+      options.splice(2, 0, { value: 'merged', label: 'Merged', icon: 'i-lucide-git-merge' });
+    }
+    return options;
+  });
 
   let selectedOption = $derived(filterOptions.find(o => o.value === filter) || filterOptions[0]);
 </script>

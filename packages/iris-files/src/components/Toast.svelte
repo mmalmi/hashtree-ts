@@ -39,13 +39,14 @@
       <div
         class="pointer-events-auto bg-surface-1 border border-surface-3 rounded-lg shadow-lg p-3 max-w-sm w-full flex items-start gap-2"
       >
-        <span class="{iconMap[toast.type]} {colorMap[toast.type]} shrink-0 mt-0.5" />
+        <span class="{iconMap[toast.type]} {colorMap[toast.type]} shrink-0 mt-0.5"></span>
         <span class="text-sm text-text-1 flex-1">{toast.message}</span>
         <button
           onclick={() => dismissToast(toast.id)}
           class="shrink-0 text-text-3 hover:text-text-1 transition-colors"
+          aria-label="Dismiss"
         >
-          <span class="i-lucide-x text-sm" />
+          <span class="i-lucide-x text-sm"></span>
         </button>
       </div>
     {/each}
@@ -55,7 +56,7 @@
       <div class="pointer-events-auto bg-surface-1 border border-accent rounded-lg shadow-lg p-3 max-w-sm w-full">
         <!-- Header with filename and cancel -->
         <div class="flex items-center gap-2 mb-2">
-          <span class="i-lucide-loader-2 animate-spin text-accent shrink-0" />
+          <span class="i-lucide-loader-2 animate-spin text-accent shrink-0"></span>
           <span class="text-sm text-text-1 truncate flex-1">{$uploadProgress.fileName}</span>
           <button
             onclick={cancelUpload}
@@ -70,7 +71,7 @@
           <div
             class="h-full bg-accent transition-all duration-150"
             style="width: {percent}%"
-          />
+          ></div>
         </div>
 
         <!-- Status and count -->

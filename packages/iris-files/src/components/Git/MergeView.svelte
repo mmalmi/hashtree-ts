@@ -62,7 +62,17 @@
   let mergeError = $state<string | null>(null);
   let mergeSuccess = $state(false);
 
-  let commitMessage = $state(`Merge branch '${headBranch}' into ${baseBranch}`);
+  // Use default message but allow editing
+  const defaultMessage = $derived(`Merge branch '${headBranch}' into ${baseBranch}`);
+  let commitMessage = $state('');
+  let messageInitialized = false;
+
+  $effect(() => {
+    if (!messageInitialized && defaultMessage) {
+      commitMessage = defaultMessage;
+      messageInitialized = true;
+    }
+  });
 
   let mergeInfo = $state<{
     canMerge: boolean;

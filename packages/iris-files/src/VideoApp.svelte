@@ -25,6 +25,7 @@
   import ForkModal from './components/Modals/ForkModal.svelte';
   import BlossomPushModal from './components/Modals/BlossomPushModal.svelte';
   import AddToPlaylistModal from './components/Modals/AddToPlaylistModal.svelte';
+  import ZapModal from './components/Modals/ZapModal.svelte';
   import VideoUploadModal, { open as openVideoUploadModal } from './components/Video/VideoUploadModal.svelte';
   import ImportModal, { open as openImportModal } from './components/Video/ImportModal.svelte';
 
@@ -106,6 +107,7 @@
   <ForkModal />
   <BlossomPushModal />
   <AddToPlaylistModal />
+  <ZapModal />
   <VideoUploadModal />
   <ImportModal />
   <Toast />

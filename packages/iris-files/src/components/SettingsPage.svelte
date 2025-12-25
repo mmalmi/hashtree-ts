@@ -507,6 +507,7 @@
             onclick={() => settingsStore.setImgproxySettings({ enabled: !imgproxySettings.enabled })}
             class="relative w-11 h-6 rounded-full transition-colors {imgproxySettings.enabled ? 'bg-accent' : 'bg-surface-3'}"
             aria-checked={imgproxySettings.enabled}
+            aria-label="Toggle image proxy"
             role="switch"
           >
             <span
@@ -922,6 +923,7 @@
               disabled={autostartLoading}
               class="relative w-11 h-6 rounded-full transition-colors {autostartEnabled ? 'bg-accent' : 'bg-surface-3'}"
               aria-checked={autostartEnabled}
+              aria-label="Toggle start on login"
               role="switch"
             >
               <span

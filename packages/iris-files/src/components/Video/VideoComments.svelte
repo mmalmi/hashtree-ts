@@ -1,8 +1,8 @@
 <script lang="ts">
   /**
-   * VideoComments - NIP-22 comments for videos
-   * Subscribes to comments from Nostr relays and shows them as they arrive
-   * Filter to social graph (users with follow distance) on by default, toggleable
+   * VideoComments - NIP-22 comments and NIP-57 zaps for videos
+   * Subscribes to comments and zap receipts from Nostr relays
+   * Zaps and comments are shown in a unified timeline
    */
   import { untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
@@ -11,6 +11,7 @@
   import { Avatar, Name } from '../User';
   import { NDKEvent, type NDKFilter, type NDKSubscription } from '@nostr-dev-kit/ndk';
   import { getFollowDistance } from '../../utils/socialGraph';
+  import { subscribeToZaps, insertZapSorted, type Zap } from '../../utils/zaps';
 
   interface Props {
     npub?: string;  // Optional - may not be available for nhash paths
@@ -39,61 +40,93 @@
     replyTo?: string;
   }
 
+  // Unified timeline item
+  type TimelineItem =
+    | { type: 'comment'; data: Comment }
+    | { type: 'zap'; data: Zap };
+
   let allComments = $state<Comment[]>([]);
+  let allZaps = $state<Zap[]>([]);
   let newComment = $state('');
   let submitting = $state(false);
-  let showUnknown = $state(true); // Show all comments by default
+  let showUnknown = $state(true); // Show all by default
   let subscription = $state<NDKSubscription | null>(null);
+  let zapCleanup = $state<(() => void) | null>(null);
   const seenIds = new SvelteSet<string>();
 
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
   let userPubkey = $derived($nostrStore.pubkey);
 
-  // Filter comments by social graph
-  let comments = $derived.by(() => {
-    if (showUnknown) return allComments;
-    return allComments.filter(c => {
-      const distance = getFollowDistance(c.authorPubkey);
-      return distance < 1000; // 1000 = not in graph
+  // Total zaps summary
+  let totalZapSats = $derived(allZaps.reduce((sum, z) => sum + z.amountSats, 0));
+
+  // Merge comments and zaps into unified timeline, sorted by time (newest first)
+  let timeline = $derived.by(() => {
+    const items: TimelineItem[] = [
+      ...allComments.map(c => ({ type: 'comment' as const, data: c })),
+      ...allZaps.map(z => ({ type: 'zap' as const, data: z })),
+    ];
+    items.sort((a, b) => {
+      const timeA = a.type === 'comment' ? a.data.createdAt : a.data.createdAt;
+      const timeB = b.type === 'comment' ? b.data.createdAt : b.data.createdAt;
+      return timeB - timeA; // Newest first
+    });
+    return items;
+  });
+
+  // Filter timeline by social graph
+  let filteredTimeline = $derived.by(() => {
+    if (showUnknown) return timeline;
+    return timeline.filter(item => {
+      const pubkey = item.type === 'comment' ? item.data.authorPubkey : item.data.senderPubkey;
+      const distance = getFollowDistance(pubkey);
+      return distance < 1000;
     });
   });
 
-  let unknownCount = $derived(allComments.length - allComments.filter(c => getFollowDistance(c.authorPubkey) < 1000).length);
+  let unknownCount = $derived(timeline.length - timeline.filter(item => {
+    const pubkey = item.type === 'comment' ? item.data.authorPubkey : item.data.senderPubkey;
+    return getFollowDistance(pubkey) < 1000;
+  }).length);
 
   // Comment identifiers - we may have both npub/treeName and nhash for cross-linking
-  // Using 'i' tag per NIP-22 for the identifier of the thing being commented on
-  // Tags: nhash (always), plus npub/treeName OR nhash/filename
   let npubId = $derived(npub && treeName ? `${npub}/${treeName}` : null);
   let nhashId = $derived(nhash || null);
-  // nhash/filename only when on nhash route (no npub) - identifies file within potential directory
   let nhashFileId = $derived(!npub && nhash && filename ? `${nhash}/${filename}` : null);
 
   // Primary identifier for subscribing
-  // On nhash routes (no npub), use nhash. On npub routes, use npubId (nhash is just for writing)
   let primaryId = $derived(npubId || nhashId);
 
-  // Subscribe to comments when primaryId changes
+  // Subscribe to comments and zaps when primaryId changes
   $effect(() => {
     const id = primaryId;
     if (!id) return;
 
-    untrack(() => subscribeToComments(id));
+    untrack(() => {
+      subscribeToComments(id);
+      // Subscribe to zaps using shared utility
+      allZaps = [];
+      zapCleanup = subscribeToZaps({ '#i': [id] }, (zap) => {
+        allZaps = insertZapSorted(allZaps, zap);
+      });
+    });
 
     return () => {
       if (subscription) {
         subscription.stop();
       }
+      if (zapCleanup) {
+        zapCleanup();
+      }
     };
   });
 
   function subscribeToComments(id: string) {
-    // Reset state for new identifier
     allComments = [];
     seenIds.clear();
 
-    // Subscribe to NIP-22 comments (kind 1111) for this video
     const filter: NDKFilter = {
-      kinds: [1111 as number], // NIP-22 GenericReply
+      kinds: [1111 as number],
       '#i': [id],
     };
 
@@ -111,7 +144,6 @@
         createdAt: event.created_at || 0,
       };
 
-      // Insert in sorted order (newest first)
       const index = allComments.findIndex(c => c.createdAt < comment.createdAt);
       if (index === -1) {
         allComments = [...allComments, comment];
@@ -127,33 +159,20 @@
     submitting = true;
     try {
       const event = new NDKEvent(ndk);
-      event.kind = 1111; // NIP-22 GenericReply
+      event.kind = 1111;
       event.content = newComment.trim();
 
-      // Build tags - i for identifier, k for content type, p for author
-      // Always: nhash (content-addressed file CID)
-      // Plus one of: npubId (on npub routes) OR nhashFileId (on nhash routes)
-      const tags: string[][] = [
-        ['k', 'video'],
-      ];
+      const tags: string[][] = [['k', 'video']];
       if (nhashId) tags.push(['i', nhashId]);
-      if (nhashFileId) tags.push(['i', nhashFileId]);  // Only set on nhash routes
-      if (npubId) tags.push(['i', npubId]);  // Only set on npub routes
-
-      // Add p tag only if we know the owner
-      if (ownerPubkey) {
-        tags.push(['p', ownerPubkey]);
-      }
+      if (nhashFileId) tags.push(['i', nhashFileId]);
+      if (npubId) tags.push(['i', npubId]);
+      if (ownerPubkey) tags.push(['p', ownerPubkey]);
 
       event.tags = tags;
-
-      // Sign first to get the event ID before publishing
       await event.sign();
 
-      // Add to seenIds BEFORE publishing to prevent race condition with subscription
       if (event.id) {
         seenIds.add(event.id);
-        // Add to local list immediately
         allComments = [{
           id: event.id,
           content: event.content,
@@ -162,9 +181,7 @@
         }, ...allComments];
       }
 
-      // Now publish (subscription won't add duplicate because ID is already in seenIds)
       await event.publish();
-
       newComment = '';
     } catch (e) {
       console.error('Failed to post comment:', e);
@@ -194,20 +211,34 @@
 </script>
 
 <div class="border-t border-surface-3 pt-6 pb-12">
+  <!-- Zaps summary -->
+  {#if allZaps.length > 0}
+    <div class="flex items-center gap-3 mb-4 p-3 bg-surface-1 rounded-lg" data-testid="zaps-summary">
+      <span class="i-lucide-zap text-yellow-400 text-xl"></span>
+      <div>
+        <span class="font-semibold text-yellow-400" data-testid="zaps-total">
+          ⚡ {totalZapSats.toLocaleString()} sats
+        </span>
+        <span class="text-text-3 text-sm ml-2">
+          from {allZaps.length} zap{allZaps.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+    </div>
+  {/if}
+
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-semibold text-text-1">
-      Comments {#if allComments.length > 0}<span class="text-text-3 font-normal">({allComments.length})</span>{/if}
+      Comments {#if timeline.length > 0}<span class="text-text-3 font-normal">({timeline.length})</span>{/if}
     </h2>
 
-    <!-- Filter checkbox -->
-    {#if allComments.length > 0}
+    {#if timeline.length > 0}
       <label class="flex items-center gap-2 text-xs text-text-2 cursor-pointer">
         <input
           type="checkbox"
           bind:checked={showUnknown}
           class="w-4 h-4 accent-accent"
         />
-        Show comments by unknown users{#if unknownCount > 0} ({unknownCount}){/if}
+        Show from unknown users{#if unknownCount > 0} ({unknownCount}){/if}
       </label>
     {/if}
   </div>
@@ -242,35 +273,58 @@
     </div>
   {/if}
 
-  <!-- Comments list -->
-  {#if comments.length === 0}
+  <!-- Unified timeline -->
+  {#if filteredTimeline.length === 0}
     <div class="text-center py-8 text-text-3">
       {#if !showUnknown && unknownCount > 0}
-        No comments from people you follow.
+        No activity from people you follow.
         <button onclick={() => showUnknown = true} class="text-accent hover:underline ml-1">
           Show all {unknownCount}
         </button>
       {:else}
-        No comments yet. Be the first to comment!
+        No comments yet. Be the first!
       {/if}
     </div>
   {:else}
     <div class="space-y-4">
-      {#each comments as comment (comment.id)}
-        <div class="flex gap-3">
-          <a href={`#/${nip19.npubEncode(comment.authorPubkey)}`} class="shrink-0">
-            <Avatar pubkey={comment.authorPubkey} size={40} />
-          </a>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-1">
-              <a href={`#/${nip19.npubEncode(comment.authorPubkey)}`} class="font-medium text-text-1 hover:text-accent no-underline">
-                <Name pubkey={comment.authorPubkey} />
-              </a>
-              <span class="text-xs text-text-3">{formatTime(comment.createdAt)}</span>
+      {#each filteredTimeline as item (item.data.id)}
+        {#if item.type === 'comment'}
+          <div class="flex gap-3">
+            <a href={`#/${nip19.npubEncode(item.data.authorPubkey)}`} class="shrink-0">
+              <Avatar pubkey={item.data.authorPubkey} size={40} />
+            </a>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <a href={`#/${nip19.npubEncode(item.data.authorPubkey)}`} class="font-medium text-text-1 hover:text-accent no-underline">
+                  <Name pubkey={item.data.authorPubkey} />
+                </a>
+                <span class="text-xs text-text-3">{formatTime(item.data.createdAt)}</span>
+              </div>
+              <p class="text-text-2 whitespace-pre-wrap break-words">{item.data.content}</p>
             </div>
-            <p class="text-text-2 whitespace-pre-wrap break-words">{comment.content}</p>
           </div>
-        </div>
+        {:else}
+          <!-- Zap item -->
+          <div class="flex gap-3 p-3 bg-surface-1 rounded-lg" data-testid="zap-item">
+            <a href={`#/${nip19.npubEncode(item.data.senderPubkey)}`} class="shrink-0">
+              <Avatar pubkey={item.data.senderPubkey} size={40} />
+            </a>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <a href={`#/${nip19.npubEncode(item.data.senderPubkey)}`} class="font-medium text-text-1 hover:text-accent no-underline">
+                  <Name pubkey={item.data.senderPubkey} />
+                </a>
+                <span class="text-yellow-400 font-semibold">
+                  ⚡ {item.data.amountSats.toLocaleString()} sats
+                </span>
+                <span class="text-xs text-text-3">{formatTime(item.data.createdAt)}</span>
+              </div>
+              {#if item.data.comment}
+                <p class="text-text-2 text-sm mt-1 whitespace-pre-wrap break-words">{item.data.comment}</p>
+              {/if}
+            </div>
+          </div>
+        {/if}
       {/each}
     </div>
   {/if}

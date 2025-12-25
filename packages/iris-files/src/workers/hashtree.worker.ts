@@ -6,7 +6,7 @@
 
 console.log('[hashtree.worker] Loading worker module...');
 
-// Static import of the worker module (relative path)
-import '../../../hashtree/src/worker/worker';
+// Import worker module from same package
+import '../worker/worker';
 
 console.log('[hashtree.worker] Worker module loaded');

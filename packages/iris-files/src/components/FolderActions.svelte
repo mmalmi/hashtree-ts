@@ -264,12 +264,7 @@
 
     <!-- Edit actions -->
     {#if canEdit}
-      <label
-        tabindex="0"
-        class="btn-success cursor-pointer {btnClass}"
-        title="Add files"
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') (e.currentTarget as HTMLElement).click(); }}
-      >
+      <label class="btn-success cursor-pointer {btnClass}" title="Add files">
         <span class="i-lucide-plus"></span>
         Add
         <input
@@ -281,12 +276,7 @@
       </label>
 
       {#if hasDirectorySupport}
-        <label
-          tabindex="0"
-          class="btn-ghost cursor-pointer {btnClass}"
-          title="Add a folder with all its contents"
-          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') (e.currentTarget as HTMLElement).click(); }}
-        >
+        <label class="btn-ghost cursor-pointer {btnClass}" title="Add a folder with all its contents">
           <span class="i-lucide-folder-plus"></span>
           Add Folder
           <input

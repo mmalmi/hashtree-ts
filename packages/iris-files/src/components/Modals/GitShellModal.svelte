@@ -292,7 +292,7 @@ Not supported:
           <button onclick={clearHistory} class="btn-ghost p-1 text-sm" title="Clear output">
             <span class="i-lucide-trash-2"></span>
           </button>
-          <button onclick={close} class="btn-ghost p-1">
+          <button onclick={close} class="btn-ghost p-1" aria-label="Close">
             <span class="i-lucide-x text-lg"></span>
           </button>
         </div>

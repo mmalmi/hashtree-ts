@@ -5,6 +5,7 @@
    * Used by directory viewer (git repos, regular dirs)
    */
   import type { CID, TreeVisibility } from 'hashtree';
+  import type { Snippet } from 'svelte';
   import { npubToPubkey } from '../../nostr';
   import { Avatar } from '../User';
   import VisibilityIcon from '../VisibilityIcon.svelte';
@@ -19,6 +20,7 @@
     name: string;
     /** Additional classes for outer container */
     class?: string;
+    children?: Snippet;
   }
 
   let {
@@ -30,6 +32,7 @@
     icon,
     name,
     class: className = '',
+    children,
   }: Props = $props();
 </script>
 
@@ -61,7 +64,7 @@
   <span class="{icon} shrink-0"></span>
   <span class="font-medium text-text-1 truncate leading-none">{name}</span>
   <!-- Slot for additional content (like LIVE badge) -->
-  {#if $$slots.default}
-    <slot />
+  {#if children}
+    {@render children()}
   {/if}
 </div>

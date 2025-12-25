@@ -70,8 +70,6 @@ export default defineConfig({
   resolve: {
     alias: {
       'hashtree': resolve(__dirname, '../hashtree/src/index.ts'),
-      'hashtree/webrtc': resolve(__dirname, '../hashtree/src/webrtc/index.ts'),
-      'hashtree/worker': resolve(__dirname, '../hashtree/src/worker/worker.ts'),
       '$lib': resolve(__dirname, 'src/lib'),
       'wasm-git': resolve(__dirname, 'node_modules/wasm-git/lg2_async.js'),
     },
