@@ -138,9 +138,12 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
         // Try sync cache (for already-resolved trees from Nostr)
         rootCid = getTreeRootSync(npub, treeName);
 
-        // If not in cache, wait for resolver to fetch from network
         if (!rootCid) {
+          // If not in cache, wait for resolver to fetch from network
           rootCid = await waitForTreeRoot(npub, treeName, 30000);
+          if (!rootCid) {
+            console.warn('[SwFileHandler] Tree root timeout:', npub.slice(0, 16), treeName);
+          }
         }
       }
 

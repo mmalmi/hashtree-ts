@@ -109,12 +109,12 @@ test.describe('WebRTC Stats', () => {
    * Get WebRTC stats
    */
   async function getStats(page: Page): Promise<any> {
-    return page.evaluate(() => {
+    return page.evaluate(async () => {
       const webrtcStore = (window as any).webrtcStore;
       if (!webrtcStore || !webrtcStore.getStats) {
         return null;
       }
-      const { aggregate, perPeer } = webrtcStore.getStats();
+      const { aggregate, perPeer } = await webrtcStore.getStats();
       // Convert Map to object for serialization
       const perPeerObj: any = {};
       perPeer.forEach((value: any, key: string) => {

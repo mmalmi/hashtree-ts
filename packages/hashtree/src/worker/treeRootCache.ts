@@ -1,7 +1,7 @@
 /**
  * Tree Root Cache
  *
- * Persists npub/treeName → CID mappings using DexieStore.
+ * Persists npub/treeName → CID mappings using any Store implementation.
  * This allows quick resolution of tree roots without waiting for Nostr.
  *
  * Storage format:
@@ -35,8 +35,8 @@ let store: Store | null = null;
 /**
  * Initialize the cache with a store
  */
-export function initTreeRootCache(storeInstance: Store): void {
-  store = storeInstance;
+export function initTreeRootCache(storeImpl: Store): void {
+  store = storeImpl;
 }
 
 /**

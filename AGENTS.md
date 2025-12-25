@@ -9,6 +9,9 @@ pnpm run dev      # Dev server
 pnpm run test:e2e # E2E tests
 ```
 
+## Dev Server
+- Check `lsof -i :5173` before starting - don't start if already running
+
 ## Structure
 - `packages/hashtree` - Core library
 - `packages/iris-files` - Web app (Iris Files)
@@ -26,54 +29,28 @@ pnpm run test:e2e # E2E tests
 
 ## Code Style
 - UnoCSS: use `b-` prefix for borders
-- Buttons: ALWAYS use `btn-ghost` class (default) or `btn-primary`/`btn-danger`/`btn-success` for colored buttons (defined in uno.config.ts). Never use raw styles like `bg-transparent border-none` on buttons. For clickable elements that shouldn't look like buttons (e.g., avatar links), use `<a>` tags instead.
+- Buttons: use `btn-ghost` (default) or `btn-primary`/`btn-danger`/`btn-success`
+- Don't add comments that aren't relevant without context
 
 ## Verify Changes
-Always verify code changes pass lint and build before considering work complete:
 ```bash
-pnpm run lint                   # Check for lint errors (silent if clean)
-pnpm run build > /dev/null      # Build (suppress verbose output, shows errors only)
+pnpm run lint
+pnpm run build > /dev/null
 ```
 
 ## Testing
-- Playwright runs its own dev server - no need to `pnpm run dev` when running tests
-- **Run tests selectively**: Full test suite takes ~5 minutes. Run only relevant tests during development:
-  - `pnpm run test:e2e -- --grep "test name"` - Run tests matching pattern
-  - `pnpm run test:e2e -- e2e/specific-file.spec.ts` - Run single test file
-  - Only run full suite for final verification
-- **Always verify changes work with e2e tests** - don't just say "should work now", run the tests to confirm
-- **Port conflicts**: If Playwright reports port 5173 in use, it may test against a different process (wrong app!). Kill any running dev servers first.
-- When tests are failing, increasing timeouts is usually not the solution. The app should work fast
-- Debug failing / flaky tests with console logs, further tests or playwrght screenshots and fix. If you suspect nostr relay issue, debug with local mock or real relay
-- Playwright test in headless mode
-- App autoconnects to other instances p2p over nostr relays and webrtc which may interfere with some tests. One option is to make it connect only to followed users in webrtc transport settings, or test in offline mode.
-- TDD is a good idea: write failing test first, then write code that makes it pass
+- Playwright runs its own dev server
+- Run tests selectively: `pnpm run test:e2e -- e2e/specific-file.spec.ts`
+- Always verify changes with e2e tests
+- Kill dev servers before tests to avoid port conflicts
+- TDD: write failing test first, then fix
 
-### Test Performance
-- **NEVER use `waitForTimeout()` for arbitrary delays** - always wait for specific conditions
-- Use `expect(locator).toBeVisible()`, `toContainText()`, or `page.waitForURL()` instead
-- WebRTC/Nostr sync between users requires them to **follow each other** for reliable connections
-- For collaborative tests: users follow each other, then only one user needs to set editors
-
-### Test Parallelism
-- **Tests MUST pass with 100% workers** (full parallelism) for fast execution and iteration
-- Use `--workers=1` only when debugging specific test failures
-- The "others pool" (non-followed peers) fills up with connections from parallel test instances
-- **Required for all tests**:
-  - Use `disableOthersPool(page)` helper in test-utils.ts after `page.goto('/')` to prevent WebRTC cross-talk
-  - Use `setupPageErrorHandler(page)` to filter expected relay errors
-  - Wait for specific conditions, never use arbitrary delays
-  - Use `test.slow()` for tests with complex async operations (video streaming, multi-user WebRTC)
-- Multi-user tests should have users follow each other before any WebRTC-dependent operations
-- Nostr relay errors (rate-limiting, pow requirements) are expected and filtered by `setupPageErrorHandler`
-- temp.iris.to relay is generally tolerant and reliable for tests
-- git-push-htree test requires cargo/rust installed - skip if not available
-
-### Flaky Tests
-- **Tests MUST pass under full parallelism** - do not rely on retries
-- If a test fails under parallelism, investigate the root cause with console logs and screenshots
-- Common causes of flaky multi-user tests:
-  - Resolver not receiving tree data before navigation - verify tree visibility before navigating
-  - OPFS stale data - clear OPFS alongside IndexedDB in test setup
-  - WebRTC connection not established - wait for specific connection indicators
-- Global timeout is 30s, with `test.slow()` tripling it to 90s
+### Test Rules
+- NEVER use `waitForTimeout()` - wait for specific conditions
+- Tests MUST pass with full parallelism
+- Use `disableOthersPool(page)` after `page.goto('/')`
+- Use `setupPageErrorHandler(page)` to filter relay errors
+- Use `test.slow()` for complex async operations
+- Multi-user WebRTC tests: users must follow each other, keep others pool at 0
+- Global timeout 30s, `test.slow()` triples to 90s
+- Full suite is slow - run specific tests when debugging: `pnpm run test:e2e -- e2e/specific.spec.ts`

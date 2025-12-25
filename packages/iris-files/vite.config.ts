@@ -161,6 +161,13 @@ export default defineConfig({
       // Ensure HMR websocket connection is stable
       overlay: true,
     },
+    headers: {
+      // Cross-origin isolation headers for SharedArrayBuffer/FFmpeg
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
+      // CORP header needed for all resources in cross-origin isolated context
+      'Cross-Origin-Resource-Policy': 'same-origin',
+    },
   },
   optimizeDeps: {
     exclude: ['wasm-git', '@ffmpeg/ffmpeg', '@ffmpeg/util'], // Don't pre-bundle wasm-git and ffmpeg, they have their own workers

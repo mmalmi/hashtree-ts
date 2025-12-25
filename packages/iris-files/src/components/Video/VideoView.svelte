@@ -366,44 +366,14 @@
 
     // If still no video and NOT a playlist video, check if this is a playlist directory root
     if (!videoSrc && !isPlaylistVideo) {
-      try {
-        const dir = await tree.listDirectory(rootCidParam);
-        if (dir && dir.length > 0) {
-          // Collect all video directories
-          const videoEntries: { name: string }[] = [];
-          for (const entry of dir) {
-            try {
-              const subDir = await tree.listDirectory(entry.cid);
-              const hasVideo = subDir?.some(e =>
-                e.name.startsWith('video.') ||
-                e.name.endsWith('.webm') ||
-                e.name.endsWith('.mp4') ||
-                e.name.endsWith('.mkv')
-              );
-              if (hasVideo) {
-                videoEntries.push({ name: entry.name });
-              }
-            } catch {
-              // Not a directory, continue
-            }
-          }
-
-          if (videoEntries.length > 0) {
-            // Sort alphabetically to match playlist order
-            videoEntries.sort((a, b) => a.name.localeCompare(b.name));
-
-            // Pick first video, or random if shuffle is on
-            const startIndex = shuffle && videoEntries.length > 1
-              ? Math.floor(Math.random() * videoEntries.length)
-              : 0;
-            const startVideoId = videoEntries[startIndex].name;
-            const playlistUrl = `#/${npub}/${encodeURIComponent(treeName)}/${encodeURIComponent(startVideoId)}`;
-            console.log('[VideoView] Detected playlist, navigating to video:', playlistUrl);
-            window.location.hash = playlistUrl;
-            return;
-          }
-        }
-      } catch {}
+      const { findFirstVideoEntry } = await import('../../utils/playlistDetection');
+      const firstVideoId = await findFirstVideoEntry(rootCidParam);
+      if (firstVideoId) {
+        // Navigate to first video in playlist
+        const playlistUrl = `#/${npub}/${encodeURIComponent(treeName)}/${encodeURIComponent(firstVideoId)}`;
+        window.location.hash = playlistUrl;
+        return;
+      }
     }
 
     if (!videoSrc) {

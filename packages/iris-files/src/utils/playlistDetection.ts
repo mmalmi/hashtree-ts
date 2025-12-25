@@ -74,6 +74,37 @@ export function buildThumbnailUrl(
 }
 
 /**
+ * Find the first video entry in a playlist directory (with timeout).
+ * Returns the entry name or null if not a playlist.
+ */
+export async function findFirstVideoEntry(rootCid: CID, timeoutMs = 2000): Promise<string | null> {
+  const tree = getTree();
+
+  try {
+    const entries = await tree.listDirectory(rootCid);
+    if (!entries || entries.length === 0) return null;
+
+    for (const entry of entries) {
+      try {
+        // Timeout per entry to avoid hanging
+        const subEntries = await Promise.race([
+          tree.listDirectory(entry.cid),
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
+        ]);
+        if (subEntries && hasVideoFile(subEntries)) {
+          return entry.name;
+        }
+      } catch {
+        // Entry not available or not a directory, try next
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Detect if a tree is a playlist and get basic stats
  * Fast version - just counts videos without loading titles
  */

@@ -1,549 +1,815 @@
 /**
- * WebRTC Manager for Worker
+ * Worker WebRTC Controller
  *
- * Manages P2P connections for hashtree data transfer.
- * Uses ephemeral keys for signaling (not user's real identity).
+ * Controls WebRTC connections from the worker thread.
+ * Main thread proxy executes RTCPeerConnection operations.
  *
- * Signaling protocol (kind 25050):
- * - Hello messages: broadcast for peer discovery
- * - Directed messages (offer/answer/candidates): to specific peers
+ * Worker owns:
+ * - Peer state tracking
+ * - Connection lifecycle decisions
+ * - Data protocol (request/response)
+ * - Signaling message handling
+ *
+ * Main thread proxy owns:
+ * - RTCPeerConnection instances (not available in workers)
+ * - Data channel I/O
  */
 
-import type { Store, Hash } from '../types';
-import { toHex } from '../types';
-import { encode, decode } from '@msgpack/msgpack';
-import { getNostrManager } from './nostr';
-import { signWithEphemeralKey, getEphemeralPubkey } from './worker';
-import type { SignedEvent } from './protocol';
+import type { Store } from '../types.js';
+import type { WebRTCCommand, WebRTCEvent } from './protocol.js';
+import type { SignalingMessage, PeerPool, DataRequest, DataResponse } from '../webrtc/types.js';
+import {
+  MAX_HTL,
+  MSG_TYPE_REQUEST,
+  MSG_TYPE_RESPONSE,
+  FRAGMENT_SIZE,
+  PeerId,
+  generateUuid,
+} from '../webrtc/types.js';
+import {
+  encodeRequest,
+  encodeResponse,
+  parseMessage,
+  createRequest,
+  createResponse,
+  createFragmentResponse,
+  hashToKey,
+  verifyHash,
+  generatePeerHTLConfig,
+  decrementHTL,
+  shouldForward,
+  type PeerHTLConfig,
+  type PendingRequest,
+} from '../webrtc/protocol.js';
+import { LRUCache } from '../webrtc/lruCache.js';
 
-// Signaling message types
-interface HelloMessage {
-  type: 'hello';
+// ============================================================================
+// Types
+// ============================================================================
+
+interface WorkerPeer {
   peerId: string;
-}
-
-interface OfferMessage {
-  type: 'offer';
-  offer: RTCSessionDescriptionInit;
-  peerId: string;
-}
-
-interface AnswerMessage {
-  type: 'answer';
-  answer: RTCSessionDescriptionInit;
-  peerId: string;
-}
-
-interface CandidatesMessage {
-  type: 'candidates';
-  candidates: RTCIceCandidateInit[];
-  peerId: string;
-}
-
-type SignalingMessage = HelloMessage | OfferMessage | AnswerMessage | CandidatesMessage;
-
-// Data channel message types
-const MSG_TYPE_REQUEST = 0x00;
-const MSG_TYPE_RESPONSE = 0x01;
-
-interface DataRequest {
-  h: Uint8Array;  // hash
-  htl?: number;   // hops to live
-}
-
-interface DataResponse {
-  h: Uint8Array;  // hash
-  d: Uint8Array;  // data
-  i?: number;     // fragment index
-  n?: number;     // total fragments
-}
-
-// Peer connection state
-interface PeerInfo {
   pubkey: string;
-  peerId: string;
-  connection: RTCPeerConnection;
-  dataChannel: RTCDataChannel | null;
-  connected: boolean;
+  pool: PeerPool;
+  direction: 'inbound' | 'outbound';
+  state: 'connecting' | 'connected' | 'disconnected';
+  dataChannelReady: boolean;
+  answerCreated: boolean;  // Track if we've already created an answer (inbound only)
+  htlConfig: PeerHTLConfig;
+  pendingRequests: Map<string, PendingRequest>;
+  theirRequests: LRUCache<string, { hash: Uint8Array; requestedAt: number }>;
+  stats: PeerStats;
+  createdAt: number;
+  connectedAt?: number;
+}
+
+interface PeerStats {
   requestsSent: number;
   requestsReceived: number;
+  responsesSent: number;
+  responsesReceived: number;
   bytesSent: number;
   bytesReceived: number;
 }
 
-// Constants
-const SIGNALING_KIND = 25050;
-const HELLO_TAG = 'hello';
-const MAX_PEERS = 6;
-const HELLO_INTERVAL = 10000;
-const FRAGMENT_SIZE = 32 * 1024;
+export interface WebRTCControllerConfig {
+  pubkey: string;
+  localStore: Store;
+  sendCommand: (cmd: WebRTCCommand) => void;
+  sendSignaling: (msg: SignalingMessage, recipientPubkey?: string) => Promise<void>;
+  getFollows?: () => Set<string>;
+  requestTimeout?: number;
+  debug?: boolean;
+}
 
-export class WebRTCManager {
-  private peers = new Map<string, PeerInfo>();
-  private store: Store | null = null;
-  private running = false;
-  private helloInterval: ReturnType<typeof setInterval> | null = null;
-  private myPeerId: string;
-  private pendingRequests = new Map<string, {
-    resolve: (data: Uint8Array | null) => void;
-    timeout: ReturnType<typeof setTimeout>;
-  }>();
+type PeerClassifier = (pubkey: string) => PeerPool;
 
-  constructor() {
-    // Generate unique peer ID (ephemeral pubkey + random UUID)
-    this.myPeerId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+// ============================================================================
+// Controller
+// ============================================================================
+
+export class WebRTCController {
+  private myPeerId: PeerId;
+  private peers = new Map<string, WorkerPeer>();
+  private localStore: Store;
+  private sendCommand: (cmd: WebRTCCommand) => void;
+  private sendSignaling: (msg: SignalingMessage, recipientPubkey?: string) => Promise<void>;
+  private classifyPeer: PeerClassifier;
+  private requestTimeout: number;
+  private debug: boolean;
+
+  // Pool configuration
+  private poolConfig = {
+    follows: { maxConnections: 10, satisfiedConnections: 3 },
+    other: { maxConnections: 6, satisfiedConnections: 2 },
+  };
+
+  // Hello interval
+  private helloInterval?: ReturnType<typeof setInterval>;
+  private readonly HELLO_INTERVAL = 10000;
+
+  constructor(config: WebRTCControllerConfig) {
+    this.myPeerId = new PeerId(config.pubkey, generateUuid());
+    this.localStore = config.localStore;
+    this.sendCommand = config.sendCommand;
+    this.sendSignaling = config.sendSignaling;
+    this.requestTimeout = config.requestTimeout ?? 5000;
+    this.debug = config.debug ?? false;
+
+    // Default classifier: check if pubkey is in follows
+    const getFollows = config.getFollows ?? (() => new Set<string>());
+    this.classifyPeer = (pubkey: string) => {
+      return getFollows().has(pubkey) ? 'follows' : 'other';
+    };
   }
 
-  /**
-   * Initialize with a store for serving data
-   */
-  init(store: Store): void {
-    this.store = store;
-  }
+  // ============================================================================
+  // Lifecycle
+  // ============================================================================
 
-  /**
-   * Start peer discovery and signaling
-   */
   start(): void {
-    if (this.running) return;
-    this.running = true;
+    this.log('Starting WebRTC controller');
 
-    const pubkey = getEphemeralPubkey();
-    if (!pubkey) {
-      console.error('[WebRTCManager] No ephemeral pubkey available');
-      return;
-    }
+    // Send hello periodically
+    this.helloInterval = setInterval(() => {
+      this.sendHello();
+    }, this.HELLO_INTERVAL);
 
-    console.log('[WebRTCManager] Starting with peerId:', this.myPeerId.slice(0, 8) + '...');
-
-    // Subscribe to signaling messages directed at us
-    const nostr = getNostrManager();
-    nostr.subscribe('webrtc-signaling', [{
-      kinds: [SIGNALING_KIND],
-      '#p': [pubkey],
-    }]);
-
-    // Subscribe to hello broadcasts
-    nostr.subscribe('webrtc-hello', [{
-      kinds: [SIGNALING_KIND],
-      '#l': [HELLO_TAG],
-      since: Math.floor(Date.now() / 1000) - 60, // Last 60 seconds
-    }]);
-
-    // Start sending hello messages
+    // Send initial hello
     this.sendHello();
-    this.helloInterval = setInterval(() => this.sendHello(), HELLO_INTERVAL);
   }
 
-  /**
-   * Stop all connections
-   */
   stop(): void {
-    this.running = false;
+    this.log('Stopping WebRTC controller');
 
     if (this.helloInterval) {
       clearInterval(this.helloInterval);
-      this.helloInterval = null;
+      this.helloInterval = undefined;
     }
 
-    // Close all peer connections
-    for (const [, peer] of this.peers) {
-      peer.connection.close();
+    // Close all peers
+    for (const peerId of this.peers.keys()) {
+      this.closePeer(peerId);
     }
-    this.peers.clear();
-
-    // Unsubscribe from Nostr
-    const nostr = getNostrManager();
-    nostr.unsubscribe('webrtc-signaling');
-    nostr.unsubscribe('webrtc-hello');
-
-    console.log('[WebRTCManager] Stopped');
-  }
-
-  /**
-   * Handle incoming Nostr event (called by worker message handler)
-   */
-  handleNostrEvent(event: SignedEvent): void {
-    try {
-      const msg = JSON.parse(event.content) as SignalingMessage;
-
-      // Ignore our own messages
-      if (msg.peerId === this.myPeerId) return;
-
-      switch (msg.type) {
-        case 'hello':
-          this.handleHello(event.pubkey, msg);
-          break;
-        case 'offer':
-          this.handleOffer(event.pubkey, msg);
-          break;
-        case 'answer':
-          this.handleAnswer(event.pubkey, msg);
-          break;
-        case 'candidates':
-          this.handleCandidates(event.pubkey, msg);
-          break;
-      }
-    } catch (err) {
-      console.error('[WebRTCManager] Failed to handle event:', err);
-    }
-  }
-
-  /**
-   * Request data from peers
-   */
-  async get(hash: Hash): Promise<Uint8Array | null> {
-    // Try connected peers
-    for (const [, peer] of this.peers) {
-      if (peer.connected && peer.dataChannel?.readyState === 'open') {
-        const result = await this.requestFromPeer(peer, hash);
-        if (result) return result;
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Get peer stats
-   */
-  getPeerStats(): Array<{
-    peerId: string;
-    pubkey: string;
-    connected: boolean;
-    requestsSent: number;
-    requestsReceived: number;
-    bytesSent: number;
-    bytesReceived: number;
-  }> {
-    const stats = [];
-    for (const [, peer] of this.peers) {
-      stats.push({
-        peerId: peer.peerId,
-        pubkey: peer.pubkey,
-        connected: peer.connected,
-        requestsSent: peer.requestsSent,
-        requestsReceived: peer.requestsReceived,
-        bytesSent: peer.bytesSent,
-        bytesReceived: peer.bytesReceived,
-      });
-    }
-    return stats;
   }
 
   // ============================================================================
-  // Private: Signaling
+  // Signaling
   // ============================================================================
 
   private sendHello(): void {
-    if (!this.running) return;
-
-    const msg: HelloMessage = {
+    const msg: SignalingMessage = {
       type: 'hello',
-      peerId: this.myPeerId,
+      peerId: this.myPeerId.uuid,
     };
-
-    const event = signWithEphemeralKey({
-      kind: SIGNALING_KIND,
-      content: JSON.stringify(msg),
-      tags: [['l', HELLO_TAG]],
-      created_at: Math.floor(Date.now() / 1000),
-    });
-
-    const nostr = getNostrManager();
-    nostr.publish(event).catch(err => {
-      console.error('[WebRTCManager] Failed to send hello:', err);
-    });
+    this.sendSignaling(msg);
+    this.log('Sent hello');
   }
 
-  private async sendSignalingMessage(recipientPubkey: string, msg: SignalingMessage): Promise<void> {
-    const event = signWithEphemeralKey({
-      kind: SIGNALING_KIND,
-      content: JSON.stringify(msg),
-      tags: [['p', recipientPubkey]],
-      created_at: Math.floor(Date.now() / 1000),
-    });
-
-    const nostr = getNostrManager();
-    await nostr.publish(event);
+  /**
+   * Public method to trigger a hello broadcast.
+   * Used for testing to force peer discovery after follows are set up.
+   */
+  broadcastHello(): void {
+    this.sendHello();
   }
 
-  private handleHello(senderPubkey: string, msg: HelloMessage): void {
-    // Don't connect to ourselves
-    if (msg.peerId === this.myPeerId) return;
+  /**
+   * Handle incoming signaling message (from Nostr kind 25050)
+   */
+  async handleSignalingMessage(msg: SignalingMessage, senderPubkey: string): Promise<void> {
+    // Skip messages from ourselves (same session)
+    const senderPeerId = `${senderPubkey}:${msg.peerId}`;
+    if (senderPeerId === this.myPeerId.toString()) {
+      return;
+    }
 
-    // Check if we already have this peer
-    if (this.peers.has(msg.peerId)) return;
+    this.log(`Signaling from ${senderPubkey.slice(0, 8)}:`, msg.type);
 
-    // Check if we have room for more peers
-    if (this.peers.size >= MAX_PEERS) return;
+    switch (msg.type) {
+      case 'hello':
+        await this.handleHello(senderPubkey, msg.peerId);
+        break;
 
-    console.log('[WebRTCManager] Got hello from:', msg.peerId.slice(0, 8) + '...');
+      case 'offer':
+        if (this.isMessageForUs(msg)) {
+          await this.handleOffer(senderPeerId, senderPubkey, msg.offer!);
+        }
+        break;
 
-    // Initiate connection (we're the offerer)
-    this.createPeerConnection(senderPubkey, msg.peerId, true);
+      case 'answer':
+        if (this.isMessageForUs(msg)) {
+          await this.handleAnswer(senderPeerId, msg.answer!);
+        }
+        break;
+
+      case 'candidate':
+        if (this.isMessageForUs(msg)) {
+          await this.handleIceCandidate(senderPeerId, msg.candidate!);
+        }
+        break;
+
+      case 'candidates':
+        if (this.isMessageForUs(msg)) {
+          for (const candidate of msg.candidates!) {
+            await this.handleIceCandidate(senderPeerId, candidate);
+          }
+        }
+        break;
+    }
   }
 
-  private handleOffer(senderPubkey: string, msg: OfferMessage): void {
-    console.log('[WebRTCManager] Got offer from:', msg.peerId.slice(0, 8) + '...');
+  private isMessageForUs(msg: SignalingMessage): boolean {
+    if ('recipient' in msg && msg.recipient) {
+      return msg.recipient === this.myPeerId.toString();
+    }
+    return true;
+  }
 
-    // Create peer connection if we don't have one
-    let peer = this.peers.get(msg.peerId);
+  private async handleHello(senderPubkey: string, senderUuid: string): Promise<void> {
+    const peerId = `${senderPubkey}:${senderUuid}`;
+
+    // Already connected?
+    if (this.peers.has(peerId)) {
+      return;
+    }
+
+    // Check pool limits
+    const pool = this.classifyPeer(senderPubkey);
+    if (!this.shouldConnect(pool)) {
+      this.log(`Pool ${pool} at capacity, ignoring hello`);
+      return;
+    }
+
+    // In 'other' pool, only allow 1 connection per pubkey
+    if (pool === 'other' && this.hasOtherPoolPubkey(senderPubkey)) {
+      this.log(`Already have connection from ${senderPubkey.slice(0, 8)} in other pool`);
+      return;
+    }
+
+    // Tie-breaking: lower UUID initiates
+    const shouldInitiate = this.myPeerId.uuid < senderUuid;
+    if (shouldInitiate) {
+      this.log(`Initiating connection to ${peerId.slice(0, 20)}`);
+      await this.createOutboundPeer(peerId, senderPubkey, pool);
+    } else {
+      this.log(`Waiting for offer from ${peerId.slice(0, 20)}`);
+    }
+  }
+
+  private async handleOffer(peerId: string, pubkey: string, offer: RTCSessionDescriptionInit): Promise<void> {
+    // Create peer if needed
+    let peer = this.peers.get(peerId);
     if (!peer) {
-      if (this.peers.size >= MAX_PEERS) return;
-      peer = this.createPeerConnection(senderPubkey, msg.peerId, false);
+      const pool = this.classifyPeer(pubkey);
+      if (!this.shouldConnect(pool)) {
+        this.log(`Pool ${pool} at capacity, rejecting offer`);
+        return;
+      }
+      // In 'other' pool, only allow 1 connection per pubkey
+      if (pool === 'other' && this.hasOtherPoolPubkey(pubkey)) {
+        this.log(`Already have connection from ${pubkey.slice(0, 8)} in other pool, rejecting offer`);
+        return;
+      }
+      peer = this.createPeer(peerId, pubkey, pool, 'inbound');
     }
 
     // Set remote description and create answer
-    peer.connection.setRemoteDescription(msg.offer)
-      .then(() => peer!.connection.createAnswer())
-      .then(answer => peer!.connection.setLocalDescription(answer))
-      .then(() => {
-        const answerMsg: AnswerMessage = {
-          type: 'answer',
-          answer: peer!.connection.localDescription!,
-          peerId: this.myPeerId,
-        };
-        return this.sendSignalingMessage(senderPubkey, answerMsg);
-      })
-      .catch(err => console.error('[WebRTCManager] Failed to handle offer:', err));
+    this.sendCommand({ type: 'rtc:setRemoteDescription', peerId, sdp: offer });
   }
 
-  private handleAnswer(senderPubkey: string, msg: AnswerMessage): void {
-    const peer = this.peers.get(msg.peerId);
-    if (!peer) return;
-
-    console.log('[WebRTCManager] Got answer from:', msg.peerId.slice(0, 8) + '...');
-
-    peer.connection.setRemoteDescription(msg.answer)
-      .catch(err => console.error('[WebRTCManager] Failed to set answer:', err));
-  }
-
-  private handleCandidates(senderPubkey: string, msg: CandidatesMessage): void {
-    const peer = this.peers.get(msg.peerId);
-    if (!peer) return;
-
-    for (const candidate of msg.candidates) {
-      peer.connection.addIceCandidate(candidate)
-        .catch(err => console.error('[WebRTCManager] Failed to add ICE candidate:', err));
+  private async handleAnswer(peerId: string, answer: RTCSessionDescriptionInit): Promise<void> {
+    const peer = this.peers.get(peerId);
+    if (!peer) {
+      this.log(`Answer for unknown peer: ${peerId}`);
+      return;
     }
+
+    this.sendCommand({ type: 'rtc:setRemoteDescription', peerId, sdp: answer });
+  }
+
+  private async handleIceCandidate(peerId: string, candidate: RTCIceCandidateInit): Promise<void> {
+    const peer = this.peers.get(peerId);
+    if (!peer) {
+      return;
+    }
+
+    this.sendCommand({ type: 'rtc:addIceCandidate', peerId, candidate });
   }
 
   // ============================================================================
-  // Private: Peer Connections
+  // Peer Management
   // ============================================================================
 
-  private createPeerConnection(pubkey: string, peerId: string, isOfferer: boolean): PeerInfo {
-    const connection = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-      ],
-    });
+  private shouldConnect(pool: PeerPool): boolean {
+    const config = this.poolConfig[pool];
+    const count = this.getPoolCount(pool);
+    return count < config.maxConnections;
+  }
 
-    const peer: PeerInfo = {
-      pubkey,
+  private getPoolCount(pool: PeerPool): number {
+    let count = 0;
+    for (const peer of this.peers.values()) {
+      if (peer.pool === pool && peer.state !== 'disconnected') {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Check if we already have a connection from this pubkey in the 'other' pool.
+   * In the 'other' pool, we only allow 1 connection per pubkey to prevent spam.
+   */
+  private hasOtherPoolPubkey(pubkey: string): boolean {
+    for (const peer of this.peers.values()) {
+      if (peer.pool === 'other' && peer.pubkey === pubkey && peer.state !== 'disconnected') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private createPeer(peerId: string, pubkey: string, pool: PeerPool, direction: 'inbound' | 'outbound'): WorkerPeer {
+    const peer: WorkerPeer = {
       peerId,
-      connection,
-      dataChannel: null,
-      connected: false,
-      requestsSent: 0,
-      requestsReceived: 0,
-      bytesSent: 0,
-      bytesReceived: 0,
+      pubkey,
+      pool,
+      direction,
+      state: 'connecting',
+      dataChannelReady: false,
+      answerCreated: false,
+      htlConfig: generatePeerHTLConfig(),
+      pendingRequests: new Map(),
+      theirRequests: new LRUCache(200),
+      stats: {
+        requestsSent: 0,
+        requestsReceived: 0,
+        responsesSent: 0,
+        responsesReceived: 0,
+        bytesSent: 0,
+        bytesReceived: 0,
+      },
+      createdAt: Date.now(),
     };
 
     this.peers.set(peerId, peer);
-
-    // Collect ICE candidates
-    const candidates: RTCIceCandidateInit[] = [];
-    let candidateTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    connection.onicecandidate = (event) => {
-      if (event.candidate) {
-        candidates.push(event.candidate.toJSON());
-
-        // Batch send candidates after 500ms of no new candidates
-        if (candidateTimeout) clearTimeout(candidateTimeout);
-        candidateTimeout = setTimeout(() => {
-          if (candidates.length > 0) {
-            const msg: CandidatesMessage = {
-              type: 'candidates',
-              candidates: [...candidates],
-              peerId: this.myPeerId,
-            };
-            this.sendSignalingMessage(pubkey, msg);
-            candidates.length = 0;
-          }
-        }, 500);
-      }
-    };
-
-    connection.onconnectionstatechange = () => {
-      const state = connection.connectionState;
-      console.log('[WebRTCManager] Connection state:', peerId.slice(0, 8) + '...', state);
-
-      if (state === 'connected') {
-        peer.connected = true;
-      } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-        peer.connected = false;
-        this.peers.delete(peerId);
-      }
-    };
-
-    // Data channel handling
-    if (isOfferer) {
-      // Create data channel
-      const channel = connection.createDataChannel('hashtree', {
-        ordered: false,
-        maxRetransmits: 3,
-      });
-      this.setupDataChannel(peer, channel);
-
-      // Create and send offer
-      connection.createOffer()
-        .then(offer => connection.setLocalDescription(offer))
-        .then(() => {
-          const offerMsg: OfferMessage = {
-            type: 'offer',
-            offer: connection.localDescription!,
-            peerId: this.myPeerId,
-          };
-          return this.sendSignalingMessage(pubkey, offerMsg);
-        })
-        .catch(err => console.error('[WebRTCManager] Failed to create offer:', err));
-    } else {
-      // Wait for data channel from offerer
-      connection.ondatachannel = (event) => {
-        this.setupDataChannel(peer, event.channel);
-      };
-    }
+    this.sendCommand({ type: 'rtc:createPeer', peerId, pubkey });
 
     return peer;
   }
 
-  private setupDataChannel(peer: PeerInfo, channel: RTCDataChannel): void {
-    peer.dataChannel = channel;
-    channel.binaryType = 'arraybuffer';
-
-    channel.onopen = () => {
-      console.log('[WebRTCManager] Data channel open:', peer.peerId.slice(0, 8) + '...');
-    };
-
-    channel.onmessage = (event) => {
-      this.handleDataChannelMessage(peer, new Uint8Array(event.data));
-    };
-
-    channel.onerror = (err) => {
-      console.error('[WebRTCManager] Data channel error:', err);
-    };
+  private async createOutboundPeer(peerId: string, pubkey: string, pool: PeerPool): Promise<void> {
+    this.createPeer(peerId, pubkey, pool, 'outbound');
+    // Proxy will create peer and we'll get rtc:peerCreated, then request offer
   }
 
-  private handleDataChannelMessage(peer: PeerInfo, data: Uint8Array): void {
-    if (data.length < 2) return;
+  private closePeer(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
 
-    const type = data[0];
-    const body = data.slice(1);
+    // Clear pending requests
+    for (const pending of peer.pendingRequests.values()) {
+      clearTimeout(pending.timeout);
+      pending.resolve(null);
+    }
 
-    try {
-      if (type === MSG_TYPE_REQUEST) {
-        // Handle incoming request
-        const req = decode(body) as DataRequest;
-        peer.requestsReceived++;
-        this.handleDataRequest(peer, req);
-      } else if (type === MSG_TYPE_RESPONSE) {
-        // Handle incoming response
-        const res = decode(body) as DataResponse;
-        peer.bytesReceived += res.d.length;
-        this.handleDataResponse(peer, res);
-      }
-    } catch (err) {
-      console.error('[WebRTCManager] Failed to handle data message:', err);
+    peer.state = 'disconnected';
+    this.sendCommand({ type: 'rtc:closePeer', peerId });
+    this.peers.delete(peerId);
+
+    this.log(`Closed peer: ${peerId.slice(0, 20)}`);
+  }
+
+  // ============================================================================
+  // Proxy Events
+  // ============================================================================
+
+  /**
+   * Handle event from main thread proxy
+   */
+  handleProxyEvent(event: WebRTCEvent): void {
+    switch (event.type) {
+      case 'rtc:peerCreated':
+        this.onPeerCreated(event.peerId);
+        break;
+
+      case 'rtc:peerStateChange':
+        this.onPeerStateChange(event.peerId, event.state);
+        break;
+
+      case 'rtc:peerClosed':
+        this.onPeerClosed(event.peerId);
+        break;
+
+      case 'rtc:offerCreated':
+        this.onOfferCreated(event.peerId, event.sdp);
+        break;
+
+      case 'rtc:answerCreated':
+        this.onAnswerCreated(event.peerId, event.sdp);
+        break;
+
+      case 'rtc:descriptionSet':
+        this.onDescriptionSet(event.peerId, event.error);
+        break;
+
+      case 'rtc:iceCandidate':
+        this.onIceCandidate(event.peerId, event.candidate);
+        break;
+
+      case 'rtc:dataChannelOpen':
+        this.onDataChannelOpen(event.peerId);
+        break;
+
+      case 'rtc:dataChannelMessage':
+        this.onDataChannelMessage(event.peerId, event.data);
+        break;
+
+      case 'rtc:dataChannelClose':
+        this.onDataChannelClose(event.peerId);
+        break;
+
+      case 'rtc:dataChannelError':
+        this.onDataChannelError(event.peerId, event.error);
+        break;
     }
   }
 
-  private async handleDataRequest(peer: PeerInfo, req: DataRequest): Promise<void> {
-    if (!this.store) return;
+  private onPeerCreated(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
 
-    const data = await this.store.get(req.h);
-    if (!data) return;
+    // If outbound, create offer
+    if (peer.direction === 'outbound') {
+      this.sendCommand({ type: 'rtc:createOffer', peerId });
+    }
+  }
 
-    // Send response (fragment if necessary)
-    if (data.length <= FRAGMENT_SIZE) {
-      // Single response
-      const res: DataResponse = { h: req.h, d: data };
-      const msg = new Uint8Array([MSG_TYPE_RESPONSE, ...encode(res)]);
-      peer.dataChannel?.send(msg);
-      peer.bytesSent += data.length;
+  private onPeerStateChange(peerId: string, state: RTCPeerConnectionState): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    this.log(`Peer ${peerId.slice(0, 20)} state: ${state}`);
+
+    if (state === 'connected') {
+      peer.state = 'connected';
+      peer.connectedAt = Date.now();
+    } else if (state === 'failed' || state === 'closed') {
+      this.closePeer(peerId);
+    }
+  }
+
+  private onPeerClosed(peerId: string): void {
+    this.peers.delete(peerId);
+  }
+
+  private onOfferCreated(peerId: string, sdp: RTCSessionDescriptionInit): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    // Set local description
+    this.sendCommand({ type: 'rtc:setLocalDescription', peerId, sdp });
+
+    // Send offer via signaling
+    const msg: SignalingMessage = {
+      type: 'offer',
+      offer: sdp,
+      recipient: peerId,
+      peerId: this.myPeerId.uuid,
+    };
+    this.sendSignaling(msg, peer.pubkey);
+  }
+
+  private onAnswerCreated(peerId: string, sdp: RTCSessionDescriptionInit): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    // Set local description
+    this.sendCommand({ type: 'rtc:setLocalDescription', peerId, sdp });
+
+    // Send answer via signaling
+    const msg: SignalingMessage = {
+      type: 'answer',
+      answer: sdp,
+      recipient: peerId,
+      peerId: this.myPeerId.uuid,
+    };
+    this.sendSignaling(msg, peer.pubkey);
+  }
+
+  private onDescriptionSet(peerId: string, error?: string): void {
+    if (error) {
+      this.log(`Description set error for ${peerId}: ${error}`);
+      return;
+    }
+
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    // If we just set remote description for inbound, create answer (only once)
+    if (peer.direction === 'inbound' && peer.state === 'connecting' && !peer.answerCreated) {
+      peer.answerCreated = true;
+      this.sendCommand({ type: 'rtc:createAnswer', peerId });
+    }
+  }
+
+  private onIceCandidate(peerId: string, candidate: RTCIceCandidateInit | null): void {
+    if (!candidate) return;
+
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    // Send candidate via signaling
+    const msg: SignalingMessage = {
+      type: 'candidate',
+      candidate,
+      recipient: peerId,
+      peerId: this.myPeerId.uuid,
+    };
+    this.sendSignaling(msg, peer.pubkey);
+  }
+
+  private onDataChannelOpen(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    peer.dataChannelReady = true;
+    this.log(`Data channel open: ${peerId.slice(0, 20)}`);
+  }
+
+  private onDataChannelClose(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    peer.dataChannelReady = false;
+    this.closePeer(peerId);
+  }
+
+  private onDataChannelError(peerId: string, error: string): void {
+    this.log(`Data channel error for ${peerId}: ${error}`);
+  }
+
+  // ============================================================================
+  // Data Protocol
+  // ============================================================================
+
+  private async onDataChannelMessage(peerId: string, data: Uint8Array): Promise<void> {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    const msg = parseMessage(data);
+    if (!msg) {
+      this.log(`Failed to parse message from ${peerId}`);
+      return;
+    }
+
+    if (msg.type === MSG_TYPE_REQUEST) {
+      await this.handleRequest(peer, msg.body);
+    } else if (msg.type === MSG_TYPE_RESPONSE) {
+      await this.handleResponse(peer, msg.body);
+    }
+  }
+
+  private async handleRequest(peer: WorkerPeer, req: DataRequest): Promise<void> {
+    peer.stats.requestsReceived++;
+    const hashKey = hashToKey(req.h);
+
+    // Try to get from local store
+    const data = await this.localStore.get(req.h);
+
+    if (data) {
+      // Send response
+      await this.sendResponse(peer, req.h, data);
     } else {
-      // Fragmented response
+      // Track their request for later push
+      peer.theirRequests.set(hashKey, {
+        hash: req.h,
+        requestedAt: Date.now(),
+      });
+
+      // Forward if HTL allows
+      const htl = req.htl ?? MAX_HTL;
+      if (shouldForward(htl)) {
+        const newHtl = decrementHTL(htl, peer.htlConfig);
+        await this.forwardRequest(req.h, peer.peerId, newHtl);
+      }
+    }
+  }
+
+  private async handleResponse(peer: WorkerPeer, res: DataResponse): Promise<void> {
+    peer.stats.responsesReceived++;
+    peer.stats.bytesReceived += res.d.length;
+
+    const hashKey = hashToKey(res.h);
+    const pending = peer.pendingRequests.get(hashKey);
+
+    if (!pending) {
+      // Unsolicited response - might be push from their request tracking
+      return;
+    }
+
+    clearTimeout(pending.timeout);
+    peer.pendingRequests.delete(hashKey);
+
+    // Verify hash
+    const valid = await verifyHash(res.d, res.h);
+    if (valid) {
+      // Store locally
+      await this.localStore.put(res.h, res.d);
+      pending.resolve(res.d);
+
+      // Push to peers who requested this
+      await this.pushToRequesters(res.h, res.d, peer.peerId);
+    } else {
+      this.log(`Hash mismatch from ${peer.peerId}`);
+      pending.resolve(null);
+    }
+  }
+
+  private async sendResponse(peer: WorkerPeer, hash: Uint8Array, data: Uint8Array): Promise<void> {
+    if (!peer.dataChannelReady) return;
+
+    peer.stats.responsesSent++;
+    peer.stats.bytesSent += data.length;
+
+    // Fragment if needed
+    if (data.length > FRAGMENT_SIZE) {
       const totalFragments = Math.ceil(data.length / FRAGMENT_SIZE);
       for (let i = 0; i < totalFragments; i++) {
         const start = i * FRAGMENT_SIZE;
         const end = Math.min(start + FRAGMENT_SIZE, data.length);
         const fragment = data.slice(start, end);
+        const res = createFragmentResponse(hash, fragment, i, totalFragments);
+        const encoded = new Uint8Array(encodeResponse(res));
+        this.sendCommand({ type: 'rtc:sendData', peerId: peer.peerId, data: encoded });
+      }
+    } else {
+      const res = createResponse(hash, data);
+      const encoded = new Uint8Array(encodeResponse(res));
+      this.sendCommand({ type: 'rtc:sendData', peerId: peer.peerId, data: encoded });
+    }
+  }
 
-        const res: DataResponse = {
-          h: req.h,
-          d: fragment,
-          i: i,
-          n: totalFragments,
-        };
-        const msg = new Uint8Array([MSG_TYPE_RESPONSE, ...encode(res)]);
-        peer.dataChannel?.send(msg);
-        peer.bytesSent += fragment.length;
+  private async forwardRequest(hash: Uint8Array, excludePeerId: string, htl: number): Promise<void> {
+    const hashKey = hashToKey(hash);
+
+    // Forward to all connected peers except the one who sent it
+    for (const [peerId, peer] of this.peers) {
+      if (peerId === excludePeerId) continue;
+      if (!peer.dataChannelReady) continue;
+
+      // Set up pending request so we can process the response
+      const timeout = setTimeout(() => {
+        peer.pendingRequests.delete(hashKey);
+      }, this.requestTimeout);
+
+      peer.pendingRequests.set(hashKey, {
+        hash,
+        resolve: () => {
+          // Response will be pushed to original requester via pushToRequesters
+        },
+        timeout,
+      });
+
+      const req = createRequest(hash, htl);
+      const encoded = new Uint8Array(encodeRequest(req));
+      this.sendCommand({ type: 'rtc:sendData', peerId, data: encoded });
+    }
+  }
+
+  private async pushToRequesters(hash: Uint8Array, data: Uint8Array, excludePeerId: string): Promise<void> {
+    const hashKey = hashToKey(hash);
+
+    for (const [peerId, peer] of this.peers) {
+      if (peerId === excludePeerId) continue;
+
+      const theirReq = peer.theirRequests.get(hashKey);
+      if (theirReq) {
+        peer.theirRequests.delete(hashKey);
+        await this.sendResponse(peer, hash, data);
       }
     }
   }
 
-  private handleDataResponse(peer: PeerInfo, res: DataResponse): void {
-    const hashHex = toHex(res.h);
-    const pending = this.pendingRequests.get(hashHex);
-    if (!pending) return;
+  // ============================================================================
+  // Public API
+  // ============================================================================
 
-    // TODO: Handle fragmented responses (reassembly)
-    // For now, just handle single responses
-    if (res.i === undefined) {
-      clearTimeout(pending.timeout);
-      this.pendingRequests.delete(hashHex);
-      pending.resolve(res.d);
+  /**
+   * Request data from peers
+   */
+  async get(hash: Uint8Array): Promise<Uint8Array | null> {
+    // Try connected peers
+    const connectedPeers = Array.from(this.peers.values())
+      .filter(p => p.dataChannelReady);
+
+    if (connectedPeers.length === 0) {
+      return null;
     }
-  }
 
-  private requestFromPeer(peer: PeerInfo, hash: Hash): Promise<Uint8Array | null> {
+    // Send request to all peers, first response wins
     return new Promise((resolve) => {
-      const hashHex = toHex(hash);
+      let resolved = false;
+      const hashKey = hashToKey(hash);
 
-      // Set timeout
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(hashHex);
-        resolve(null);
-      }, 5000);
+      for (const peer of connectedPeers) {
+        const timeout = setTimeout(() => {
+          peer.pendingRequests.delete(hashKey);
+          checkDone();
+        }, this.requestTimeout);
 
-      this.pendingRequests.set(hashHex, { resolve, timeout });
+        peer.pendingRequests.set(hashKey, {
+          hash,
+          resolve: (data) => {
+            if (!resolved && data) {
+              resolved = true;
+              resolve(data);
+            }
+            checkDone();
+          },
+          timeout,
+        });
 
-      // Send request
-      const req: DataRequest = { h: hash };
-      const msg = new Uint8Array([MSG_TYPE_REQUEST, ...encode(req)]);
-      peer.dataChannel?.send(msg);
-      peer.requestsSent++;
+        peer.stats.requestsSent++;
+        const req = createRequest(hash, MAX_HTL);
+        const encoded = new Uint8Array(encodeRequest(req));
+        this.sendCommand({ type: 'rtc:sendData', peerId: peer.peerId, data: encoded });
+      }
+
+      let pending = connectedPeers.length;
+      const checkDone = () => {
+        pending--;
+        if (pending === 0 && !resolved) {
+          resolve(null);
+        }
+      };
     });
   }
-}
 
-// Singleton
-let instance: WebRTCManager | null = null;
-
-export function getWebRTCManager(): WebRTCManager {
-  if (!instance) {
-    instance = new WebRTCManager();
+  /**
+   * Get peer stats for UI
+   */
+  getPeerStats(): Array<{
+    peerId: string;
+    pubkey: string;
+    connected: boolean;
+    pool: PeerPool;
+    requestsSent: number;
+    requestsReceived: number;
+    responsesSent: number;
+    responsesReceived: number;
+    bytesSent: number;
+    bytesReceived: number;
+  }> {
+    return Array.from(this.peers.values()).map(peer => ({
+      peerId: peer.peerId,
+      pubkey: peer.pubkey,
+      connected: peer.state === 'connected' && peer.dataChannelReady,
+      pool: peer.pool,
+      requestsSent: peer.stats.requestsSent,
+      requestsReceived: peer.stats.requestsReceived,
+      responsesSent: peer.stats.responsesSent,
+      responsesReceived: peer.stats.responsesReceived,
+      bytesSent: peer.stats.bytesSent,
+      bytesReceived: peer.stats.bytesReceived,
+    }));
   }
-  return instance;
-}
 
-export function closeWebRTCManager(): void {
-  if (instance) {
-    instance.stop();
-    instance = null;
+  /**
+   * Get connected peer count
+   */
+  getConnectedCount(): number {
+    let count = 0;
+    for (const peer of this.peers.values()) {
+      if (peer.state === 'connected' && peer.dataChannelReady) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Set pool configuration
+   */
+  setPoolConfig(config: { follows: { max: number; satisfied: number }; other: { max: number; satisfied: number } }): void {
+    this.poolConfig = {
+      follows: { maxConnections: config.follows.max, satisfiedConnections: config.follows.satisfied },
+      other: { maxConnections: config.other.max, satisfiedConnections: config.other.satisfied },
+    };
+    this.log('Pool config updated:', this.poolConfig);
+
+    // Re-broadcast hello to trigger peer discovery with new limits
+    this.sendHello();
+  }
+
+  // ============================================================================
+  // Helpers
+  // ============================================================================
+
+  private log(...args: unknown[]): void {
+    if (this.debug) {
+      console.log('[WebRTC]', ...args);
+    }
   }
 }

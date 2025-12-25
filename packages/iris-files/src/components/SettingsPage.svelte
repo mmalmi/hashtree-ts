@@ -7,6 +7,7 @@
   import { nip19 } from 'nostr-tools';
   import { nostrStore, type RelayStatus, getNsec } from '../nostr';
   import { appStore, formatBytes, formatBandwidth, updateStorageStats, refreshWebRTCStats, getLifetimeStats, blockPeer, unblockPeer } from '../store';
+  import { getWorkerAdapter, type PeerStats } from '../workerAdapter';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { syncedStorageStore, refreshSyncedStorage } from '../stores/chunkMetadata';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS, DEFAULT_IMGPROXY_SETTINGS } from '../stores/settings';
@@ -199,16 +200,29 @@
 
   // App store - use $derived from the store directly
   let appState = $derived($appStore);
-  let peerList = $derived(appState.peers);
   let stats = $derived(appState.stats);
-  let myPeerId = $derived(appState.myPeerId);
-  let webrtcStats = $derived(appState.webrtcStats);
-  let perPeerStats = $derived(appState.perPeerStats);
-  let uploadBandwidth = $derived(appState.uploadBandwidth);
-  let downloadBandwidth = $derived(appState.downloadBandwidth);
+
+  // WebRTC peer stats from worker
+  let workerPeerStats = $state<PeerStats[]>([]);
+  let peerList = $derived(workerPeerStats.map(p => ({
+    peerId: p.peerId,
+    pubkey: p.pubkey,
+    state: p.connected ? 'connected' : 'disconnected',
+  })));
+  let myPeerId = $state<string | null>(null);
+  let webrtcStats = $derived({
+    bytesSent: workerPeerStats.reduce((sum, p) => sum + p.bytesSent, 0),
+    bytesReceived: workerPeerStats.reduce((sum, p) => sum + p.bytesReceived, 0),
+    bytesForwarded: 0,
+  });
+  let perPeerStats = $derived(new Map(
+    workerPeerStats.map(p => [p.peerId, { bytesSent: p.bytesSent, bytesReceived: p.bytesReceived, bytesForwarded: 0 }])
+  ));
+  let uploadBandwidth = $state(0);
+  let downloadBandwidth = $state(0);
 
   // Blocked peers from settings
-  let blockedPeers = $derived($settingsStore.blockedPeers);
+  let blockedPeers = $derived($settingsStore.blockedPeers ?? []);
 
   // Lifetime stats (recalculated on each render when webrtcStats changes)
   let lifetimeStats = $derived.by(() => {
@@ -217,14 +231,30 @@
     return getLifetimeStats();
   });
 
+  // Refresh peer stats from worker
+  async function refreshWorkerPeerStats() {
+    const adapter = getWorkerAdapter();
+    if (adapter) {
+      try {
+        workerPeerStats = await adapter.getPeerStats();
+      } catch {
+        // Worker not ready yet
+      }
+    }
+  }
+
   // Load initial data on mount and refresh stats periodically
   onMount(() => {
     updateStorageStats();
     refreshSyncedStorage();
     refreshWebRTCStats();
+    refreshWorkerPeerStats();
 
     // Refresh WebRTC stats every second while on settings page
-    const statsInterval = setInterval(refreshWebRTCStats, 1000);
+    const statsInterval = setInterval(() => {
+      refreshWebRTCStats();
+      refreshWorkerPeerStats();
+    }, 1000);
     return () => clearInterval(statsInterval);
   });
 

@@ -240,18 +240,18 @@ test.describe('WebRTC Live Fetch', () => {
       // Get WebRTC stats to verify it was used
       console.log('\n=== WebRTC stats ===');
 
-      const statsA = await pageA.evaluate(() => {
+      const statsA = await pageA.evaluate(async () => {
         const store = (window as any).webrtcStore;
-        if (!store) return null;
-        const { aggregate } = store.getStats?.() || {};
+        if (!store || !store.getStats) return null;
+        const { aggregate } = await store.getStats();
         return aggregate;
       });
       console.log('Broadcaster stats:', JSON.stringify(statsA, null, 2));
 
-      const statsB = await pageB.evaluate(() => {
+      const statsB = await pageB.evaluate(async () => {
         const store = (window as any).webrtcStore;
-        if (!store) return null;
-        const { aggregate } = store.getStats?.() || {};
+        if (!store || !store.getStats) return null;
+        const { aggregate } = await store.getStats();
         return aggregate;
       });
       console.log('Viewer stats:', JSON.stringify(statsB, null, 2));

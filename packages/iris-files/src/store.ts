@@ -1,36 +1,50 @@
 /**
  * Shared state and store instances using Svelte stores
+ *
+ * Storage architecture:
+ * - WorkerStore: Primary storage, proxies to worker thread
+ * - Worker owns: DexieStore (IndexedDB), Blossom fallback
+ * - Main thread: UI coordination only
  */
 import { writable, get } from 'svelte/store';
-import {
-  HashTree,
-  WebRTCStore,
-  LinkType,
-} from 'hashtree';
-import type { PeerStatus, EventSigner, EventEncrypter, EventDecrypter, GiftWrapper, GiftUnwrapper, PeerClassifier, BlossomSigner, WebRTCStats, PeerPool } from 'hashtree';
+import { HashTree, LinkType } from 'hashtree';
+import { getWorkerStore } from './stores/workerStore';
+import { closeWorkerAdapter, getWorkerAdapter } from './workerAdapter';
 
 // Re-export LinkType for e2e tests that can't import 'hashtree' directly
 export { LinkType };
-import { socialGraphStore, getFollows, getFollowers, isFollowing } from './utils/socialGraph';
-import { settingsStore, DEFAULT_POOL_SETTINGS, DEFAULT_NETWORK_SETTINGS } from './stores/settings';
-import { nostrStore } from './nostr';
-import { blossomLogStore } from './stores/blossomLog';
-import { BlossomStore, DexieStore } from 'hashtree';
 
-// Store instances - using Dexie/IndexedDB for file storage (better iOS Safari support)
-export const localStore = new DexieStore('hashtree-explorer');
+// Export localStore - always uses WorkerStore (no fallback)
+// Worker MUST be initialized before using storage
+export const localStore = {
+  async put(hash: Uint8Array, data: Uint8Array): Promise<boolean> {
+    return getWorkerStore().put(hash, data);
+  },
+  async get(hash: Uint8Array): Promise<Uint8Array | null> {
+    return getWorkerStore().get(hash);
+  },
+  async has(hash: Uint8Array): Promise<boolean> {
+    return getWorkerStore().has(hash);
+  },
+  async delete(hash: Uint8Array): Promise<boolean> {
+    return getWorkerStore().delete(hash);
+  },
+  // Stats methods - TODO: implement in worker
+  async count(): Promise<number> {
+    return 0;
+  },
+  async totalBytes(): Promise<number> {
+    return 0;
+  },
+};
 
-// HashTree instance - single class for all tree operations
-let _tree = new HashTree({ store: localStore });
+// HashTree instance - uses localStore which routes to worker
+const _tree = new HashTree({ store: localStore });
 
 // Getter for tree - always returns current instance
 export function getTree(): HashTree {
   return _tree;
 }
-
-
-// WebRTC store - initialized when user logs in with a key
-export let webrtcStore: WebRTCStore | null = null;
 
 // Storage stats
 export interface StorageStats {
@@ -38,192 +52,59 @@ export interface StorageStats {
   bytes: number;
 }
 
-// Per-peer stats
-export interface PeerStatsInfo {
+// Peer info for connectivity indicator
+export interface PeerInfo {
+  peerId: string;
   pubkey: string;
-  pool: PeerPool;
-  stats: {
-    requestsSent: number;
-    requestsReceived: number;
-    responsesSent: number;
-    responsesReceived: number;
-    receiveErrors: number;
-    bytesSent: number;
-    bytesReceived: number;
-    bytesForwarded: number;
-  };
+  state: 'connected' | 'disconnected';
+  pool: 'follows' | 'others';
 }
 
-// Bandwidth tracking (rolling 5-second window)
-const BANDWIDTH_WINDOW_MS = 5000;
-let bandwidthSamples: { timestamp: number; bytesSent: number; bytesReceived: number }[] = [];
-let lastBytesSent = 0;
-let lastBytesReceived = 0;
-
-// Lifetime transfer stats (persisted to localStorage)
-const LIFETIME_STATS_KEY = 'hashtree:lifetimeStats';
-interface LifetimeStats {
+// Detailed peer stats for getStats()
+export interface DetailedPeerStats {
+  peerId: string;
+  pubkey: string;
+  connected: boolean;
+  pool: 'follows' | 'other';
+  requestsSent: number;
+  requestsReceived: number;
+  responsesSent: number;
+  responsesReceived: number;
   bytesSent: number;
   bytesReceived: number;
-  bytesForwarded: number;
-  lastSessionBytesSent: number;
-  lastSessionBytesReceived: number;
-  lastSessionBytesForwarded: number;
 }
 
-function loadLifetimeStats(): LifetimeStats {
-  try {
-    const stored = localStorage.getItem(LIFETIME_STATS_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch {}
-  return {
-    bytesSent: 0,
-    bytesReceived: 0,
-    bytesForwarded: 0,
-    lastSessionBytesSent: 0,
-    lastSessionBytesReceived: 0,
-    lastSessionBytesForwarded: 0,
-  };
-}
-
-const lifetimeStats = loadLifetimeStats();
-
-function saveLifetimeStats(): void {
-  try {
-    localStorage.setItem(LIFETIME_STATS_KEY, JSON.stringify(lifetimeStats));
-  } catch {}
-}
-
-// Update lifetime stats from current session stats
-function updateLifetimeStats(sessionBytesSent: number, sessionBytesReceived: number, sessionBytesForwarded: number): void {
-  // Add delta since last update
-  const deltaSent = sessionBytesSent - lifetimeStats.lastSessionBytesSent;
-  const deltaReceived = sessionBytesReceived - lifetimeStats.lastSessionBytesReceived;
-  const deltaForwarded = sessionBytesForwarded - lifetimeStats.lastSessionBytesForwarded;
-
-  if (deltaSent > 0) lifetimeStats.bytesSent += deltaSent;
-  if (deltaReceived > 0) lifetimeStats.bytesReceived += deltaReceived;
-  if (deltaForwarded > 0) lifetimeStats.bytesForwarded += deltaForwarded;
-
-  lifetimeStats.lastSessionBytesSent = sessionBytesSent;
-  lifetimeStats.lastSessionBytesReceived = sessionBytesReceived;
-  lifetimeStats.lastSessionBytesForwarded = sessionBytesForwarded;
-
-  saveLifetimeStats();
-}
-
-export function getLifetimeStats(): { bytesSent: number; bytesReceived: number; bytesForwarded: number } {
-  return {
-    bytesSent: lifetimeStats.bytesSent,
-    bytesReceived: lifetimeStats.bytesReceived,
-    bytesForwarded: lifetimeStats.bytesForwarded,
-  };
-}
-
-// WebSocket fallback status
-// App state store interface
+// App state store interface (simplified - WebRTC stats come from worker)
 interface AppState {
-  // WebRTC state
-  peerCount: number;
-  peers: PeerStatus[];
-  myPeerId: string | null;
-  fallbackStoresCount: number;
-
-  // WebRTC stats
-  webrtcStats: WebRTCStats | null;
-  perPeerStats: Map<string, PeerStatsInfo>;
-
-  // Bandwidth (bytes per second, rolling average)
-  uploadBandwidth: number;
-  downloadBandwidth: number;
-
   // Storage stats
   stats: StorageStats;
+  // WebRTC peer count (from worker)
+  peerCount: number;
+  // Peer list for connectivity indicator
+  peers: PeerInfo[];
 }
 
 // Create Svelte store for app state
 function createAppStore() {
   const { subscribe, update } = writable<AppState>({
+    stats: { items: 0, bytes: 0 },
     peerCount: 0,
     peers: [],
-    myPeerId: null,
-    fallbackStoresCount: 0,
-    webrtcStats: null,
-    perPeerStats: new Map(),
-    uploadBandwidth: 0,
-    downloadBandwidth: 0,
-    stats: { items: 0, bytes: 0 },
   });
 
   return {
     subscribe,
 
+    setStats: (stats: StorageStats) => {
+      update(state => ({ ...state, stats }));
+    },
+
     setPeerCount: (count: number) => {
       update(state => ({ ...state, peerCount: count }));
     },
 
-    setPeers: (peers: PeerStatus[]) => {
-      update(state => ({ ...state, peers }));
-    },
-
-    setMyPeerId: (id: string | null) => {
-      update(state => ({ ...state, myPeerId: id }));
-    },
-
-    setFallbackStoresCount: (count: number) => {
-      update(state => ({ ...state, fallbackStoresCount: count }));
-    },
-
-    setWebRTCStats: (
-      webrtcStats: WebRTCStats | null,
-      perPeerStats: Map<string, PeerStatsInfo>
-    ) => {
-      // Calculate bandwidth from rolling window
-      let uploadBandwidth = 0;
-      let downloadBandwidth = 0;
-
-      if (webrtcStats) {
-        const now = Date.now();
-        const currentBytesSent = webrtcStats.bytesSent;
-        const currentBytesReceived = webrtcStats.bytesReceived;
-
-        // Add new sample (delta since last)
-        if (lastBytesSent > 0 || lastBytesReceived > 0) {
-          bandwidthSamples.push({
-            timestamp: now,
-            bytesSent: currentBytesSent - lastBytesSent,
-            bytesReceived: currentBytesReceived - lastBytesReceived,
-          });
-        }
-
-        // Update last values
-        lastBytesSent = currentBytesSent;
-        lastBytesReceived = currentBytesReceived;
-
-        // Remove samples older than window
-        const cutoff = now - BANDWIDTH_WINDOW_MS;
-        bandwidthSamples = bandwidthSamples.filter(s => s.timestamp > cutoff);
-
-        // Calculate average bandwidth (bytes per second)
-        if (bandwidthSamples.length > 0) {
-          const totalSent = bandwidthSamples.reduce((sum, s) => sum + s.bytesSent, 0);
-          const totalReceived = bandwidthSamples.reduce((sum, s) => sum + s.bytesReceived, 0);
-          const windowSeconds = BANDWIDTH_WINDOW_MS / 1000;
-          uploadBandwidth = totalSent / windowSeconds;
-          downloadBandwidth = totalReceived / windowSeconds;
-        }
-
-        // Persist lifetime stats
-        updateLifetimeStats(webrtcStats.bytesSent, webrtcStats.bytesReceived, webrtcStats.bytesForwarded);
-      }
-
-      update(state => ({ ...state, webrtcStats, perPeerStats, uploadBandwidth, downloadBandwidth }));
-    },
-
-    setStats: (stats: StorageStats) => {
-      update(state => ({ ...state, stats }));
+    setPeers: (peers: PeerInfo[]) => {
+      update(state => ({ ...state, peers, peerCount: peers.filter(p => p.state === 'connected').length }));
     },
 
     // Get current state synchronously (for compatibility)
@@ -282,194 +163,131 @@ export function decodeAsText(data: Uint8Array): string | null {
   return null;
 }
 
-/**
- * Create peer classifier using social graph
- * Returns 'follows' for users we follow or who follow us
- * Returns 'other' for everyone else
- *
- * Uses isFollowing() which works immediately after handleEvent(),
- * unlike getFollowDistance() which requires recalculation.
- */
-function createPeerClassifier(): PeerClassifier {
-  return (pubkey: string) => {
+// Stub functions for compatibility - WebRTC is now in worker
+// These are called from nostr.ts on login/logout
+
+export function initWebRTC(): void {
+  // WebRTC is handled by worker - nothing to do here
+  console.log('[Store] WebRTC initialization delegated to worker');
+}
+
+export function stopWebRTC(): void {
+  // Close worker (clears identity, stops WebRTC, Nostr)
+  closeWorkerAdapter();
+}
+
+// Legacy exports for compatibility - WebRTC is now in worker
+// Create a proxy object that forwards to worker for test compatibility
+const webrtcStoreProxy = {
+  getPeers: () => get(appStore).peers.map(p => ({
+    ...p,
+    isConnected: p.state === 'connected',
+  })),
+  getConnectedCount: () => get(appStore).peers.filter(p => p.state === 'connected').length,
+  get: async (hash: string) => {
+    const adapter = getWorkerAdapter();
+    if (!adapter) return null;
+    return adapter.get(hash);
+  },
+  setPoolConfig: (_config: unknown) => {
+    // Pool config is managed by worker, no-op for now
+  },
+  setRelays: (_relays: string[]) => {
+    // Relays are managed by worker, no-op for now
+  },
+  sendHello: () => {
+    const adapter = getWorkerAdapter();
+    adapter?.sendHello();
+  },
+  getStats: async () => {
+    const adapter = getWorkerAdapter();
+    if (!adapter) {
+      return {
+        aggregate: { requestsSent: 0, requestsReceived: 0, responsesSent: 0, responsesReceived: 0, bytesSent: 0, bytesReceived: 0 },
+        perPeer: new Map(),
+      };
+    }
+
+    const peerStats = await adapter.getPeerStats();
+
+    // Aggregate stats from all peers
+    const aggregate = {
+      requestsSent: 0,
+      requestsReceived: 0,
+      responsesSent: 0,
+      responsesReceived: 0,
+      bytesSent: 0,
+      bytesReceived: 0,
+    };
+
+    const perPeer = new Map<string, DetailedPeerStats>();
+
+    for (const p of peerStats) {
+      aggregate.requestsSent += p.requestsSent;
+      aggregate.requestsReceived += p.requestsReceived;
+      aggregate.responsesSent += p.responsesSent;
+      aggregate.responsesReceived += p.responsesReceived;
+      aggregate.bytesSent += p.bytesSent;
+      aggregate.bytesReceived += p.bytesReceived;
+
+      perPeer.set(p.peerId, {
+        peerId: p.peerId,
+        pubkey: p.pubkey,
+        connected: p.connected,
+        pool: 'other', // Worker doesn't track pool in stats
+        requestsSent: p.requestsSent,
+        requestsReceived: p.requestsReceived,
+        responsesSent: p.responsesSent,
+        responsesReceived: p.responsesReceived,
+        bytesSent: p.bytesSent,
+        bytesReceived: p.bytesReceived,
+      });
+    }
+
+    return { aggregate, perPeer };
+  },
+};
+export const webrtcStore = webrtcStoreProxy;
+export function getWebRTCStore() { return webrtcStoreProxy; }
+export function blockPeer(_pubkey: string): void {}
+export function unblockPeer(_pubkey: string): void {}
+
+// Expose webrtcStore on window for test compatibility
+// Use defineProperty to allow testHelpers to override if needed
+if (typeof window !== 'undefined' && !('webrtcStore' in window)) {
+  Object.defineProperty(window, 'webrtcStore', {
+    value: webrtcStoreProxy,
+    writable: true,
+    configurable: true,
+  });
+}
+
+// Refresh WebRTC stats from worker
+export async function refreshWebRTCStats(): Promise<void> {
+  const adapter = getWorkerAdapter();
+  if (!adapter) return;
+
+  try {
+    // Get current user's follows for pool classification
+    const { getFollowsSync } = await import('./stores/follows');
+    const { nostrStore } = await import('./nostr');
     const myPubkey = get(nostrStore).pubkey;
-    if (!myPubkey) {
-      return 'other';
-    }
+    const followsData = myPubkey ? getFollowsSync(myPubkey) : undefined;
+    const followsSet = new Set(followsData?.follows || []);
 
-    // Check if we follow them OR they follow us (sync, uses cache)
-    const weFollowThem = isFollowing(myPubkey, pubkey);
-    const theyFollowUs = isFollowing(pubkey, myPubkey);
-
-    if (weFollowThem || theyFollowUs) {
-      return 'follows';
-    }
-    return 'other';
-  };
-}
-
-/**
- * Get pubkeys of users we follow or who follow us
- * Used to filter hello subscriptions when others pool is disabled
- */
-function getFollowedPubkeys(): string[] {
-  const myPubkey = get(nostrStore).pubkey;
-  if (!myPubkey) return [];
-
-  const follows = getFollows(myPubkey);
-  const followers = getFollowers(myPubkey);
-
-  // Combine and deduplicate
-  const combined = new Set([...follows, ...followers]);
-  return Array.from(combined);
-}
-
-/**
- * Get pool config from settings store
- */
-function getPoolConfigFromSettings() {
-  const settings = get(settingsStore);
-  const pools = settings.poolsLoaded ? settings.pools : DEFAULT_POOL_SETTINGS;
-  return {
-    follows: { maxConnections: pools.followsMax, satisfiedConnections: pools.followsSatisfied },
-    other: { maxConnections: pools.otherMax, satisfiedConnections: pools.otherSatisfied },
-  };
-}
-
-// Initialize WebRTC store with signer and pubkey
-export function initWebRTC(
-  signer: EventSigner,
-  pubkey: string,
-  encrypt: EventEncrypter,
-  decrypt: EventDecrypter,
-  giftWrap: GiftWrapper,
-  giftUnwrap: GiftUnwrapper,
-) {
-  if (webrtcStore) {
-    webrtcStore.stop();
-  }
-
-  // Get network settings (relays for WebRTC, blossom servers for fallback)
-  const networkSettings = get(settingsStore).network;
-  const relays = networkSettings?.relays?.length > 0
-    ? networkSettings.relays
-    : DEFAULT_NETWORK_SETTINGS.relays;
-  const blossomServers = networkSettings?.blossomServers?.length > 0
-    ? networkSettings.blossomServers
-    : DEFAULT_NETWORK_SETTINGS.blossomServers;
-
-  webrtcStore = new WebRTCStore({
-    signer,
-    pubkey,
-    encrypt,
-    decrypt,
-    giftWrap,
-    giftUnwrap,
-    localStore: localStore,
-    debug: true,
-    relays,
-    // Pool-based peer management
-    peerClassifier: createPeerClassifier(),
-    pools: getPoolConfigFromSettings(),
-    // Function to get followed pubkeys for subscription filtering
-    // When others pool is disabled, only subscribe to hellos from these pubkeys
-    getFollowedPubkeys,
-    // Function to check if a peer is blocked
-    isPeerBlocked: (peerPubkey: string) => settingsStore.isPeerBlocked(peerPubkey),
-    // Fallback to Blossom HTTP server when WebRTC peers don't have the data
-    // Pass signer so writes can be authenticated (NIP-98)
-    fallbackStores: [new BlossomStore({
-      servers: blossomServers,
-      signer: signer as BlossomSigner,
-      logger: (entry) => blossomLogStore.add(entry),
-    })],
-  });
-
-  _tree = new HashTree({ store: webrtcStore });
-
-  webrtcStore.on((event) => {
-    if (event.type === 'update') {
-      appStore.setPeerCount(webrtcStore?.getConnectedCount() ?? 0);
-      appStore.setPeers(webrtcStore?.getPeers() ?? []);
-      appStore.setFallbackStoresCount(webrtcStore?.getFallbackStoresCount() ?? 0);
-
-      // Update stats
-      if (webrtcStore) {
-        const { aggregate, perPeer } = webrtcStore.getStats();
-        appStore.setWebRTCStats(aggregate, perPeer);
-      }
-    }
-  });
-
-  // Update peer classifier and hello subscription when social graph changes
-  const unsubSocialGraph = socialGraphStore.subscribe(() => {
-    if (webrtcStore) {
-      webrtcStore.setPeerClassifier(createPeerClassifier());
-      // Also update hello subscription in case follows list changed
-      // (when others pool is disabled, we only subscribe to followed users)
-      webrtcStore.updateHelloSubscription();
-    }
-  });
-
-  // Update pool config when settings change
-  let prevPools = get(settingsStore).pools;
-  const unsubSettings = settingsStore.subscribe((state) => {
-    if (webrtcStore && state.pools !== prevPools) {
-      webrtcStore.setPoolConfig(getPoolConfigFromSettings());
-      prevPools = state.pools;
-    }
-  });
-
-  // Store unsubscribe functions for cleanup
-  (webrtcStore as WebRTCStore & { _unsubscribers?: (() => void)[] })._unsubscribers = [
-    unsubSocialGraph,
-    unsubSettings,
-  ];
-
-  appStore.setMyPeerId(webrtcStore.getMyPeerId());
-  appStore.setFallbackStoresCount(webrtcStore.getFallbackStoresCount());
-  webrtcStore.start();
-}
-
-// Stop WebRTC store
-export function stopWebRTC() {
-  if (webrtcStore) {
-    // Cleanup subscriptions
-    const store = webrtcStore as WebRTCStore & { _unsubscribers?: (() => void)[] };
-    store._unsubscribers?.forEach(unsub => unsub());
-
-    webrtcStore.stop();
-    webrtcStore = null;
-    appStore.setPeerCount(0);
-    appStore.setPeers([]);
-    appStore.setMyPeerId(null);
-    appStore.setFallbackStoresCount(0);
-    _tree = new HashTree({ store: localStore });
+    const stats = await adapter.getPeerStats();
+    const peers: PeerInfo[] = stats.map(p => ({
+      peerId: p.peerId,
+      pubkey: p.pubkey,
+      state: p.connected ? 'connected' : 'disconnected',
+      pool: followsSet.has(p.pubkey) ? 'follows' : 'others',
+    }));
+    appStore.setPeers(peers);
+  } catch {
+    // Worker not ready or other error
   }
 }
 
-// Get WebRTC store for P2P fetching
-export function getWebRTCStore(): WebRTCStore | null {
-  return webrtcStore;
-}
-
-// Block a peer: add to blocked list and immediately disconnect
-export function blockPeer(pubkey: string): void {
-  settingsStore.blockPeer(pubkey);
-  if (webrtcStore) {
-    webrtcStore.disconnectPeerByPubkey(pubkey);
-  }
-}
-
-// Unblock a peer
-export function unblockPeer(pubkey: string): void {
-  settingsStore.unblockPeer(pubkey);
-}
-
-// Refresh WebRTC stats (call periodically to update UI)
-export function refreshWebRTCStats(): void {
-  if (webrtcStore) {
-    const { aggregate, perPeer } = webrtcStore.getStats();
-    appStore.setWebRTCStats(aggregate, perPeer);
-  }
+export function getLifetimeStats() {
+  return { bytesSent: 0, bytesReceived: 0, bytesForwarded: 0 };
 }
