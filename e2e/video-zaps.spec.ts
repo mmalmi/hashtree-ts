@@ -26,8 +26,18 @@ async function ensureLoggedIn(page: any) {
  */
 async function getUserNpub(page: any): Promise<string> {
   return await page.evaluate(() => {
-    const store = (window as any).__nostrStore;
-    return store?.npub || '';
+    return new Promise<string>((resolve) => {
+      const store = (window as any).__nostrStore;
+      if (!store || !store.subscribe) {
+        resolve('');
+        return;
+      }
+      const unsub = store.subscribe((state: any) => {
+        resolve(state?.npub || '');
+      });
+      // Immediately unsubscribe since we just want the current value
+      if (typeof unsub === 'function') unsub();
+    });
   });
 }
 
@@ -138,52 +148,84 @@ test.describe('Video Zaps', () => {
     await page.screenshot({ path: 'e2e/screenshots/video-zap-button.png' });
   });
 
-  test('zap modal opens for user with lightning address', async ({ page }) => {
+  test('zap modal opens when profile has lud16', async ({ page }) => {
     test.slow();
-
-    // Use a known npub that has lud16 set (sirius - has lightning address)
-    // This tests that the zap modal opens when viewing videos from users with lud16
-    const knownNpubWithLud16 = 'npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk';
 
     await page.goto('/video.html#/');
     await disableOthersPool(page);
     await ensureLoggedIn(page);
 
-    // Navigate to the known user's profile to find a video
-    await page.goto(`/video.html#/${knownNpubWithLud16}`);
-    await page.waitForTimeout(2000);
+    // Get current user's npub
+    const userNpub = await getUserNpub(page);
+    console.log('User npub:', userNpub);
 
-    // Find any video card and click it
-    const videoCard = page.locator('a[href*="/videos/"]').first();
-    const hasVideo = await videoCard.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (!hasVideo) {
-      console.log('No videos found for test user, skipping modal test');
+    // Set lud16 in profile edit page
+    if (!userNpub) {
+      console.log('No npub found, skipping test');
       return;
     }
+    await page.goto(`/video.html#/${userNpub}/edit`);
 
-    await videoCard.click();
+    // Wait for Edit Profile heading to appear
+    await expect(page.getByRole('heading', { name: 'Edit Profile' })).toBeVisible({ timeout: 15000 });
+
+    // Find and fill lightning address field
+    const lud16Input = page.getByTestId('lud16-input');
+    await expect(lud16Input).toBeVisible({ timeout: 10000 });
+    await lud16Input.fill('test@getalby.com');
+
+    // Save profile
+    const saveBtn = page.locator('button:has-text("Save")');
+    await saveBtn.click();
     await page.waitForTimeout(2000);
+    console.log('Profile saved with lud16');
 
-    // Zap button should be visible and enabled (user has lud16)
+    // Upload a video
+    await page.goto('/video.html#/');
+    await uploadTestVideo(page);
+
+    // Wait for profile to be loaded
+    await page.waitForTimeout(3000);
+
+    // Check console logs for debug output
+    const logs: string[] = [];
+    page.on('console', msg => {
+      if (msg.text().includes('[VideoZapButton]')) {
+        logs.push(msg.text());
+        console.log('Browser log:', msg.text());
+      }
+    });
+
+    // Zap button should be visible
     const zapButton = page.getByTestId('zap-button');
     await expect(zapButton).toBeVisible({ timeout: 10000 });
 
+    // Check if button is enabled (not disabled)
     const isDisabled = await zapButton.isDisabled();
     console.log('Zap button disabled:', isDisabled);
 
+    // Wait a bit more for profile to load if disabled
     if (isDisabled) {
-      console.log('Button is disabled - profile may not have loaded lud16 yet');
       await page.waitForTimeout(3000);
+      const stillDisabled = await zapButton.isDisabled();
+      console.log('After wait, still disabled:', stillDisabled);
     }
 
     // Click zap button
     await zapButton.click();
+    await page.waitForTimeout(500);
+
+    // Check if modal opened
+    const modalVisible = await page.getByTestId('zap-modal').isVisible().catch(() => false);
+    console.log('Modal visible:', modalVisible);
+
+    // Take screenshot regardless
+    await page.screenshot({ path: 'e2e/screenshots/video-zap-modal-test.png' });
+
+    // Print collected logs
+    console.log('Collected logs:', logs);
 
     // Modal should open
     await expect(page.getByTestId('zap-modal')).toBeVisible({ timeout: 5000 });
-
-    // Take screenshot
-    await page.screenshot({ path: 'e2e/screenshots/video-zap-modal.png' });
   });
 });

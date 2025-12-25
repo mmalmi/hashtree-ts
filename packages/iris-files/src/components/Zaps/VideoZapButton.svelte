@@ -23,8 +23,8 @@
   // Check if owner has lightning address
   let ownerNpub = $derived(ownerPubkey ? nip19.npubEncode(ownerPubkey) : '');
   let profileStore = $derived(ownerNpub ? createProfileStore(ownerNpub) : null);
-  let profile = $state<{ lud16?: string } | null>(null);
-  let hasLightningAddress = $derived(!!profile?.lud16);
+  let profile = $state<{ lud16?: string; lud06?: string } | null>(null);
+  let hasLightningAddress = $derived(!!profile?.lud16 || !!profile?.lud06);
   let canZap = $derived(hasLightningAddress); // Can zap if owner has lightning address (including yourself)
   let isDisabled = $derived(!hasLightningAddress); // Disabled if no lightning address
 

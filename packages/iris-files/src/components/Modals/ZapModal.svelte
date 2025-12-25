@@ -22,11 +22,22 @@
 </script>
 
 <script lang="ts">
+  import { bech32 } from '@scure/base';
   import QRCode from 'qrcode';
   import { ndk, nostrStore } from '../../nostr';
   import { createProfileStore } from '../../stores/profile';
   import { NDKEvent } from '@nostr-dev-kit/ndk';
   import CopyText from '../CopyText.svelte';
+
+  // Decode LNURL (bech32 encoded URL)
+  function decodeLnurl(lnurl: string): string | null {
+    try {
+      const decoded = bech32.decodeToBytes(lnurl.toLowerCase());
+      return new TextDecoder().decode(decoded.bytes);
+    } catch {
+      return null;
+    }
+  }
 
   // Zap amounts in sats
   const ZAP_AMOUNTS = [21, 100, 500, 1000, 5000, 10000];
@@ -69,16 +80,18 @@
       customAmount = '';
       comment = '';
       // Fetch LNURL data when modal opens
-      if (profile?.lud16) {
-        fetchLnurlData(profile.lud16);
+      const lnAddress = profile?.lud16 || profile?.lud06;
+      if (lnAddress) {
+        fetchLnurlData(lnAddress);
       }
     }
   });
 
   // Re-fetch when profile loads
   $effect(() => {
-    if (show && profile?.lud16 && !lnurlData && !loading) {
-      fetchLnurlData(profile.lud16);
+    const lnAddress = profile?.lud16 || profile?.lud06;
+    if (show && lnAddress && !lnurlData && !loading) {
+      fetchLnurlData(lnAddress);
     }
   });
 
@@ -97,19 +110,32 @@
     return () => document.removeEventListener('keydown', handleKeyDown);
   });
 
-  async function fetchLnurlData(lud16: string) {
+  async function fetchLnurlData(lnAddress: string) {
     loading = true;
     error = null;
 
     try {
-      // Parse lud16 (lightning address) to LNURL endpoint
-      // format: user@domain.com -> https://domain.com/.well-known/lnurlp/user
-      const [user, domain] = lud16.split('@');
-      if (!user || !domain) {
-        throw new Error('Invalid lightning address');
-      }
+      let url: string;
 
-      const url = `https://${domain}/.well-known/lnurlp/${user}`;
+      // Check if it's lud06 (LNURL - starts with lnurl) or lud16 (lightning address - contains @)
+      if (lnAddress.toLowerCase().startsWith('lnurl')) {
+        // Decode bech32 LNURL
+        const decoded = decodeLnurl(lnAddress);
+        if (!decoded) {
+          throw new Error('Invalid LNURL');
+        }
+        url = decoded;
+      } else if (lnAddress.includes('@')) {
+        // Parse lud16 (lightning address) to LNURL endpoint
+        // format: user@domain.com -> https://domain.com/.well-known/lnurlp/user
+        const [user, domain] = lnAddress.split('@');
+        if (!user || !domain) {
+          throw new Error('Invalid lightning address');
+        }
+        url = `https://${domain}/.well-known/lnurlp/${user}`;
+      } else {
+        throw new Error('Invalid lightning address format');
+      }
       const response = await fetch(url);
 
       if (!response.ok) {

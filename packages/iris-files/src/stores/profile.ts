@@ -14,6 +14,7 @@ export interface Profile {
   website?: string;
   banner?: string;
   lud16?: string;
+  lud06?: string;
 }
 
 // In-memory profile cache

@@ -217,6 +217,7 @@
           bind:value={lud16}
           placeholder="you@getalby.com"
           class="w-full p-3 rounded bg-surface-2 border border-surface-3 text-text-1"
+          data-testid="lud16-input"
         />
       </div>
 
