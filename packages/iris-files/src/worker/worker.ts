@@ -1166,6 +1166,11 @@ const KIND_CONTACTS = 3;
  * Subscribe to kind:3 contact list events for social graph
  */
 function setupSocialGraphSubscription(rootPubkey: string): void {
+  if (!rootPubkey || rootPubkey.length !== 64) {
+    console.warn('[Worker] Invalid pubkey for social graph subscription:', rootPubkey);
+    return;
+  }
+
   const nostr = getNostrManager();
 
   // Track latest event per pubkey to avoid processing old events
@@ -1183,7 +1188,7 @@ function setupSocialGraphSubscription(rootPubkey: string): void {
     }
   });
 
-  // Subscribe to contact lists from root user's follows (2 degrees)
+  // Subscribe to contact lists from root user
   nostr.subscribe('socialgraph-contacts', [{
     kinds: [KIND_CONTACTS],
     authors: [rootPubkey],
