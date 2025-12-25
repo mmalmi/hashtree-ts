@@ -11,23 +11,31 @@
  */
 
 import { HashTree } from '../hashtree';
-import { OpfsStore } from '../store/opfs';
+import { DexieStore } from '../store/dexie';
 import type {
   WorkerRequest,
   WorkerResponse,
   WorkerConfig,
   SignedEvent,
-  UnsignedEvent,
+  SocialGraphEvent,
 } from './protocol';
 import { getNostrManager, closeNostrManager } from './nostr';
 import { getWebRTCManager, closeWebRTCManager } from './webrtc';
 import { initTreeRootCache, getCachedRoot, clearMemoryCache } from './treeRootCache';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
 import type { EventTemplate } from 'nostr-tools';
+import {
+  setResponder,
+  handleSignedResponse,
+  handleEncryptedResponse,
+  handleDecryptedResponse,
+} from './nip07-bridge';
+import { initWorkerSigner, clearWorkerSigner } from './signer';
+import * as socialGraph from './socialGraph';
 
 // Worker state
 let tree: HashTree | null = null;
-let store: OpfsStore | null = null;
+let store: DexieStore | null = null;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- stored for future config access
 let _config: WorkerConfig | null = null;
 let mediaPort: MessagePort | null = null;
@@ -37,10 +45,6 @@ let mediaPort: MessagePort | null = null;
 let ephemeralSecretKey: Uint8Array | null = null;
 let ephemeralPubkey: string | null = null;
 
-// Pending NIP-07 requests (waiting for main thread to sign/encrypt)
-const pendingSignRequests = new Map<string, (event: SignedEvent | null, error?: string) => void>();
-const pendingEncryptRequests = new Map<string, (ciphertext: string | null, error?: string) => void>();
-const pendingDecryptRequests = new Map<string, (plaintext: string | null, error?: string) => void>();
 
 // ============================================================================
 // Message Handler
@@ -120,6 +124,38 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
         await handleGetRelayStats(msg.id);
         break;
 
+      // SocialGraph operations
+      case 'initSocialGraph':
+        await handleInitSocialGraph(msg.id, msg.rootPubkey);
+        break;
+      case 'setSocialGraphRoot':
+        handleSetSocialGraphRoot(msg.id, msg.pubkey);
+        break;
+      case 'handleSocialGraphEvents':
+        handleSocialGraphEvents(msg.id, msg.events);
+        break;
+      case 'getFollowDistance':
+        handleGetFollowDistance(msg.id, msg.pubkey);
+        break;
+      case 'isFollowing':
+        handleIsFollowing(msg.id, msg.follower, msg.followed);
+        break;
+      case 'getFollows':
+        handleGetFollows(msg.id, msg.pubkey);
+        break;
+      case 'getFollowers':
+        handleGetFollowers(msg.id, msg.pubkey);
+        break;
+      case 'getFollowedByFriends':
+        handleGetFollowedByFriends(msg.id, msg.pubkey);
+        break;
+      case 'getSocialGraphSize':
+        handleGetSocialGraphSize(msg.id);
+        break;
+      case 'getUsersByDistance':
+        handleGetUsersByDistance(msg.id, msg.distance);
+        break;
+
       // NIP-07 responses from main thread
       case 'signed':
         handleSignedResponse(msg.id, msg.event, msg.error);
@@ -162,10 +198,12 @@ async function handleInit(id: string, cfg: WorkerConfig) {
   try {
     _config = cfg;
 
-    // Initialize OPFS store
+    // Wire up NIP-07 bridge responder
+    setResponder(respond);
+
+    // Initialize Dexie store
     const storeName = cfg.storeName || 'hashtree';
-    store = new OpfsStore(storeName);
-    // OpfsStore self-initializes on first operation
+    store = new DexieStore(storeName);
 
     // Initialize HashTree with the store
     tree = new HashTree({ store });
@@ -184,7 +222,13 @@ async function handleInit(id: string, cfg: WorkerConfig) {
     // Initialize Nostr relay connections
     if (cfg.relays && cfg.relays.length > 0) {
       const nostr = getNostrManager();
-      nostr.init(cfg.relays);
+      await nostr.init(cfg.relays);
+
+      // Set the signer if we have a pubkey
+      if (cfg.pubkey) {
+        const signer = initWorkerSigner(cfg.pubkey);
+        nostr.setSigner(signer);
+      }
 
       // Wire up event callbacks to forward to main thread
       nostr.setOnEvent((subId, event) => {
@@ -212,8 +256,12 @@ async function handleClose(id: string) {
   closeWebRTCManager();
   // Close Nostr connections
   closeNostrManager();
+  // Close SocialGraph
+  socialGraph.closeSocialGraph();
   // Clear caches
   clearMemoryCache();
+  // Clear signer
+  clearWorkerSigner();
   store = null;
   tree = null;
   _config = null;
@@ -772,31 +820,66 @@ async function handleGetRelayStats(id: string) {
 }
 
 // ============================================================================
-// NIP-07 Response Handlers
+// SocialGraph Handlers
 // ============================================================================
 
-function handleSignedResponse(id: string, event?: SignedEvent, error?: string) {
-  const resolver = pendingSignRequests.get(id);
-  if (resolver) {
-    pendingSignRequests.delete(id);
-    resolver(event || null, error);
+async function handleInitSocialGraph(id: string, rootPubkey?: string) {
+  try {
+    // Set up version update callback
+    socialGraph.setOnVersionUpdate((version) => {
+      respond({ type: 'socialGraphVersion', version });
+    });
+
+    const result = await socialGraph.initSocialGraph(rootPubkey);
+    respond({ type: 'socialGraphReady', id, version: result.version, size: result.size });
+  } catch (err) {
+    respond({ type: 'error', id, error: err instanceof Error ? err.message : String(err) });
   }
 }
 
-function handleEncryptedResponse(id: string, ciphertext?: string, error?: string) {
-  const resolver = pendingEncryptRequests.get(id);
-  if (resolver) {
-    pendingEncryptRequests.delete(id);
-    resolver(ciphertext || null, error);
-  }
+function handleSetSocialGraphRoot(id: string, pubkey: string) {
+  socialGraph.setRoot(pubkey);
+  respond({ type: 'void', id });
 }
 
-function handleDecryptedResponse(id: string, plaintext?: string, error?: string) {
-  const resolver = pendingDecryptRequests.get(id);
-  if (resolver) {
-    pendingDecryptRequests.delete(id);
-    resolver(plaintext || null, error);
-  }
+function handleSocialGraphEvents(id: string, events: SocialGraphEvent[]) {
+  socialGraph.handleEvents(events);
+  respond({ type: 'void', id });
+}
+
+function handleGetFollowDistance(id: string, pubkey: string) {
+  const distance = socialGraph.getFollowDistance(pubkey);
+  respond({ type: 'followDistance', id, distance });
+}
+
+function handleIsFollowing(id: string, follower: string, followed: string) {
+  const result = socialGraph.isFollowing(follower, followed);
+  respond({ type: 'isFollowingResult', id, result });
+}
+
+function handleGetFollows(id: string, pubkey: string) {
+  const pubkeys = socialGraph.getFollows(pubkey);
+  respond({ type: 'pubkeyList', id, pubkeys });
+}
+
+function handleGetFollowers(id: string, pubkey: string) {
+  const pubkeys = socialGraph.getFollowers(pubkey);
+  respond({ type: 'pubkeyList', id, pubkeys });
+}
+
+function handleGetFollowedByFriends(id: string, pubkey: string) {
+  const pubkeys = socialGraph.getFollowedByFriends(pubkey);
+  respond({ type: 'pubkeyList', id, pubkeys });
+}
+
+function handleGetSocialGraphSize(id: string) {
+  const size = socialGraph.getSize();
+  respond({ type: 'socialGraphSize', id, size });
+}
+
+function handleGetUsersByDistance(id: string, distance: number) {
+  const pubkeys = socialGraph.getUsersByDistance(distance);
+  respond({ type: 'pubkeyList', id, pubkeys });
 }
 
 // ============================================================================
@@ -828,72 +911,4 @@ export function signWithEphemeralKey(template: EventTemplate): SignedEvent {
  */
 export function getEphemeralPubkey(): string | null {
   return ephemeralPubkey;
-}
-
-// ============================================================================
-// NIP-07 Request Helpers (for real identity - tree publishing etc)
-// ============================================================================
-
-export async function requestSign(event: UnsignedEvent): Promise<SignedEvent> {
-  const id = `sign_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-  return new Promise((resolve, reject) => {
-    pendingSignRequests.set(id, (signed, error) => {
-      if (error) reject(new Error(error));
-      else if (signed) resolve(signed);
-      else reject(new Error('Signing failed'));
-    });
-
-    respond({ type: 'signEvent', id, event });
-
-    // Timeout after 60 seconds
-    setTimeout(() => {
-      if (pendingSignRequests.has(id)) {
-        pendingSignRequests.delete(id);
-        reject(new Error('Signing timeout'));
-      }
-    }, 60000);
-  });
-}
-
-export async function requestEncrypt(pubkey: string, plaintext: string): Promise<string> {
-  const id = `enc_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-  return new Promise((resolve, reject) => {
-    pendingEncryptRequests.set(id, (ciphertext, error) => {
-      if (error) reject(new Error(error));
-      else if (ciphertext) resolve(ciphertext);
-      else reject(new Error('Encryption failed'));
-    });
-
-    respond({ type: 'nip44Encrypt', id, pubkey, plaintext });
-
-    setTimeout(() => {
-      if (pendingEncryptRequests.has(id)) {
-        pendingEncryptRequests.delete(id);
-        reject(new Error('Encryption timeout'));
-      }
-    }, 30000);
-  });
-}
-
-export async function requestDecrypt(pubkey: string, ciphertext: string): Promise<string> {
-  const id = `dec_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-  return new Promise((resolve, reject) => {
-    pendingDecryptRequests.set(id, (plaintext, error) => {
-      if (error) reject(new Error(error));
-      else if (plaintext) resolve(plaintext);
-      else reject(new Error('Decryption failed'));
-    });
-
-    respond({ type: 'nip44Decrypt', id, pubkey, ciphertext });
-
-    setTimeout(() => {
-      if (pendingDecryptRequests.has(id)) {
-        pendingDecryptRequests.delete(id);
-        reject(new Error('Decryption timeout'));
-      }
-    }, 30000);
-  });
 }

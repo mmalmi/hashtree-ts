@@ -5,9 +5,6 @@ import { visualizer } from 'rollup-plugin-visualizer';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'path';
 
-// Worker entry point
-const workerEntry = resolve(__dirname, '../hashtree/src/worker/worker.ts');
-
 export default defineConfig({
   define: {
     'import.meta.env.VITE_BUILD_TIME': JSON.stringify(new Date().toISOString()),
@@ -74,6 +71,7 @@ export default defineConfig({
     alias: {
       'hashtree': resolve(__dirname, '../hashtree/src/index.ts'),
       'hashtree/webrtc': resolve(__dirname, '../hashtree/src/webrtc/index.ts'),
+      'hashtree/worker': resolve(__dirname, '../hashtree/src/worker/worker.ts'),
       '$lib': resolve(__dirname, 'src/lib'),
       'wasm-git': resolve(__dirname, 'node_modules/wasm-git/lg2_async.js'),
     },

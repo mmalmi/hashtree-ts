@@ -7,8 +7,6 @@ import { nip19 } from 'nostr-tools';
 import { NDKEvent } from '@nostr-dev-kit/ndk';
 import { LRUCache } from '../utils/lruCache';
 import { ndk, nostrStore } from '../nostr';
-import { handleSocialGraphEvent } from '../utils/socialGraph';
-import type { NostrEvent } from 'nostr-social-graph';
 
 export interface Follows {
   pubkey: string;
@@ -209,8 +207,7 @@ async function publishFollowList(pk: string, follows: string[]): Promise<boolean
     followsCache.set(pk, newFollows);
     notifyListeners(pk, newFollows);
 
-    // Update social graph
-    handleSocialGraphEvent(event.rawEvent() as NostrEvent);
+    // Social graph is updated automatically via worker's NDK subscription
 
     return true;
   } catch (e) {

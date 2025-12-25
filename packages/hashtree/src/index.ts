@@ -182,6 +182,7 @@ export type {
   PeerStats as WorkerPeerStats,
   RelayStats as WorkerRelayStats,
   DirEntry as WorkerDirEntry,
+  SocialGraphEvent as WorkerSocialGraphEvent,
   MediaRequest,
   MediaResponse,
 } from './worker/protocol.js';

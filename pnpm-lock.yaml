@@ -62,19 +62,22 @@ importers:
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.0.1
+      '@nostr-dev-kit/ndk':
+        specifier: ^2.18.1
+        version: 2.18.1(nostr-tools@2.18.2(typescript@5.9.3))
       '@scure/base':
         specifier: ^2.0.0
         version: 2.0.0
       dexie:
         specifier: ^4.0.11
         version: 4.2.1
+      nostr-social-graph:
+        specifier: ^1.0.33
+        version: 1.0.33
       nostr-tools:
         specifier: ^2.18.2
         version: 2.18.2(typescript@5.9.3)
     devDependencies:
-      '@nostr-dev-kit/ndk':
-        specifier: ^2.18.1
-        version: 2.18.1(nostr-tools@2.18.2(typescript@5.9.3))
       '@types/ws':
         specifier: ^8.18.1
         version: 8.18.1

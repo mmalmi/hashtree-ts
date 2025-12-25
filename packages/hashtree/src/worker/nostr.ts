@@ -1,7 +1,7 @@
 /**
  * Nostr Relay Manager for Worker
  *
- * Manages WebSocket connections to Nostr relays using nostr-tools.
+ * Manages WebSocket connections to Nostr relays using NDK.
  * Provides subscribe/publish functionality for the worker.
  *
  * Used for:
@@ -9,51 +9,42 @@
  * - Tree root resolution (kind 30078)
  */
 
-import { SimplePool, type Filter, type Event } from 'nostr-tools';
+import NDK, { NDKEvent, NDKSubscription, type NDKFilter, type NDKSigner } from '@nostr-dev-kit/ndk';
 import type { NostrFilter, SignedEvent, RelayStats } from './protocol';
 
 // Subscription entry
 interface Subscription {
   id: string;
   filters: NostrFilter[];
-  subs: ReturnType<SimplePool['subscribe']>[];
-}
-
-// Relay connection stats
-interface RelayStatsInternal {
-  url: string;
-  connected: boolean;
-  eventsReceived: number;
-  eventsSent: number;
+  ndkSub: NDKSubscription;
 }
 
 export class NostrManager {
-  private pool: SimplePool;
-  private relays: string[] = [];
+  private ndk: NDK;
   private subscriptions = new Map<string, Subscription>();
-  private relayStats = new Map<string, RelayStatsInternal>();
   private onEvent: ((subId: string, event: SignedEvent) => void) | null = null;
   private onEose: ((subId: string) => void) | null = null;
+  private initialized = false;
 
   constructor() {
-    this.pool = new SimplePool();
+    this.ndk = new NDK({
+      // No explicit relays yet - will be set in init()
+      autoConnectUserRelays: false,
+    });
   }
 
   /**
    * Initialize with relay URLs
    */
-  init(relays: string[]): void {
-    this.relays = relays;
-
-    // Initialize stats for each relay
+  async init(relays: string[]): Promise<void> {
+    // Add relays to NDK
     for (const url of relays) {
-      this.relayStats.set(url, {
-        url,
-        connected: false,
-        eventsReceived: 0,
-        eventsSent: 0,
-      });
+      this.ndk.addExplicitRelay(url);
     }
+
+    // Connect to relays
+    await this.ndk.connect();
+    this.initialized = true;
 
     console.log('[NostrManager] Initialized with relays:', relays);
   }
@@ -73,53 +64,77 @@ export class NostrManager {
   }
 
   /**
+   * Convert NostrFilter to NDKFilter
+   */
+  private toNDKFilter(filter: NostrFilter): NDKFilter {
+    const ndkFilter: NDKFilter = {};
+
+    if (filter.ids) ndkFilter.ids = filter.ids;
+    if (filter.authors) ndkFilter.authors = filter.authors;
+    if (filter.kinds) ndkFilter.kinds = filter.kinds;
+    if (filter['#e']) ndkFilter['#e'] = filter['#e'];
+    if (filter['#p']) ndkFilter['#p'] = filter['#p'];
+    if (filter['#d']) ndkFilter['#d'] = filter['#d'];
+    if (filter.since) ndkFilter.since = filter.since;
+    if (filter.until) ndkFilter.until = filter.until;
+    if (filter.limit) ndkFilter.limit = filter.limit;
+
+    // Handle arbitrary tag filters (e.g., #l, #t, etc.)
+    for (const key of Object.keys(filter)) {
+      if (key.startsWith('#') && !['#e', '#p', '#d'].includes(key)) {
+        const value = filter[key];
+        if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
+          (ndkFilter as Record<string, string[]>)[key] = value as string[];
+        }
+      }
+    }
+
+    return ndkFilter;
+  }
+
+  /**
+   * Convert NDKEvent to SignedEvent
+   */
+  private toSignedEvent(event: NDKEvent): SignedEvent {
+    return {
+      id: event.id,
+      pubkey: event.pubkey,
+      kind: event.kind!,
+      content: event.content,
+      tags: event.tags,
+      created_at: event.created_at!,
+      sig: event.sig!,
+    };
+  }
+
+  /**
    * Subscribe to events matching filters
    */
   subscribe(subId: string, filters: NostrFilter[]): void {
     // Close existing subscription with same ID if any
     this.unsubscribe(subId);
 
-    // Convert our NostrFilter to nostr-tools Filter
-    // Subscribe to each filter separately and track them
-    const subs: ReturnType<SimplePool['subscribe']>[] = [];
+    // Convert filters to NDK format
+    const ndkFilters = filters.map(f => this.toNDKFilter(f));
 
-    for (const f of filters) {
-      const poolFilter: Filter = {
-        ids: f.ids,
-        authors: f.authors,
-        kinds: f.kinds,
-        '#e': f['#e'],
-        '#p': f['#p'],
-        '#d': f['#d'],
-        since: f.since,
-        until: f.until,
-        limit: f.limit,
-      };
+    // Create NDK subscription
+    const ndkSub = this.ndk.subscribe(ndkFilters, {
+      closeOnEose: false,
+    });
 
-      const sub = this.pool.subscribe(this.relays, poolFilter, {
-        onevent: (event: Event) => {
-          // Convert to SignedEvent
-          const signedEvent: SignedEvent = {
-            id: event.id,
-            pubkey: event.pubkey,
-            kind: event.kind,
-            content: event.content,
-            tags: event.tags,
-            created_at: event.created_at,
-            sig: event.sig,
-          };
+    // Handle events
+    ndkSub.on('event', (event: NDKEvent) => {
+      const signedEvent = this.toSignedEvent(event);
+      this.onEvent?.(subId, signedEvent);
+    });
 
-          this.onEvent?.(subId, signedEvent);
-        },
-        oneose: () => {
-          this.onEose?.(subId);
-        },
-      });
-      subs.push(sub);
-    }
+    // Handle EOSE
+    ndkSub.on('eose', () => {
+      this.onEose?.(subId);
+    });
 
-    // Store all subs for this subscription ID
-    this.subscriptions.set(subId, { id: subId, filters, subs });
+    // Store subscription
+    this.subscriptions.set(subId, { id: subId, filters, ndkSub });
     console.log('[NostrManager] Subscribed:', subId, filters);
   }
 
@@ -129,9 +144,7 @@ export class NostrManager {
   unsubscribe(subId: string): void {
     const sub = this.subscriptions.get(subId);
     if (sub) {
-      for (const s of sub.subs) {
-        s.close();
-      }
+      sub.ndkSub.stop();
       this.subscriptions.delete(subId);
       console.log('[NostrManager] Unsubscribed:', subId);
     }
@@ -141,27 +154,19 @@ export class NostrManager {
    * Publish an event to all relays
    */
   async publish(event: SignedEvent): Promise<void> {
-    // Convert to nostr-tools Event
-    const poolEvent: Event = {
-      id: event.id,
-      pubkey: event.pubkey,
-      kind: event.kind,
-      content: event.content,
-      tags: event.tags,
-      created_at: event.created_at,
-      sig: event.sig,
-    };
+    // Create NDKEvent from SignedEvent
+    const ndkEvent = new NDKEvent(this.ndk);
+    ndkEvent.id = event.id;
+    ndkEvent.pubkey = event.pubkey;
+    ndkEvent.kind = event.kind;
+    ndkEvent.content = event.content;
+    ndkEvent.tags = event.tags;
+    ndkEvent.created_at = event.created_at;
+    ndkEvent.sig = event.sig;
 
     try {
-      await Promise.any(
-        this.pool.publish(this.relays, poolEvent)
-      );
-
-      // Update stats for successful publish
-      for (const [, stats] of this.relayStats) {
-        stats.eventsSent++;
-      }
-
+      // Publish to relays (event is already signed)
+      await ndkEvent.publish();
       console.log('[NostrManager] Published event:', event.id);
     } catch (err) {
       console.error('[NostrManager] Failed to publish:', err);
@@ -174,26 +179,56 @@ export class NostrManager {
    */
   getRelayStats(): RelayStats[] {
     const result: RelayStats[] = [];
-    for (const [url, stats] of this.relayStats) {
+
+    for (const relay of this.ndk.pool.relays.values()) {
       result.push({
-        url,
-        connected: stats.connected,
-        eventsReceived: stats.eventsReceived,
-        eventsSent: stats.eventsSent,
+        url: relay.url,
+        connected: relay.status === 1, // WebSocket.OPEN
+        eventsReceived: 0, // NDK doesn't expose this directly
+        eventsSent: 0,
       });
     }
+
     return result;
   }
 
   /**
-   * Update relay connection status
-   * Called when connection state changes
+   * Add a relay dynamically
    */
-  setRelayConnected(url: string, connected: boolean): void {
-    const stats = this.relayStats.get(url);
-    if (stats) {
-      stats.connected = connected;
+  addRelay(url: string): void {
+    this.ndk.addExplicitRelay(url);
+  }
+
+  /**
+   * Remove a relay dynamically
+   */
+  removeRelay(url: string): void {
+    const relay = this.ndk.pool.relays.get(url);
+    if (relay) {
+      relay.disconnect();
+      this.ndk.pool.relays.delete(url);
     }
+  }
+
+  /**
+   * Check if initialized
+   */
+  isInitialized(): boolean {
+    return this.initialized;
+  }
+
+  /**
+   * Set the NDK signer (for signing events with user identity)
+   */
+  setSigner(signer: NDKSigner): void {
+    this.ndk.signer = signer;
+  }
+
+  /**
+   * Get the NDK instance (for advanced usage)
+   */
+  getNdk(): NDK {
+    return this.ndk;
   }
 
   /**
@@ -201,13 +236,17 @@ export class NostrManager {
    */
   close(): void {
     for (const [subId, sub] of this.subscriptions) {
-      for (const s of sub.subs) {
-        s.close();
-      }
+      sub.ndkSub.stop();
       console.log('[NostrManager] Closed subscription:', subId);
     }
     this.subscriptions.clear();
-    this.pool.close(this.relays);
+
+    // Disconnect all relays
+    for (const relay of this.ndk.pool.relays.values()) {
+      relay.disconnect();
+    }
+
+    this.initialized = false;
     console.log('[NostrManager] Closed');
   }
 }

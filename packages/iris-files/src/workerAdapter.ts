@@ -16,6 +16,7 @@ import type {
   WorkerPeerStats as PeerStats,
   WorkerRelayStats as RelayStats,
   WorkerDirEntry as DirEntry,
+  WorkerSocialGraphEvent as SocialGraphEvent,
   CID,
 } from 'hashtree';
 import { generateRequestId } from 'hashtree';
@@ -49,6 +50,9 @@ export class WorkerAdapter {
 
   // Stream callbacks (for readFileStream)
   private streamCallbacks = new Map<string, (chunk: Uint8Array, done: boolean) => void>();
+
+  // SocialGraph version callback
+  private socialGraphVersionCallback: ((version: number) => void) | null = null;
 
   // Message queue for messages sent before worker is ready
   private messageQueue: WorkerRequest[] = [];
@@ -153,6 +157,19 @@ export class WorkerAdapter {
 
         case 'nip44Decrypt':
           await this.handleDecryptRequest(msg.id, msg.pubkey, msg.ciphertext);
+          break;
+
+        // SocialGraph responses
+        case 'socialGraphReady':
+        case 'followDistance':
+        case 'isFollowingResult':
+        case 'pubkeyList':
+        case 'socialGraphSize':
+          this.resolvePending(msg.id, msg);
+          break;
+
+        case 'socialGraphVersion':
+          this.handleSocialGraphVersion(msg.version);
           break;
 
         default:
@@ -329,6 +346,14 @@ export class WorkerAdapter {
       const error = err instanceof Error ? err.message : String(err);
       this.worker?.postMessage({ type: 'decrypted', id, error } as WorkerRequest);
     }
+  }
+
+  // ============================================================================
+  // SocialGraph Version Handler
+  // ============================================================================
+
+  private handleSocialGraphVersion(version: number) {
+    this.socialGraphVersionCallback?.(version);
   }
 
   // ============================================================================
@@ -553,6 +578,154 @@ export class WorkerAdapter {
   }
 
   // ============================================================================
+  // Public API - SocialGraph
+  // ============================================================================
+
+  /**
+   * Set callback for social graph version updates
+   */
+  onSocialGraphVersion(callback: (version: number) => void): void {
+    this.socialGraphVersionCallback = callback;
+  }
+
+  /**
+   * Initialize the social graph with optional root pubkey
+   */
+  async initSocialGraph(rootPubkey?: string): Promise<{ version: number; size: number }> {
+    const id = generateRequestId();
+    const response = await this.request<{ version: number; size: number; error?: string }>({
+      type: 'initSocialGraph',
+      id,
+      rootPubkey,
+    } as WorkerRequest);
+    if (response.error) throw new Error(response.error);
+    return { version: response.version, size: response.size };
+  }
+
+  /**
+   * Set the social graph root pubkey
+   */
+  async setSocialGraphRoot(pubkey: string): Promise<void> {
+    const id = generateRequestId();
+    const response = await this.request<{ error?: string }>({
+      type: 'setSocialGraphRoot',
+      id,
+      pubkey,
+    } as WorkerRequest);
+    if (response.error) throw new Error(response.error);
+  }
+
+  /**
+   * Handle social graph events (kind:3 contact lists)
+   */
+  handleSocialGraphEvents(events: SocialGraphEvent[]): void {
+    if (events.length === 0) return;
+    this.postMessage({
+      type: 'handleSocialGraphEvents',
+      id: generateRequestId(),
+      events,
+    } as WorkerRequest);
+  }
+
+  /**
+   * Get follow distance for a pubkey
+   */
+  async getFollowDistance(pubkey: string): Promise<number> {
+    const id = generateRequestId();
+    const response = await this.request<{ distance: number; error?: string }>({
+      type: 'getFollowDistance',
+      id,
+      pubkey,
+    } as WorkerRequest);
+    if (response.error) throw new Error(response.error);
+    return response.distance;
+  }
+
+  /**
+   * Check if follower follows followed
+   */
+  async isFollowing(follower: string, followed: string): Promise<boolean> {
+    const id = generateRequestId();
+    const response = await this.request<{ result: boolean; error?: string }>({
+      type: 'isFollowing',
+      id,
+      follower,
+      followed,
+    } as WorkerRequest);
+    if (response.error) throw new Error(response.error);
+    return response.result;
+  }
+
+  /**
+   * Get list of pubkeys a user follows
+   */
+  async getFollows(pubkey: string): Promise<string[]> {
+    const id = generateRequestId();
+    const response = await this.request<{ pubkeys: string[]; error?: string }>({
+      type: 'getFollows',
+      id,
+      pubkey,
+    } as WorkerRequest);
+    if (response.error) throw new Error(response.error);
+    return response.pubkeys;
+  }
+
+  /**
+   * Get list of pubkeys following a user
+   */
+  async getFollowers(pubkey: string): Promise<string[]> {
+    const id = generateRequestId();
+    const response = await this.request<{ pubkeys: string[]; error?: string }>({
+      type: 'getFollowers',
+      id,
+      pubkey,
+    } as WorkerRequest);
+    if (response.error) throw new Error(response.error);
+    return response.pubkeys;
+  }
+
+  /**
+   * Get pubkeys followed by friends of a user
+   */
+  async getFollowedByFriends(pubkey: string): Promise<string[]> {
+    const id = generateRequestId();
+    const response = await this.request<{ pubkeys: string[]; error?: string }>({
+      type: 'getFollowedByFriends',
+      id,
+      pubkey,
+    } as WorkerRequest);
+    if (response.error) throw new Error(response.error);
+    return response.pubkeys;
+  }
+
+  /**
+   * Get size of the social graph
+   */
+  async getSocialGraphSize(): Promise<number> {
+    const id = generateRequestId();
+    const response = await this.request<{ size: number; error?: string }>({
+      type: 'getSocialGraphSize',
+      id,
+    } as WorkerRequest);
+    if (response.error) throw new Error(response.error);
+    return response.size;
+  }
+
+  /**
+   * Get users by follow distance
+   */
+  async getUsersByDistance(distance: number): Promise<string[]> {
+    const id = generateRequestId();
+    const response = await this.request<{ pubkeys: string[]; error?: string }>({
+      type: 'getUsersByDistance',
+      id,
+      distance,
+    } as WorkerRequest);
+    if (response.error) throw new Error(response.error);
+    return response.pubkeys;
+  }
+
+  // ============================================================================
   // Cleanup
   // ============================================================================
 
@@ -567,6 +740,7 @@ export class WorkerAdapter {
     this.subscriptions.clear();
     this.streamCallbacks.clear();
     this.messageQueue = [];
+    this.socialGraphVersionCallback = null;
   }
 }
 

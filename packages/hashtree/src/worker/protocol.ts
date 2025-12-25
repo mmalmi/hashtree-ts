@@ -22,6 +22,17 @@ export interface NostrFilter {
   [key: string]: string[] | number[] | number | undefined;
 }
 
+// SocialGraph event type (kind 3 contact list events)
+export interface SocialGraphEvent {
+  id: string;
+  pubkey: string;
+  kind: number;
+  content: string;
+  tags: string[][];
+  created_at: number;
+  sig: string;
+}
+
 export interface UnsignedEvent {
   kind: number;
   created_at: number;
@@ -82,6 +93,18 @@ export type WorkerRequest =
   | { type: 'getPeerStats'; id: string }
   | { type: 'getRelayStats'; id: string }
 
+  // SocialGraph operations
+  | { type: 'initSocialGraph'; id: string; rootPubkey?: string }
+  | { type: 'setSocialGraphRoot'; id: string; pubkey: string }
+  | { type: 'handleSocialGraphEvents'; id: string; events: SocialGraphEvent[] }
+  | { type: 'getFollowDistance'; id: string; pubkey: string }
+  | { type: 'isFollowing'; id: string; follower: string; followed: string }
+  | { type: 'getFollows'; id: string; pubkey: string }
+  | { type: 'getFollowers'; id: string; pubkey: string }
+  | { type: 'getFollowedByFriends'; id: string; pubkey: string }
+  | { type: 'getSocialGraphSize'; id: string }
+  | { type: 'getUsersByDistance'; id: string; distance: number }
+
   // NIP-07 responses (main thread → worker, after signing/encryption)
   | { type: 'signed'; id: string; event?: SignedEvent; error?: string }
   | { type: 'encrypted'; id: string; ciphertext?: string; error?: string }
@@ -119,6 +142,14 @@ export type WorkerResponse =
   // Stats
   | { type: 'peerStats'; id: string; stats: PeerStats[] }
   | { type: 'relayStats'; id: string; stats: RelayStats[] }
+
+  // SocialGraph responses
+  | { type: 'socialGraphReady'; id: string; version: number; size: number }
+  | { type: 'socialGraphVersion'; version: number }
+  | { type: 'followDistance'; id: string; distance: number }
+  | { type: 'isFollowingResult'; id: string; result: boolean }
+  | { type: 'pubkeyList'; id: string; pubkeys: string[] }
+  | { type: 'socialGraphSize'; id: string; size: number }
 
   // NIP-07 requests (worker → main thread, needs extension)
   | { type: 'signEvent'; id: string; event: UnsignedEvent }
