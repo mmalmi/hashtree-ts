@@ -141,7 +141,7 @@ export interface WebRTCStoreConfig {
   maxConnections?: number;        // default 6 (legacy, used if no pools)
   helloInterval?: number;         // default 10000ms
   messageTimeout?: number;        // default 15000ms
-  requestTimeout?: number;        // default 5000ms
+  requestTimeout?: number;        // default 500ms - fast fallback to Blossom
   peerQueryDelay?: number;        // default 500ms - delay between sequential peer queries
   relays?: string[];
   localStore?: import('../types.js').Store;

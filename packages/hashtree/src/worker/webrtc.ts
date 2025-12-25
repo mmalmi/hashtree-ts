@@ -113,7 +113,7 @@ export class WebRTCController {
     this.localStore = config.localStore;
     this.sendCommand = config.sendCommand;
     this.sendSignaling = config.sendSignaling;
-    this.requestTimeout = config.requestTimeout ?? 5000;
+    this.requestTimeout = config.requestTimeout ?? 500;
     this.debug = config.debug ?? false;
 
     // Default classifier: check if pubkey is in follows

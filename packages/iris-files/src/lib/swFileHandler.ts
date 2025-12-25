@@ -283,7 +283,7 @@ async function streamFromCid(
   // Stream chunks via pull-based protocol using readFileRange
   // This fetches only the needed chunks from network, not the whole file
   let offset = rangeStart;
-  const CHUNK_SIZE = 512 * 1024; // 512KB chunks for efficient network fetches
+  const CHUNK_SIZE = 256 * 1024; // 256KB chunks - matches videoChunker's firstChunkSize
 
   port.onmessage = async (msg: MessageEvent) => {
     if (msg.data === false) {
