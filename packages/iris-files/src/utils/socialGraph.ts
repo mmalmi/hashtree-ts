@@ -1,18 +1,79 @@
 /**
- * Social Graph integration using Unified Worker
+ * Social Graph integration using Web Worker
  * Provides follow distance calculations and trust indicators
- * Heavy operations happen in worker, main thread keeps sync cache for UI
+ * Heavy operations (load/save/recalc) happen in worker
+ * Main thread keeps a sync cache for immediate UI access
  */
 import { writable, get } from 'svelte/store';
-import { getWorkerAdapter } from '../workerAdapter';
-import { nostrStore } from '../nostr';
+import type { NostrEvent } from 'nostr-social-graph';
+import { ndk, nostrStore } from '../nostr';
+import type { NDKEvent, NDKSubscription } from '@nostr-dev-kit/ndk';
 
 // Default root pubkey (used when not logged in)
 const DEFAULT_SOCIAL_GRAPH_ROOT = '4523be58d395b1b196a9b8c82b038b6895cb02b683d0c253a955068dba1facd0';
+const KIND_CONTACTS = 3;
+const DEFAULT_CRAWL_DEPTH = 2;
 
 // Debug logging
 const DEBUG = false;
 const log = (...args: unknown[]) => DEBUG && console.log('[socialGraph]', ...args);
+
+// ============================================================================
+// Worker Communication
+// ============================================================================
+
+let worker: Worker | null = null;
+let requestId = 0;
+const pending = new Map<string, { resolve: (data: unknown) => void; reject: (err: Error) => void }>();
+
+function getNextId(): string {
+  return `sg-${++requestId}`;
+}
+
+function sendToWorker<T>(msg: { type: string; id?: string; [key: string]: unknown }): Promise<T> {
+  return new Promise((resolve, reject) => {
+    if (!worker) {
+      reject(new Error('Worker not initialized'));
+      return;
+    }
+    const id = msg.id || getNextId();
+    msg.id = id;
+    pending.set(id, { resolve: resolve as (data: unknown) => void, reject });
+    worker.postMessage(msg);
+  });
+}
+
+function handleWorkerMessage(e: MessageEvent) {
+  const msg = e.data;
+
+  if (msg.type === 'ready') {
+    socialGraphStore.setVersion(msg.version);
+    resolveLoaded?.(true);
+    return;
+  }
+
+  if (msg.type === 'versionUpdate') {
+    socialGraphStore.setVersion(msg.version);
+    // Clear sync caches on version update
+    followDistanceCache.clear();
+    isFollowingCache.clear();
+    followsCache.clear();
+    followersCache.clear();
+    return;
+  }
+
+  if (msg.type === 'result' || msg.type === 'error') {
+    const handler = pending.get(msg.id);
+    if (handler) {
+      pending.delete(msg.id);
+      if (msg.type === 'error') {
+        handler.reject(new Error(msg.error));
+      } else {
+        handler.resolve(msg.data);
+      }
+    }
+  }
+}
 
 // ============================================================================
 // Sync Caches (for immediate UI access)
@@ -22,13 +83,6 @@ const followDistanceCache = new Map<string, number>();
 const isFollowingCache = new Map<string, boolean>();
 const followsCache = new Map<string, Set<string>>();
 const followersCache = new Map<string, Set<string>>();
-
-function clearCaches() {
-  followDistanceCache.clear();
-  isFollowingCache.clear();
-  followsCache.clear();
-  followersCache.clear();
-}
 
 // ============================================================================
 // Svelte Store
@@ -49,7 +103,6 @@ function createSocialGraphStore() {
     subscribe,
     setVersion: (version: number) => {
       update(state => ({ ...state, version }));
-      clearCaches();
     },
     incrementVersion: () => {
       update(state => ({ ...state, version: state.version + 1 }));
@@ -69,36 +122,59 @@ export const useSocialGraphStore = socialGraphStore;
 // ============================================================================
 
 let resolveLoaded: ((value: boolean) => void) | null = null;
-let initialized = false;
 
 export const socialGraphLoaded = new Promise<boolean>((resolve) => {
   resolveLoaded = resolve;
 });
 
 export async function initializeSocialGraph() {
-  if (initialized) return;
+  if (worker) return;
 
-  const adapter = getWorkerAdapter();
-  if (!adapter) {
-    log('Worker adapter not available yet');
-    return;
+  // Wait for service worker to be controlling the page (needed for CORP headers in cross-origin isolated context)
+  if ('serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.ready;
+      // If no controller yet, wait for it
+      if (!navigator.serviceWorker.controller) {
+        await new Promise<void>((resolve) => {
+          navigator.serviceWorker.addEventListener('controllerchange', () => resolve(), { once: true });
+          // Also timeout in case we miss the event
+          setTimeout(resolve, 1000);
+        });
+      }
+    } catch {
+      // Continue anyway
+    }
   }
 
-  // Set up version callback
-  adapter.onSocialGraphVersion((version) => {
-    socialGraphStore.setVersion(version);
-  });
+  worker = new Worker(
+    new URL('../workers/socialGraph.worker.ts', import.meta.url),
+    { type: 'module' }
+  );
+
+  worker.onmessage = handleWorkerMessage;
+  worker.onerror = (err) => {
+    console.error('[socialGraph] worker error:', err);
+  };
 
   const currentPublicKey = get(nostrStore).pubkey;
-  try {
-    const result = await adapter.initSocialGraph(currentPublicKey || DEFAULT_SOCIAL_GRAPH_ROOT);
-    log('initialized with', result.size, 'users');
-    initialized = true;
-    resolveLoaded?.(true);
-  } catch (err) {
-    console.error('[socialGraph] init error:', err);
-    resolveLoaded?.(false);
+  await sendToWorker({ type: 'init', rootPubkey: currentPublicKey || DEFAULT_SOCIAL_GRAPH_ROOT });
+}
+
+// ============================================================================
+// Event Handling
+// ============================================================================
+
+export function handleSocialGraphEvent(evs: NostrEvent | NostrEvent[]) {
+  if (!worker) {
+    log('handleSocialGraphEvent called but worker not ready');
+    return;
   }
+  const events = Array.isArray(evs) ? evs : [evs];
+  if (events.length === 0) return;
+
+  // Fire and forget - worker will notify via versionUpdate
+  sendToWorker({ type: 'handleEvents', events }).catch(() => {});
 }
 
 // ============================================================================
@@ -115,12 +191,11 @@ export function getFollowDistance(pubkey: string | null | undefined): number {
   if (cached !== undefined) return cached;
 
   // Trigger async fetch
-  const adapter = getWorkerAdapter();
-  if (adapter) {
-    adapter.getFollowDistance(pubkey)
+  if (worker) {
+    sendToWorker<number>({ type: 'getFollowDistance', pubkey })
       .then(d => {
         followDistanceCache.set(pubkey, d);
-        socialGraphStore.incrementVersion();
+        socialGraphStore.incrementVersion(); // Trigger re-render
       })
       .catch(() => {});
   }
@@ -141,9 +216,8 @@ export function isFollowing(
   if (cached !== undefined) return cached;
 
   // Trigger async fetch
-  const adapter = getWorkerAdapter();
-  if (adapter) {
-    adapter.isFollowing(follower, followedUser)
+  if (worker) {
+    sendToWorker<boolean>({ type: 'isFollowing', follower, followed: followedUser })
       .then(r => {
         isFollowingCache.set(key, r);
         socialGraphStore.incrementVersion();
@@ -163,9 +237,8 @@ export function getFollows(pubkey: string | null | undefined): Set<string> {
   if (cached) return cached;
 
   // Trigger async fetch
-  const adapter = getWorkerAdapter();
-  if (adapter) {
-    adapter.getFollows(pubkey)
+  if (worker) {
+    sendToWorker<string[]>({ type: 'getFollows', pubkey })
       .then(arr => {
         followsCache.set(pubkey, new Set(arr));
         socialGraphStore.incrementVersion();
@@ -185,9 +258,8 @@ export function getFollowers(pubkey: string | null | undefined): Set<string> {
   if (cached) return cached;
 
   // Trigger async fetch
-  const adapter = getWorkerAdapter();
-  if (adapter) {
-    adapter.getFollowers(pubkey)
+  if (worker) {
+    sendToWorker<string[]>({ type: 'getFollowers', pubkey })
       .then(arr => {
         followersCache.set(pubkey, new Set(arr));
         socialGraphStore.incrementVersion();
@@ -203,13 +275,14 @@ export function getFollowers(pubkey: string | null | undefined): Set<string> {
 export function getFollowedByFriends(pubkey: string | null | undefined): Set<string> {
   if (!pubkey) return new Set();
 
+  // Use followers cache as approximation, or fetch
   const cached = followersCache.get(pubkey);
   if (cached) return cached;
 
-  const adapter = getWorkerAdapter();
-  if (adapter) {
-    adapter.getFollowedByFriends(pubkey)
+  if (worker) {
+    sendToWorker<string[]>({ type: 'getFollowedByFriends', pubkey })
       .then(arr => {
+        // Store in followers cache
         followersCache.set(pubkey, new Set(arr));
         socialGraphStore.incrementVersion();
       })
@@ -259,79 +332,139 @@ export function getSocialGraph(): { getRoot: () => string } | null {
 }
 
 // ============================================================================
-// Subscription Management
+// NDK Subscription Management
 // ============================================================================
+
+let sub: NDKSubscription | null = null;
 
 export async function fetchFollowList(publicKey: string): Promise<void> {
   log('fetching own follow list for', publicKey);
-  // The worker's NDK subscription handles kind:3 events automatically
-  // This function is kept for API compatibility but is now a no-op
+
+  const events = await ndk.fetchEvents({
+    kinds: [KIND_CONTACTS],
+    authors: [publicKey],
+    limit: 1,
+  });
+
+  for (const ev of events) {
+    handleSocialGraphEvent(ev.rawEvent() as NostrEvent);
+  }
 }
 
-async function crawlFollowLists(publicKey: string, depth = 2): Promise<void> {
+async function crawlFollowLists(publicKey: string, depth = DEFAULT_CRAWL_DEPTH): Promise<void> {
   if (depth <= 0) return;
-
-  const adapter = getWorkerAdapter();
-  if (!adapter) return;
 
   socialGraphStore.setIsRecrawling(true);
 
   try {
-    // Get current follows to check
-    const rootFollows = await adapter.getFollows(publicKey);
+    // Get current follows to crawl
+    const rootFollows = await sendToWorker<string[]>({ type: 'getFollows', pubkey: publicKey });
 
     // Find users we need to fetch follow lists for
     const toFetch: string[] = [];
     for (const pk of rootFollows) {
-      const theirFollows = await adapter.getFollows(pk);
+      const theirFollows = await sendToWorker<string[]>({ type: 'getFollows', pubkey: pk });
       if (theirFollows.length === 0) {
         toFetch.push(pk);
       }
     }
 
-    log('need to crawl', toFetch.length, 'users at depth 1');
+    if (toFetch.length > 0) {
+      log('fetching', toFetch.length, 'follow lists at depth 1');
+      await fetchFollowListsBatch(toFetch);
+    }
 
     // Depth 2
     if (depth >= 2) {
+      const toFetchDepth2: string[] = [];
       const toFetchSet = new Set(toFetch);
 
       for (const pk of rootFollows) {
-        const theirFollows = await adapter.getFollows(pk);
+        const theirFollows = await sendToWorker<string[]>({ type: 'getFollows', pubkey: pk });
         for (const pk2 of theirFollows) {
           if (!toFetchSet.has(pk2)) {
-            const followsOfFollows = await adapter.getFollows(pk2);
+            const followsOfFollows = await sendToWorker<string[]>({ type: 'getFollows', pubkey: pk2 });
             if (followsOfFollows.length === 0) {
+              toFetchDepth2.push(pk2);
               toFetchSet.add(pk2);
             }
           }
         }
       }
 
-      log('total users needing crawl:', toFetchSet.size);
+      if (toFetchDepth2.length > 0) {
+        log('fetching', toFetchDepth2.length, 'follow lists at depth 2');
+        const limited = toFetchDepth2.slice(0, 500);
+        await fetchFollowListsBatch(limited);
+      }
     }
-
-    // Note: The worker's NDK subscription will fetch kind:3 events
-    // We just identified who needs fetching here
   } finally {
     socialGraphStore.setIsRecrawling(false);
+  }
+}
+
+async function fetchFollowListsBatch(pubkeys: string[]): Promise<void> {
+  if (pubkeys.length === 0) return;
+
+  const batchSize = 100;
+  const batchDelayMs = 500;
+
+  for (let i = 0; i < pubkeys.length; i += batchSize) {
+    const batch = pubkeys.slice(i, i + batchSize);
+    log('fetching batch', i / batchSize + 1, 'of', Math.ceil(pubkeys.length / batchSize));
+
+    try {
+      const events = await ndk.fetchEvents({
+        kinds: [KIND_CONTACTS],
+        authors: batch,
+      });
+
+      const eventsArray: NostrEvent[] = [];
+      for (const ev of events) {
+        eventsArray.push(ev.rawEvent() as NostrEvent);
+      }
+
+      if (eventsArray.length > 0) {
+        handleSocialGraphEvent(eventsArray);
+      }
+
+      if (i + batchSize < pubkeys.length) {
+        await new Promise(r => setTimeout(r, batchDelayMs));
+      }
+    } catch (err) {
+      console.error('[socialGraph] error fetching batch:', err);
+    }
   }
 }
 
 async function setupSubscription(publicKey: string) {
   log('setting root to', publicKey);
   currentRoot = publicKey;
+  await sendToWorker({ type: 'setRoot', pubkey: publicKey });
 
-  const adapter = getWorkerAdapter();
-  if (!adapter) return;
-
-  try {
-    await adapter.setSocialGraphRoot(publicKey);
-  } catch (err) {
-    console.error('[socialGraph] error setting root:', err);
-  }
-
-  // Trigger crawl in background
+  await fetchFollowList(publicKey);
   queueMicrotask(() => crawlFollowLists(publicKey));
+
+  sub?.stop();
+
+  sub = ndk.subscribe(
+    {
+      kinds: [KIND_CONTACTS],
+      authors: [publicKey],
+      limit: 1,
+    },
+    { closeOnEose: false }
+  );
+
+  let latestTime = 0;
+  sub.on('event', (ev: NDKEvent) => {
+    if (typeof ev.created_at !== 'number' || ev.created_at < latestTime) {
+      return;
+    }
+    latestTime = ev.created_at;
+    handleSocialGraphEvent(ev.rawEvent() as NostrEvent);
+    queueMicrotask(() => crawlFollowLists(publicKey, 1));
+  });
 }
 
 export async function setupSocialGraphSubscriptions() {
@@ -347,7 +480,7 @@ export async function setupSocialGraphSubscriptions() {
         setupSubscription(state.pubkey);
       } else {
         currentRoot = DEFAULT_SOCIAL_GRAPH_ROOT;
-        getWorkerAdapter()?.setSocialGraphRoot(DEFAULT_SOCIAL_GRAPH_ROOT).catch(() => {});
+        sendToWorker({ type: 'setRoot', pubkey: DEFAULT_SOCIAL_GRAPH_ROOT }).catch(() => {});
       }
       prevPubkey = state.pubkey;
     }
@@ -355,8 +488,19 @@ export async function setupSocialGraphSubscriptions() {
 }
 
 // ============================================================================
-// Deferred initialization (after worker is ready)
+// Auto-initialize
 // ============================================================================
 
-// Note: initializeSocialGraph() should be called after worker adapter is initialized
-// This is handled in store.ts initialization
+queueMicrotask(() => {
+  initializeSocialGraph()
+    .then(() => {
+      log('worker initialized');
+      return setupSocialGraphSubscriptions();
+    })
+    .then(() => {
+      log('subscriptions ready');
+    })
+    .catch((err) => {
+      console.error('[socialGraph] initialization error:', err);
+    });
+});
