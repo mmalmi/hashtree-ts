@@ -741,7 +741,7 @@
           src={getNhashFileUrl(entryFromStore.cid, urlFileName || 'document.pdf')}
           class="flex-1 w-full border-none"
           title={urlFileName}
-        />
+        ></iframe>
       {/key}
     {:else if isZip && fileData}
       <!-- ZIP preview - keyed by CID -->

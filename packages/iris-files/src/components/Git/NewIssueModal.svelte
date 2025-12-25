@@ -81,7 +81,7 @@
 {#if isOpen && target}
   <div
     class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-    role="dialog"
+    role="dialog" tabindex="-1"
     aria-modal="true"
     onclick={(e) => e.target === e.currentTarget && handleClose()}
     onkeydown={handleKeyDown}
@@ -90,7 +90,7 @@
       <!-- Header -->
       <div class="flex items-center justify-between px-4 py-3 b-b-1 b-b-solid b-b-surface-3">
         <h2 class="text-lg font-semibold">New Issue</h2>
-        <button onclick={handleClose} class="btn-ghost p-1">
+        <button onclick={handleClose} class="btn-ghost p-1" aria-label="Close">
           <span class="i-lucide-x text-lg"></span>
         </button>
       </div>

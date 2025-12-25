@@ -187,7 +187,7 @@
 
 <div bind:this={containerRef} class="relative">
   <div class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-surface-2 border transition-colors {focused ? 'border-accent' : 'border-surface-3'}">
-    <span class="i-lucide-search text-sm text-muted shrink-0" />
+    <span class="i-lucide-search text-sm text-muted shrink-0"></span>
     <input
       bind:this={inputRef}
       type="text"

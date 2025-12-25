@@ -9,6 +9,6 @@
 </script>
 
 <a href="#/wallet" class="flex flex-col items-center text-text-2 hover:text-text-1 p-1 no-underline">
-  <span class="i-lucide-wallet text-base" />
+  <span class="i-lucide-wallet text-base"></span>
   <span class="text-[10px] leading-none">{totalBalance}</span>
 </a>

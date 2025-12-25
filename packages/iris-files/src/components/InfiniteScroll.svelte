@@ -50,4 +50,4 @@
 </script>
 
 <slot />
-<div bind:this={sentinel} class="h-px" />
+<div bind:this={sentinel} class="h-px"></div>

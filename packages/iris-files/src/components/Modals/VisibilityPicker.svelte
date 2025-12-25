@@ -29,7 +29,7 @@
 </script>
 
 <div>
-  <label class="text-sm text-text-2 mb-2 block">Visibility</label>
+  <span class="text-sm text-text-2 mb-2 block">Visibility</span>
   <div class="flex gap-2">
     {#each ['public', 'unlisted', 'private'] as vis (vis)}
       <button

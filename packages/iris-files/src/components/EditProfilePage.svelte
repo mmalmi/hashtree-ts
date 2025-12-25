@@ -151,8 +151,9 @@
       {/if}
 
       <div>
-        <label class="text-sm text-text-2 block mb-1">Name</label>
+        <label for="profile-name" class="text-sm text-text-2 block mb-1">Name</label>
         <input
+          id="profile-name"
           type="text"
           bind:value={name}
           placeholder="Your name"
@@ -161,8 +162,9 @@
       </div>
 
       <div>
-        <label class="text-sm text-text-2 block mb-1">About</label>
+        <label for="profile-about" class="text-sm text-text-2 block mb-1">About</label>
         <textarea
+          id="profile-about"
           bind:value={about}
           placeholder="Tell us about yourself"
           rows="4"
@@ -171,8 +173,9 @@
       </div>
 
       <div>
-        <label class="text-sm text-text-2 block mb-1">Profile Picture URL</label>
+        <label for="profile-picture" class="text-sm text-text-2 block mb-1">Profile Picture URL</label>
         <input
+          id="profile-picture"
           type="url"
           bind:value={picture}
           placeholder="https://..."
@@ -181,8 +184,9 @@
       </div>
 
       <div>
-        <label class="text-sm text-text-2 block mb-1">Banner URL</label>
+        <label for="profile-banner" class="text-sm text-text-2 block mb-1">Banner URL</label>
         <input
+          id="profile-banner"
           type="url"
           bind:value={banner}
           placeholder="https://..."
@@ -191,8 +195,9 @@
       </div>
 
       <div>
-        <label class="text-sm text-text-2 block mb-1">Website</label>
+        <label for="profile-website" class="text-sm text-text-2 block mb-1">Website</label>
         <input
+          id="profile-website"
           type="url"
           bind:value={website}
           placeholder="https://..."
@@ -201,8 +206,9 @@
       </div>
 
       <div>
-        <label class="text-sm text-text-2 block mb-1">NIP-05</label>
+        <label for="profile-nip05" class="text-sm text-text-2 block mb-1">NIP-05</label>
         <input
+          id="profile-nip05"
           type="text"
           bind:value={nip05Field}
           placeholder="you@example.com"
@@ -211,8 +217,9 @@
       </div>
 
       <div>
-        <label class="text-sm text-text-2 block mb-1">Lightning Address</label>
+        <label for="profile-lud16" class="text-sm text-text-2 block mb-1">Lightning Address</label>
         <input
+          id="profile-lud16"
           type="text"
           bind:value={lud16}
           placeholder="you@getalby.com"

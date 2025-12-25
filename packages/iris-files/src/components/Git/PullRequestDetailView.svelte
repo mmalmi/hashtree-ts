@@ -254,7 +254,7 @@
       <!-- Header -->
       <div class="p-4 b-b-1 b-b-solid b-b-surface-3">
         <div class="flex items-start gap-3">
-          <a href={getBackHref()} class="mt-1 text-text-3 hover:text-text-1">
+          <a href={getBackHref()} class="mt-1 text-text-3 hover:text-text-1" aria-label="Go back">
             <span class="i-lucide-arrow-left"></span>
           </a>
           <div class="flex-1 min-w-0">
