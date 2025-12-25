@@ -17,8 +17,10 @@ import type {
   WorkerRelayStats as RelayStats,
   WorkerDirEntry as DirEntry,
   CID,
+  WebRTCCommand,
 } from 'hashtree';
 import { generateRequestId } from 'hashtree';
+import { WebRTCProxy } from './webrtcProxy';
 
 type PendingRequest = {
   resolve: (value: unknown) => void;
@@ -52,6 +54,9 @@ export class WorkerAdapter {
 
   // Message queue for messages sent before worker is ready
   private messageQueue: WorkerRequest[] = [];
+
+  // WebRTC proxy (main thread owns RTCPeerConnection, worker controls logic)
+  private webrtcProxy: WebRTCProxy | null = null;
 
   /**
    * Create a WorkerAdapter
@@ -112,6 +117,7 @@ export class WorkerAdapter {
           this.ready = true;
           this.restartAttempts = 0;
           this.flushMessageQueue();
+          this.initWebRTCProxy();
           this.readyResolve?.();
           console.log('[WorkerAdapter] Worker ready');
           break;
@@ -159,6 +165,18 @@ export class WorkerAdapter {
           await this.handleDecryptRequest(msg.id, msg.pubkey, msg.ciphertext);
           break;
 
+        // WebRTC commands from worker - execute via proxy
+        case 'rtc:createPeer':
+        case 'rtc:closePeer':
+        case 'rtc:createOffer':
+        case 'rtc:createAnswer':
+        case 'rtc:setLocalDescription':
+        case 'rtc:setRemoteDescription':
+        case 'rtc:addIceCandidate':
+        case 'rtc:sendData':
+          this.webrtcProxy?.handleCommand(msg as WebRTCCommand);
+          break;
+
         default:
           console.warn('[WorkerAdapter] Unknown message type:', (msg as { type: string }).type);
       }
@@ -186,6 +204,12 @@ export class WorkerAdapter {
     this.ready = false;
     this.worker?.terminate();
     this.worker = null;
+
+    // Close WebRTC proxy - will be recreated on restart
+    if (this.webrtcProxy) {
+      this.webrtcProxy.close();
+      this.webrtcProxy = null;
+    }
 
     // Reject all pending requests
     for (const pending of this.pendingRequests.values()) {
@@ -216,6 +240,20 @@ export class WorkerAdapter {
       const msg = this.messageQueue.shift()!;
       this.worker?.postMessage(msg);
     }
+  }
+
+  private initWebRTCProxy() {
+    if (this.webrtcProxy) {
+      this.webrtcProxy.close();
+    }
+
+    // Create proxy that forwards events to worker
+    this.webrtcProxy = new WebRTCProxy((event) => {
+      // Forward all WebRTC events to worker
+      this.worker?.postMessage(event);
+    });
+
+    console.log('[WorkerAdapter] WebRTC proxy initialized');
   }
 
   private postMessage(msg: WorkerRequest, transfer?: Transferable[]) {
@@ -549,6 +587,18 @@ export class WorkerAdapter {
     return response.stats;
   }
 
+  /**
+   * Set WebRTC pool configuration
+   */
+  async setWebRTCPools(pools: { follows: { max: number; satisfied: number }; other: { max: number; satisfied: number } }): Promise<void> {
+    const id = generateRequestId();
+    await this.request<{ error?: string }>({
+      type: 'setWebRTCPools',
+      id,
+      pools,
+    } as WorkerRequest);
+  }
+
   // ============================================================================
   // Public API - Media Streaming
   // ============================================================================
@@ -586,6 +636,12 @@ export class WorkerAdapter {
   // ============================================================================
 
   close(): void {
+    // Close WebRTC proxy
+    if (this.webrtcProxy) {
+      this.webrtcProxy.close();
+      this.webrtcProxy = null;
+    }
+
     if (this.worker) {
       this.postMessage({ type: 'close', id: generateRequestId() });
       this.worker.terminate();
@@ -605,6 +661,13 @@ export class WorkerAdapter {
 
 let instance: WorkerAdapter | null = null;
 
+// Expose on window for tests to reliably access (avoids Vite module duplication issues)
+declare global {
+  interface Window {
+    __workerAdapter?: WorkerAdapter | null;
+  }
+}
+
 export function getWorkerAdapter(): WorkerAdapter | null {
   return instance;
 }
@@ -619,6 +682,12 @@ export async function initWorkerAdapter(
 
   instance = new WorkerAdapter(workerFactory, config);
   await instance.init();
+
+  // Expose on window for tests
+  if (typeof window !== 'undefined') {
+    window.__workerAdapter = instance;
+  }
+
   return instance;
 }
 

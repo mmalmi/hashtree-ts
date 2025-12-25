@@ -73,19 +73,16 @@ export async function goToTreeList(page: any) {
 export async function disableOthersPool(page: any) {
   await page.evaluate(async () => {
     // Import the settings store and set othersMax to 0
-    // Note: Omit .ts extension for more robust Vite resolution
     const { settingsStore } = await import('/src/stores/settings');
     settingsStore.setPoolSettings({ otherMax: 0, otherSatisfied: 0 });
 
-    // Also update the WebRTC store if it exists
-    // Use window global which is always in sync with the app
-    const store = (window as unknown as { webrtcStore?: { setPoolConfig: (config: unknown) => void } }).webrtcStore;
-    if (store) {
-      store.setPoolConfig({
-        follows: { maxConnections: 20, satisfiedConnections: 10 },
-        other: { maxConnections: 0, satisfiedConnections: 0 },
-      });
-    }
+    // Update the worker's WebRTC pool config
+    const { getWorkerAdapter } = await import('/src/workerAdapter');
+    const adapter = getWorkerAdapter();
+    adapter?.setWebRTCPools({
+      follows: { max: 20, satisfied: 10 },
+      other: { max: 0, satisfied: 0 },
+    });
   });
 }
 
@@ -101,18 +98,15 @@ export async function disableOthersPool(page: any) {
 export async function enableOthersPool(page: any) {
   await page.evaluate(async () => {
     const { settingsStore } = await import('/src/stores/settings');
-    // Use high limits to avoid parallel test interference
-    settingsStore.setPoolSettings({ otherMax: 100, otherSatisfied: 1 });
+    settingsStore.setPoolSettings({ otherMax: 10, otherSatisfied: 2, followsMax: 20, followsSatisfied: 10 });
 
-    // Also update the WebRTC store if it exists
-    // Use window global which is always in sync with the app
-    const store = (window as unknown as { webrtcStore?: { setPoolConfig: (config: unknown) => void } }).webrtcStore;
-    if (store) {
-      store.setPoolConfig({
-        follows: { maxConnections: 20, satisfiedConnections: 10 },
-        other: { maxConnections: 100, satisfiedConnections: 1 },
-      });
-    }
+    // Update the worker's WebRTC pool config
+    const { getWorkerAdapter } = await import('/src/workerAdapter');
+    const adapter = getWorkerAdapter();
+    adapter?.setWebRTCPools({
+      follows: { max: 20, satisfied: 10 },
+      other: { max: 10, satisfied: 2 },
+    });
   });
 }
 
@@ -138,14 +132,13 @@ export async function presetOthersPoolInDB(page: any) {
         const db = request.result;
         const tx = db.transaction('settings', 'readwrite');
         const store = tx.objectStore('settings');
-        // Set high pool limits for cross-device sync
         store.put({
           key: 'pools',
           value: {
             followsMax: 20,
             followsSatisfied: 10,
-            otherMax: 100,
-            otherSatisfied: 1
+            otherMax: 10,
+            otherSatisfied: 2
           }
         });
         tx.oncomplete = () => {
@@ -234,13 +227,19 @@ export async function followUser(page: any, targetNpub: string) {
 export async function waitForWebRTCConnection(page: any, timeoutMs: number = 15000): Promise<boolean> {
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
-    const connected = await page.evaluate(() => {
-      const store = (window as any).webrtcStore;
-      if (!store?.getPeers) return false;
-      const peers = store.getPeers();
-      return peers.some((p: { isConnected?: boolean }) => p.isConnected);
+    const result = await page.evaluate(async () => {
+      // Use the window global which is always in sync with the app
+      const adapter = (window as unknown as { __workerAdapter?: { getPeerStats: () => Promise<Array<{ connected?: boolean }>> } }).__workerAdapter;
+      if (!adapter) return { hasAdapter: false, peerCount: 0, connected: false };
+      try {
+        const stats = await adapter.getPeerStats();
+        const connectedCount = stats.filter((p: { connected?: boolean }) => p.connected).length;
+        return { hasAdapter: true, peerCount: stats.length, connected: connectedCount > 0 };
+      } catch (e) {
+        return { hasAdapter: true, peerCount: 0, connected: false, error: String(e) };
+      }
     });
-    if (connected) {
+    if (result.connected) {
       return true;
     }
     await page.waitForTimeout(500);

@@ -84,17 +84,22 @@ export class NostrManager {
     const subs: ReturnType<SimplePool['subscribe']>[] = [];
 
     for (const f of filters) {
+      // Build filter with any tag filters (e.g., #e, #p, #d, #l)
       const poolFilter: Filter = {
         ids: f.ids,
         authors: f.authors,
         kinds: f.kinds,
-        '#e': f['#e'],
-        '#p': f['#p'],
-        '#d': f['#d'],
         since: f.since,
         until: f.until,
         limit: f.limit,
       };
+
+      // Copy any tag filters (keys starting with #)
+      for (const key of Object.keys(f)) {
+        if (key.startsWith('#') && f[key]) {
+          (poolFilter as Record<string, unknown>)[key] = f[key];
+        }
+      }
 
       const sub = this.pool.subscribe(this.relays, poolFilter, {
         onevent: (event: Event) => {

@@ -83,10 +83,16 @@ export type WorkerRequest =
   | { type: 'getPeerStats'; id: string }
   | { type: 'getRelayStats'; id: string }
 
+  // WebRTC pool configuration
+  | { type: 'setWebRTCPools'; id: string; pools: { follows: { max: number; satisfied: number }; other: { max: number; satisfied: number } } }
+
   // NIP-07 responses (main thread → worker, after signing/encryption)
   | { type: 'signed'; id: string; event?: SignedEvent; error?: string }
   | { type: 'encrypted'; id: string; ciphertext?: string; error?: string }
-  | { type: 'decrypted'; id: string; plaintext?: string; error?: string };
+  | { type: 'decrypted'; id: string; plaintext?: string; error?: string }
+
+  // WebRTC proxy events (main thread reports to worker)
+  | WebRTCEvent;
 
 /** Blossom server configuration */
 export interface BlossomServerConfig {
@@ -133,7 +139,10 @@ export type WorkerResponse =
   // NIP-07 requests (worker → main thread, needs extension)
   | { type: 'signEvent'; id: string; event: UnsignedEvent }
   | { type: 'nip44Encrypt'; id: string; pubkey: string; plaintext: string }
-  | { type: 'nip44Decrypt'; id: string; pubkey: string; ciphertext: string };
+  | { type: 'nip44Decrypt'; id: string; pubkey: string; ciphertext: string }
+
+  // WebRTC proxy commands (worker tells main thread what to do)
+  | WebRTCCommand;
 
 export interface DirEntry {
   name: string;
@@ -181,6 +190,51 @@ export type MediaResponse =
   | { type: 'chunk'; requestId: string; data: Uint8Array }
   | { type: 'done'; requestId: string }
   | { type: 'error'; requestId: string; message: string };
+
+// ============================================================================
+// WebRTC Proxy Protocol (Worker ↔ Main Thread)
+// Worker controls logic, main thread owns RTCPeerConnection
+// ============================================================================
+
+/** Worker → Main: Commands to control WebRTC connections */
+export type WebRTCCommand =
+  // Connection lifecycle
+  | { type: 'rtc:createPeer'; peerId: string; pubkey: string }
+  | { type: 'rtc:closePeer'; peerId: string }
+
+  // SDP handling
+  | { type: 'rtc:createOffer'; peerId: string }
+  | { type: 'rtc:createAnswer'; peerId: string }
+  | { type: 'rtc:setLocalDescription'; peerId: string; sdp: RTCSessionDescriptionInit }
+  | { type: 'rtc:setRemoteDescription'; peerId: string; sdp: RTCSessionDescriptionInit }
+
+  // ICE handling
+  | { type: 'rtc:addIceCandidate'; peerId: string; candidate: RTCIceCandidateInit }
+
+  // Data channel
+  | { type: 'rtc:sendData'; peerId: string; data: Uint8Array };
+
+/** Main → Worker: Events from WebRTC connections */
+export type WebRTCEvent =
+  // Connection state
+  | { type: 'rtc:peerCreated'; peerId: string }
+  | { type: 'rtc:peerStateChange'; peerId: string; state: RTCPeerConnectionState }
+  | { type: 'rtc:peerClosed'; peerId: string }
+
+  // SDP results
+  | { type: 'rtc:offerCreated'; peerId: string; sdp: RTCSessionDescriptionInit }
+  | { type: 'rtc:answerCreated'; peerId: string; sdp: RTCSessionDescriptionInit }
+  | { type: 'rtc:descriptionSet'; peerId: string; error?: string }
+
+  // ICE events
+  | { type: 'rtc:iceCandidate'; peerId: string; candidate: RTCIceCandidateInit | null }
+  | { type: 'rtc:iceGatheringComplete'; peerId: string }
+
+  // Data channel
+  | { type: 'rtc:dataChannelOpen'; peerId: string }
+  | { type: 'rtc:dataChannelMessage'; peerId: string; data: Uint8Array }
+  | { type: 'rtc:dataChannelClose'; peerId: string }
+  | { type: 'rtc:dataChannelError'; peerId: string; error: string };
 
 // ============================================================================
 // Helper functions

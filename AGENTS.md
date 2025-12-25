@@ -9,6 +9,9 @@ pnpm run dev      # Dev server
 pnpm run test:e2e # E2E tests
 ```
 
+## Dev Server
+- Check `lsof -i :5173` before starting - don't start if already running
+
 ## Structure
 - `packages/hashtree` - Core library
 - `packages/iris-files` - Web app (Iris Files)
@@ -48,5 +51,5 @@ pnpm run build > /dev/null
 - Use `disableOthersPool(page)` after `page.goto('/')`
 - Use `setupPageErrorHandler(page)` to filter relay errors
 - Use `test.slow()` for complex async operations
-- Multi-user tests: users must follow each other before WebRTC ops
+- Multi-user WebRTC tests: users must follow each other, keep others pool at 0
 - Global timeout 30s, `test.slow()` triples to 90s

@@ -201,29 +201,28 @@ if (typeof window !== 'undefined' && !('webrtcStore' in window)) {
 }
 
 // Refresh WebRTC stats from worker
-let followsSet: Set<string> | null = null;
-
 export async function refreshWebRTCStats(): Promise<void> {
   const adapter = getWorkerAdapter();
   if (!adapter) return;
 
   try {
-    // Lazily load follows to avoid circular deps
-    if (!followsSet) {
-      const { getFollows } = await import('./stores/follows');
-      followsSet = new Set(getFollows());
-    }
+    // Get current user's follows for pool classification
+    const { getFollowsSync } = await import('./stores/follows');
+    const { nostrStore } = await import('./nostr');
+    const myPubkey = get(nostrStore).pubkey;
+    const followsData = myPubkey ? getFollowsSync(myPubkey) : undefined;
+    const followsSet = new Set(followsData?.follows || []);
 
     const stats = await adapter.getPeerStats();
     const peers: PeerInfo[] = stats.map(p => ({
       peerId: p.peerId,
       pubkey: p.pubkey,
       state: p.connected ? 'connected' : 'disconnected',
-      pool: followsSet!.has(p.pubkey) ? 'follows' : 'others',
+      pool: followsSet.has(p.pubkey) ? 'follows' : 'others',
     }));
     appStore.setPeers(peers);
   } catch {
-    // Worker not ready
+    // Worker not ready or other error
   }
 }
 

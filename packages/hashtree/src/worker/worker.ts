@@ -12,25 +12,30 @@
 import { HashTree } from '../hashtree';
 import { DexieStore } from '../store/dexie';
 import { BlossomStore } from '../store/blossom';
-// NOTE: WebRTC cannot run in workers - RTCPeerConnection is not available in workers
-// See: https://github.com/w3c/webrtc-extensions/issues/77
-import type { WorkerRequest, WorkerResponse, WorkerConfig, SignedEvent } from './protocol';
+import type { WorkerRequest, WorkerResponse, WorkerConfig, SignedEvent, WebRTCCommand } from './protocol';
 import { initTreeRootCache, getCachedRoot, clearMemoryCache } from './treeRootCache';
 import { getNostrManager, closeNostrManager } from './nostr';
 import { initIdentity, setIdentity, clearIdentity } from './identity';
 import {
   setResponseSender,
   signEvent,
+  giftWrap,
+  giftUnwrap,
   handleSignedResponse,
   handleEncryptedResponse,
   handleDecryptedResponse,
 } from './signing';
+import { WebRTCController } from './webrtc';
+
+// Kind for WebRTC signaling (ephemeral, gift-wrapped for directed messages)
+const SIGNALING_KIND = 25050;
+const HELLO_TAG = 'hello';
 
 // Worker state
 let tree: HashTree | null = null;
 let store: DexieStore | null = null;
 let blossomStore: BlossomStore | null = null;
-// WebRTC is not available in workers (RTCPeerConnection not defined)
+let webrtc: WebRTCController | null = null;
 let _config: WorkerConfig | null = null;
 let mediaPort: MessagePort | null = null;
 
@@ -118,6 +123,12 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
         await handleGetRelayStats(msg.id);
         break;
 
+      // WebRTC pool configuration
+      case 'setWebRTCPools':
+        webrtc?.setPoolConfig(msg.pools);
+        respond({ type: 'void', id: msg.id });
+        break;
+
       // NIP-07 responses from main thread
       case 'signed':
         handleSignedResponse(msg.id, msg.event, msg.error);
@@ -127,6 +138,22 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
         break;
       case 'decrypted':
         handleDecryptedResponse(msg.id, msg.plaintext, msg.error);
+        break;
+
+      // WebRTC proxy events from main thread
+      case 'rtc:peerCreated':
+      case 'rtc:peerStateChange':
+      case 'rtc:peerClosed':
+      case 'rtc:offerCreated':
+      case 'rtc:answerCreated':
+      case 'rtc:descriptionSet':
+      case 'rtc:iceCandidate':
+      case 'rtc:iceGatheringComplete':
+      case 'rtc:dataChannelOpen':
+      case 'rtc:dataChannelMessage':
+      case 'rtc:dataChannelClose':
+      case 'rtc:dataChannelError':
+        webrtc?.handleProxyEvent(msg);
         break;
 
       default:
@@ -185,7 +212,27 @@ async function handleInit(id: string, cfg: WorkerConfig) {
       console.log('[Worker] Initialized BlossomStore with', cfg.blossomServers.length, 'servers');
     }
 
-    // NOTE: WebRTC not available in workers (RTCPeerConnection not defined)
+    // Initialize NostrManager with relays
+    const nostr = getNostrManager();
+    nostr.init(cfg.relays);
+    console.log('[Worker] NostrManager initialized with', cfg.relays.length, 'relays');
+
+    // Initialize WebRTC controller (RTCPeerConnection runs in main thread proxy)
+    webrtc = new WebRTCController({
+      pubkey: cfg.pubkey,
+      localStore: store,
+      sendCommand: (cmd: WebRTCCommand) => respond(cmd),
+      sendSignaling: async (msg, recipientPubkey) => {
+        await sendWebRTCSignaling(msg, recipientPubkey);
+      },
+      debug: true,
+    });
+
+    // Subscribe to WebRTC signaling events (kind 25050)
+    setupWebRTCSignalingSubscription(cfg.pubkey);
+
+    webrtc.start();
+    console.log('[Worker] WebRTC controller started');
 
     respond({ type: 'ready' });
   } catch (err) {
@@ -787,12 +834,141 @@ function watchTreeRootForStream(
 }
 
 // ============================================================================
+// WebRTC Signaling
+// ============================================================================
+
+/**
+ * Send WebRTC signaling message via Nostr (kind 25050)
+ * - Hello messages: broadcast with #l tag
+ * - Directed messages (offer/answer/candidates): gift-wrapped
+ */
+async function sendWebRTCSignaling(msg: import('../webrtc/types.js').SignalingMessage, recipientPubkey?: string): Promise<void> {
+  try {
+    const nostr = getNostrManager();
+
+    if (recipientPubkey) {
+      // Directed message - gift wrap for privacy
+      const innerEvent = {
+        kind: SIGNALING_KIND,
+        content: JSON.stringify(msg),
+        tags: [] as string[][],
+      };
+      const wrappedEvent = await giftWrap(innerEvent, recipientPubkey);
+      await nostr.publish(wrappedEvent);
+    } else {
+      // Hello message - broadcast with #l tag
+      const expiration = Math.floor((Date.now() + 5 * 60 * 1000) / 1000); // 5 minutes
+      const event = await signEvent({
+        kind: SIGNALING_KIND,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ['l', HELLO_TAG],
+          ['peerId', msg.peerId],
+          ['expiration', expiration.toString()],
+        ],
+        content: '',
+      });
+      await nostr.publish(event);
+    }
+  } catch (err) {
+    console.error('[Worker] Failed to send WebRTC signaling:', err);
+  }
+}
+
+/**
+ * Subscribe to WebRTC signaling events
+ */
+function setupWebRTCSignalingSubscription(myPubkey: string): void {
+  const nostr = getNostrManager();
+  const since = Math.floor((Date.now() - 60000) / 1000); // Last minute
+
+  // Handle incoming signaling events
+  nostr.setOnEvent((subId, event) => {
+    if (subId.startsWith('webrtc-')) {
+      handleWebRTCSignalingEvent(event);
+    }
+  });
+
+  // Subscribe to hello messages (broadcast discovery)
+  nostr.subscribe('webrtc-hello', [{
+    kinds: [SIGNALING_KIND],
+    '#l': [HELLO_TAG],
+    since,
+  }]);
+
+  // Subscribe to directed signaling (offers/answers to us)
+  nostr.subscribe('webrtc-directed', [{
+    kinds: [SIGNALING_KIND],
+    '#p': [myPubkey],
+    since,
+  }]);
+
+  console.log('[Worker] Subscribed to WebRTC signaling');
+}
+
+/**
+ * Handle incoming WebRTC signaling event
+ */
+async function handleWebRTCSignalingEvent(event: SignedEvent): Promise<void> {
+  // Filter out old events
+  const eventAge = Date.now() / 1000 - (event.created_at ?? 0);
+  if (eventAge > 60) return; // Ignore events older than 1 minute
+
+  // Check expiration
+  const expirationTag = event.tags.find(t => t[0] === 'expiration');
+  if (expirationTag) {
+    const expiration = parseInt(expirationTag[1], 10);
+    if (expiration < Date.now() / 1000) return;
+  }
+
+  // Check if it's a hello message (has #l tag)
+  const isHello = event.tags.some(t => t[0] === 'l' && t[1] === HELLO_TAG);
+
+  if (isHello) {
+    // Hello message - extract peerId from tag
+    const peerIdTag = event.tags.find(t => t[0] === 'peerId');
+    if (peerIdTag) {
+      const msg: import('../webrtc/types.js').SignalingMessage = {
+        type: 'hello',
+        peerId: peerIdTag[1],
+      };
+      webrtc?.handleSignalingMessage(msg, event.pubkey);
+    }
+  } else {
+    // Directed message - try to unwrap
+    const seal = await giftUnwrap(event);
+    if (seal && seal.content) {
+      try {
+        const msg = JSON.parse(seal.content) as import('../webrtc/types.js').SignalingMessage;
+        webrtc?.handleSignalingMessage(msg, seal.pubkey);
+      } catch {
+        // Invalid JSON, ignore
+      }
+    }
+  }
+}
+
+// ============================================================================
 // Stats Handlers
 // ============================================================================
 
 async function handleGetPeerStats(id: string) {
-  // NOTE: WebRTC not available in workers - peer stats come from main thread
-  respond({ type: 'peerStats', id, stats: [] });
+  if (!webrtc) {
+    respond({ type: 'peerStats', id, stats: [] });
+    return;
+  }
+
+  const controllerStats = webrtc.getPeerStats();
+  const stats = controllerStats.map(s => ({
+    peerId: s.peerId,
+    pubkey: s.pubkey,
+    connected: s.connected,
+    requestsSent: s.requestsSent,
+    requestsReceived: s.requestsReceived,
+    bytesSent: s.bytesSent,
+    bytesReceived: s.bytesReceived,
+  }));
+  respond({ type: 'peerStats', id, stats });
 }
 
 async function handleGetRelayStats(id: string) {
