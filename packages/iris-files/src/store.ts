@@ -176,10 +176,42 @@ export function stopWebRTC(): void {
 }
 
 // Legacy exports for compatibility - WebRTC is now in worker
-export const webrtcStore = null;
-export function getWebRTCStore() { return null; }
+// Create a proxy object that forwards to worker for test compatibility
+const webrtcStoreProxy = {
+  getPeers: () => get(appStore).peers.map(p => ({
+    ...p,
+    isConnected: p.state === 'connected',
+  })),
+  getConnectedCount: () => get(appStore).peers.filter(p => p.state === 'connected').length,
+  get: async (hash: string) => {
+    const adapter = getWorkerAdapter();
+    if (!adapter) return null;
+    return adapter.get(hash);
+  },
+  setPoolConfig: (_config: unknown) => {
+    // Pool config is managed by worker, no-op for now
+  },
+  setRelays: (_relays: string[]) => {
+    // Relays are managed by worker, no-op for now
+  },
+  sendHello: () => {
+    // Hello is automatic in worker
+  },
+};
+export const webrtcStore = webrtcStoreProxy;
+export function getWebRTCStore() { return webrtcStoreProxy; }
 export function blockPeer(_pubkey: string): void {}
 export function unblockPeer(_pubkey: string): void {}
+
+// Expose webrtcStore on window for test compatibility
+// Use defineProperty to allow testHelpers to override if needed
+if (typeof window !== 'undefined' && !('webrtcStore' in window)) {
+  Object.defineProperty(window, 'webrtcStore', {
+    value: webrtcStoreProxy,
+    writable: true,
+    configurable: true,
+  });
+}
 
 // Refresh WebRTC stats from worker
 let followsSet: Set<string> | null = null;
