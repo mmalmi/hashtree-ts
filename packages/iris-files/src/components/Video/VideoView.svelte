@@ -13,6 +13,7 @@
   import { open as openShareModal } from '../Modals/ShareModal.svelte';
   import { open as openBlossomPushModal } from '../Modals/BlossomPushModal.svelte';
   import { open as openAddToPlaylistModal } from '../Modals/AddToPlaylistModal.svelte';
+  import { open as openZapModal } from '../Modals/ZapModal.svelte';
   import type { TreeVisibility } from 'hashtree';
   import { deleteTree } from '../../nostr';
   import { updateLocalRootCacheHex } from '../../treeRootCache';
@@ -742,6 +743,11 @@
       liking = false;
     }
   }
+
+  function handleZap() {
+    if (!ownerPubkey) return;
+    openZapModal(ownerPubkey, videoIdentifier || undefined);
+  }
 </script>
 
 <div class="flex flex-1 overflow-hidden">
@@ -830,6 +836,17 @@
                 {#if likes.size > 0}
                   <span class="text-sm">{likes.size}</span>
                 {/if}
+              </button>
+            {/if}
+            <!-- Zap button -->
+            {#if ownerPubkey && !isOwner}
+              <button
+                onclick={handleZap}
+                class="btn-ghost p-2 flex items-center gap-1 text-yellow-400 hover:text-yellow-300"
+                title="Send Zap"
+                data-testid="zap-button"
+              >
+                <span class="i-lucide-zap text-lg"></span>
               </button>
             {/if}
             <!-- Save to playlist button -->
