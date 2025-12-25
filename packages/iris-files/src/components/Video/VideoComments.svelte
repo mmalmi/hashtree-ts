@@ -90,15 +90,11 @@
   // Subscribe to comments and zaps when primaryId changes
   $effect(() => {
     const id = primaryId;
-    const owner = ownerPubkey;
     if (!id) return;
 
     untrack(() => {
       subscribeToComments(id);
-      // Subscribe to zaps if we know the owner
-      if (owner) {
-        subscribeToZaps(owner, id);
-      }
+      subscribeToZaps(id);
     });
 
     return () => {
@@ -146,16 +142,16 @@
     });
   }
 
-  function subscribeToZaps(recipientPubkey: string, videoId: string) {
+  function subscribeToZaps(videoId: string) {
     // Reset zaps state
     allZaps = [];
     seenZapIds.clear();
 
-    // Subscribe to NIP-57 zap receipts (kind 9735) for the video owner
-    // We filter by recipient 'p' tag and check for our video identifier in the embedded request
+    // Subscribe to NIP-57 zap receipts (kind 9735) that target this video
+    // Query by 'i' tag (video identifier) similar to reactions
     const filter: NDKFilter = {
       kinds: [KIND_ZAP_RECEIPT as number],
-      '#p': [recipientPubkey],
+      '#i': [videoId],
     };
 
     zapSubscription = ndk.subscribe(filter, { closeOnEose: false });
@@ -165,7 +161,7 @@
       if (seenZapIds.has(event.id)) return;
 
       // Parse the zap receipt
-      const zap = parseZapReceipt(event, videoId);
+      const zap = parseZapReceipt(event);
       if (!zap) return;
 
       seenZapIds.add(event.id);
@@ -180,22 +176,13 @@
     });
   }
 
-  function parseZapReceipt(event: NDKEvent, videoId: string): Zap | null {
+  function parseZapReceipt(event: NDKEvent): Zap | null {
     try {
       // Get the embedded zap request from 'description' tag
       const descriptionTag = event.tags.find(t => t[0] === 'description');
       if (!descriptionTag || !descriptionTag[1]) return null;
 
       const zapRequest = JSON.parse(descriptionTag[1]);
-
-      // Check if this zap is for our video (look for 'i' tag in the request)
-      const hasVideoTag = zapRequest.tags?.some((t: string[]) =>
-        t[0] === 'i' && t[1] === videoId
-      );
-
-      // If it's a video-specific zap and doesn't match our video, skip
-      const isVideoZap = zapRequest.tags?.some((t: string[]) => t[0] === 'k' && t[1] === 'video');
-      if (isVideoZap && !hasVideoTag) return null;
 
       // Get sender from zap request
       const senderPubkey = zapRequest.pubkey;
