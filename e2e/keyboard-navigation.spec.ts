@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList, disableOthersPool } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, goToTreeList, disableOthersPool, waitForAppReady } from './test-utils.js';
 
 // Helper to create tree and navigate into it
 async function createAndEnterTree(page: any, name: string) {
@@ -51,9 +51,8 @@ test.describe('Keyboard Navigation', () => {
     });
 
     await page.reload();
+    await waitForAppReady(page); // Wait for page to load after reload
     await disableOthersPool(page); // Re-apply after reload
-    await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
     await navigateToPublicFolder(page);
   });
 

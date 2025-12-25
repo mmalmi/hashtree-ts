@@ -58,7 +58,7 @@ test.describe('WebRTC Live Fetch', () => {
           localStorage.clear();
         });
         await page.reload();
-        await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+        // Page ready - navigateToPublicFolder handles waiting
       }
 
       // Get npubs

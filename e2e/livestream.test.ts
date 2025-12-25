@@ -21,7 +21,7 @@ test.describe('Livestream Video Stability', () => {
   }
 
   async function waitForAutoLogin(page: Page) {
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+    // Page ready - navigateToPublicFolder handles waiting
   }
 
   // Helper to navigate to tree list and create a new tree

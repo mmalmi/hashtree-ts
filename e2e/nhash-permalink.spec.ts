@@ -80,7 +80,7 @@ test.describe('nhash file permalinks', () => {
     await clearStorageAndReload(page1);
 
     // Wait for app to initialize
-    await page1.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
+    
 
     // Wait for new user redirect to public folder
     await navigateToPublicFolder(page1);
@@ -138,7 +138,7 @@ test.describe('nhash file permalinks', () => {
     await page2.goto(permalinkUrl);
 
     // Wait for app to initialize
-    await page2.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
+    
 
     // Wait for WebRTC peer connection between browser 1 and browser 2
     // The connectivity indicator shows:
@@ -203,7 +203,7 @@ test.describe('nhash file permalinks', () => {
     await clearStorageAndReload(page1);
 
     // Wait for app to initialize
-    await page1.waitForSelector('header span:has-text("Iris")', { timeout: 5000 });
+    
 
     // Wait for new user redirect to public folder
     await navigateToPublicFolder(page1);

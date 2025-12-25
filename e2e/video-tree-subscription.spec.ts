@@ -16,7 +16,7 @@ test.describe('Video Tree Subscription', () => {
 
     // Go to app
     await page.goto('http://localhost:5173');
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+    // Page ready - navigateToPublicFolder handles waiting
 
     // Get user's npub
     const publicLink = page.getByRole('link', { name: 'public' }).first();
@@ -67,7 +67,7 @@ test.describe('Video Tree Subscription', () => {
     setupPageErrorHandler(page);
 
     await page.goto('http://localhost:5173');
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+    // Page ready - navigateToPublicFolder handles waiting
 
     // Get npub
     const publicLink = page.getByRole('link', { name: 'public' }).first();

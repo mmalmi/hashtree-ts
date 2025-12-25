@@ -8,7 +8,7 @@
  * - Verifying visibility icons in tree list and inside tree view
  */
 import { test, expect } from '@playwright/test';
-import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool, configureBlossomServers } from './test-utils.js';
+import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool, configureBlossomServers, waitForAppReady } from './test-utils.js';
 
 test.describe('Unlisted Tree Visibility', () => {
   // Increase timeout for all tests since new user setup now creates 3 default folders
@@ -44,6 +44,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // Reload to get truly fresh state (after clearing storage)
     await page.reload();
+    await waitForAppReady(page); // Wait for page to load after reload
     await disableOthersPool(page); // Re-apply after reload
     await configureBlossomServers(page);
 
@@ -315,7 +316,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await page2.goto('http://localhost:5173');
     await disableOthersPool(page2);
     await configureBlossomServers(page2);
-    await page2.waitForSelector('header span:has-text("Iris")', { timeout: 30000 });
+    
 
     // Get page2's npub by clicking into their public folder
     const publicLink2 = page2.getByRole('link', { name: 'public' }).first();

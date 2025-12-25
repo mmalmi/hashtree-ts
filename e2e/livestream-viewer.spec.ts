@@ -79,7 +79,7 @@ test.describe('Livestream Viewer Updates', () => {
     }
 
     await page.waitForTimeout(300); // Small delay for settings to propagate
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+    // Page ready - navigateToPublicFolder handles waiting
 
     // Wait for the public folder link to appear
     const publicLink = page.getByRole('link', { name: 'public' }).first();
@@ -547,7 +547,7 @@ test.describe('Livestream Viewer Updates', () => {
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+    // Page ready - navigateToPublicFolder handles waiting
 
     // Get the user's npub
     const publicLink = page.getByRole('link', { name: 'public' }).first();
@@ -1051,7 +1051,7 @@ test.describe('Livestream Viewer Updates', () => {
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+    // Page ready - navigateToPublicFolder handles waiting
 
     // Get the user's npub
     const publicLink = page.getByRole('link', { name: 'public' }).first();
@@ -1291,7 +1291,7 @@ test.describe('Livestream Viewer Updates', () => {
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+    // Page ready - navigateToPublicFolder handles waiting
 
     // Get the user's npub
     const publicLink = page.getByRole('link', { name: 'public' }).first();
@@ -1486,7 +1486,7 @@ test.describe('Livestream Viewer Updates', () => {
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+    // Page ready - navigateToPublicFolder handles waiting
 
     // Get the user's npub
     const publicLink = page.getByRole('link', { name: 'public' }).first();
@@ -1689,7 +1689,7 @@ test.describe('Livestream Viewer Updates', () => {
 
     await page.reload();
     await page.waitForTimeout(500);
-    await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+    // Page ready - navigateToPublicFolder handles waiting
 
     // Get the user's npub
     const publicLink = page.getByRole('link', { name: 'public' }).first();

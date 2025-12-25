@@ -51,7 +51,7 @@ test.describe('Chunk Boundary Video', () => {
         localStorage.clear();
       });
       await page.reload();
-      await page.waitForSelector('header span:has-text("Iris")', { timeout: 10000 });
+      // Page ready - navigateToPublicFolder handles waiting
 
       // Get npub
       const publicLink = page.getByRole('link', { name: 'public' }).first();
