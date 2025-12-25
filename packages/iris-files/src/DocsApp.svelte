@@ -6,7 +6,9 @@
   import { onMount } from 'svelte';
   import NostrLogin from './components/NostrLogin.svelte';
   import ConnectivityIndicator from './components/ConnectivityIndicator.svelte';
+  import BandwidthIndicator from './components/BandwidthIndicator.svelte';
   import SearchInput from './components/SearchInput.svelte';
+  import { settingsStore } from './stores/settings';
   import MobileSearch from './components/MobileSearch.svelte';
   import Toast from './components/Toast.svelte';
   import DocsRouter from './components/Docs/DocsRouter.svelte';
@@ -25,6 +27,10 @@
   import BlossomPushModal from './components/Modals/BlossomPushModal.svelte';
   import CreateModal from './components/Modals/CreateModal.svelte';
 
+  // Header display settings
+  let showBandwidth = $derived($settingsStore.pools.showBandwidth ?? false);
+  let showConnectivity = $derived($settingsStore.pools.showConnectivity ?? true);
+
   // Initialize router on mount
   onMount(() => {
     initRouter();
@@ -42,7 +48,12 @@
     <div class="flex items-center gap-2 md:gap-3">
       <MobileSearch />
       <div class="hidden md:block"><SearchInput /></div>
-      <ConnectivityIndicator />
+      {#if showBandwidth}
+        <BandwidthIndicator />
+      {/if}
+      {#if showConnectivity}
+        <ConnectivityIndicator />
+      {/if}
       <NostrLogin />
     </div>
   </header>

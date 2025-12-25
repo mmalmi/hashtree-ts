@@ -6,7 +6,9 @@
   import { onMount } from 'svelte';
   import NostrLogin from './components/NostrLogin.svelte';
   import ConnectivityIndicator from './components/ConnectivityIndicator.svelte';
+  import BandwidthIndicator from './components/BandwidthIndicator.svelte';
   import SearchInput from './components/SearchInput.svelte';
+  import { settingsStore } from './stores/settings';
   import MobileSearch from './components/MobileSearch.svelte';
   import Toast from './components/Toast.svelte';
   import VideoRouter from './components/Video/VideoRouter.svelte';
@@ -31,6 +33,8 @@
 
   let isLoggedIn = $derived($nostrStore.isLoggedIn);
   let createDropdownOpen = $state(false);
+  let showBandwidth = $derived($settingsStore.pools.showBandwidth ?? false);
+  let showConnectivity = $derived($settingsStore.pools.showConnectivity ?? true);
 
   // Initialize router on mount
   onMount(() => {
@@ -92,7 +96,12 @@
           </div>
         </Dropdown>
       {/if}
-      <ConnectivityIndicator />
+      {#if showBandwidth}
+        <BandwidthIndicator />
+      {/if}
+      {#if showConnectivity}
+        <ConnectivityIndicator />
+      {/if}
       <NostrLogin />
     </div>
   </header>
