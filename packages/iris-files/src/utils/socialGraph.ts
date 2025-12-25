@@ -130,6 +130,15 @@ export const socialGraphLoaded = new Promise<boolean>((resolve) => {
 export async function initializeSocialGraph() {
   if (worker) return;
 
+  // Wait for service worker to be ready (needed for COOP/COEP headers)
+  if ('serviceWorker' in navigator) {
+    try {
+      await navigator.serviceWorker.ready;
+    } catch {
+      // Continue anyway
+    }
+  }
+
   worker = new Worker(
     new URL('../workers/socialGraph.worker.ts', import.meta.url),
     { type: 'module' }

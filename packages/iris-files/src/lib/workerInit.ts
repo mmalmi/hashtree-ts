@@ -20,6 +20,20 @@ export interface WorkerInitIdentity {
 }
 
 /**
+ * Wait for service worker to be ready (needed for COOP/COEP headers)
+ */
+async function waitForServiceWorker(): Promise<void> {
+  if (!('serviceWorker' in navigator)) return;
+
+  try {
+    // Wait for service worker to be ready
+    await navigator.serviceWorker.ready;
+  } catch {
+    // Service worker not available, continue anyway
+  }
+}
+
+/**
  * Initialize the hashtree worker with user identity.
  * Safe to call multiple times - only initializes once.
  */
@@ -27,6 +41,10 @@ export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<
   if (initialized) return;
 
   try {
+    // Wait for service worker to be ready before loading workers
+    // This ensures COOP/COEP headers are in place
+    await waitForServiceWorker();
+
     console.log('[WorkerInit] Starting hashtree worker...');
 
     await initWorkerAdapter(workerUrl, {

@@ -134,13 +134,22 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
         // This tab has the local write cache - we're the broadcaster
         const localKey = getLocalRootKey(npub, treeName);
         rootCid = { hash: localHash, key: localKey };
+        console.log('[SwFileHandler] Found in local cache:', npub.slice(0, 16), treeName);
       } else {
         // Try sync cache (for already-resolved trees from Nostr)
         rootCid = getTreeRootSync(npub, treeName);
 
-        // If not in cache, wait for resolver to fetch from network
-        if (!rootCid) {
+        if (rootCid) {
+          console.log('[SwFileHandler] Found in sync cache:', npub.slice(0, 16), treeName);
+        } else {
+          // If not in cache, wait for resolver to fetch from network
+          console.log('[SwFileHandler] Waiting for tree root:', npub.slice(0, 16), treeName);
           rootCid = await waitForTreeRoot(npub, treeName, 30000);
+          if (rootCid) {
+            console.log('[SwFileHandler] Got tree root from network:', npub.slice(0, 16), treeName);
+          } else {
+            console.warn('[SwFileHandler] Tree root timeout:', npub.slice(0, 16), treeName);
+          }
         }
       }
 

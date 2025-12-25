@@ -5,5 +5,5 @@
  */
 
 // Import the worker code directly - this runs the worker's self.onmessage setup
-// Must use relative path - aliases don't work inside workers
+// Aliases don't work inside workers with Vite, must use relative path
 import '../../../hashtree/src/worker/worker';

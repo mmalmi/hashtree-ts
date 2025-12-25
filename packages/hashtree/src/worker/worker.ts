@@ -17,14 +17,10 @@ import { BlossomStore } from '../store/blossom';
 import type { WorkerRequest, WorkerResponse, WorkerConfig, SignedEvent } from './protocol';
 import { initTreeRootCache, getCachedRoot, clearMemoryCache } from './treeRootCache';
 import { getNostrManager, closeNostrManager } from './nostr';
-import { initIdentity, setIdentity, clearIdentity, getPubkey } from './identity';
+import { initIdentity, setIdentity, clearIdentity } from './identity';
 import {
   setResponseSender,
   signEvent,
-  encrypt,
-  decrypt,
-  giftWrap,
-  giftUnwrap,
   handleSignedResponse,
   handleEncryptedResponse,
   handleDecryptedResponse,
