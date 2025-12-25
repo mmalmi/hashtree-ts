@@ -2,7 +2,7 @@
  * WebRTC-based distributed store for hashtree
  *
  * Implements the Store interface, fetching data from P2P network.
- * Uses Nostr relays for WebRTC signaling.
+ * Uses Nostr relays for WebRTC signaling with perfect negotiation (both peers can initiate).
  *
  * Signaling protocol (all use ephemeral kind 25050):
  * - Hello messages: #l: "hello" tag, broadcast for peer discovery (unencrypted)
@@ -490,7 +490,7 @@ export class WebRTCStore implements Store {
       // answer or candidate
       const peerInfo = this.peers.get(peerIdStr);
       if (peerInfo) {
-        await peerInfo.peer.handleSignaling(msg, this.myPeerId.uuid);
+        await peerInfo.peer.handleSignaling(msg);
       }
     }
   }
@@ -533,17 +533,16 @@ export class WebRTCStore implements Store {
       return;
     }
 
-    // Tie-breaking: lower UUID initiates
-    if (this.myPeerId.uuid < peerUuid) {
-      // Mark as pending before async operation to prevent race conditions
-      if (pool === 'other') {
-        this.pendingOtherPubkeys.add(senderPubkey);
-      }
-      try {
-        await this.connectToPeer(peerId, pool);
-      } finally {
-        this.pendingOtherPubkeys.delete(senderPubkey);
-      }
+    // Perfect negotiation: both peers initiate
+    // Collision is handled by Peer class (polite peer rolls back)
+    // Mark as pending before async operation to prevent race conditions
+    if (pool === 'other') {
+      this.pendingOtherPubkeys.add(senderPubkey);
+    }
+    try {
+      await this.connectToPeer(peerId, pool);
+    } finally {
+      this.pendingOtherPubkeys.delete(senderPubkey);
     }
   }
 
@@ -588,6 +587,7 @@ export class WebRTCStore implements Store {
 
     const peer = new Peer({
       peerId,
+      myPeerId: this.myPeerId.uuid,
       direction: 'inbound',
       localStore: this.config.localStore,
       sendSignaling: (m) => this.sendSignaling(m, peerId.pubkey),
@@ -605,7 +605,7 @@ export class WebRTCStore implements Store {
     this.peers.set(peerIdStr, { peer, pool });
     // Clear pending now that peer is in the map
     this.pendingOtherPubkeys.delete(peerId.pubkey);
-    await peer.handleSignaling(msg, this.myPeerId.uuid);
+    await peer.handleSignaling(msg);
   }
 
   private async connectToPeer(peerId: PeerId, pool: PeerPool): Promise<void> {
@@ -619,6 +619,7 @@ export class WebRTCStore implements Store {
 
     const peer = new Peer({
       peerId,
+      myPeerId: this.myPeerId.uuid,
       direction: 'outbound',
       localStore: this.config.localStore,
       sendSignaling: (m) => this.sendSignaling(m, peerId.pubkey),
@@ -634,7 +635,7 @@ export class WebRTCStore implements Store {
     });
 
     this.peers.set(peerIdStr, { peer, pool });
-    await peer.connect(this.myPeerId.uuid);
+    await peer.connect();
   }
 
   private handlePeerClose(peerIdStr: string): void {

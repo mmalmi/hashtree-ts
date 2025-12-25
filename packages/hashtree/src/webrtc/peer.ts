@@ -70,6 +70,12 @@ export class Peer {
   private onConnectedFired = false;  // Guard against double-firing
   private debug: boolean;
 
+  // Perfect negotiation state
+  private makingOffer = false;
+  private ignoreOffer = false;
+  private isPolite: boolean; // true if we should rollback on collision
+  private myPeerId: string; // our peer ID for comparison
+
   // Requests we sent TO this peer (keyed by hash hex)
   private ourRequests = new Map<string, PendingRequest>();
   // Requests this peer sent TO US that we couldn't fulfill (keyed by hash hex)
@@ -113,6 +119,7 @@ export class Peer {
 
   constructor(options: {
     peerId: PeerId;
+    myPeerId: string; // Our peer ID (uuid) for perfect negotiation
     direction: 'inbound' | 'outbound';
     localStore: Store | null;
     sendSignaling: (msg: SignalingMessage) => Promise<void>;
@@ -135,6 +142,10 @@ export class Peer {
     this.createdAt = Date.now();
     // Generate random HTL config for this peer (Freenet-style)
     this.htlConfig = generatePeerHTLConfig();
+
+    // Perfect negotiation: polite peer (smaller ID) rolls back on collision
+    this.myPeerId = options.myPeerId;
+    this.isPolite = options.myPeerId < options.peerId.uuid;
 
     // Start fragment reassembly cleanup interval
     this.reassemblyCleanupInterval = setInterval(
@@ -570,28 +581,55 @@ export class Peer {
 
   /**
    * Initiate connection (create offer)
+   * Uses perfect negotiation pattern - both peers can call this
    */
-  async connect(myPeerId: string): Promise<void> {
-    // Unordered for better performance - protocol is stateless (each message self-describes)
-    this.dataChannel = this.pc.createDataChannel('hashtree', { ordered: false });
-    this.setupDataChannel(this.dataChannel);
+  async connect(): Promise<void> {
+    // Create data channel if we don't have one yet
+    if (!this.dataChannel) {
+      // Unordered for better performance - protocol is stateless (each message self-describes)
+      this.dataChannel = this.pc.createDataChannel('hashtree', { ordered: false });
+      this.setupDataChannel(this.dataChannel);
+    }
 
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
+    try {
+      this.makingOffer = true;
+      const offer = await this.pc.createOffer();
+      await this.pc.setLocalDescription(offer);
 
-    await this.sendSignaling({
-      type: 'offer',
-      offer: offer,
-      recipient: this.peerId,
-      peerId: myPeerId,
-    });
+      await this.sendSignaling({
+        type: 'offer',
+        offer: offer,
+        recipient: this.peerId,
+        peerId: this.myPeerId,
+      });
+    } finally {
+      this.makingOffer = false;
+    }
   }
 
   /**
    * Handle incoming signaling message
+   * Implements perfect negotiation pattern for collision handling
    */
-  async handleSignaling(msg: SignalingMessage, myPeerId: string): Promise<void> {
+  async handleSignaling(msg: SignalingMessage): Promise<void> {
     if (msg.type === 'offer') {
+      // Perfect negotiation: check for offer collision
+      const offerCollision =
+        this.makingOffer ||
+        (this.pc.signalingState !== 'stable' && this.pc.signalingState !== 'closed');
+
+      this.ignoreOffer = !this.isPolite && offerCollision;
+
+      if (this.ignoreOffer) {
+        this.log('Ignoring offer collision (impolite peer)');
+        return;
+      }
+
+      // If we're polite and have a collision, we rollback and accept their offer
+      if (offerCollision) {
+        this.log('Rolling back local offer (polite peer)');
+      }
+
       await this.pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
       await this.processQueuedCandidates();
       const answer = await this.pc.createAnswer();
@@ -601,9 +639,14 @@ export class Peer {
         type: 'answer',
         answer: answer,
         recipient: this.peerId,
-        peerId: myPeerId,
+        peerId: this.myPeerId,
       });
     } else if (msg.type === 'answer') {
+      // Ignore answer if we're not expecting one (e.g., after rollback)
+      if (this.pc.signalingState === 'stable') {
+        this.log('Ignoring unexpected answer in stable state');
+        return;
+      }
       await this.pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
       await this.processQueuedCandidates();
     } else if (msg.type === 'candidate') {
