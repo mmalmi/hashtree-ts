@@ -89,15 +89,17 @@ export async function loadPlaylist(
     const entries = await tree.listDirectory(rootCid);
     if (!entries || entries.length === 0) return null;
 
-    // Check if entries are directories (potential video items)
-    // A playlist has multiple subdirectories, each containing a video
+    // Check entries in parallel with timeout to avoid hanging on unavailable data
     const videoItems: PlaylistItem[] = [];
 
-    for (const entry of entries) {
-      // Skip non-directory entries (check by trying to list as directory)
+    const checkEntry = async (entry: typeof entries[0]): Promise<PlaylistItem | null> => {
       try {
-        const subEntries = await tree.listDirectory(entry.cid);
-        if (!subEntries || !hasVideoFile(subEntries)) continue;
+        // Timeout after 3 seconds per entry
+        const subEntries = await Promise.race([
+          tree.listDirectory(entry.cid),
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+        if (!subEntries || !hasVideoFile(subEntries)) return null;
 
         // This is a video item - extract metadata
         const item: PlaylistItem = {
@@ -106,11 +108,14 @@ export async function loadPlaylist(
           cid: entry.cid,
         };
 
-        // Try to load title from info.json
+        // Try to load title from info.json (with timeout)
         const infoEntry = subEntries.find(e => e.name === 'info.json');
         if (infoEntry) {
           try {
-            const infoData = await tree.readFile(infoEntry.cid);
+            const infoData = await Promise.race([
+              tree.readFile(infoEntry.cid),
+              new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+            ]);
             if (infoData) {
               const info = JSON.parse(new TextDecoder().decode(infoData));
               item.title = info.title || item.title;
@@ -124,7 +129,10 @@ export async function loadPlaylist(
           const titleEntry = subEntries.find(e => e.name === 'title.txt');
           if (titleEntry) {
             try {
-              const titleData = await tree.readFile(titleEntry.cid);
+              const titleData = await Promise.race([
+                tree.readFile(titleEntry.cid),
+                new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+              ]);
               if (titleData) {
                 item.title = new TextDecoder().decode(titleData);
               }
@@ -138,11 +146,16 @@ export async function loadPlaylist(
           item.thumbnailUrl = buildThumbnailUrl(npub, treeName, entry.name, thumbEntry.name);
         }
 
-        videoItems.push(item);
+        return item;
       } catch {
-        // Not a directory, skip
-        continue;
+        return null;
       }
+    };
+
+    // Check all entries in parallel
+    const results = await Promise.all(entries.map(checkEntry));
+    for (const item of results) {
+      if (item) videoItems.push(item);
     }
 
     // Only show playlist sidebar if we have enough videos for navigation

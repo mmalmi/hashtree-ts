@@ -134,20 +134,14 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
         // This tab has the local write cache - we're the broadcaster
         const localKey = getLocalRootKey(npub, treeName);
         rootCid = { hash: localHash, key: localKey };
-        console.log('[SwFileHandler] Found in local cache:', npub.slice(0, 16), treeName);
       } else {
         // Try sync cache (for already-resolved trees from Nostr)
         rootCid = getTreeRootSync(npub, treeName);
 
-        if (rootCid) {
-          console.log('[SwFileHandler] Found in sync cache:', npub.slice(0, 16), treeName);
-        } else {
+        if (!rootCid) {
           // If not in cache, wait for resolver to fetch from network
-          console.log('[SwFileHandler] Waiting for tree root:', npub.slice(0, 16), treeName);
           rootCid = await waitForTreeRoot(npub, treeName, 30000);
-          if (rootCid) {
-            console.log('[SwFileHandler] Got tree root from network:', npub.slice(0, 16), treeName);
-          } else {
+          if (!rootCid) {
             console.warn('[SwFileHandler] Tree root timeout:', npub.slice(0, 16), treeName);
           }
         }
@@ -164,10 +158,8 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
 
       // Navigate to file
       const tree = getTree();
-      console.log('[SwFileHandler] Resolving path:', filePath, 'in tree with hash:', rootCid.hash.slice(0, 8));
       const entry = await tree.resolvePath(rootCid, filePath || '');
       if (!entry) {
-        console.warn('[SwFileHandler] File not found in tree:', filePath);
         port.postMessage({
           status: 404,
           headers: { 'Content-Type': 'text/plain' },
@@ -175,7 +167,6 @@ async function handleFileRequest(request: FileRequest, port: MessagePort): Promi
         } as FileResponseHeaders);
         return;
       }
-      console.log('[SwFileHandler] Found file:', filePath, 'cid:', entry.cid.hash.slice(0, 8));
 
       cid = entry.cid;
     }
