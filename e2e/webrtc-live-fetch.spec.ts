@@ -85,13 +85,15 @@ test.describe('WebRTC Live Fetch', () => {
       await followUser(pageB, npubA);
       console.log('Mutual follows established');
 
-      // Navigate broadcaster back to their own tree for writing
-      await pageA.goto(`http://localhost:5173/#/${npubA}/public`);
+      // Navigate broadcaster back to their own tree for writing (use hash nav to preserve WebRTC)
+      await pageA.evaluate((npub: string) => {
+        window.location.hash = `/${npub}/public`;
+      }, npubA);
       await pageA.waitForURL(/\/#\/npub.*\/public/, { timeout: 10000 });
 
-      // Wait for WebRTC connections
+      // Wait for WebRTC connections (need to wait for periodic hello interval to retry)
       console.log('\n=== Waiting for WebRTC connections ===');
-      await pageA.waitForTimeout(5000);
+      await pageA.waitForTimeout(12000);
 
       // Check peer status
       const getPeerStatus = async (page: any, label: string) => {
