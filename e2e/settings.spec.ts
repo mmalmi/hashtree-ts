@@ -73,8 +73,8 @@ test.describe('Settings page', () => {
     // Wait for settings page to load
     await expect(page.locator('text=Blossom Servers')).toBeVisible({ timeout: 10000 });
 
-    // Find the first blossom server row (should be cdn.iris.to by default)
-    const firstServerRow = page.locator('div').filter({ hasText: /cdn\.iris\.to/ }).first();
+    // Find the first blossom server row (should be upload.iris.to by default)
+    const firstServerRow = page.locator('div').filter({ hasText: /upload\.iris\.to/ }).first();
     await expect(firstServerRow).toBeVisible({ timeout: 5000 });
 
     // Find read checkbox

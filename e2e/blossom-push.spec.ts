@@ -57,11 +57,8 @@ test.describe('Blossom Push', () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     // Should show write-enabled servers from default config
-    // hashtree.iris.to should be visible and checked by default
-    await expect(modal.locator('text=hashtree.iris.to')).toBeVisible();
-
-    // cdn.iris.to should also be available (but may be unchecked)
-    await expect(modal.locator('text=cdn.iris.to')).toBeVisible();
+    // upload.iris.to should be visible and checked by default (it's the write server)
+    await expect(modal.locator('text=upload.iris.to')).toBeVisible();
 
     // Close modal
     await modal.locator('button', { hasText: 'Cancel' }).click();

@@ -503,7 +503,7 @@ test.describe('Playlist Management', () => {
         // Create BlossomStore for push (same pattern as BlossomPushModal)
         const { signEvent } = await import('/src/nostr.ts');
         const blossomStore = new BlossomStore({
-          servers: [{ url: 'https://cdn.iris.to', write: false }, { url: 'https://hashtree.iris.to', write: true }],
+          servers: [{ url: 'https://upload.iris.to', write: true }],
           signer: async (event: any) => signEvent({ ...event, pubkey: '', id: '', sig: '' }),
         });
 
