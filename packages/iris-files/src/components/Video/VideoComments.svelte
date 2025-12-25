@@ -228,7 +228,7 @@
 
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-lg font-semibold text-text-1">
-      Comments & Zaps {#if timeline.length > 0}<span class="text-text-3 font-normal">({timeline.length})</span>{/if}
+      Comments {#if timeline.length > 0}<span class="text-text-3 font-normal">({timeline.length})</span>{/if}
     </h2>
 
     {#if timeline.length > 0}
