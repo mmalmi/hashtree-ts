@@ -344,6 +344,13 @@
       </div>
     </div>
 
+    <!-- Zaps received -->
+    {#if ownerPubkey}
+      <div class="mb-6">
+        <UserZaps pubkey={ownerPubkey} collapsible={true} maxItems={20} />
+      </div>
+    {/if}
+
     <!-- Playlists section -->
     {#if playlists.length > 0}
       <div class="mb-8">
@@ -395,13 +402,5 @@
         </div>
       {/if}
     </div>
-
-    <!-- Zaps received -->
-    {#if ownerPubkey}
-      <div class="pb-8">
-        <h2 class="text-lg font-semibold text-text-1 mb-4">Zaps Received</h2>
-        <UserZaps pubkey={ownerPubkey} maxItems={20} />
-      </div>
-    {/if}
   </div>
 </div>

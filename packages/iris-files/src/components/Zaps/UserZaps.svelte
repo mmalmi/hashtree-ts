@@ -10,10 +10,11 @@
   interface Props {
     pubkey: string;
     showSummary?: boolean;
+    collapsible?: boolean;
     maxItems?: number;
   }
 
-  let { pubkey, showSummary = true, maxItems = 50 }: Props = $props();
+  let { pubkey, showSummary = true, collapsible = false, maxItems = 50 }: Props = $props();
 
   let allZaps = $state<Zap[]>([]);
   let zapCleanup = $state<(() => void) | null>(null);
@@ -37,4 +38,4 @@
   });
 </script>
 
-<ZapsList zaps={allZaps} {showSummary} {maxItems} />
+<ZapsList zaps={allZaps} {showSummary} {collapsible} {maxItems} />

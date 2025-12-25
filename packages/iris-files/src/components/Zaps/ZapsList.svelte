@@ -10,11 +10,13 @@
   interface Props {
     zaps: Zap[];
     showSummary?: boolean;
+    collapsible?: boolean;
     maxItems?: number;
   }
 
-  let { zaps, showSummary = true, maxItems = 50 }: Props = $props();
+  let { zaps, showSummary = true, collapsible = false, maxItems = 50 }: Props = $props();
 
+  let expanded = $state(false);
   let totalSats = $derived(zaps.reduce((sum, z) => sum + z.amountSats, 0));
   let displayZaps = $derived(maxItems ? zaps.slice(0, maxItems) : zaps);
 
@@ -40,9 +42,14 @@
 {#if zaps.length > 0}
   <!-- Summary -->
   {#if showSummary}
-    <div class="flex items-center gap-3 mb-4 p-3 bg-surface-1 rounded-lg" data-testid="zaps-summary">
+    <button
+      class="flex items-center gap-3 p-3 bg-surface-1 rounded-lg w-full text-left {collapsible ? 'cursor-pointer hover:bg-surface-2' : 'cursor-default'}"
+      data-testid="zaps-summary"
+      onclick={() => collapsible && (expanded = !expanded)}
+      disabled={!collapsible}
+    >
       <span class="i-lucide-zap text-yellow-400 text-xl"></span>
-      <div>
+      <div class="flex-1">
         <span class="font-semibold text-yellow-400" data-testid="zaps-total">
           ⚡ {totalSats.toLocaleString()} sats
         </span>
@@ -50,11 +57,15 @@
           from {zaps.length} zap{zaps.length !== 1 ? 's' : ''}
         </span>
       </div>
-    </div>
+      {#if collapsible}
+        <span class="i-lucide-chevron-down text-text-3 transition-transform {expanded ? 'rotate-180' : ''}"></span>
+      {/if}
+    </button>
   {/if}
 
   <!-- List -->
-  <div class="space-y-3" data-testid="zaps-list">
+  {#if !collapsible || expanded}
+  <div class="space-y-3 {collapsible ? 'mt-3 max-h-64 overflow-y-auto' : ''}" data-testid="zaps-list">
     {#each displayZaps as zap (zap.id)}
       <div class="flex gap-3 p-3 bg-surface-1 rounded-lg" data-testid="zap-item">
         <a href={`#/${nip19.npubEncode(zap.senderPubkey)}`} class="shrink-0">
@@ -77,4 +88,5 @@
       </div>
     {/each}
   </div>
+  {/if}
 {/if}
