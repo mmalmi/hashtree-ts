@@ -20,6 +20,8 @@ interface PeerConnection {
   dataChannel: RTCDataChannel | null;
   pubkey: string;
   pendingCandidates: RTCIceCandidateInit[];
+  sendQueue: Uint8Array[];
+  sending: boolean;
 }
 
 type EventCallback = (event: WebRTCEvent) => void;
@@ -77,6 +79,8 @@ export class WebRTCProxy {
       dataChannel: null,
       pubkey,
       pendingCandidates: [],
+      sendQueue: [],
+      sending: false,
     };
 
     // Create data channel (offerer creates, answerer receives via ondatachannel)
@@ -243,16 +247,54 @@ export class WebRTCProxy {
     }
   }
 
+  // 256KB threshold - pause sending when buffer exceeds this
+  private static readonly BUFFER_THRESHOLD = 256 * 1024;
+
   private sendData(peerId: string, data: Uint8Array): void {
     const peer = this.peers.get(peerId);
     if (!peer?.dataChannel || peer.dataChannel.readyState !== 'open') {
       return;
     }
 
-    try {
-      peer.dataChannel.send(data.buffer);
-    } catch (err) {
-      console.error('[WebRTCProxy] Failed to send data:', err);
+    // Queue the data
+    peer.sendQueue.push(data);
+
+    // Start draining if not already
+    if (!peer.sending) {
+      this.drainQueue(peerId);
+    }
+  }
+
+  private drainQueue(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer?.dataChannel || peer.dataChannel.readyState !== 'open') {
+      return;
+    }
+
+    peer.sending = true;
+    const dc = peer.dataChannel;
+
+    // Send as much as we can without overflowing the buffer
+    while (peer.sendQueue.length > 0 && dc.bufferedAmount < WebRTCProxy.BUFFER_THRESHOLD) {
+      const data = peer.sendQueue.shift()!;
+      try {
+        dc.send(data.buffer);
+      } catch {
+        // Re-queue on failure and wait for buffer to drain
+        peer.sendQueue.unshift(data);
+        break;
+      }
+    }
+
+    // If there's more to send, wait for buffer to drain
+    if (peer.sendQueue.length > 0) {
+      dc.bufferedAmountLowThreshold = WebRTCProxy.BUFFER_THRESHOLD / 2;
+      dc.onbufferedamountlow = () => {
+        dc.onbufferedamountlow = null;
+        this.drainQueue(peerId);
+      };
+    } else {
+      peer.sending = false;
     }
   }
 
@@ -268,12 +310,17 @@ export class WebRTCProxy {
     const peer = this.peers.get(peerId);
     if (!peer) return;
 
+    // Clear send queue
+    peer.sendQueue = [];
+    peer.sending = false;
+
     // Close data channel
     if (peer.dataChannel) {
       peer.dataChannel.onopen = null;
       peer.dataChannel.onclose = null;
       peer.dataChannel.onerror = null;
       peer.dataChannel.onmessage = null;
+      peer.dataChannel.onbufferedamountlow = null;
       peer.dataChannel.close();
     }
 
