@@ -4,7 +4,9 @@
    * Self-contained component with its own subscription
    */
   import { untrack } from 'svelte';
+  import { nip19 } from 'nostr-tools';
   import { subscribeToZaps, insertZapSorted, type Zap } from '../../utils/zaps';
+  import { createProfileStore } from '../../stores/profile';
   import { open as openZapModal } from '../Modals/ZapModal.svelte';
 
   interface Props {
@@ -18,6 +20,21 @@
   let allZaps = $state<Zap[]>([]);
   let zapCleanup = $state<(() => void) | null>(null);
   let totalSats = $derived(allZaps.reduce((sum, z) => sum + z.amountSats, 0));
+
+  // Check if owner has lightning address
+  let ownerNpub = $derived(ownerPubkey ? nip19.npubEncode(ownerPubkey) : '');
+  let profileStore = $derived(ownerNpub ? createProfileStore(ownerNpub) : null);
+  let profile = $state<{ lud16?: string } | null>(null);
+  let hasLightningAddress = $derived(!!profile?.lud16);
+  let canZap = $derived(!isOwner && hasLightningAddress);
+
+  $effect(() => {
+    if (!profileStore) return;
+    const unsub = profileStore.subscribe(value => {
+      profile = value;
+    });
+    return unsub;
+  });
 
   $effect(() => {
     const id = videoIdentifier;
@@ -38,7 +55,7 @@
   });
 
   function handleZap() {
-    if (!isOwner) {
+    if (canZap) {
       openZapModal(ownerPubkey, videoIdentifier);
     }
   }
@@ -46,14 +63,15 @@
 
 <button
   onclick={handleZap}
-  class="flex items-center gap-2 px-3 py-1.5 rounded-full {isOwner ? 'bg-surface-1 cursor-default' : 'bg-surface-1 hover:bg-surface-2 cursor-pointer'} text-yellow-400"
-  disabled={isOwner}
+  class="flex items-center gap-2 px-3 py-1.5 rounded-full {canZap ? 'bg-surface-1 hover:bg-surface-2 cursor-pointer' : 'bg-surface-1 cursor-default'} text-yellow-400"
+  disabled={!canZap}
+  title={!hasLightningAddress && !isOwner ? 'No lightning address' : undefined}
   data-testid="zap-button"
 >
   <span class="i-lucide-zap text-lg"></span>
   {#if totalSats > 0}
     <span class="font-semibold">{totalSats.toLocaleString()}</span>
-  {:else if !isOwner}
+  {:else if canZap}
     <span class="text-sm">Zap</span>
   {:else}
     <span class="text-sm">0</span>
