@@ -13,11 +13,16 @@ import HashTreeWorker from '../workers/hashtree.worker?worker';
 
 let initialized = false;
 
+export interface WorkerInitIdentity {
+  pubkey: string;
+  nsec?: string;  // hex-encoded secret key (only for nsec login)
+}
+
 /**
- * Initialize the hashtree worker.
+ * Initialize the hashtree worker with user identity.
  * Safe to call multiple times - only initializes once.
  */
-export async function initHashtreeWorker(): Promise<void> {
+export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<void> {
   if (initialized) return;
 
   try {
@@ -27,6 +32,8 @@ export async function initHashtreeWorker(): Promise<void> {
       storeName: 'hashtree-worker',
       relays: DEFAULT_NETWORK_SETTINGS.relays,
       blossomServers: DEFAULT_NETWORK_SETTINGS.blossomServers,
+      pubkey: identity.pubkey,
+      nsec: identity.nsec,
     });
 
     initialized = true;

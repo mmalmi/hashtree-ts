@@ -2,9 +2,8 @@
  * Hashtree Worker
  *
  * Dedicated worker that owns:
- * - HashTree + DexieStore (IndexedDB storage - better Safari support than OPFS)
+ * - HashTree + DexieStore (IndexedDB storage)
  * - WebRTC peer connections (P2P data transfer)
- * - Nostr relay connections (signaling + tree roots)
  *
  * Main thread communicates via postMessage.
  * NIP-07 signing/encryption delegated back to main thread.
@@ -13,36 +12,33 @@
 import { HashTree } from '../hashtree';
 import { DexieStore } from '../store/dexie';
 import { BlossomStore } from '../store/blossom';
-import type {
-  WorkerRequest,
-  WorkerResponse,
-  WorkerConfig,
-  SignedEvent,
-  UnsignedEvent,
-} from './protocol';
-import { getNostrManager, closeNostrManager } from './nostr';
-import { getWebRTCManager, closeWebRTCManager } from './webrtc';
+import { WebRTCStore } from '../webrtc';
+import type { WorkerRequest, WorkerResponse, WorkerConfig, SignedEvent } from './protocol';
 import { initTreeRootCache, getCachedRoot, clearMemoryCache } from './treeRootCache';
-import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
-import type { EventTemplate } from 'nostr-tools';
+import { getNostrManager, closeNostrManager } from './nostr';
+import { initIdentity, setIdentity, clearIdentity, getPubkey } from './identity';
+import {
+  setResponseSender,
+  signEvent,
+  encrypt,
+  decrypt,
+  giftWrap,
+  giftUnwrap,
+  handleSignedResponse,
+  handleEncryptedResponse,
+  handleDecryptedResponse,
+} from './signing';
 
 // Worker state
 let tree: HashTree | null = null;
 let store: DexieStore | null = null;
 let blossomStore: BlossomStore | null = null;
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- stored for future config access
+let webrtcStore: WebRTCStore | null = null;
 let _config: WorkerConfig | null = null;
 let mediaPort: MessagePort | null = null;
 
-// Ephemeral identity for WebRTC signaling (generated fresh each session)
-// This is NOT the user's real identity - just for P2P discovery
-let ephemeralSecretKey: Uint8Array | null = null;
-let ephemeralPubkey: string | null = null;
-
-// Pending NIP-07 requests (waiting for main thread to sign/encrypt)
-const pendingSignRequests = new Map<string, (event: SignedEvent | null, error?: string) => void>();
-const pendingEncryptRequests = new Map<string, (ciphertext: string | null, error?: string) => void>();
-const pendingDecryptRequests = new Map<string, (plaintext: string | null, error?: string) => void>();
+// Set up response sender for signing module
+setResponseSender((msg) => self.postMessage(msg));
 
 // ============================================================================
 // Message Handler
@@ -59,6 +55,9 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
         break;
       case 'close':
         await handleClose(msg.id);
+        break;
+      case 'setIdentity':
+        handleSetIdentity(msg.id, msg.pubkey, msg.nsec);
         break;
 
       // Store operations
@@ -164,7 +163,7 @@ async function handleInit(id: string, cfg: WorkerConfig) {
   try {
     _config = cfg;
 
-    // Initialize Dexie/IndexedDB store (better Safari support than OPFS)
+    // Initialize Dexie/IndexedDB store
     const storeName = cfg.storeName || 'hashtree-worker';
     store = new DexieStore(storeName);
 
@@ -176,39 +175,21 @@ async function handleInit(id: string, cfg: WorkerConfig) {
 
     console.log('[Worker] Initialized with DexieStore:', storeName);
 
-    // Generate ephemeral identity for WebRTC signaling
-    // This is a throwaway keypair - not the user's real identity
-    ephemeralSecretKey = generateSecretKey();
-    ephemeralPubkey = getPublicKey(ephemeralSecretKey);
-    console.log('[Worker] Generated ephemeral pubkey:', ephemeralPubkey.slice(0, 16) + '...');
+    // Initialize identity
+    initIdentity(cfg.pubkey, cfg.nsec);
+    console.log('[Worker] User pubkey:', cfg.pubkey.slice(0, 16) + '...');
 
-    // Initialize Nostr relay connections
-    if (cfg.relays && cfg.relays.length > 0) {
-      const nostr = getNostrManager();
-      nostr.init(cfg.relays);
-
-      // Wire up event callbacks to forward to main thread
-      nostr.setOnEvent((subId, event) => {
-        respond({ type: 'event', subId, event });
-      });
-      nostr.setOnEose((subId) => {
-        respond({ type: 'eose', subId });
-      });
-    }
-
-    // Initialize WebRTC peer management with ephemeral identity
-    const webrtc = getWebRTCManager();
-    webrtc.init(store);
-    webrtc.start();
-
-    // Initialize Blossom fallback store
+    // Initialize Blossom store with signer for uploads
     if (cfg.blossomServers && cfg.blossomServers.length > 0) {
       blossomStore = new BlossomStore({
-        servers: cfg.blossomServers,
-        // No signer - read-only fallback
+        servers: cfg.blossomServers.map(url => ({ url, write: true })),
+        signer: createBlossomSigner(),
       });
       console.log('[Worker] Initialized BlossomStore with', cfg.blossomServers.length, 'servers');
     }
+
+    // Initialize WebRTC with adapter functions
+    initWebRTCStore(cfg.relays || []);
 
     respond({ type: 'ready' });
   } catch (err) {
@@ -217,18 +198,84 @@ async function handleInit(id: string, cfg: WorkerConfig) {
   }
 }
 
+/**
+ * Initialize WebRTCStore with adapter functions for signing/encryption
+ */
+function initWebRTCStore(relays: string[]) {
+  const pubkey = getPubkey();
+  if (!pubkey || !store) return;
+
+  // Close existing store if any
+  if (webrtcStore) {
+    webrtcStore.stop();
+  }
+
+  webrtcStore = new WebRTCStore({
+    pubkey,
+    signer: (event) => signEvent(event),
+    encrypt,
+    decrypt,
+    giftWrap,
+    giftUnwrap,
+    relays,
+    localStore: store,
+    fallbackStores: blossomStore ? [blossomStore] : [],
+  });
+
+  console.log('[Worker] Initialized WebRTCStore');
+}
+
+/**
+ * Handle identity change (account switch)
+ */
+function handleSetIdentity(id: string, pubkey: string, nsec?: string) {
+  setIdentity(pubkey, nsec);
+  console.log('[Worker] Identity updated:', pubkey.slice(0, 16) + '...');
+
+  // Reinitialize Blossom with new signer
+  if (_config?.blossomServers && _config.blossomServers.length > 0) {
+    blossomStore = new BlossomStore({
+      servers: _config.blossomServers.map(url => ({ url, write: true })),
+      signer: createBlossomSigner(),
+    });
+  }
+
+  // Restart WebRTC with new identity
+  initWebRTCStore(_config?.relays || []);
+
+  respond({ type: 'void', id });
+}
+
+/**
+ * Create Blossom signer using current identity
+ */
+function createBlossomSigner() {
+  return async (event: { kind: 24242; created_at: number; content: string; tags: string[][] }) => {
+    const signed = await signEvent({
+      kind: event.kind,
+      created_at: event.created_at,
+      content: event.content,
+      tags: event.tags,
+    });
+    return signed;
+  };
+}
+
 async function handleClose(id: string) {
   // Close WebRTC connections
-  closeWebRTCManager();
+  if (webrtcStore) {
+    webrtcStore.stop();
+    webrtcStore = null;
+  }
   // Close Nostr connections
   closeNostrManager();
+  // Clear identity
+  clearIdentity();
   // Clear caches
   clearMemoryCache();
   store = null;
   tree = null;
   _config = null;
-  ephemeralSecretKey = null;
-  ephemeralPubkey = null;
   respond({ type: 'void', id });
 }
 
@@ -246,9 +293,8 @@ async function handleGet(id: string, hash: Uint8Array) {
   let data = await store.get(hash);
 
   // 2. If not found locally, try fetching from WebRTC peers
-  if (!data) {
-    const webrtc = getWebRTCManager();
-    data = await webrtc.get(hash);
+  if (!data && webrtcStore) {
+    data = await webrtcStore.get(hash);
 
     // Cache locally if found from peers
     if (data) {
@@ -786,8 +832,20 @@ function watchTreeRootForStream(
 
 async function handleGetPeerStats(id: string) {
   try {
-    const webrtc = getWebRTCManager();
-    const stats = webrtc.getPeerStats();
+    if (!webrtcStore) {
+      respond({ type: 'peerStats', id, stats: [] });
+      return;
+    }
+    const peers = webrtcStore.getPeers();
+    const stats = peers.map(p => ({
+      peerId: p.peerId,
+      pubkey: p.pubkey,
+      connected: p.state === 'connected',
+      requestsSent: 0,
+      requestsReceived: 0,
+      bytesSent: 0,
+      bytesReceived: 0,
+    }));
     respond({ type: 'peerStats', id, stats });
   } catch {
     respond({ type: 'peerStats', id, stats: [] });
@@ -802,132 +860,5 @@ async function handleGetRelayStats(id: string) {
   } catch {
     respond({ type: 'relayStats', id, stats: [] });
   }
-}
-
-// ============================================================================
-// NIP-07 Response Handlers
-// ============================================================================
-
-function handleSignedResponse(id: string, event?: SignedEvent, error?: string) {
-  const resolver = pendingSignRequests.get(id);
-  if (resolver) {
-    pendingSignRequests.delete(id);
-    resolver(event || null, error);
-  }
-}
-
-function handleEncryptedResponse(id: string, ciphertext?: string, error?: string) {
-  const resolver = pendingEncryptRequests.get(id);
-  if (resolver) {
-    pendingEncryptRequests.delete(id);
-    resolver(ciphertext || null, error);
-  }
-}
-
-function handleDecryptedResponse(id: string, plaintext?: string, error?: string) {
-  const resolver = pendingDecryptRequests.get(id);
-  if (resolver) {
-    pendingDecryptRequests.delete(id);
-    resolver(plaintext || null, error);
-  }
-}
-
-// ============================================================================
-// Ephemeral Signing (for WebRTC signaling - no main thread roundtrip)
-// ============================================================================
-
-/**
- * Sign an event with the ephemeral key (for WebRTC signaling only)
- * This does NOT use the user's real identity - just for P2P discovery
- */
-export function signWithEphemeralKey(template: EventTemplate): SignedEvent {
-  if (!ephemeralSecretKey) {
-    throw new Error('Ephemeral key not initialized');
-  }
-  const event = finalizeEvent(template, ephemeralSecretKey);
-  return {
-    id: event.id,
-    pubkey: event.pubkey,
-    kind: event.kind,
-    content: event.content,
-    tags: event.tags,
-    created_at: event.created_at,
-    sig: event.sig,
-  };
-}
-
-/**
- * Get the ephemeral pubkey (for WebRTC peer ID)
- */
-export function getEphemeralPubkey(): string | null {
-  return ephemeralPubkey;
-}
-
-// ============================================================================
-// NIP-07 Request Helpers (for real identity - tree publishing etc)
-// ============================================================================
-
-export async function requestSign(event: UnsignedEvent): Promise<SignedEvent> {
-  const id = `sign_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-  return new Promise((resolve, reject) => {
-    pendingSignRequests.set(id, (signed, error) => {
-      if (error) reject(new Error(error));
-      else if (signed) resolve(signed);
-      else reject(new Error('Signing failed'));
-    });
-
-    respond({ type: 'signEvent', id, event });
-
-    // Timeout after 60 seconds
-    setTimeout(() => {
-      if (pendingSignRequests.has(id)) {
-        pendingSignRequests.delete(id);
-        reject(new Error('Signing timeout'));
-      }
-    }, 60000);
-  });
-}
-
-export async function requestEncrypt(pubkey: string, plaintext: string): Promise<string> {
-  const id = `enc_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-  return new Promise((resolve, reject) => {
-    pendingEncryptRequests.set(id, (ciphertext, error) => {
-      if (error) reject(new Error(error));
-      else if (ciphertext) resolve(ciphertext);
-      else reject(new Error('Encryption failed'));
-    });
-
-    respond({ type: 'nip44Encrypt', id, pubkey, plaintext });
-
-    setTimeout(() => {
-      if (pendingEncryptRequests.has(id)) {
-        pendingEncryptRequests.delete(id);
-        reject(new Error('Encryption timeout'));
-      }
-    }, 30000);
-  });
-}
-
-export async function requestDecrypt(pubkey: string, ciphertext: string): Promise<string> {
-  const id = `dec_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-  return new Promise((resolve, reject) => {
-    pendingDecryptRequests.set(id, (plaintext, error) => {
-      if (error) reject(new Error(error));
-      else if (plaintext) resolve(plaintext);
-      else reject(new Error('Decryption failed'));
-    });
-
-    respond({ type: 'nip44Decrypt', id, pubkey, ciphertext });
-
-    setTimeout(() => {
-      if (pendingDecryptRequests.has(id)) {
-        pendingDecryptRequests.delete(id);
-        reject(new Error('Decryption timeout'));
-      }
-    }, 30000);
-  });
 }
 

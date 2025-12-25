@@ -10,6 +10,7 @@ import { writable, get } from 'svelte/store';
 import { HashTree, LinkType, DexieStore } from 'hashtree';
 import { getWorkerStore } from './stores/workerStore';
 import { isWorkerReady } from './lib/workerInit';
+import { closeWorkerAdapter } from './workerAdapter';
 
 // Re-export LinkType for e2e tests that can't import 'hashtree' directly
 export { LinkType };
@@ -155,8 +156,8 @@ export function initWebRTC(): void {
 }
 
 export function stopWebRTC(): void {
-  // WebRTC is handled by worker - nothing to do here
-  console.log('[Store] WebRTC stop delegated to worker');
+  // Close worker (clears identity, stops WebRTC, Nostr)
+  closeWorkerAdapter();
 }
 
 // Legacy exports for compatibility - WebRTC is now in worker

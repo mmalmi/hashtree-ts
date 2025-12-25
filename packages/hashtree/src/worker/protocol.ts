@@ -54,6 +54,7 @@ export type WorkerRequest =
   // Lifecycle
   | { type: 'init'; id: string; config: WorkerConfig }
   | { type: 'close'; id: string }
+  | { type: 'setIdentity'; id: string; pubkey: string; nsec?: string }
 
   // Store operations (low-level hash-based)
   | { type: 'get'; id: string; hash: Uint8Array }
@@ -90,7 +91,8 @@ export type WorkerRequest =
 export interface WorkerConfig {
   relays: string[];
   blossomServers?: string[];  // Blossom servers for fallback fetching
-  pubkey?: string;  // User's pubkey for subscriptions
+  pubkey: string;  // User's pubkey (required - user always logged in)
+  nsec?: string;  // Hex-encoded secret key (only for nsec login, not extension)
   storeName?: string;  // IndexedDB database name, defaults to 'hashtree-worker'
 }
 

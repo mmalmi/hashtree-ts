@@ -553,6 +553,23 @@ export class WorkerAdapter {
   }
 
   // ============================================================================
+  // Identity Management
+  // ============================================================================
+
+  /**
+   * Update worker's user identity (for account switching)
+   */
+  async setIdentity(pubkey: string, nsec?: string): Promise<void> {
+    const id = generateRequestId();
+    await this.request<{ error?: string }>({
+      type: 'setIdentity',
+      id,
+      pubkey,
+      nsec,
+    } as WorkerRequest);
+  }
+
+  // ============================================================================
   // Cleanup
   // ============================================================================
 

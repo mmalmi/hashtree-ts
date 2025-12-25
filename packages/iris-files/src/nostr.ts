@@ -9,7 +9,6 @@ import {
   getPublicKey,
   nip19,
   nip44,
-  finalizeEvent,
 } from 'nostr-tools';
 import NDK, {
   NDKEvent,
@@ -18,17 +17,15 @@ import NDK, {
   type NostrEvent,
 } from '@nostr-dev-kit/ndk';
 import NDKCacheAdapterDexie from '@nostr-dev-kit/ndk-cache-dexie';
-import { initWebRTC, stopWebRTC } from './store';
 import { startBackgroundSync, stopBackgroundSync } from './services/backgroundSync';
 import {
   toHex,
-  type EventSigner,
-  type GiftWrapper,
-  type GiftUnwrapper,
   type CID,
   type TreeVisibility,
   visibilityHex,
 } from 'hashtree';
+import { initHashtreeWorker } from './lib/workerInit';
+import { getWorkerAdapter } from './workerAdapter';
 import { settingsStore, DEFAULT_NETWORK_SETTINGS } from './stores/settings';
 import { updateLocalRootCacheHex } from './treeRootCache';
 import {
@@ -361,71 +358,19 @@ export async function signEvent(event: NostrEvent): Promise<NostrEvent> {
 }
 
 /**
- * Create gift wrap and unwrap functions for NIP-17 style ephemeral message wrapping.
- * Used for private WebRTC signaling.
- *
- * Gift wrap creates a kind 25050 event signed by an ephemeral key, with the inner
- * event encrypted for the recipient. The inner event includes the actual sender's pubkey.
- *
- * @param myPubkey - The sender's actual pubkey (included inside the encrypted content)
- * @param encryptFn - Function to encrypt content for a recipient (NIP-44)
- * @param decryptFn - Function to decrypt content from a sender (NIP-44)
+ * Initialize or update worker with user identity.
+ * - First call: initializes worker
+ * - Subsequent calls: updates identity (account switch)
  */
-function createGiftWrapFunctions(
-  myPubkey: string,
-  encryptFn: (pubkey: string, plaintext: string) => Promise<string>,
-  decryptFn: (pubkey: string, ciphertext: string) => Promise<string>,
-): { giftWrap: GiftWrapper; giftUnwrap: GiftUnwrapper } {
-  const giftWrap: GiftWrapper = async (innerEvent, recipientPubkey) => {
-    // Create seal with sender's actual pubkey (this is the "rumor")
-    const seal = {
-      pubkey: myPubkey,
-      kind: innerEvent.kind,
-      content: innerEvent.content,
-      tags: innerEvent.tags,
-    };
-
-    // Generate ephemeral keypair for the wrapper
-    const ephemeralSk = generateSecretKey();
-
-    // Encrypt the seal for the recipient using ephemeral key (NIP-44)
-    const conversationKey = nip44.v2.utils.getConversationKey(ephemeralSk, recipientPubkey);
-    const encryptedContent = nip44.v2.encrypt(JSON.stringify(seal), conversationKey);
-
-    // Create and sign wrapper event with ephemeral key
-    const createdAt = Math.floor(Date.now() / 1000);
-    const expiration = createdAt + 5 * 60; // 5 minutes
-
-    // Use nostr-tools finalizeEvent to compute id and sign with ephemeral key
-    return finalizeEvent({
-      kind: 25050,
-      created_at: createdAt,
-      tags: [
-        ['p', recipientPubkey],
-        ['expiration', expiration.toString()],
-      ],
-      content: encryptedContent,
-    }, ephemeralSk);
-  };
-
-  const giftUnwrap: GiftUnwrapper = async (event) => {
-    try {
-      // Decrypt using our key and the ephemeral sender's pubkey
-      const decrypted = await decryptFn(event.pubkey, event.content);
-      const seal = JSON.parse(decrypted) as {
-        pubkey: string;
-        kind: number;
-        content: string;
-        tags: string[][];
-      };
-      return seal;
-    } catch {
-      // Can't decrypt - not for us or invalid
-      return null;
-    }
-  };
-
-  return { giftWrap, giftUnwrap };
+async function initOrUpdateWorkerIdentity(pubkey: string, nsecHex?: string): Promise<void> {
+  const adapter = getWorkerAdapter();
+  if (adapter) {
+    // Worker already initialized, update identity
+    await adapter.setIdentity(pubkey, nsecHex);
+  } else {
+    // First login, initialize worker
+    await initHashtreeWorker({ pubkey, nsec: nsecHex });
+  }
 }
 
 /**
@@ -533,26 +478,8 @@ export async function loginWithExtension(): Promise<boolean> {
     accountsStore.setActiveAccount(pk);
     saveActiveAccountToStorage(pk);
 
-    // Use window.nostr.nip44 for encryption (NIP-07 compatible)
-    // Fall back to nip04 if nip44 is not available
-    const encrypt = async (pubkey: string, plaintext: string) => {
-      if (window.nostr!.nip44?.encrypt) {
-        return window.nostr!.nip44!.encrypt(pubkey, plaintext);
-      }
-      return window.nostr!.nip04!.encrypt(pubkey, plaintext);
-    };
-    const decrypt = async (pubkey: string, ciphertext: string) => {
-      if (window.nostr!.nip44?.decrypt) {
-        return window.nostr!.nip44!.decrypt(pubkey, ciphertext);
-      }
-      return window.nostr!.nip04!.decrypt(pubkey, ciphertext);
-    };
-
-    // Create gift wrap functions for private WebRTC signaling
-    const { giftWrap, giftUnwrap } = createGiftWrapFunctions(pk, encrypt, decrypt);
-
-    // Initialize WebRTC with signer
-    initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt, giftWrap, giftUnwrap);
+    // Initialize worker with identity (no nsec for extension login)
+    await initOrUpdateWorkerIdentity(pk);
 
     // Start background sync for followed users' trees
     startBackgroundSync();
@@ -602,22 +529,9 @@ export function loginWithNsec(nsec: string, save = true): boolean {
       saveActiveAccountToStorage(pk);
     }
 
-    // Create encrypt/decrypt using nostr-tools nip44
-    const sk = secretKey;
-    const encrypt = async (pubkey: string, plaintext: string) => {
-      const conversationKey = nip44.v2.utils.getConversationKey(sk, pubkey);
-      return nip44.v2.encrypt(plaintext, conversationKey);
-    };
-    const decrypt = async (pubkey: string, ciphertext: string) => {
-      const conversationKey = nip44.v2.utils.getConversationKey(sk, pubkey);
-      return nip44.v2.decrypt(ciphertext, conversationKey);
-    };
-
-    // Create gift wrap functions for private WebRTC signaling
-    const { giftWrap, giftUnwrap } = createGiftWrapFunctions(pk, encrypt, decrypt);
-
-    // Initialize WebRTC with signer
-    initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt, giftWrap, giftUnwrap);
+    // Initialize worker with identity (convert secretKey to hex)
+    const nsecHex = Array.from(secretKey).map(b => b.toString(16).padStart(2, '0')).join('');
+    initOrUpdateWorkerIdentity(pk, nsecHex).catch(console.error);
 
     // Start background sync for followed users' trees
     startBackgroundSync();
@@ -658,22 +572,9 @@ export function generateNewKey(): { nsec: string; npub: string } {
     saveActiveAccountToStorage(pk);
   }
 
-  // Create encrypt/decrypt using nostr-tools nip44
-  const sk = secretKey;
-  const encrypt = async (pubkey: string, plaintext: string) => {
-    const conversationKey = nip44.v2.utils.getConversationKey(sk, pubkey);
-    return nip44.v2.encrypt(plaintext, conversationKey);
-  };
-  const decrypt = async (pubkey: string, ciphertext: string) => {
-    const conversationKey = nip44.v2.utils.getConversationKey(sk, pubkey);
-    return nip44.v2.decrypt(ciphertext, conversationKey);
-  };
-
-  // Create gift wrap functions for private WebRTC signaling
-  const { giftWrap, giftUnwrap } = createGiftWrapFunctions(pk, encrypt, decrypt);
-
-  // Initialize WebRTC with signer
-  initWebRTC(signEvent as EventSigner, pk, encrypt, decrypt, giftWrap, giftUnwrap);
+  // Initialize worker with identity
+  const nsecHex = Array.from(secretKey).map(b => b.toString(16).padStart(2, '0')).join('');
+  initOrUpdateWorkerIdentity(pk, nsecHex).catch(console.error);
 
   // Create default folders for new user (public, link, private)
   // Do this BEFORE starting background sync so folders exist
