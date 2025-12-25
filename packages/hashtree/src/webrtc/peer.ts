@@ -130,7 +130,7 @@ export class Peer {
     this.onClose = options.onClose;
     this.onConnected = options.onConnected;
     this.onForwardRequest = options.onForwardRequest;
-    this.requestTimeout = options.requestTimeout ?? 5000;
+    this.requestTimeout = options.requestTimeout ?? 500;
     this.debug = options.debug ?? false;
     this.createdAt = Date.now();
     // Generate random HTL config for this peer (Freenet-style)

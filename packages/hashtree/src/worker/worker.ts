@@ -242,6 +242,7 @@ async function handleInit(id: string, cfg: WorkerConfig) {
         await sendWebRTCSignaling(msg, recipientPubkey);
       },
       getFollows, // Used to classify peers into follows/other pools
+      requestTimeout: 500, // Fast timeout - fall back to Blossom quickly
       debug: true,
     });
 
@@ -768,7 +769,7 @@ async function handleMediaRequestByPath(req: import('./protocol').MediaRequestBy
 async function streamChunksToPort(requestId: string, data: Uint8Array, sendDone = true) {
   if (!mediaPort) return;
 
-  const CHUNK_SIZE = 64 * 1024; // 64KB chunks
+  const CHUNK_SIZE = 256 * 1024; // 256KB chunks - matches videoChunker's firstChunkSize
   for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
     const chunk = data.slice(offset, offset + CHUNK_SIZE);
     mediaPort.postMessage(
