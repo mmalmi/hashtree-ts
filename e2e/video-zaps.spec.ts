@@ -92,10 +92,12 @@ test.describe('Video Zaps', () => {
 
     await uploadTestVideo(page);
 
-    // On our own video, zap button should be visible (shows total, not disabled)
+    // Zap button should be visible (disabled if no lud16, enabled if lud16 set)
     const zapButton = page.getByTestId('zap-button');
     await expect(zapButton).toBeVisible({ timeout: 5000 });
-    await expect(zapButton).not.toBeDisabled();
+
+    // Test users don't have lud16, so button is disabled
+    await expect(zapButton).toBeDisabled();
 
     // But like button should be visible
     await expect(page.locator('button[title="Like"]')).toBeVisible();
@@ -134,5 +136,54 @@ test.describe('Video Zaps', () => {
 
     // Take screenshot
     await page.screenshot({ path: 'e2e/screenshots/video-zap-button.png' });
+  });
+
+  test('zap modal opens for user with lightning address', async ({ page }) => {
+    test.slow();
+
+    // Use a known npub that has lud16 set (sirius - has lightning address)
+    // This tests that the zap modal opens when viewing videos from users with lud16
+    const knownNpubWithLud16 = 'npub1g53mukxnjkcmr94fhryzkqutdz2ukq4ks0gvy5af25rgmwsl4ngq43drvk';
+
+    await page.goto('/video.html#/');
+    await disableOthersPool(page);
+    await ensureLoggedIn(page);
+
+    // Navigate to the known user's profile to find a video
+    await page.goto(`/video.html#/${knownNpubWithLud16}`);
+    await page.waitForTimeout(2000);
+
+    // Find any video card and click it
+    const videoCard = page.locator('a[href*="/videos/"]').first();
+    const hasVideo = await videoCard.isVisible({ timeout: 5000 }).catch(() => false);
+
+    if (!hasVideo) {
+      console.log('No videos found for test user, skipping modal test');
+      return;
+    }
+
+    await videoCard.click();
+    await page.waitForTimeout(2000);
+
+    // Zap button should be visible and enabled (user has lud16)
+    const zapButton = page.getByTestId('zap-button');
+    await expect(zapButton).toBeVisible({ timeout: 10000 });
+
+    const isDisabled = await zapButton.isDisabled();
+    console.log('Zap button disabled:', isDisabled);
+
+    if (isDisabled) {
+      console.log('Button is disabled - profile may not have loaded lud16 yet');
+      await page.waitForTimeout(3000);
+    }
+
+    // Click zap button
+    await zapButton.click();
+
+    // Modal should open
+    await expect(page.getByTestId('zap-modal')).toBeVisible({ timeout: 5000 });
+
+    // Take screenshot
+    await page.screenshot({ path: 'e2e/screenshots/video-zap-modal.png' });
   });
 });

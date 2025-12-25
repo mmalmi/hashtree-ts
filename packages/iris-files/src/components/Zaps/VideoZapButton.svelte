@@ -12,10 +12,9 @@
   interface Props {
     videoIdentifier: string;
     ownerPubkey: string;
-    isOwner?: boolean;
   }
 
-  let { videoIdentifier, ownerPubkey, isOwner = false }: Props = $props();
+  let { videoIdentifier, ownerPubkey }: Props = $props();
 
   let allZaps = $state<Zap[]>([]);
   let zapCleanup = $state<(() => void) | null>(null);
@@ -26,8 +25,8 @@
   let profileStore = $derived(ownerNpub ? createProfileStore(ownerNpub) : null);
   let profile = $state<{ lud16?: string } | null>(null);
   let hasLightningAddress = $derived(!!profile?.lud16);
-  let canZap = $derived(!isOwner && hasLightningAddress);
-  let isDisabled = $derived(!isOwner && !hasLightningAddress); // Only disabled if other user has no lud16
+  let canZap = $derived(hasLightningAddress); // Can zap if owner has lightning address (including yourself)
+  let isDisabled = $derived(!hasLightningAddress); // Disabled if no lightning address
 
   $effect(() => {
     if (!profileStore) return;
@@ -64,7 +63,7 @@
 
 <button
   onclick={handleZap}
-  class="flex items-center gap-2 px-3 py-1.5 rounded-full {isDisabled ? 'bg-surface-1 cursor-default opacity-50' : 'bg-surface-1 hover:bg-surface-2 cursor-pointer'} text-yellow-400"
+  class="flex items-center gap-2 px-3 py-1.5 rounded-full {canZap ? 'bg-surface-1 hover:bg-surface-2 cursor-pointer' : 'bg-surface-1 cursor-default opacity-50'} text-yellow-400"
   disabled={isDisabled}
   title={isDisabled ? 'No lightning address' : undefined}
   data-testid="zap-button"

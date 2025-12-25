@@ -889,7 +889,7 @@
               </div>
             </div>
             {#if videoIdentifier}
-              <VideoZapButton {videoIdentifier} {ownerPubkey} {isOwner} />
+              <VideoZapButton {videoIdentifier} {ownerPubkey} />
             {/if}
           {/if}
         </div>
