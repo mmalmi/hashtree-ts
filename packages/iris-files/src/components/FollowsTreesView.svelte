@@ -38,11 +38,18 @@
   let allTrees = $state<TreeWithOwner[]>([]);
   let treeStoreCleanups: (() => void)[] = [];
 
+  // Debounce timer for tree updates to avoid excessive re-sorts
+  let updateTimer: ReturnType<typeof setTimeout> | null = null;
+
   // Create tree stores for each followed user
   $effect(() => {
     // Clean up previous stores
     treeStoreCleanups.forEach(cleanup => cleanup());
     treeStoreCleanups = [];
+    if (updateTimer) {
+      clearTimeout(updateTimer);
+      updateTimer = null;
+    }
 
     if (follows.length === 0) {
       allTrees = [];
@@ -70,7 +77,8 @@
         // Filter to only public trees (not private or unlisted)
         const publicTrees = trees.filter(t => t.visibility === 'public');
         treesMap.set(followedPubkey, publicTrees);
-        updateAllTrees(treesMap);
+        // Debounce updates to avoid excessive re-sorts when many subscriptions fire
+        scheduleUpdate(treesMap);
       });
 
       treeStoreCleanups.push(unsub);
@@ -79,8 +87,20 @@
     return () => {
       treeStoreCleanups.forEach(cleanup => cleanup());
       treeStoreCleanups = [];
+      if (updateTimer) {
+        clearTimeout(updateTimer);
+        updateTimer = null;
+      }
     };
   });
+
+  function scheduleUpdate(treesMap: Map<string, TreeEntry[]>) {
+    if (updateTimer) clearTimeout(updateTimer);
+    updateTimer = setTimeout(() => {
+      updateTimer = null;
+      updateAllTrees(treesMap);
+    }, 50); // 50ms debounce
+  }
 
   function updateAllTrees(treesMap: Map<string, TreeEntry[]>) {
     const result: TreeWithOwner[] = [];

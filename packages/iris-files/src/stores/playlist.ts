@@ -71,6 +71,8 @@ export function toggleShuffle(): boolean {
 
 /**
  * Load playlist from a video tree that has subdirectories
+ * Shows sidebar immediately with folder names, then progressively loads metadata.
+ *
  * @param npub Owner's npub
  * @param treeName Full tree name (e.g., "videos/Channel Name")
  * @param rootCid Root CID of the tree
@@ -89,105 +91,168 @@ export async function loadPlaylist(
     const entries = await tree.listDirectory(rootCid);
     if (!entries || entries.length === 0) return null;
 
-    // Check entries in parallel with timeout to avoid hanging on unavailable data
-    const videoItems: PlaylistItem[] = [];
-
-    const checkEntry = async (entry: typeof entries[0]): Promise<PlaylistItem | null> => {
-      try {
-        // Timeout after 3 seconds per entry
-        const subEntries = await Promise.race([
-          tree.listDirectory(entry.cid),
-          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-        ]);
-        if (!subEntries || !hasVideoFile(subEntries)) return null;
-
-        // This is a video item - extract metadata
-        const item: PlaylistItem = {
-          id: entry.name,
-          title: entry.name, // Default to directory name
-          cid: entry.cid,
-        };
-
-        // Try to load title from info.json (with timeout)
-        const infoEntry = subEntries.find(e => e.name === 'info.json');
-        if (infoEntry) {
-          try {
-            const infoData = await Promise.race([
-              tree.readFile(infoEntry.cid),
-              new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-            ]);
-            if (infoData) {
-              const info = JSON.parse(new TextDecoder().decode(infoData));
-              item.title = info.title || item.title;
-              item.duration = info.duration;
-            }
-          } catch {}
+    // Quick check: identify which entries are video directories
+    // Use short timeout for initial detection
+    const quickChecks = await Promise.all(
+      entries.map(async (entry): Promise<{ entry: typeof entries[0]; isVideo: boolean }> => {
+        try {
+          const subEntries = await Promise.race([
+            tree.listDirectory(entry.cid),
+            new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+          ]);
+          return { entry, isVideo: subEntries ? hasVideoFile(subEntries) : false };
+        } catch {
+          return { entry, isVideo: false };
         }
+      })
+    );
 
-        // Try to load title from title.txt if no info.json
-        if (item.title === entry.name) {
-          const titleEntry = subEntries.find(e => e.name === 'title.txt');
-          if (titleEntry) {
-            try {
-              const titleData = await Promise.race([
-                tree.readFile(titleEntry.cid),
-                new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-              ]);
-              if (titleData) {
-                item.title = new TextDecoder().decode(titleData);
-              }
-            } catch {}
-          }
-        }
+    const videoEntries = quickChecks.filter(c => c.isVideo).map(c => c.entry);
 
-        // Find thumbnail using shared utility
-        const thumbEntry = findThumbnailEntry(subEntries);
-        if (thumbEntry) {
-          item.thumbnailUrl = buildThumbnailUrl(npub, treeName, entry.name, thumbEntry.name);
-        }
+    // Only show playlist sidebar if we have enough videos
+    if (videoEntries.length < MIN_VIDEOS_FOR_SIDEBAR) return null;
 
-        return item;
-      } catch {
-        return null;
-      }
-    };
+    // Sort entries by name for consistent ordering
+    videoEntries.sort((a, b) => a.name.localeCompare(b.name));
 
-    // Check all entries in parallel
-    const results = await Promise.all(entries.map(checkEntry));
-    for (const item of results) {
-      if (item) videoItems.push(item);
-    }
-
-    // Only show playlist sidebar if we have enough videos for navigation
-    if (videoItems.length < MIN_VIDEOS_FOR_SIDEBAR) return null;
-
-    // Sort by folder name (id) for consistent ordering with initial navigation
-    videoItems.sort((a, b) => a.id.localeCompare(b.id));
+    // Create skeleton items with folder names as titles (shown immediately)
+    const skeletonItems: PlaylistItem[] = videoEntries.map(entry => ({
+      id: entry.name,
+      title: entry.name, // Default to folder name
+      cid: entry.cid,
+    }));
 
     // Find current index
     let currentIndex = 0;
     if (currentVideoId) {
-      const idx = videoItems.findIndex(v => v.id === currentVideoId);
+      const idx = skeletonItems.findIndex(v => v.id === currentVideoId);
       if (idx !== -1) currentIndex = idx;
     }
 
-    // Extract playlist name from treeName (e.g., "videos/Channel Name" -> "Channel Name")
+    // Extract playlist name
     const name = treeName.replace(/^videos\//, '');
 
+    // Set playlist immediately with skeleton items (sidebar appears now!)
     const playlist: Playlist = {
       name,
-      items: videoItems,
+      items: skeletonItems,
       currentIndex,
       npub,
       treeName,
     };
-
     currentPlaylist.set(playlist);
+
+    // Load metadata in background, updating store progressively
+    loadPlaylistMetadata(npub, treeName, videoEntries, currentIndex);
+
     return playlist;
   } catch (e) {
     console.error('Failed to load playlist:', e);
     return null;
   }
+}
+
+/**
+ * Load metadata for playlist items in background
+ * Updates the store progressively as metadata loads
+ */
+async function loadPlaylistMetadata(
+  npub: string,
+  treeName: string,
+  entries: Array<{ name: string; cid: CID }>,
+  currentIndex: number
+): Promise<void> {
+  const tree = getTree();
+
+  // Load current video first for better UX
+  const orderedEntries = [...entries];
+  if (currentIndex > 0 && currentIndex < orderedEntries.length) {
+    const current = orderedEntries.splice(currentIndex, 1)[0];
+    orderedEntries.unshift(current);
+  }
+
+  // Process entries with limited concurrency to avoid overwhelming the system
+  const CONCURRENCY = 3;
+  let inFlight = 0;
+  let entryIndex = 0;
+
+  const processEntry = async (entry: typeof entries[0]): Promise<void> => {
+    try {
+      const subEntries = await Promise.race([
+        tree.listDirectory(entry.cid),
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+      ]);
+      if (!subEntries) return;
+
+      let title = entry.name;
+      let duration: number | undefined;
+      let thumbnailUrl: string | undefined;
+
+      // Try info.json first
+      const infoEntry = subEntries.find(e => e.name === 'info.json');
+      if (infoEntry) {
+        try {
+          const infoData = await Promise.race([
+            tree.readFile(infoEntry.cid),
+            new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+          ]);
+          if (infoData) {
+            const info = JSON.parse(new TextDecoder().decode(infoData));
+            title = info.title || title;
+            duration = info.duration;
+          }
+        } catch {}
+      }
+
+      // Try title.txt if no title from info.json
+      if (title === entry.name) {
+        const titleEntry = subEntries.find(e => e.name === 'title.txt');
+        if (titleEntry) {
+          try {
+            const titleData = await Promise.race([
+              tree.readFile(titleEntry.cid),
+              new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+            ]);
+            if (titleData) {
+              title = new TextDecoder().decode(titleData);
+            }
+          } catch {}
+        }
+      }
+
+      // Find thumbnail
+      const thumbEntry = findThumbnailEntry(subEntries);
+      if (thumbEntry) {
+        thumbnailUrl = buildThumbnailUrl(npub, treeName, entry.name, thumbEntry.name);
+      }
+
+      // Update the store with this item's metadata
+      currentPlaylist.update(playlist => {
+        if (!playlist) return playlist;
+        const items = playlist.items.map(item =>
+          item.id === entry.name
+            ? { ...item, title, duration, thumbnailUrl }
+            : item
+        );
+        return { ...playlist, items };
+      });
+    } catch {}
+  };
+
+  // Process with limited concurrency
+  const processNext = async (): Promise<void> => {
+    while (entryIndex < orderedEntries.length) {
+      if (inFlight >= CONCURRENCY) {
+        await new Promise(r => setTimeout(r, 50));
+        continue;
+      }
+      const entry = orderedEntries[entryIndex++];
+      inFlight++;
+      processEntry(entry).finally(() => { inFlight--; });
+    }
+  };
+
+  await processNext();
 }
 
 /**

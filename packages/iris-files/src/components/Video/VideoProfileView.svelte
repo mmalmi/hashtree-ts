@@ -104,7 +104,13 @@
     const tree = getTree();
     const newPlaylistInfo: Record<string, { videoCount: number; thumbnailUrl?: string }> = {};
 
-    for (const t of treesToCheck) {
+    // Process trees concurrently with limited parallelism
+    const CONCURRENCY = 4;
+    let idx = 0;
+    let inFlight = 0;
+    let pending: Promise<void>[] = [];
+
+    const processTree = async (t: typeof treesToCheck[0]): Promise<void> => {
       try {
         // Get hash - either from Nostr or local cache
         let hashHex: string | null = t.hashHex || null;
@@ -125,7 +131,7 @@
           }
         }
 
-        if (!rootCid || !hashHex) continue;
+        if (!rootCid || !hashHex) return;
 
         // Check persistent cache first
         const cached = getPlaylistCache(npub!, t.name, hashHex);
@@ -133,21 +139,21 @@
           if (cached.isPlaylist) {
             newPlaylistInfo[t.name] = { videoCount: cached.videoCount, thumbnailUrl: cached.thumbnailUrl };
           }
-          continue;
+          return;
         }
 
         // Not cached - detect from tree
         const entries = await tree.listDirectory(rootCid);
         if (!entries || entries.length === 0) {
           setPlaylistCache(npub!, t.name, hashHex, false, 0);
-          continue;
+          return;
         }
 
-        // Check if entries are directories with video files (playlist)
+        // Check subdirectories in parallel (with limit)
         let videoCount = 0;
         let firstThumbnailUrl: string | undefined;
 
-        for (const entry of entries) {
+        const checkEntry = async (entry: typeof entries[0]): Promise<void> => {
           try {
             const subEntries = await tree.listDirectory(entry.cid);
             if (subEntries && hasVideoFile(subEntries)) {
@@ -162,11 +168,12 @@
           } catch {
             // Not a directory
           }
-        }
+        };
+
+        // Run entry checks in parallel
+        await Promise.all(entries.map(checkEntry));
 
         // Cache the result
-        // A tree is a playlist if it has video subdirectories
-        // This distinguishes playlists from single videos where video.mp4 is at root level
         const isPlaylist = videoCount >= MIN_VIDEOS_FOR_STRUCTURE;
         setPlaylistCache(npub!, t.name, hashHex, isPlaylist, videoCount, firstThumbnailUrl);
 
@@ -176,7 +183,23 @@
       } catch {
         // Ignore errors
       }
+    };
+
+    // Process with limited concurrency
+    while (idx < treesToCheck.length) {
+      while (inFlight < CONCURRENCY && idx < treesToCheck.length) {
+        const t = treesToCheck[idx++];
+        inFlight++;
+        pending.push(processTree(t).finally(() => { inFlight--; }));
+      }
+      // Wait for at least one to complete before continuing
+      if (pending.length >= CONCURRENCY) {
+        await Promise.race(pending);
+        pending = pending.filter(p => p !== undefined); // Clean up settled
+      }
     }
+    // Wait for remaining
+    await Promise.all(pending);
 
     playlistInfo = newPlaylistInfo;
   }

@@ -66,17 +66,35 @@
   // Playlist detection for feed videos
   let feedPlaylistInfo = $state<Record<string, PlaylistInfo>>({});
 
+  // Debounce playlist detection to avoid excessive calls
+  let detectTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingVideos: VideoItem[] = [];
+
   async function detectPlaylistsInFeed(videos: VideoItem[]) {
+    // Merge with pending videos and debounce
+    pendingVideos = [...pendingVideos, ...videos];
+    if (detectTimer) clearTimeout(detectTimer);
+    detectTimer = setTimeout(() => {
+      const toProcess = pendingVideos;
+      pendingVideos = [];
+      detectTimer = null;
+      doDetectPlaylists(toProcess);
+    }, 100);
+  }
+
+  async function doDetectPlaylists(videos: VideoItem[]) {
     const tree = getTree();
     const newPlaylistInfo: Record<string, PlaylistInfo> = { ...feedPlaylistInfo };
     let changed = false;
 
-    for (const video of videos) {
-      // Skip if already in local state or no hash
-      if (newPlaylistInfo[video.key] !== undefined || !video.hashHex || !video.ownerNpub) continue;
+    // Filter to videos that need detection
+    const toDetect = videos.filter(video =>
+      newPlaylistInfo[video.key] === undefined && video.hashHex && video.ownerNpub
+    );
 
-      // Check persistent cache first
-      const cached = getPlaylistCache(video.ownerNpub, video.treeName, video.hashHex);
+    // Check cache first (sync)
+    for (const video of toDetect) {
+      const cached = getPlaylistCache(video.ownerNpub!, video.treeName, video.hashHex!);
       if (cached) {
         if (cached.isPlaylist) {
           newPlaylistInfo[video.key] = { videoCount: cached.videoCount, thumbnailUrl: cached.thumbnailUrl };
@@ -84,27 +102,33 @@
           newPlaylistInfo[video.key] = { videoCount: 0 };
         }
         changed = true;
-        continue;
       }
+    }
 
-      // Not cached - detect from tree
+    // Get videos that still need async detection
+    const needsAsyncDetection = toDetect.filter(v => newPlaylistInfo[v.key] === undefined);
+
+    // Process with limited concurrency
+    const CONCURRENCY = 4;
+
+    const detectOne = async (video: VideoItem): Promise<void> => {
       try {
-        const hashBytes = new Uint8Array(video.hashHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+        const hashBytes = new Uint8Array(video.hashHex!.match(/.{2}/g)!.map(b => parseInt(b, 16)));
         const rootCid: CID = { hash: hashBytes };
 
         const entries = await tree.listDirectory(rootCid);
         if (!entries || entries.length === 0) {
-          setPlaylistCache(video.ownerNpub, video.treeName, video.hashHex, false, 0);
+          setPlaylistCache(video.ownerNpub!, video.treeName, video.hashHex!, false, 0);
           newPlaylistInfo[video.key] = { videoCount: 0 };
           changed = true;
-          continue;
+          return;
         }
 
-        // Check if entries are directories with video files
+        // Check subdirectories in parallel
         let videoCount = 0;
         let firstThumbnailUrl: string | undefined;
 
-        for (const entry of entries) {
+        const checkEntry = async (entry: typeof entries[0]): Promise<void> => {
           try {
             const subEntries = await tree.listDirectory(entry.cid);
             if (subEntries && hasVideoFile(subEntries)) {
@@ -119,19 +143,37 @@
           } catch {
             // Not a directory
           }
-        }
+        };
+
+        await Promise.all(entries.map(checkEntry));
 
         // Cache and store the result
-        // A tree is a playlist if it has video subdirectories
         const isPlaylist = videoCount >= MIN_VIDEOS_FOR_STRUCTURE;
-        setPlaylistCache(video.ownerNpub, video.treeName, video.hashHex, isPlaylist, videoCount, firstThumbnailUrl);
+        setPlaylistCache(video.ownerNpub!, video.treeName, video.hashHex!, isPlaylist, videoCount, firstThumbnailUrl);
 
         newPlaylistInfo[video.key] = { videoCount, thumbnailUrl: firstThumbnailUrl };
         changed = true;
       } catch {
         // Ignore errors
       }
+    };
+
+    // Process with limited concurrency
+    const pending: Promise<void>[] = [];
+    for (const video of needsAsyncDetection) {
+      if (pending.length >= CONCURRENCY) {
+        await Promise.race(pending);
+        // Remove completed promises
+        for (let i = pending.length - 1; i >= 0; i--) {
+          const p = pending[i];
+          // Check if promise is settled by racing with resolved promise
+          const settled = await Promise.race([p.then(() => true), Promise.resolve(false)]);
+          if (settled) pending.splice(i, 1);
+        }
+      }
+      pending.push(detectOne(video));
     }
+    await Promise.all(pending);
 
     if (changed) {
       feedPlaylistInfo = newPlaylistInfo;
