@@ -42,43 +42,81 @@ describe('visibility', () => {
   });
 
   describe('encryptKeyForLink / decryptKeyFromLink', () => {
-    it('should encrypt and decrypt CHK key', async () => {
+    it('should encrypt and decrypt CHK key (XOR format)', async () => {
       const chkKey = crypto.getRandomValues(new Uint8Array(32));
       const linkKey = generateLinkKey();
 
-      const encrypted = await encryptKeyForLink(chkKey, linkKey);
-      expect(encrypted.length).toBeGreaterThan(32); // nonce + ciphertext + tag
+      const encrypted = encryptKeyForLink(chkKey, linkKey);
+      expect(encrypted.length).toBe(32); // XOR preserves size
 
       const decrypted = await decryptKeyFromLink(encrypted, linkKey);
       expect(decrypted).not.toBeNull();
       expect(decrypted).toEqual(chkKey);
     });
 
-    it('should fail with wrong link key', async () => {
+    it('should produce wrong result with wrong link key', async () => {
       const chkKey = crypto.getRandomValues(new Uint8Array(32));
       const linkKey = generateLinkKey();
       const wrongKey = generateLinkKey();
 
-      const encrypted = await encryptKeyForLink(chkKey, linkKey);
+      const encrypted = encryptKeyForLink(chkKey, linkKey);
       const decrypted = await decryptKeyFromLink(encrypted, wrongKey);
-      expect(decrypted).toBeNull();
+      // XOR with wrong key gives a result, just not the right one
+      expect(decrypted).not.toBeNull();
+      expect(decrypted).not.toEqual(chkKey);
     });
 
-    it('should produce different ciphertext each time (random nonce)', async () => {
+    it('should be deterministic (same inputs = same output)', async () => {
       const chkKey = crypto.getRandomValues(new Uint8Array(32));
       const linkKey = generateLinkKey();
 
-      const encrypted1 = await encryptKeyForLink(chkKey, linkKey);
-      const encrypted2 = await encryptKeyForLink(chkKey, linkKey);
+      const encrypted1 = encryptKeyForLink(chkKey, linkKey);
+      const encrypted2 = encryptKeyForLink(chkKey, linkKey);
 
-      // Should be different due to random nonce
-      expect(encrypted1).not.toEqual(encrypted2);
+      // XOR is deterministic
+      expect(encrypted1).toEqual(encrypted2);
 
-      // But both should decrypt to same key
+      // Both decrypt to same key
       const decrypted1 = await decryptKeyFromLink(encrypted1, linkKey);
       const decrypted2 = await decryptKeyFromLink(encrypted2, linkKey);
       expect(decrypted1).toEqual(chkKey);
       expect(decrypted2).toEqual(chkKey);
+    });
+
+    it('should return null for invalid length', async () => {
+      const shortKey = new Uint8Array(16);
+      const linkKey = generateLinkKey();
+      expect(await decryptKeyFromLink(shortKey, linkKey)).toBeNull();
+    });
+
+    it('should decrypt legacy AES-GCM format (60 bytes)', async () => {
+      const chkKey = crypto.getRandomValues(new Uint8Array(32));
+      const linkKey = generateLinkKey();
+
+      // Manually create AES-GCM encrypted data (legacy format)
+      const keyBuffer = new ArrayBuffer(linkKey.length);
+      new Uint8Array(keyBuffer).set(linkKey);
+      const dataBuffer = new ArrayBuffer(chkKey.length);
+      new Uint8Array(dataBuffer).set(chkKey);
+
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw', keyBuffer, { name: 'AES-GCM' }, false, ['encrypt']
+      );
+      const nonce = crypto.getRandomValues(new Uint8Array(12));
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: nonce }, cryptoKey, dataBuffer
+      );
+
+      // Legacy format: nonce + ciphertext (includes tag)
+      const legacyEncrypted = new Uint8Array(12 + ciphertext.byteLength);
+      legacyEncrypted.set(nonce);
+      legacyEncrypted.set(new Uint8Array(ciphertext), 12);
+      expect(legacyEncrypted.length).toBe(60); // 12 + 32 + 16
+
+      // Should decrypt legacy format
+      const decrypted = await decryptKeyFromLink(legacyEncrypted, linkKey);
+      expect(decrypted).not.toBeNull();
+      expect(decrypted).toEqual(chkKey);
     });
   });
 
@@ -100,18 +138,19 @@ describe('visibility', () => {
       const chkKey = visibilityHex.generateLinkKey(); // Use as CHK key
       const linkKey = visibilityHex.generateLinkKey();
 
-      const encrypted = await visibilityHex.encryptKeyForLink(chkKey, linkKey);
+      const encrypted = visibilityHex.encryptKeyForLink(chkKey, linkKey);
       expect(typeof encrypted).toBe('string');
+      expect(encrypted.length).toBe(64); // 32 bytes = 64 hex chars
 
       const decrypted = await visibilityHex.decryptKeyFromLink(encrypted, linkKey);
       expect(decrypted).toBe(chkKey);
     });
 
-    it('should return null for invalid hex decryption', async () => {
-      const encrypted = visibilityHex.generateLinkKey(); // Not valid encrypted data
+    it('should return null for invalid length hex', async () => {
+      const shortEncrypted = 'abcd'; // Too short
       const linkKey = visibilityHex.generateLinkKey();
 
-      const decrypted = await visibilityHex.decryptKeyFromLink(encrypted, linkKey);
+      const decrypted = await visibilityHex.decryptKeyFromLink(shortEncrypted, linkKey);
       expect(decrypted).toBeNull();
     });
   });

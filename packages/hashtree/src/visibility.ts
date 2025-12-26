@@ -32,43 +32,24 @@ export async function computeKeyId(linkKey: Uint8Array): Promise<Uint8Array> {
 }
 
 /**
- * Encrypt a CHK key for unlisted visibility using AES-GCM
- * @param chkKey - The CHK key to encrypt (32 bytes)
- * @param linkKey - The link decryption key (32 bytes)
- * @returns Encrypted key (12-byte nonce + ciphertext)
+ * XOR two 32-byte arrays
+ * Used for encrypting/decrypting CHK keys with link keys.
+ * XOR with random key is one-time pad (information-theoretically secure).
  */
-export async function encryptKeyForLink(chkKey: Uint8Array, linkKey: Uint8Array): Promise<Uint8Array> {
-  // Copy to clean ArrayBuffer to avoid SharedArrayBuffer type issues
-  const keyBuffer = new ArrayBuffer(linkKey.length);
-  new Uint8Array(keyBuffer).set(linkKey);
-  const dataBuffer = new ArrayBuffer(chkKey.length);
-  new Uint8Array(dataBuffer).set(chkKey);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw', keyBuffer, { name: 'AES-GCM' }, false, ['encrypt']
-  );
-
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: nonce }, cryptoKey, dataBuffer
-  );
-
-  // Prepend nonce to ciphertext
-  const result = new Uint8Array(12 + ciphertext.byteLength);
-  result.set(nonce);
-  result.set(new Uint8Array(ciphertext), 12);
+function xor32(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const result = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    result[i] = a[i] ^ b[i];
+  }
   return result;
 }
 
 /**
- * Decrypt a CHK key for unlisted visibility using AES-GCM
- * @param encryptedKey - Encrypted key (12-byte nonce + ciphertext)
- * @param linkKey - The link decryption key (32 bytes)
- * @returns Decrypted CHK key (32 bytes), or null if decryption fails
+ * Legacy AES-GCM decryption for backward compatibility
+ * Old format: 12-byte nonce + ciphertext + 16-byte tag = 60 bytes total
  */
-export async function decryptKeyFromLink(encryptedKey: Uint8Array, linkKey: Uint8Array): Promise<Uint8Array | null> {
+async function decryptAesGcm(encryptedKey: Uint8Array, linkKey: Uint8Array): Promise<Uint8Array | null> {
   try {
-    // Copy to clean ArrayBuffer to avoid SharedArrayBuffer type issues
     const keyBuffer = new ArrayBuffer(linkKey.length);
     new Uint8Array(keyBuffer).set(linkKey);
 
@@ -92,6 +73,41 @@ export async function decryptKeyFromLink(encryptedKey: Uint8Array, linkKey: Uint
 }
 
 /**
+ * Encrypt a CHK key for unlisted visibility using XOR (one-time pad)
+ * @param chkKey - The CHK key to encrypt (32 bytes)
+ * @param linkKey - The link decryption key (32 bytes)
+ * @returns Encrypted key (32 bytes) - XOR of chkKey and linkKey
+ */
+export function encryptKeyForLink(chkKey: Uint8Array, linkKey: Uint8Array): Uint8Array {
+  return xor32(chkKey, linkKey);
+}
+
+/**
+ * Decrypt a CHK key for unlisted visibility
+ * Supports both new XOR format (32 bytes) and legacy AES-GCM format (60 bytes)
+ * @param encryptedKey - Encrypted key (32 bytes for XOR, 60 bytes for AES-GCM)
+ * @param linkKey - The link decryption key (32 bytes)
+ * @returns Decrypted CHK key (32 bytes), or null if decryption fails
+ */
+export async function decryptKeyFromLink(encryptedKey: Uint8Array, linkKey: Uint8Array): Promise<Uint8Array | null> {
+  if (linkKey.length !== 32) {
+    return null;
+  }
+
+  // New XOR format: 32 bytes
+  if (encryptedKey.length === 32) {
+    return xor32(encryptedKey, linkKey);
+  }
+
+  // Legacy AES-GCM format: 60 bytes (12 nonce + 32 ciphertext + 16 tag)
+  if (encryptedKey.length === 60) {
+    return decryptAesGcm(encryptedKey, linkKey);
+  }
+
+  return null;
+}
+
+/**
  * Hex string versions of the encryption functions for convenience
  */
 export const hex = {
@@ -104,8 +120,8 @@ export const hex = {
     return toHex(keyId);
   },
 
-  async encryptKeyForLink(chkKeyHex: string, linkKeyHex: string): Promise<string> {
-    const encrypted = await encryptKeyForLink(fromHex(chkKeyHex), fromHex(linkKeyHex));
+  encryptKeyForLink(chkKeyHex: string, linkKeyHex: string): string {
+    const encrypted = encryptKeyForLink(fromHex(chkKeyHex), fromHex(linkKeyHex));
     return toHex(encrypted);
   },
 
