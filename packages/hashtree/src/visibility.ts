@@ -1,10 +1,14 @@
 /**
- * Tree visibility utilities
+ * Tree visibility and encryption utilities
  *
- * Visibility levels:
- * - public: Anyone can browse (key published in plaintext)
- * - unlisted: Only accessible with link containing decryption key
- * - private: Only owner can access (key encrypted to self)
+ * ## Encryption Modes
+ *
+ * - **Unencrypted**: No CHK, just hash - anyone with hash can read
+ * - **Public**: CHK encrypted, ["key", "<hex>"] in event - anyone can decrypt
+ * - **Unlisted**: CHK + XOR mask, ["encryptedKey", XOR(key,secret)] - need #k=<secret> URL
+ * - **Private**: CHK + NIP-44 to self, ["selfEncryptedKey", "..."] - author only
+ *
+ * Default is Public (CHK encrypted, key in nostr event).
  */
 
 import { sha256 } from './hash.js';
