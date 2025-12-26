@@ -187,7 +187,6 @@ async function checkAndPublish(): Promise<void> {
   try {
     const tree = getTree();
     const treeName = `videos/${currentStreamTitle.trim()}`;
-    const isPublic = currentStreamVisibility === 'public';
 
     // Get current root without finalizing (preserves buffer for continued streaming)
     const fileCid: CID | null = await currentState.streamWriter.currentRoot();
@@ -258,7 +257,6 @@ export async function stopRecording(
 
   const currentState = getVideoStreamState();
   const durationMs = currentState.recordingTime * 1000;
-  const isPublic = visibility === 'public';
 
   const tree = getTree();
   let fileCid: CID | undefined;

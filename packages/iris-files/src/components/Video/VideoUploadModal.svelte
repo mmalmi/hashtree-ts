@@ -146,7 +146,6 @@
     try {
       const tree = getTree();
       const treeName = `videos/${title.trim().replace(/[<>:"/\\|?*]/g, '_')}`;
-      const isPublic = visibility === 'public';
 
       let videoResult: { cid: CID; size: number };
       let videoFileName: string;

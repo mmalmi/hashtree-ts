@@ -139,7 +139,6 @@
     try {
       const tree = getTree();
       const treeName = `videos/${channelName.trim()}`;
-      const isPublic = visibility === 'public';
 
       const rootEntries: Array<{ name: string; cid: CID; size: number }> = [];
 

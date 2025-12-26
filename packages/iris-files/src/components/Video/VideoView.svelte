@@ -606,7 +606,6 @@
       if (!currentRootCid) throw new Error('Video not found');
 
       const tree = getTree();
-      const isPublic = videoVisibility === 'public';
 
       // Update title.txt
       const titleData = new TextEncoder().encode(editTitle.trim());

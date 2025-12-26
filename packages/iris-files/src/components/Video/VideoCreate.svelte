@@ -175,7 +175,6 @@
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let videoResult: { cid: any; size: number };
 
-      const isPublic = visibility === 'public';
 
       if (willTranscode) {
         progressMessage = 'Loading encoder...';
