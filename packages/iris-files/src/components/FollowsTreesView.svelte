@@ -40,6 +40,7 @@
 
   // Debounce timer for tree updates
   let updateTimer: ReturnType<typeof setTimeout> | null = null;
+  let hasRenderedOnce = false;
 
   // SortedMap for efficient sorted insertion (descending by createdAt)
   let sortedTrees: SortedMap<string, TreeWithOwner> | null = null;
@@ -61,6 +62,7 @@
       allTrees = [];
       sortedTrees = null;
       userTreeKeys.clear();
+      hasRenderedOnce = false;
       return;
     }
 
@@ -69,6 +71,7 @@
       (a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0)
     );
     userTreeKeys = new Map();
+    hasRenderedOnce = false;
 
     // Limit to first 50 follows to avoid too many subscriptions
     const limitedFollows = follows.slice(0, 50);
@@ -131,6 +134,15 @@
   }
 
   function scheduleArrayUpdate() {
+    // Render immediately on first update for instant back-nav
+    if (!hasRenderedOnce) {
+      hasRenderedOnce = true;
+      if (sortedTrees) {
+        allTrees = sortedTrees.values();
+      }
+      return;
+    }
+    // Debounce subsequent updates
     if (updateTimer) clearTimeout(updateTimer);
     updateTimer = setTimeout(() => {
       updateTimer = null;

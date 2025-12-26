@@ -303,9 +303,20 @@
       (a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0)
     );
 
-    // Debounce updates to batch rapid events
+    // Debounce updates to batch rapid events (but render first one immediately)
     let updateTimer: ReturnType<typeof setTimeout> | null = null;
+    let hasRenderedOnce = false;
     const scheduleUpdate = () => {
+      // Render immediately on first update for instant back-nav
+      if (!hasRenderedOnce) {
+        hasRenderedOnce = true;
+        const allVideos = videosByKey.values();
+        untrack(() => {
+          followedUsersVideos = allVideos;
+          detectPlaylistsInFeed(allVideos);
+        });
+        return;
+      }
       if (updateTimer) return;
       updateTimer = setTimeout(() => {
         updateTimer = null;
@@ -401,9 +412,15 @@
     // Track seen event IDs
     const seenEventIds = new SvelteSet<string>();
 
-    // Debounce updates
+    // Debounce updates (but render first one immediately)
     let updateTimer: ReturnType<typeof setTimeout> | null = null;
+    let hasRenderedOnce = false;
     const scheduleSocialUpdate = () => {
+      if (!hasRenderedOnce) {
+        hasRenderedOnce = true;
+        untrack(() => { socialVideos = videosByKey.values(); });
+        return;
+      }
       if (updateTimer) return;
       updateTimer = setTimeout(() => {
         updateTimer = null;
