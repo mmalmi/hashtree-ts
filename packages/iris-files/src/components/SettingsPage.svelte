@@ -9,7 +9,6 @@
   import { appStore, formatBytes, formatBandwidth, updateStorageStats, refreshWebRTCStats, getLifetimeStats, blockPeer, unblockPeer } from '../store';
   import { getWorkerAdapter, type PeerStats } from '../workerAdapter';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
-  import { syncedStorageStore, refreshSyncedStorage } from '../stores/chunkMetadata';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS, DEFAULT_IMGPROXY_SETTINGS } from '../stores/settings';
   import { blossomLogStore } from '../stores/blossomLog';
   import { BackButton } from './ui';
@@ -34,10 +33,6 @@
       console.error('Failed to copy:', e);
     }
   }
-
-  // Synced storage breakdown (reactive - updates when trees sync)
-  let syncedStorage = $derived($syncedStorageStore);
-  let syncedStorageTotal = $derived(syncedStorage.reduce((sum, s) => sum + s.bytes, 0));
 
   let relayStatuses = $derived($nostrStore.relayStatuses);
   let discoveredRelays = $derived($nostrStore.discoveredRelays);
@@ -890,49 +885,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Synced Storage (from background sync) -->
-    <div>
-        <h3 class="text-xs font-medium text-muted uppercase tracking-wide mb-1">
-          Synced Storage
-        </h3>
-        <p class="text-xs text-text-3 mb-3">
-          Autosynced trees ({formatBytes(syncedStorageTotal)} total)
-        </p>
-        <div class="bg-surface-2 rounded divide-y divide-surface-3" data-testid="synced-storage">
-          {#each syncedStorage as userStats (userStats.npub)}
-            {@const pubkey = (() => {
-              try { return nip19.decode(userStats.npub).data as string; }
-              catch { return ''; }
-            })()}
-            <a
-              href="#/{userStats.npub}"
-              class="flex items-center gap-2 p-3 text-sm hover:bg-surface-3 transition-colors"
-            >
-              {#if pubkey}
-                <UserRow
-                  pubkey={pubkey}
-                  description={`${userStats.treeCount} tree${userStats.treeCount > 1 ? 's' : ''}`}
-                  avatarSize={28}
-                  showBadge
-                  class="flex-1 min-w-0"
-                />
-              {:else}
-                <span class="flex-1 text-muted truncate">{userStats.npub.slice(0, 16)}...</span>
-              {/if}
-              <span class="text-xs text-muted shrink-0">
-                {formatBytes(userStats.bytes)}
-              </span>
-              {#if userStats.isOwn}
-                <span class="text-xs text-accent">(you)</span>
-              {/if}
-            </a>
-          {/each}
-        </div>
-        {#if syncedStorage.length === 0}
-          <p class="text-xs text-text-3 mt-2">No synced trees yet</p>
-        {/if}
-      </div>
 
     <!-- Desktop App Settings (only show in Tauri) -->
     {#if isDesktopApp}

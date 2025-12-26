@@ -17,7 +17,6 @@ import NDK, {
   type NostrEvent,
 } from '@nostr-dev-kit/ndk';
 import NDKCacheAdapterDexie from '@nostr-dev-kit/ndk-cache-dexie';
-import { startBackgroundSync, stopBackgroundSync } from './services/backgroundSync';
 import {
   toHex,
   type CID,
@@ -474,9 +473,6 @@ export async function loginWithExtension(): Promise<boolean> {
     // Initialize worker with identity (no nsec for extension login)
     await initOrUpdateWorkerIdentity(pk);
 
-    // Start background sync for followed users' trees
-    startBackgroundSync();
-
     return true;
   } catch (e) {
     console.error('Extension login failed:', e);
@@ -526,9 +522,6 @@ export async function loginWithNsec(nsec: string, save = true): Promise<boolean>
     const nsecHex = Array.from(secretKey).map(b => b.toString(16).padStart(2, '0')).join('');
     await initOrUpdateWorkerIdentity(pk, nsecHex);
 
-    // Start background sync for followed users' trees
-    startBackgroundSync();
-
     return true;
   } catch (e) {
     console.error('Nsec login failed:', e);
@@ -573,9 +566,6 @@ export async function generateNewKey(): Promise<{ nsec: string; npub: string }> 
   // Do this BEFORE starting background sync so folders exist
   createDefaultFolders();
 
-  // Start background sync for followed users' trees (delayed to not block init)
-  setTimeout(() => startBackgroundSync(), 1000);
-
   return { nsec, npub: npubStr };
 }
 
@@ -604,9 +594,6 @@ export function logout() {
   nostrStore.setSelectedTree(null);
   secretKey = null;
   ndk.signer = undefined;
-
-  // Stop background sync
-  stopBackgroundSync();
 
   // Stop WebRTC
   stopWebRTC();
