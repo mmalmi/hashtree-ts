@@ -19,8 +19,6 @@ import { initIdentity, setIdentity, clearIdentity } from './identity';
 import {
   setResponseSender,
   signEvent,
-  giftWrap,
-  giftUnwrap,
   handleSignedResponse,
   handleEncryptedResponse,
   handleDecryptedResponse,
@@ -28,10 +26,13 @@ import {
 import { WebRTCController } from './webrtc';
 import { SocialGraph, type NostrEvent as SocialGraphNostrEvent } from 'nostr-social-graph';
 import { LRUCache } from '../utils/lruCache';
-
-// Kind for WebRTC signaling (ephemeral, gift-wrapped for directed messages)
-const SIGNALING_KIND = 25050;
-const HELLO_TAG = 'hello';
+import { initMediaHandler, registerMediaPort } from './mediaHandler';
+import {
+  initWebRTCSignaling,
+  sendWebRTCSignaling,
+  setupWebRTCSignalingSubscription,
+  handleWebRTCSignalingEvent,
+} from './webrtcSignaling';
 
 // Worker state
 let tree: HashTree | null = null;
@@ -39,7 +40,6 @@ let store: DexieStore | null = null;
 let blossomStore: BlossomStore | null = null;
 let webrtc: WebRTCController | null = null;
 let _config: WorkerConfig | null = null;
-let mediaPort: MessagePort | null = null;
 
 // Follows set for WebRTC peer classification
 let followsSet = new Set<string>();
@@ -132,7 +132,7 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
 
       // Media streaming
       case 'registerMediaPort':
-        handleRegisterMediaPort(msg.port);
+        registerMediaPort(msg.port);
         break;
 
       // Stats
@@ -301,6 +301,12 @@ async function handleInit(id: string, cfg: WorkerConfig) {
       getFollows, // Used to classify peers into follows/other pools
       debug: true,
     });
+
+    // Initialize media handler with the tree
+    initMediaHandler(tree);
+
+    // Initialize WebRTC signaling with the controller
+    initWebRTCSignaling(webrtc);
 
     // Subscribe to WebRTC signaling events (kind 25050)
     setupWebRTCSignalingSubscription(cfg.pubkey);
@@ -685,383 +691,6 @@ async function handlePublish(id: string, event: SignedEvent) {
   }
 }
 
-// ============================================================================
-// Media Port Handler
-// ============================================================================
-
-// Active media streams (for live streaming - can receive updates)
-const activeMediaStreams = new Map<string, {
-  requestId: string;
-  npub: string;
-  path: string;
-  offset: number;
-  cancelled: boolean;
-}>();
-
-// Timeout for considering a stream "done" (no updates)
-const LIVE_STREAM_TIMEOUT = 10000; // 10 seconds
-
-function handleRegisterMediaPort(port: MessagePort) {
-  mediaPort = port;
-
-  port.onmessage = async (e: MessageEvent) => {
-    const req = e.data;
-
-    if (req.type === 'media') {
-      await handleMediaRequestByCid(req);
-    } else if (req.type === 'mediaByPath') {
-      await handleMediaRequestByPath(req);
-    } else if (req.type === 'cancelMedia') {
-      // Cancel an active stream
-      const stream = activeMediaStreams.get(req.requestId);
-      if (stream) {
-        stream.cancelled = true;
-        activeMediaStreams.delete(req.requestId);
-      }
-    }
-  };
-
-  console.log('[Worker] Media port registered');
-}
-
-// Handle direct CID-based media request
-async function handleMediaRequestByCid(req: import('./protocol').MediaRequestByCid) {
-  if (!tree || !mediaPort) return;
-
-  const { requestId, cid: cidHex, start, end, mimeType } = req;
-
-  try {
-    // Convert hex CID to proper CID object
-    const hash = new Uint8Array(cidHex.length / 2);
-    for (let i = 0; i < hash.length; i++) {
-      hash[i] = parseInt(cidHex.substr(i * 2, 2), 16);
-    }
-    const cid = { hash };
-
-    // Get file size first
-    const totalSize = await tree.getSize(hash);
-
-    // Send headers
-    mediaPort.postMessage({
-      type: 'headers',
-      requestId,
-      totalSize,
-      mimeType: mimeType || 'application/octet-stream',
-      isLive: false,
-    } as import('./protocol').MediaResponse);
-
-    // Read range and stream chunks
-    const data = await tree.readFileRange(cid, start, end);
-    if (data) {
-      await streamChunksToPort(requestId, data);
-    } else {
-      mediaPort.postMessage({
-        type: 'error',
-        requestId,
-        message: 'File not found',
-      } as import('./protocol').MediaResponse);
-    }
-  } catch (err) {
-    mediaPort.postMessage({
-      type: 'error',
-      requestId,
-      message: err instanceof Error ? err.message : String(err),
-    } as import('./protocol').MediaResponse);
-  }
-}
-
-// Handle npub/path-based media request (supports live streaming)
-async function handleMediaRequestByPath(req: import('./protocol').MediaRequestByPath) {
-  if (!tree || !mediaPort) return;
-
-  const { requestId, npub, path, start, mimeType } = req;
-
-  try {
-    // Parse path to get tree name
-    const pathParts = path.split('/').filter(Boolean);
-    const treeName = pathParts[0] || 'public';
-    const filePath = pathParts.slice(1).join('/');
-
-    // Resolve npub to current CID
-    let cid = await getCachedRoot(npub, treeName);
-
-    if (!cid) {
-      // Not in cache - try to resolve via Nostr subscription
-      // For now, just return error. Full implementation would subscribe and wait.
-      mediaPort.postMessage({
-        type: 'error',
-        requestId,
-        message: `Tree root not found for ${npub}/${treeName}`,
-      } as import('./protocol').MediaResponse);
-      return;
-    }
-
-    // Navigate to file within tree if path specified
-    if (filePath) {
-      const resolved = await tree.resolvePath(cid, filePath);
-      if (!resolved) {
-        mediaPort.postMessage({
-          type: 'error',
-          requestId,
-          message: `File not found: ${filePath}`,
-        } as import('./protocol').MediaResponse);
-        return;
-      }
-      cid = resolved.cid;
-    }
-
-    // Get file size
-    const totalSize = await tree.getSize(cid.hash);
-
-    // Send headers (isLive will be determined by watching for updates)
-    mediaPort.postMessage({
-      type: 'headers',
-      requestId,
-      totalSize,
-      mimeType: mimeType || 'application/octet-stream',
-      isLive: false, // Will update if we detect changes
-    } as import('./protocol').MediaResponse);
-
-    // Stream initial content
-    const data = await tree.readFileRange(cid, start);
-    let offset = start;
-
-    if (data) {
-      await streamChunksToPort(requestId, data, false); // Don't close yet
-      offset += data.length;
-    }
-
-    // Register for live updates
-    const streamInfo = {
-      requestId,
-      npub,
-      path,
-      offset,
-      cancelled: false,
-    };
-    activeMediaStreams.set(requestId, streamInfo);
-
-    // Set up tree root watcher for this npub
-    // When root changes, we'll check if this file has new data
-    watchTreeRootForStream(npub, treeName, filePath, streamInfo);
-
-  } catch (err) {
-    mediaPort.postMessage({
-      type: 'error',
-      requestId,
-      message: err instanceof Error ? err.message : String(err),
-    } as import('./protocol').MediaResponse);
-  }
-}
-
-// Stream data chunks to media port
-async function streamChunksToPort(requestId: string, data: Uint8Array, sendDone = true) {
-  if (!mediaPort) return;
-
-  const CHUNK_SIZE = 64 * 1024; // 64KB chunks
-  for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
-    const chunk = data.slice(offset, offset + CHUNK_SIZE);
-    mediaPort.postMessage(
-      { type: 'chunk', requestId, data: chunk } as import('./protocol').MediaResponse,
-      [chunk.buffer]
-    );
-  }
-
-  if (sendDone) {
-    mediaPort.postMessage({ type: 'done', requestId } as import('./protocol').MediaResponse);
-  }
-}
-
-// Watch for tree root updates and push new data to stream
-function watchTreeRootForStream(
-  npub: string,
-  treeName: string,
-  filePath: string,
-  streamInfo: { requestId: string; offset: number; cancelled: boolean }
-) {
-  let lastActivity = Date.now();
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  const checkForUpdates = async () => {
-    if (streamInfo.cancelled || !tree || !mediaPort) {
-      cleanup();
-      return;
-    }
-
-    // Check if stream timed out
-    if (Date.now() - lastActivity > LIVE_STREAM_TIMEOUT) {
-      // No updates for a while, close the stream
-      mediaPort.postMessage({ type: 'done', requestId: streamInfo.requestId } as import('./protocol').MediaResponse);
-      cleanup();
-      return;
-    }
-
-    try {
-      // Get current root
-      const cid = await getCachedRoot(npub, treeName);
-      if (!cid) {
-        scheduleNext();
-        return;
-      }
-
-      // Navigate to file
-      let fileCid = cid;
-      if (filePath) {
-        const resolved = await tree.resolvePath(cid, filePath);
-        if (!resolved) {
-          scheduleNext();
-          return;
-        }
-        fileCid = resolved.cid;
-      }
-
-      // Check for new data
-      const totalSize = await tree.getSize(fileCid.hash);
-      if (totalSize > streamInfo.offset) {
-        // New data available!
-        lastActivity = Date.now();
-        const newData = await tree.readFileRange(fileCid, streamInfo.offset);
-        if (newData && newData.length > 0) {
-          await streamChunksToPort(streamInfo.requestId, newData, false);
-          streamInfo.offset += newData.length;
-        }
-      }
-    } catch {
-      // Ignore errors, just try again
-    }
-
-    scheduleNext();
-  };
-
-  const scheduleNext = () => {
-    if (!streamInfo.cancelled) {
-      timeoutId = setTimeout(checkForUpdates, 1000); // Check every second
-    }
-  };
-
-  const cleanup = () => {
-    if (timeoutId) clearTimeout(timeoutId);
-    activeMediaStreams.delete(streamInfo.requestId);
-  };
-
-  // Start watching
-  scheduleNext();
-}
-
-// ============================================================================
-// WebRTC Signaling
-// ============================================================================
-
-/**
- * Send WebRTC signaling message via Nostr (kind 25050)
- * - Hello messages: broadcast with #l tag
- * - Directed messages (offer/answer/candidates): gift-wrapped
- */
-async function sendWebRTCSignaling(msg: import('../webrtc/types.js').SignalingMessage, recipientPubkey?: string): Promise<void> {
-  try {
-    const nostr = getNostrManager();
-    console.log('[Worker] sendWebRTCSignaling:', msg.type, recipientPubkey ? `to ${recipientPubkey.slice(0, 8)}` : 'broadcast');
-
-    if (recipientPubkey) {
-      // Directed message - gift wrap for privacy
-      const innerEvent = {
-        kind: SIGNALING_KIND,
-        content: JSON.stringify(msg),
-        tags: [] as string[][],
-      };
-      const wrappedEvent = await giftWrap(innerEvent, recipientPubkey);
-      console.log('[Worker] Publishing wrapped event...');
-      await nostr.publish(wrappedEvent);
-    } else {
-      // Hello message - broadcast with #l tag
-      const expiration = Math.floor((Date.now() + 5 * 60 * 1000) / 1000); // 5 minutes
-      console.log('[Worker] Signing hello event...');
-      const event = await signEvent({
-        kind: SIGNALING_KIND,
-        created_at: Math.floor(Date.now() / 1000),
-        tags: [
-          ['l', HELLO_TAG],
-          ['peerId', msg.peerId],
-          ['expiration', expiration.toString()],
-        ],
-        content: '',
-      });
-      console.log('[Worker] Hello event signed, publishing...', event.id?.slice(0, 8));
-      await nostr.publish(event);
-      console.log('[Worker] Hello event published');
-    }
-  } catch (err) {
-    console.error('[Worker] Failed to send WebRTC signaling:', err);
-  }
-}
-
-/**
- * Subscribe to WebRTC signaling events
- */
-function setupWebRTCSignalingSubscription(myPubkey: string): void {
-  const nostr = getNostrManager();
-  const since = Math.floor((Date.now() - 60000) / 1000); // Last minute
-
-  // NOTE: Don't call setOnEvent here - use the unified handler set up in handleInit
-
-  // Subscribe to hello messages (broadcast discovery)
-  nostr.subscribe('webrtc-hello', [{
-    kinds: [SIGNALING_KIND],
-    '#l': [HELLO_TAG],
-    since,
-  }]);
-
-  // Subscribe to directed signaling (offers/answers to us)
-  nostr.subscribe('webrtc-directed', [{
-    kinds: [SIGNALING_KIND],
-    '#p': [myPubkey],
-    since,
-  }]);
-
-  console.log('[Worker] Subscribed to WebRTC signaling');
-}
-
-/**
- * Handle incoming WebRTC signaling event
- */
-async function handleWebRTCSignalingEvent(event: SignedEvent): Promise<void> {
-  // Filter out old events
-  const eventAge = Date.now() / 1000 - (event.created_at ?? 0);
-  if (eventAge > 60) return; // Ignore events older than 1 minute
-
-  // Check expiration
-  const expirationTag = event.tags.find(t => t[0] === 'expiration');
-  if (expirationTag) {
-    const expiration = parseInt(expirationTag[1], 10);
-    if (expiration < Date.now() / 1000) return;
-  }
-
-  // Check if it's a hello message (has #l tag)
-  const isHello = event.tags.some(t => t[0] === 'l' && t[1] === HELLO_TAG);
-
-  if (isHello) {
-    // Hello message - extract peerId from tag
-    const peerIdTag = event.tags.find(t => t[0] === 'peerId');
-    if (peerIdTag) {
-      const msg: import('../webrtc/types.js').SignalingMessage = {
-        type: 'hello',
-        peerId: peerIdTag[1],
-      };
-      webrtc?.handleSignalingMessage(msg, event.pubkey);
-    }
-  } else {
-    // Directed message - try to unwrap
-    const seal = await giftUnwrap(event);
-    if (seal && seal.content) {
-      try {
-        const msg = JSON.parse(seal.content) as import('../webrtc/types.js').SignalingMessage;
-        webrtc?.handleSignalingMessage(msg, seal.pubkey);
-      } catch {
-        // Invalid JSON, ignore
-      }
-    }
-  }
-}
 
 // ============================================================================
 // Stats Handlers
