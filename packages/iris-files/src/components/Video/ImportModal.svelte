@@ -158,13 +158,20 @@
           const streamWriter = tree.createStream({ chunker: videoChunker() });
           const chunkSize = 1024 * 1024;
           const file = video.videoFile;
+          let chunkCount = 0;
 
           for (let offset = 0; offset < file.size; offset += chunkSize) {
             if (abortController.signal.aborted) throw new Error('Cancelled');
 
-            const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
-            const data = new Uint8Array(await chunk.arrayBuffer());
+            const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
+            const data = new Uint8Array(await slice.arrayBuffer());
             await streamWriter.append(data);
+            chunkCount++;
+
+            // Yield every 10 chunks to allow GC
+            if (chunkCount % 10 === 0) {
+              await new Promise(r => setTimeout(r, 0));
+            }
 
             const fileProgress = offset / file.size;
             const overallProgress = ((i + fileProgress * 0.8) / selectedVideos.length) * 100;
@@ -172,6 +179,7 @@
           }
 
           const result = await streamWriter.finalize();
+          streamWriter.clear(); // Release memory
           const ext = file.name.split('.').pop()?.toLowerCase() || 'mp4';
           videoEntries.push({
             name: `video.${ext}`,

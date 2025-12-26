@@ -43,24 +43,22 @@ export async function putFile(
     return { hash, size };
   }
 
-  // Split into chunks
-  const chunks: Uint8Array[] = [];
+  // Process chunks sequentially to avoid memory spikes
+  // (For parallel processing of large files, use StreamWriter instead)
+  const links: Link[] = [];
   let offset = 0;
   while (offset < data.length) {
     const end = Math.min(offset + chunkSize, data.length);
-    chunks.push(data.slice(offset, end));
+    // Use subarray to avoid copying
+    const chunk = data.subarray(offset, end);
+    const hash = await putBlob(store, chunk);
+    links.push({
+      hash,
+      size: chunk.length,
+      type: LinkType.Blob,
+    });
     offset = end;
   }
-
-  // Hash and store chunks in parallel
-  const chunkHashes = await Promise.all(chunks.map(chunk => putBlob(store, chunk)));
-
-  // Build tree from chunks (leaf chunks are raw blobs)
-  const links: Link[] = chunkHashes.map((hash, i) => ({
-    hash,
-    size: i < chunkHashes.length - 1 ? chunkSize : data.length - i * chunkSize,
-    type: LinkType.Blob,
-  }));
 
   const rootHash = await buildTree(config, links, size);
   return { hash: rootHash, size };

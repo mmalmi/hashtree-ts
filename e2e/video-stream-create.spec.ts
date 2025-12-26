@@ -157,9 +157,17 @@ test.describe('Video Stream Create Page', () => {
     await disableOthersPool(page);
     await loginVideoApp(page);
 
-    // Click Create button to go to /create page
+    // Click Create button to open dropdown menu
     const createBtn = page.locator('button:has-text("Create")');
     await createBtn.click();
+
+    // Should show dropdown with Upload Video, Livestream, Import options
+    await expect(page.getByRole('button', { name: 'Upload Video' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Livestream' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Import' })).toBeVisible({ timeout: 5000 });
+
+    // Click Livestream to navigate to /create page with stream tab
+    await page.getByRole('button', { name: 'Livestream' }).click();
 
     // Should navigate to /create
     await page.waitForURL(/\/video\.html#\/create/, { timeout: 10000 });

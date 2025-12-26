@@ -56,29 +56,26 @@ export async function putFileEncrypted(
     return { hash, size, key };
   }
 
-  // Multiple chunks - split data first
-  const chunks: Uint8Array[] = [];
+  // Process chunks sequentially to avoid memory spikes
+  // (For parallel processing of large files, use StreamWriter instead)
+  const links: Link[] = [];
   let offset = 0;
   while (offset < data.length) {
     const end = Math.min(offset + chunkSize, data.length);
-    chunks.push(data.slice(offset, end));
+    // Use subarray to avoid copying, encrypt will handle the data
+    const chunk = data.subarray(offset, end);
+    const { ciphertext, key: chunkKey } = await encryptChk(chunk);
+    const hash = await sha256(ciphertext);
+    await store.put(hash, ciphertext);
+    links.push({
+      hash,
+      // Store PLAINTEXT size in link for correct range seeking
+      size: chunk.length,
+      key: chunkKey,
+      type: LinkType.Blob,
+    });
     offset = end;
   }
-
-  // CHK encrypt and store all chunks in parallel
-  const links = await Promise.all(
-    chunks.map(async (chunk): Promise<Link> => {
-      const { ciphertext, key: chunkKey } = await encryptChk(chunk);
-      const hash = await sha256(ciphertext);
-      await store.put(hash, ciphertext);
-      return {
-        hash,
-        size: ciphertext.length,
-        key: chunkKey,
-        type: LinkType.Blob,
-      };
-    })
-  );
 
   // Build tree - tree nodes also CHK encrypted
   const { hash: rootHash, key: rootKey } = await buildEncryptedTree(config, links, size);

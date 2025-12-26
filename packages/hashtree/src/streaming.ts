@@ -104,23 +104,21 @@ export class StreamWriter {
   private async flushChunk(): Promise<void> {
     if (this.bufferOffset === 0) return;
 
-    const chunk = this.buffer.slice(0, this.bufferOffset);
+    const chunkSize = this.bufferOffset;
+    // slice() to create independent copy - allows buffer reuse after await
+    const chunk = this.buffer.slice(0, chunkSize);
 
     if (this.isPublic) {
       // Public mode: store plaintext
-      // Capture size before store.put() which may transfer the buffer
-      const chunkSize = chunk.length;
       const hash = await sha256(chunk);
       await this.store.put(hash, chunk);
       this.chunks.push({ hash, size: chunkSize, type: LinkType.Blob });
     } else {
       // Encrypted mode: CHK encrypt the chunk
-      // Store PLAINTEXT size in link.size for correct range seeking
-      const plaintextSize = chunk.length;
       const { ciphertext, key } = await encryptChk(chunk);
       const hash = await sha256(ciphertext);
       await this.store.put(hash, ciphertext);
-      this.chunks.push({ hash, size: plaintextSize, key, type: LinkType.Blob });
+      this.chunks.push({ hash, size: chunkSize, key, type: LinkType.Blob });
     }
 
     this.bufferOffset = 0;
@@ -224,5 +222,16 @@ export class StreamWriter {
       buffered: this.bufferOffset,
       totalSize: this.totalSize,
     };
+  }
+
+  /**
+   * Clear internal state to release memory
+   * Call after finalize() if you want to free memory immediately
+   */
+  clear(): void {
+    this.chunks = [];
+    this.buffer = new Uint8Array(0);
+    this.bufferOffset = 0;
+    this.totalSize = 0;
   }
 }

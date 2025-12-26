@@ -155,10 +155,16 @@
         progressMessage = 'Transcoding...';
         const streamWriter = tree.createStream({ chunker: videoChunker() });
 
+        let chunkCount = 0;
         await transcodeToMP4Streaming(
           selectedFile,
           async (chunk: Uint8Array) => {
             await streamWriter.append(chunk);
+            chunkCount++;
+            // Yield every 10 chunks to allow GC
+            if (chunkCount % 10 === 0) {
+              await new Promise(r => setTimeout(r, 0));
+            }
           },
           (p: TranscodeProgress) => {
             progress = Math.round(p.percent * 0.6);
@@ -167,6 +173,7 @@
         );
 
         const finalResult = await streamWriter.finalize();
+        streamWriter.clear(); // Release memory
         videoResult = {
           cid: { hash: finalResult.hash, key: finalResult.key },
           size: finalResult.size
@@ -177,19 +184,27 @@
         progressMessage = 'Uploading...';
         const streamWriter = tree.createStream({ chunker: videoChunker() });
         const chunkSize = 1024 * 1024;
+        let chunkCount = 0;
 
         for (let offset = 0; offset < selectedFile.size; offset += chunkSize) {
           if (abortController.signal.aborted) throw new Error('Cancelled');
 
-          const chunk = selectedFile.slice(offset, Math.min(offset + chunkSize, selectedFile.size));
-          const data = new Uint8Array(await chunk.arrayBuffer());
+          const slice = selectedFile.slice(offset, Math.min(offset + chunkSize, selectedFile.size));
+          const data = new Uint8Array(await slice.arrayBuffer());
           await streamWriter.append(data);
+          chunkCount++;
+
+          // Yield to event loop every 10 chunks to allow GC and prevent UI freeze
+          if (chunkCount % 10 === 0) {
+            await new Promise(r => setTimeout(r, 0));
+          }
 
           progress = Math.round((offset / selectedFile.size) * 60);
           progressMessage = `Uploading: ${Math.round((offset / selectedFile.size) * 100)}%`;
         }
 
         const finalResult = await streamWriter.finalize();
+        streamWriter.clear(); // Release memory
         videoResult = {
           cid: { hash: finalResult.hash, key: finalResult.key },
           size: finalResult.size
