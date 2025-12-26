@@ -4,7 +4,7 @@
    * YouTube-style home with horizontal sections and infinite feed
    */
   import { onMount, untrack } from 'svelte';
-  import { SvelteSet, SvelteMap } from 'svelte/reactivity';
+  import { SvelteSet } from 'svelte/reactivity';
   import { nip19 } from 'nostr-tools';
   import { ndk, nostrStore } from '../../nostr';
   import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
@@ -12,6 +12,7 @@
   import { getTree } from '../../store';
   import { getPlaylistCache, setPlaylistCache } from '../../stores/playlistCache';
   import { hasVideoFile, findThumbnailEntry, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
+  import { SortedMap } from '../../utils/SortedMap';
   import type { CID } from 'hashtree';
 
   // Default pubkey to use for fallback content (sirius)
@@ -297,8 +298,24 @@
     // Convert to array of pubkeys (no limit - single subscription handles all)
     const authors = Array.from(pubkeysToCheck);
 
-    // Track videos by d-tag (treeName) to handle updates
-    const videosByKey = new SvelteMap<string, VideoItem>();
+    // SortedMap for efficient sorted insertion (descending by timestamp)
+    const videosByKey = new SortedMap<string, VideoItem>(
+      (a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0)
+    );
+
+    // Debounce updates to batch rapid events
+    let updateTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleUpdate = () => {
+      if (updateTimer) return;
+      updateTimer = setTimeout(() => {
+        updateTimer = null;
+        const allVideos = videosByKey.values();
+        untrack(() => {
+          followedUsersVideos = allVideos;
+          detectPlaylistsInFeed(allVideos);
+        });
+      }, 50);
+    };
 
     // Single subscription for all authors' hashtree events
     const sub = ndk.subscribe({
@@ -346,15 +363,7 @@
         timestamp: event.created_at || 0,
       });
 
-      // Update video list
-      const allVideos = Array.from(videosByKey.values());
-      allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-
-      untrack(() => {
-        followedUsersVideos = allVideos;
-        // Trigger playlist detection for new videos
-        detectPlaylistsInFeed(allVideos);
-      });
+      scheduleUpdate();
     });
 
     untrack(() => {
@@ -385,10 +394,22 @@
 
     const authors = currentFollows;
 
-    // Track videos by identifier to dedupe
-    const videosByKey = new SvelteMap<string, VideoItem>();
+    // SortedMap for efficient sorted insertion (descending by timestamp)
+    const videosByKey = new SortedMap<string, VideoItem>(
+      (a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0)
+    );
     // Track seen event IDs
     const seenEventIds = new SvelteSet<string>();
+
+    // Debounce updates
+    let updateTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleSocialUpdate = () => {
+      if (updateTimer) return;
+      updateTimer = setTimeout(() => {
+        updateTimer = null;
+        untrack(() => { socialVideos = videosByKey.values(); });
+      }, 50);
+    };
 
     // Parse video identifier from 'i' tag and create VideoItem
     // Format: "npub.../videos%2FVideoName" or just "nhash..."
@@ -450,7 +471,7 @@
       // Keep the most recent interaction timestamp
       if (!existing || (video.timestamp && video.timestamp > (existing.timestamp || 0))) {
         videosByKey.set(video.key, video);
-        updateSocialVideos();
+        scheduleSocialUpdate();
       }
     });
 
@@ -476,15 +497,9 @@
       // Keep the most recent interaction timestamp
       if (!existing || (video.timestamp && video.timestamp > (existing.timestamp || 0))) {
         videosByKey.set(video.key, video);
-        updateSocialVideos();
+        scheduleSocialUpdate();
       }
     });
-
-    function updateSocialVideos() {
-      const allVideos = Array.from(videosByKey.values());
-      allVideos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      untrack(() => { socialVideos = allVideos; });
-    }
 
     untrack(() => {
       socialSubUnsub = () => {

@@ -4,11 +4,11 @@
    * Displays a flat list of trees sorted by created_at (most recent first)
    */
   import { nip19 } from 'nostr-tools';
-  import { SvelteMap } from 'svelte/reactivity';
   import { nostrStore } from '../nostr';
   import { createFollowsStore } from '../stores/follows';
   import { createTreesStore, type TreeEntry } from '../stores/trees';
   import { TreeRow } from './ui';
+  import { SortedMap } from '../utils/SortedMap';
 
   let pubkey = $derived($nostrStore.pubkey);
   let followsStore = $derived(pubkey ? createFollowsStore(pubkey) : null);
@@ -38,8 +38,14 @@
   let allTrees = $state<TreeWithOwner[]>([]);
   let treeStoreCleanups: (() => void)[] = [];
 
-  // Debounce timer for tree updates to avoid excessive re-sorts
+  // Debounce timer for tree updates
   let updateTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // SortedMap for efficient sorted insertion (descending by createdAt)
+  let sortedTrees: SortedMap<string, TreeWithOwner> | null = null;
+
+  // Track which trees each user has (for efficient removal on update)
+  let userTreeKeys = new Map<string, Set<string>>();
 
   // Create tree stores for each followed user
   $effect(() => {
@@ -53,15 +59,19 @@
 
     if (follows.length === 0) {
       allTrees = [];
+      sortedTrees = null;
+      userTreeKeys.clear();
       return;
     }
 
+    // Initialize SortedMap with descending createdAt comparator
+    sortedTrees = new SortedMap<string, TreeWithOwner>(
+      (a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0)
+    );
+    userTreeKeys = new Map();
+
     // Limit to first 50 follows to avoid too many subscriptions
     const limitedFollows = follows.slice(0, 50);
-    const treesMap = new SvelteMap<string, TreeEntry[]>();
-
-    // Initialize with empty arrays
-    limitedFollows.forEach(pk => treesMap.set(pk, []));
 
     // Subscribe to each user's trees
     for (const followedPubkey of limitedFollows) {
@@ -76,9 +86,7 @@
       const unsub = store.subscribe(trees => {
         // Filter to only public trees (not private or unlisted)
         const publicTrees = trees.filter(t => t.visibility === 'public');
-        treesMap.set(followedPubkey, publicTrees);
-        // Debounce updates to avoid excessive re-sorts when many subscriptions fire
-        scheduleUpdate(treesMap);
+        updateUserTrees(followedPubkey, npub, publicTrees);
       });
 
       treeStoreCleanups.push(unsub);
@@ -94,34 +102,42 @@
     };
   });
 
-  function scheduleUpdate(treesMap: Map<string, TreeEntry[]>) {
+  function updateUserTrees(pubkey: string, npub: string, trees: TreeEntry[]) {
+    if (!sortedTrees) return;
+
+    // Remove old trees for this user
+    const oldKeys = userTreeKeys.get(pubkey);
+    if (oldKeys) {
+      for (const key of oldKeys) {
+        sortedTrees.delete(key);
+      }
+    }
+
+    // Add new trees
+    const newKeys = new Set<string>();
+    for (const tree of trees) {
+      const treeWithOwner: TreeWithOwner = {
+        ...tree,
+        ownerPubkey: pubkey,
+        ownerNpub: npub,
+      };
+      sortedTrees.set(tree.key, treeWithOwner);
+      newKeys.add(tree.key);
+    }
+    userTreeKeys.set(pubkey, newKeys);
+
+    // Debounce the array update (rendering is still the expensive part)
+    scheduleArrayUpdate();
+  }
+
+  function scheduleArrayUpdate() {
     if (updateTimer) clearTimeout(updateTimer);
     updateTimer = setTimeout(() => {
       updateTimer = null;
-      updateAllTrees(treesMap);
-    }, 50); // 50ms debounce
-  }
-
-  function updateAllTrees(treesMap: Map<string, TreeEntry[]>) {
-    const result: TreeWithOwner[] = [];
-    for (const [pk, trees] of treesMap) {
-      let npub: string;
-      try {
-        npub = nip19.npubEncode(pk);
-      } catch {
-        continue;
+      if (sortedTrees) {
+        allTrees = sortedTrees.values();
       }
-      for (const tree of trees) {
-        result.push({
-          ...tree,
-          ownerPubkey: pk,
-          ownerNpub: npub,
-        });
-      }
-    }
-    // Sort by createdAt descending (most recent first)
-    result.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-    allTrees = result;
+    }, 50);
   }
 
   // Build href for a tree
