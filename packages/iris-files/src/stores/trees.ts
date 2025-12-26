@@ -71,7 +71,7 @@ export async function waitForLinkKeysCache(): Promise<void> {
 }
 
 /**
- * Store a link key for an unlisted tree
+ * Store a link key for a link-visible tree
  */
 export async function storeLinkKey(npub: string, treeName: string, linkKey: string): Promise<void> {
   const key = `${npub}/${treeName}`;
@@ -95,15 +95,15 @@ export interface TreeEntry {
   hashHex: string;  // Hex string of hash
   /** @deprecated Use visibility instead */
   encryptionKey?: Hash; // Encryption key (if encrypted, public)
-  /** Tree visibility: public, unlisted, or private. Undefined if not yet resolved from Nostr. */
+  /** Tree visibility: public, link-visible, or private. Undefined if not yet resolved from Nostr. */
   visibility: TreeVisibility | undefined;
-  /** Encrypted key for unlisted trees */
+  /** Encrypted key for link-visible trees */
   encryptedKey?: string;
-  /** Key ID for unlisted trees */
+  /** Key ID for link-visible trees */
   keyId?: string;
   /** Self-encrypted key for private trees */
   selfEncryptedKey?: string;
-  /** Link key for unlisted trees (only for own trees, from local storage) */
+  /** Link key for link-visible trees (only for own trees, from local storage) */
   linkKey?: string;
   /** Unix timestamp when the tree was created/last updated */
   createdAt?: number;
@@ -143,8 +143,8 @@ export function createTreesStore(npub: string | null): Readable<TreeEntry[]> {
         const name = slashIdx >= 0 ? e.key.slice(slashIdx + 1) : '';
         // Don't default visibility - let it be undefined if not resolved from Nostr
         const visibility = e.visibility;
-        // Include stored link key for unlisted trees (own trees only)
-        const linkKey = visibility === 'unlisted' && isOwnTrees
+        // Include stored link key for link-visible trees (own trees only)
+        const linkKey = visibility === 'link-visible' && isOwnTrees
           ? storedLinkKeys[`${npub}/${name}`]
           : undefined;
 

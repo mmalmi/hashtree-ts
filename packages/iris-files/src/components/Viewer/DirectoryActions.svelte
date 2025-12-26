@@ -177,10 +177,10 @@
     }
   }
 
-  // Check if should hide actions (locked unlisted/private)
+  // Check if should hide actions (locked link-visible/private)
   let hideActions = $derived(
     rootCid?.hash && !rootCid?.key && currentTree &&
-    (currentTree.visibility === 'unlisted' || currentTree.visibility === 'private')
+    (currentTree.visibility === 'link-visible' || currentTree.visibility === 'private')
   );
 
   // Build back URL (parent directory or tree list)
@@ -252,7 +252,7 @@
       icon="i-lucide-folder-open text-warning"
       name={currentDirName}
     />
-    <!-- Action buttons - hide when viewing locked unlisted/private directory -->
+    <!-- Action buttons - hide when viewing locked link-visible/private directory -->
     {#if hasTreeContext && !hideActions}
       <div class="p-3 shrink-0">
         <FolderActions dirCid={currentDirCid} {canEdit} />

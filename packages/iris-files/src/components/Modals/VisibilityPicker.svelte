@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Visibility picker for selecting tree visibility (public/unlisted/private)
+   * Visibility picker for selecting tree visibility (public/link-visible/private)
    */
   import type { TreeVisibility } from 'hashtree';
 
@@ -14,7 +14,7 @@
   function getVisibilityTitle(vis: TreeVisibility): string {
     switch (vis) {
       case 'public': return 'Anyone can browse this folder';
-      case 'unlisted': return 'Only accessible with a special link';
+      case 'link-visible': return 'Only accessible with a special link';
       case 'private': return 'Only you can access this folder';
     }
   }
@@ -22,7 +22,7 @@
   function getVisibilityIcon(vis: TreeVisibility): string {
     switch (vis) {
       case 'public': return 'i-lucide-globe';
-      case 'unlisted': return 'i-lucide-link';
+      case 'link-visible': return 'i-lucide-link';
       case 'private': return 'i-lucide-lock';
     }
   }
@@ -31,7 +31,7 @@
 <div>
   <span class="text-sm text-text-2 mb-2 block">Visibility</span>
   <div class="flex gap-2">
-    {#each ['public', 'unlisted', 'private'] as vis (vis)}
+    {#each ['public', 'link-visible', 'private'] as vis (vis)}
       <button
         type="button"
         onclick={() => onchange(vis as TreeVisibility)}

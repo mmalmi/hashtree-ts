@@ -321,7 +321,7 @@ export async function stopRecording(
 
   const result = await saveHashtree(treeName, rootHash, rootKey, { visibility });
 
-  // Store link key for unlisted videos
+  // Store link key for link-visible videos
   if (result.linkKey && userNpub) {
     storeLinkKey(userNpub, treeName, result.linkKey);
   }

@@ -17,7 +17,7 @@ export interface RouteInfo {
   path: string[];
   /** True when viewing a permalink (nhash route) */
   isPermalink: boolean;
-  /** Link key for unlisted trees (from ?k= param) */
+  /** Link key for link-visible trees (from ?k= param) */
   linkKey: string | null;
   /** True when in streaming mode (from ?stream=1 param) */
   isStreaming: boolean;

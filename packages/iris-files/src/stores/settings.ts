@@ -91,8 +91,8 @@ export interface SyncSettings {
   ownQuotaPercent: number;
   /** Sync public trees from followed users */
   syncFollowedPublic: boolean;
-  /** Sync unlisted trees when visited via link */
-  syncVisitedUnlisted: boolean;
+  /** Sync link-visible trees when visited via link */
+  syncVisitedLinkVisible: boolean;
 }
 
 // Default sync settings
@@ -101,7 +101,7 @@ export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
   storageCap: 2 * 1024 * 1024 * 1024, // 2GB
   ownQuotaPercent: 50,
   syncFollowedPublic: true,
-  syncVisitedUnlisted: true,
+  syncVisitedLinkVisible: true,
 };
 
 // Blossom server configuration
@@ -388,7 +388,7 @@ async function loadSettings() {
         storageCap: sync.storageCap ?? DEFAULT_SYNC_SETTINGS.storageCap,
         ownQuotaPercent: sync.ownQuotaPercent ?? DEFAULT_SYNC_SETTINGS.ownQuotaPercent,
         syncFollowedPublic: sync.syncFollowedPublic ?? DEFAULT_SYNC_SETTINGS.syncFollowedPublic,
-        syncVisitedUnlisted: sync.syncVisitedUnlisted ?? DEFAULT_SYNC_SETTINGS.syncVisitedUnlisted,
+        syncVisitedLinkVisible: sync.syncVisitedLinkVisible ?? DEFAULT_SYNC_SETTINGS.syncVisitedLinkVisible,
       };
     }
 

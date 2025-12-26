@@ -174,7 +174,7 @@ export async function forkTree(dirCid: CID, name: string, visibility: import('ha
   // Publish to nostr - resolver will pick up the update when we navigate
   const result = await saveHashtree(name, rootHex, keyHex, { visibility });
 
-  // For unlisted trees, store link key locally and append to URL
+  // For link-visible trees, store link key locally and append to URL
   if (result.linkKey) {
     storeLinkKey(nostrState.npub, name, result.linkKey);
   }
@@ -228,7 +228,7 @@ export async function createTree(name: string, visibility: import('hashtree').Tr
     // The await ensures local cache is updated before navigation
     const result = await saveHashtree(name, rootHex, keyHex, { visibility });
 
-    // For unlisted trees, store link key locally and append to URL
+    // For link-visible trees, store link key locally and append to URL
     if (result.linkKey) {
       storeLinkKey(nostrState.npub, name, result.linkKey);
     }
@@ -293,7 +293,7 @@ export async function createDocumentTree(
   // Publish to nostr with docs label
   const result = await saveHashtree(treeName, rootHex, keyHex, { visibility, labels: ['docs'] });
 
-  // Store link key for unlisted documents
+  // Store link key for link-visible documents
   if (result.linkKey) {
     storeLinkKey(nostrState.npub, treeName, result.linkKey);
   }

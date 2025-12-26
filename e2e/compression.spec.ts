@@ -162,16 +162,16 @@ test.describe('Compression features', () => {
 
     // Visibility picker should be visible with all three options
     await expect(page.locator('button:has-text("public")')).toBeVisible();
-    await expect(page.locator('button:has-text("unlisted")')).toBeVisible();
+    await expect(page.locator('button:has-text("link-visible")')).toBeVisible();
     await expect(page.locator('button:has-text("private")')).toBeVisible();
 
     // Public should be selected by default (uses ring-accent for selected state)
     const publicButton = page.locator('.fixed.inset-0').locator('button:has-text("public")');
     await expect(publicButton).toHaveClass(/ring-accent/);
 
-    // Change the name and select unlisted visibility
-    await forkInput.fill('my-unlisted-fork');
-    await page.locator('.fixed.inset-0').locator('button:has-text("unlisted")').click();
+    // Change the name and select linkvis visibility
+    await forkInput.fill('my-linkvis-fork');
+    await page.locator('.fixed.inset-0').locator('button:has-text("link-visible")').click();
 
     // Click Fork button
     await page.locator('.fixed.inset-0').getByRole('button', { name: 'Fork' }).click();
@@ -179,10 +179,10 @@ test.describe('Compression features', () => {
     // Wait for modal to close and navigation
     await expect(page.locator('text="Fork as New Folder"')).not.toBeVisible({ timeout: 10000 });
 
-    // Should be navigated to the new forked folder (with link key for unlisted)
-    await expect(page).toHaveURL(/my-unlisted-fork/, { timeout: 10000 });
+    // Should be navigated to the new forked folder (with link key for linkvis)
+    await expect(page).toHaveURL(/my-linkvis-fork/, { timeout: 10000 });
 
-    // The URL should contain a link key parameter for unlisted tree
+    // The URL should contain a link key parameter for link-visible tree
     await expect(page).toHaveURL(/\?k=/, { timeout: 5000 });
   });
 

@@ -339,7 +339,7 @@ export async function uploadFiles(files: FileList): Promise<void> {
       // Tree route: /npub/treeName/path/filename
       const parts = [currentRoute.npub, currentRoute.treeName, ...dirPath, fileName];
       let url = '/' + parts.map(encodeURIComponent).join('/');
-      // Preserve linkKey for unlisted trees
+      // Preserve linkKey for link-visible trees
       if (currentRoute.linkKey) {
         url += `?k=${currentRoute.linkKey}`;
       }

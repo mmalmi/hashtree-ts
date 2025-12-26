@@ -126,7 +126,7 @@
     !isOwnTrees &&
     missingDecryptionKey &&
     effectiveTree &&
-    (effectiveTree.visibility === 'unlisted' || effectiveTree.visibility === 'private')
+    (effectiveTree.visibility === 'link-visible' || effectiveTree.visibility === 'private')
   );
 
   // Subscribe to trees store
@@ -663,7 +663,7 @@
           <!-- Protected tree without access - show appropriate message -->
           <div class="p-8 text-center">
             <div class="inline-flex items-center justify-center mb-4">
-              {#if effectiveTree?.visibility === 'unlisted'}
+              {#if effectiveTree?.visibility === 'link-visible'}
                 {#if linkKey}
                   <span class="i-lucide-key-round text-3xl text-danger"></span>
                 {:else}
@@ -677,14 +677,14 @@
               {/if}
             </div>
             <div class="text-text-2 font-medium mb-2">
-              {#if effectiveTree?.visibility === 'unlisted'}
+              {#if effectiveTree?.visibility === 'link-visible'}
                 {linkKey ? 'Invalid Link Key' : 'Link Required'}
               {:else}
                 Private Folder
               {/if}
             </div>
             <div class="text-text-3 text-sm max-w-xs mx-auto">
-              {#if effectiveTree?.visibility === 'unlisted'}
+              {#if effectiveTree?.visibility === 'link-visible'}
                 {linkKey
                   ? 'The link key provided is invalid or has expired. Ask the owner for a new link.'
                   : 'This folder requires a special link to access. Ask the owner for the link with the access key.'}

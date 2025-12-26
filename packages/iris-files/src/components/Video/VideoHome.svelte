@@ -345,7 +345,7 @@
 
       const hasEncryptedKey = event.tags.some(t => t[0] === 'encryptedKey');
       const hasSelfEncryptedKey = event.tags.some(t => t[0] === 'selfEncryptedKey');
-      const visibility = hasEncryptedKey ? 'unlisted' : (hasSelfEncryptedKey ? 'private' : 'public');
+      const visibility = hasEncryptedKey ? 'link-visible' : (hasSelfEncryptedKey ? 'private' : 'public');
 
       // Only include public videos
       if (visibility !== 'public') return;

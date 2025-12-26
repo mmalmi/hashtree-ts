@@ -54,9 +54,9 @@ export interface ParsedTreeVisibility {
   visibility: TreeVisibility;
   /** Plaintext key (for public trees) */
   key?: string;
-  /** Encrypted key (for unlisted trees) - decrypt with link key */
+  /** Encrypted key (for link-visible trees) - decrypt with link key */
   encryptedKey?: string;
-  /** Key ID (for unlisted trees) - identifies which link key to use */
+  /** Key ID (for link-visible trees) - identifies which link key to use */
   keyId?: string;
   /** Self-encrypted key (for private trees) - decrypt with NIP-04 */
   selfEncryptedKey?: string;
@@ -64,7 +64,7 @@ export interface ParsedTreeVisibility {
 
 /**
  * Parse hash and visibility info from a nostr event
- * Supports all visibility levels: public, unlisted, private
+ * Supports all visibility levels: public, link-visible, private
  */
 function parseHashAndVisibility(event: NostrEvent): ParsedTreeVisibility | null {
   const hashTag = event.tags.find(t => t[0] === 'hash')?.[1];
@@ -77,9 +77,9 @@ function parseHashAndVisibility(event: NostrEvent): ParsedTreeVisibility | null 
 
   let visibility: TreeVisibility;
   if (encryptedKey) {
-    // encryptedKey means unlisted (shareable via link)
+    // encryptedKey means link-visible (shareable via link)
     // May also have selfEncryptedKey for owner access
-    visibility = 'unlisted';
+    visibility = 'link-visible';
   } else if (selfEncryptedKey) {
     // Only selfEncryptedKey (no encryptedKey) means private
     visibility = 'private';

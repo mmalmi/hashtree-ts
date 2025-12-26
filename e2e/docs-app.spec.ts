@@ -53,7 +53,7 @@ test.describe('Iris Docs App', () => {
     const docName = `Test Doc ${Date.now()}`;
     await page.locator('input[placeholder="Document name..."]').fill(docName);
 
-    // Should show visibility picker (buttons with public/unlisted/private)
+    // Should show visibility picker (buttons with public/linkvis/private)
     await expect(page.locator('button:has-text("public")')).toBeVisible({ timeout: 30000 });
 
     // Click Create button

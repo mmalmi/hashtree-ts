@@ -42,7 +42,7 @@
     rootCid: CID;
     containsVideo: boolean;
     videoEntryName: string | null; // Name of entry if video is in playlist
-    visibility?: 'public' | 'unlisted' | 'private'; // Original visibility to preserve
+    visibility?: 'public' | 'link-visible' | 'private'; // Original visibility to preserve
   }
 
   // State

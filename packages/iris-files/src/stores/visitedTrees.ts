@@ -1,7 +1,7 @@
 /**
- * Track visited unlisted trees for background sync
+ * Track visited link-visible trees for background sync
  *
- * When a user visits an unlisted tree via a link, we store the tree info
+ * When a user visits a link-visible tree via a link, we store the tree info
  * so it can be synced in the background for offline access.
  */
 import Dexie, { type Table } from 'dexie';
@@ -9,7 +9,7 @@ import type { CID } from 'hashtree';
 import { toHex, fromHex, cid } from 'hashtree';
 
 /**
- * Record of a visited unlisted tree
+ * Record of a visited link-visible tree
  */
 export interface VisitedTree {
   /** "npub/treeName" - primary key */
@@ -42,7 +42,7 @@ class VisitedTreesDB extends Dexie {
 const db = new VisitedTreesDB();
 
 /**
- * Record a visit to an unlisted tree
+ * Record a visit to a link-visible tree
  * Updates lastVisited and root hash if already exists
  */
 export async function recordTreeVisit(
@@ -79,7 +79,7 @@ export async function recordTreeVisit(
 }
 
 /**
- * Get all visited unlisted trees
+ * Get all visited link-visible trees
  */
 export async function getVisitedTrees(): Promise<VisitedTree[]> {
   return db.trees.toArray();

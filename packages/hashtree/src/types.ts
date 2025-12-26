@@ -193,11 +193,11 @@ export function hashEquals(a: Hash, b: Hash): boolean {
 export interface RefResolverListEntry {
   key: string;
   cid: CID;
-  /** Tree visibility: public, unlisted, or private */
+  /** Tree visibility: public, link-visible, or private */
   visibility?: TreeVisibility;
-  /** Encrypted key for unlisted trees - decrypt with link key from URL */
+  /** Encrypted key for link-visible trees - decrypt with link key from URL */
   encryptedKey?: string;
-  /** Key ID for unlisted trees */
+  /** Key ID for link-visible trees */
   keyId?: string;
   /** Self-encrypted key for private trees - decrypt with NIP-04 */
   selfEncryptedKey?: string;
@@ -209,13 +209,13 @@ export interface RefResolverListEntry {
  * Visibility info passed to subscribe callbacks
  */
 export interface SubscribeVisibilityInfo {
-  /** Tree visibility: public, unlisted, or private */
+  /** Tree visibility: public, link-visible, or private */
   visibility: TreeVisibility;
-  /** Encrypted key for unlisted trees - decrypt with link key from URL */
+  /** Encrypted key for link-visible trees - decrypt with link key from URL */
   encryptedKey?: string;
-  /** Key ID for unlisted trees */
+  /** Key ID for link-visible trees */
   keyId?: string;
-  /** Self-encrypted key for private/unlisted trees - decrypt with NIP-04 */
+  /** Self-encrypted key for private/link-visible trees - decrypt with NIP-04 */
   selfEncryptedKey?: string;
 }
 

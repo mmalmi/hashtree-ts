@@ -33,7 +33,7 @@
   let selectedVideoIds = new SvelteSet<string>();
   let channelName = $state('');
   let batchTotalSize = $state(0);
-  let visibility = $state<'public' | 'unlisted' | 'private'>('public');
+  let visibility = $state<'public' | 'link-visible' | 'private'>('public');
   let sourceUrl = $state('');
   let isValidUrl = $derived(() => {
     const url = sourceUrl.trim();
@@ -511,11 +511,11 @@
                 </button>
                 <button
                   type="button"
-                  onclick={() => visibility = 'unlisted'}
-                  class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'unlisted' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+                  onclick={() => visibility = 'link-visible'}
+                  class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'link-visible' ? 'ring-2 ring-accent bg-surface-3' : ''}"
                 >
                   <span class="i-lucide-link"></span>
-                  <span class="text-sm">Unlisted</span>
+                  <span class="text-sm">Link-visible</span>
                 </button>
                 <button
                   type="button"

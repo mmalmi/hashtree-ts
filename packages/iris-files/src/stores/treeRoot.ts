@@ -127,8 +127,8 @@ async function decryptEncryptionKey(
     return undefined;
   }
 
-  // Unlisted tree with linkKey from URL
-  if (visibilityInfo.visibility === 'unlisted' && visibilityInfo.encryptedKey && linkKey) {
+  // Link-visible tree with linkKey from URL
+  if (visibilityInfo.visibility === 'link-visible' && visibilityInfo.encryptedKey && linkKey) {
     try {
       const decryptedHex = await visibilityHex.decryptKeyFromLink(visibilityInfo.encryptedKey, linkKey);
       if (decryptedHex) {
@@ -140,7 +140,7 @@ async function decryptEncryptionKey(
     }
   }
 
-  // Unlisted or private tree - try selfEncryptedKey (owner access)
+  // Link-visible or private tree - try selfEncryptedKey (owner access)
   if (visibilityInfo.selfEncryptedKey) {
     try {
       const state = get(nostrStore);

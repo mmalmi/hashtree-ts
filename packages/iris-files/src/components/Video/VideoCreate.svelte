@@ -44,14 +44,14 @@
   let willTranscode = $state(false);
   let transcodeSupported = $state(true);
   let transcodeError = $state<string | null>(null);
-  let visibility = $state<'public' | 'unlisted' | 'private'>('public');
+  let visibility = $state<'public' | 'link-visible' | 'private'>('public');
   let abortController = $state<AbortController | null>(null);
 
   // ========== Stream Tab State ==========
   let videoRef: HTMLVideoElement | undefined = $state();
   let streamTitle = $state('');
   let streamDescription = $state('');
-  let streamVisibility = $state<'public' | 'unlisted' | 'private'>('public');
+  let streamVisibility = $state<'public' | 'link-visible' | 'private'>('public');
   let streamThumbnailBlob = $state<Blob | null>(null);
   let saving = $state(false);
 
@@ -628,12 +628,12 @@
             </button>
             <button
               type="button"
-              onclick={() => visibility = 'unlisted'}
-              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'unlisted' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+              onclick={() => visibility = 'link-visible'}
+              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'link-visible' ? 'ring-2 ring-accent bg-surface-3' : ''}"
               disabled={uploading}
             >
               <span class="i-lucide-link"></span>
-              <span class="text-sm">Unlisted</span>
+              <span class="text-sm">Link-visible</span>
             </button>
             <button
               type="button"
@@ -648,7 +648,7 @@
           <p class="text-xs text-text-3 mt-2">
             {#if visibility === 'public'}
               Anyone can find and watch this video
-            {:else if visibility === 'unlisted'}
+            {:else if visibility === 'link-visible'}
               Only people with the link can watch
             {:else}
               Encrypted, only you can watch
@@ -718,12 +718,12 @@
             </button>
             <button
               type="button"
-              onclick={() => streamVisibility = 'unlisted'}
-              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {streamVisibility === 'unlisted' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+              onclick={() => streamVisibility = 'link-visible'}
+              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {streamVisibility === 'link-visible' ? 'ring-2 ring-accent bg-surface-3' : ''}"
               disabled={streamState.isRecording || saving}
             >
               <span class="i-lucide-link"></span>
-              <span class="text-sm">Unlisted</span>
+              <span class="text-sm">Link-visible</span>
             </button>
             <button
               type="button"
@@ -738,7 +738,7 @@
           <p class="text-xs text-text-3 mt-2">
             {#if streamVisibility === 'public'}
               Anyone can find and watch this stream
-            {:else if streamVisibility === 'unlisted'}
+            {:else if streamVisibility === 'link-visible'}
               Only people with the link can watch
             {:else}
               Encrypted, only you can watch

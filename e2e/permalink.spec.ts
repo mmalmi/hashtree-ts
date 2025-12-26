@@ -136,12 +136,12 @@ test.describe('Permalink Navigation', () => {
 
   test('file in permalink directory should display correctly', async ({ page }) => {
     test.slow(); // File operations can be slow under parallel load
-    // Create an unlisted (encrypted) tree
+    // Create an linkvis (encrypted) tree
     await page.getByRole('button', { name: /New Folder/i }).click();
     await expect(page.locator('input[placeholder="Folder name..."]')).toBeVisible({ timeout: 3000 });
 
     await page.locator('input[placeholder="Folder name..."]').fill('permalink-file-test');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Wait for navigation into the new tree (shows empty directory or New File button)

@@ -340,9 +340,9 @@ describe('NostrRefResolver', () => {
     const key = `${npub}/${treeName}`;
     const testCid = cid(fromHex('dddd'.repeat(16)));
 
-    // Publish with unlisted visibility
+    // Publish with link-visible visibility
     const published = await resolver.publish!(key, testCid, {
-      visibility: 'unlisted',
+      visibility: 'link-visible',
       encryptedKey: 'encrypted-key-data',
       keyId: 'key-id-123',
     });
@@ -375,7 +375,7 @@ describe('NostrRefResolver', () => {
 
     const entry = entries.find(e => e.key.includes(treeName));
     expect(entry).toBeDefined();
-    expect(entry!.visibility).toBe('unlisted');
+    expect(entry!.visibility).toBe('link-visible');
 
     resolver.stop?.();
   }, 10000);

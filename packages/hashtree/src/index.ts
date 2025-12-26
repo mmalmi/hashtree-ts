@@ -161,7 +161,7 @@ export {
   type DecodeResult,
 } from './nhash.js';
 
-// Tree visibility utilities (public/unlisted/private)
+// Tree visibility utilities (public/link-visible/private)
 export {
   generateLinkKey,
   computeKeyId,

@@ -1,11 +1,11 @@
 <script lang="ts">
   /**
-   * VisibilitySelector - Select public/unlisted/private visibility
+   * VisibilitySelector - Select public/link-visible/private visibility
    */
 
   interface Props {
-    value: 'public' | 'unlisted' | 'private';
-    onchange: (value: 'public' | 'unlisted' | 'private') => void;
+    value: 'public' | 'link-visible' | 'private';
+    onchange: (value: 'public' | 'link-visible' | 'private') => void;
     disabled?: boolean;
     mode?: 'single' | 'batch';
   }
@@ -27,12 +27,12 @@
     </button>
     <button
       type="button"
-      onclick={() => onchange('unlisted')}
-      class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {value === 'unlisted' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+      onclick={() => onchange('link-visible')}
+      class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {value === 'link-visible' ? 'ring-2 ring-accent bg-surface-3' : ''}"
       {disabled}
     >
       <span class="i-lucide-link"></span>
-      <span class="text-sm">Unlisted</span>
+      <span class="text-sm">Link-visible</span>
     </button>
     <button
       type="button"
@@ -47,7 +47,7 @@
   <p class="text-xs text-text-3 mt-2">
     {#if value === 'public'}
       Anyone can find and watch {mode === 'batch' ? 'these videos' : 'this video'}
-    {:else if value === 'unlisted'}
+    {:else if value === 'link-visible'}
       Only people with the link can watch
     {:else}
       Encrypted, only you can watch

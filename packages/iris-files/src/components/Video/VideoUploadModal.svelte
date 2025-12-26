@@ -36,7 +36,7 @@
   let willTranscode = $state(false);
   let transcodeSupported = $state(true);
   let transcodeError = $state<string | null>(null);
-  let visibility = $state<'public' | 'unlisted' | 'private'>('public');
+  let visibility = $state<'public' | 'link-visible' | 'private'>('public');
   let abortController = $state<AbortController | null>(null);
 
   // Reset state when modal closes
@@ -395,12 +395,12 @@
             </button>
             <button
               type="button"
-              onclick={() => visibility = 'unlisted'}
-              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'unlisted' ? 'ring-2 ring-accent bg-surface-3' : ''}"
+              onclick={() => visibility = 'link-visible'}
+              class="flex-1 flex items-center justify-center gap-2 py-2 px-3 btn-ghost {visibility === 'link-visible' ? 'ring-2 ring-accent bg-surface-3' : ''}"
               disabled={uploading}
             >
               <span class="i-lucide-link"></span>
-              <span class="text-sm">Unlisted</span>
+              <span class="text-sm">Link-visible</span>
             </button>
             <button
               type="button"

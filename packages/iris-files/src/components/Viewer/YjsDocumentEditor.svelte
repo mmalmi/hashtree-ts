@@ -358,7 +358,7 @@
       } else {
         // Editing someone else's document - save to our own tree
         // Use updateLocalRootCacheHex which triggers throttled publish to Nostr
-        // Pass visibility so our copy uses the same visibility (especially for unlisted with linkKey)
+        // Pass visibility so our copy uses the same visibility (especially for link-visible with linkKey)
         updateLocalRootCacheHex(
           userNpub,
           route.treeName!,

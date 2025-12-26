@@ -93,7 +93,7 @@
     if (npub && treeName?.startsWith('docs/') && visibility) {
       updateRecentVisibility(
         `/${npub}/${treeName}`,
-        visibility as 'public' | 'unlisted' | 'private'
+        visibility as 'public' | 'link-visible' | 'private'
       );
     }
   });

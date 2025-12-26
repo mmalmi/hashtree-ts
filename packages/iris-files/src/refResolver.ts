@@ -157,7 +157,7 @@ export async function updateLocalTreeCache(
   treeName: string,
   hashHex: string,
   keyHex?: string,
-  visibility: 'public' | 'unlisted' | 'private' = 'public'
+  visibility: 'public' | 'link-visible' | 'private' = 'public'
 ): Promise<void> {
   const key = `${npub}/${treeName}`;
   const res = getRefResolver();

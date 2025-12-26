@@ -21,8 +21,8 @@ interface CachedRoot {
   key?: Uint8Array;        // CHK decryption key (for encrypted trees)
   visibility: TreeVisibility;
   updatedAt: number;       // Unix timestamp
-  encryptedKey?: string;   // For unlisted trees
-  keyId?: string;          // For unlisted trees
+  encryptedKey?: string;   // For link-visible trees
+  keyId?: string;          // For link-visible trees
   selfEncryptedKey?: string; // For private trees
 }
 

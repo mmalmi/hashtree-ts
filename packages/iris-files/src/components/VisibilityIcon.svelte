@@ -16,8 +16,8 @@
     switch (vis) {
       case 'public':
         return { icon: 'i-lucide-globe', title: 'Public' };
-      case 'unlisted':
-        return { icon: 'i-lucide-link', title: 'Unlisted (link only)' };
+      case 'link-visible':
+        return { icon: 'i-lucide-link', title: 'Link-visible (link only)' };
       case 'private':
         return { icon: 'i-lucide-lock', title: 'Private' };
     }
@@ -28,7 +28,7 @@
 
 {#if !visibility || !info}
   <!-- Don't show anything if visibility not resolved -->
-{:else if visibility === 'unlisted'}
+{:else if visibility === 'link-visible'}
   <!-- LinkLockIcon - combined link icon with small lock in bottom-right corner -->
   <span class="relative inline-block shrink-0 {className}" title={info.title}>
     <span class="i-lucide-link"></span>

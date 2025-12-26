@@ -87,7 +87,7 @@
 
       const store = createTreesStore(npub);
       const unsub = store.subscribe(trees => {
-        // Filter to only public trees (not private or unlisted)
+        // Filter to only public trees (not private or link-visible)
         const publicTrees = trees.filter(t => t.visibility === 'public');
         updateUserTrees(followedPubkey, npub, publicTrees);
       });

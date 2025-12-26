@@ -25,7 +25,7 @@ export interface RecentItem {
   videoId?: string;
   /** Optional visibility for tree/file types */
   visibility?: TreeVisibility;
-  /** Optional link key for unlisted trees */
+  /** Optional link key for link-visible trees */
   linkKey?: string;
   /** For hash type: whether it has an encryption key */
   hasKey?: boolean;

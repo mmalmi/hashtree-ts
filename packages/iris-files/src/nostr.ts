@@ -51,9 +51,9 @@ export interface HashTreeEvent {
   rootHash: string;
   /** Decryption key for encrypted trees (hex encoded) - present for public trees */
   rootKey?: string;
-  /** Encrypted key (hex) - present for unlisted trees, decrypt with link key */
+  /** Encrypted key (hex) - present for link-visible trees, decrypt with link key */
   encryptedKey?: string;
-  /** Key ID for unlisted trees - hash of link decryption key, allows key rotation */
+  /** Key ID for link-visible trees - hash of link decryption key, allows key rotation */
   keyId?: string;
   /** Self-encrypted key (NIP-04) - present for private trees */
   selfEncryptedKey?: string;
@@ -577,7 +577,7 @@ async function createDefaultFolders() {
     const { createTree } = await import('./actions');
     // Create folders in sequence with skipNavigation=true
     await createTree('public', 'public', true);
-    await createTree('link', 'unlisted', true);
+    await createTree('link', 'link-visible', true);
     await createTree('private', 'private', true);
   } catch (e) {
     console.error('Failed to create default folders:', e);
@@ -619,7 +619,7 @@ export function parseVisibility(tags: string[][]): { visibility: TreeVisibility;
   if (selfEncryptedKey) {
     visibility = 'private';
   } else if (encryptedKey) {
-    visibility = 'unlisted';
+    visibility = 'link-visible';
   } else {
     visibility = 'public';
   }
@@ -629,7 +629,7 @@ export function parseVisibility(tags: string[][]): { visibility: TreeVisibility;
 
 export interface SaveHashtreeOptions {
   visibility?: TreeVisibility;
-  /** Link key for unlisted trees - if not provided, one will be generated */
+  /** Link key for link-visible trees - if not provided, one will be generated */
   linkKey?: string;
   /** Additional l-tags to add (e.g., ['docs'] for document trees) */
   labels?: string[];
@@ -641,7 +641,7 @@ export interface SaveHashtreeOptions {
  * @param rootHash - Root hash (hex encoded)
  * @param rootKey - Decryption key (hex encoded, optional for encrypted trees)
  * @param options - Visibility options
- * @returns Object with success status and linkKey (for unlisted trees)
+ * @returns Object with success status and linkKey (for link-visible trees)
  */
 export async function saveHashtree(
   name: string,
@@ -692,7 +692,7 @@ export async function saveHashtree(
         event.tags.push(['key', rootKey]);
         break;
 
-      case 'unlisted':
+      case 'link-visible':
         // Encrypt key with link key for sharing - do async work in background
         linkKey = options.linkKey ?? visibilityHex.generateLinkKey();
         // Fire off encryption and publish in background
@@ -703,8 +703,8 @@ export async function saveHashtree(
           event.tags.push(['keyId', keyId]);
           // Also self-encrypt so owner can always access without link key
           const conversationKey = nip44.v2.utils.getConversationKey(secretKey!, state.pubkey!);
-          const selfEncryptedUnlisted = nip44.v2.encrypt(rootKey, conversationKey);
-          event.tags.push(['selfEncryptedKey', selfEncryptedUnlisted]);
+          const selfEncryptedLinkVisible = nip44.v2.encrypt(rootKey, conversationKey);
+          event.tags.push(['selfEncryptedKey', selfEncryptedLinkVisible]);
           // Sign first, then cache locally for offline-first
           try {
             await event.sign();
@@ -868,8 +868,8 @@ export async function publishTreeRoot(treeName: string, rootHash: string, rootKe
     }
   }
 
-  // For unlisted trees, get the linkKey from the URL
-  if (visibility === 'unlisted') {
+  // For link-visible trees, get the linkKey from the URL
+  if (visibility === 'link-visible') {
     const route = parseRoute();
     linkKey = route.linkKey ?? undefined;
   }

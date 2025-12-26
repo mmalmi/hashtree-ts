@@ -1,16 +1,16 @@
 /**
- * E2E tests for unlisted (link-visible) trees
+ * E2E tests for linkvis (link-visible) trees
  *
  * Tests the three-tier visibility model:
- * - Creating unlisted trees with ?k= param in URL
- * - Uploading files to unlisted trees
- * - Accessing unlisted trees from a fresh browser with the link
+ * - Creating link-visible trees with ?k= param in URL
+ * - Uploading files to link-visible trees
+ * - Accessing link-visible trees from a fresh browser with the link
  * - Verifying visibility icons in tree list and inside tree view
  */
 import { test, expect } from '@playwright/test';
 import { setupPageErrorHandler, navigateToPublicFolder, disableOthersPool, configureBlossomServers, waitForAppReady } from './test-utils.js';
 
-test.describe('Unlisted Tree Visibility', () => {
+test.describe('Link-visible Tree Visibility', () => {
   // Increase timeout for all tests since new user setup now creates 3 default folders
   test.setTimeout(60000);
 
@@ -52,7 +52,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await navigateToPublicFolder(page);
   });
 
-  test('should create unlisted tree with ?k= param in URL', async ({ page }) => {
+  test('should create link-visible tree with ?k= param in URL', async ({ page }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
 
@@ -64,15 +64,15 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.waitForTimeout(200);
 
     // Fill tree name
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-test');
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-test');
 
-    // Select "unlisted" visibility
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    // Select "link-visible" visibility
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.waitForTimeout(100);
 
-    // Verify unlisted is selected (has accent styling)
-    const unlistedBtn = page.locator('button:has-text("unlisted")');
-    await expect(unlistedBtn).toHaveClass(/ring-accent/);
+    // Verify linkvis is selected (has accent styling)
+    const linkvisBtn = page.locator('button:has-text("link-visible")');
+    await expect(linkvisBtn).toHaveClass(/ring-accent/);
 
     // Create the tree
     await page.getByRole('button', { name: 'Create' }).click();
@@ -80,22 +80,22 @@ test.describe('Unlisted Tree Visibility', () => {
     // Wait for navigation and URL to contain ?k= parameter
     await page.waitForTimeout(1000);
     const url = page.url();
-    expect(url).toContain('unlisted-test');
+    expect(url).toContain('linkvis-test');
     expect(url).toMatch(/\?k=[a-f0-9]+/i);
 
     // Should show Empty directory (we're inside the tree now)
     await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 30000 });
   });
 
-  test('should show link icon for unlisted tree in tree list', async ({ page }) => {
+  test('should show link icon for link-visible tree in tree list', async ({ page }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-icons');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-icons');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
@@ -103,45 +103,45 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
-    // Find the unlisted-icons tree row and check for link icon (use file-list to avoid matching recent folders)
-    const treeRow = page.getByTestId('file-list').locator('a:has-text("unlisted-icons")').first();
+    // Find the linkvis-icons tree row and check for link icon (use file-list to avoid matching recent folders)
+    const treeRow = page.getByTestId('file-list').locator('a:has-text("linkvis-icons")').first();
     await expect(treeRow).toBeVisible({ timeout: 30000 });
 
-    // Should have link icon (i-lucide-link) for unlisted visibility
+    // Should have link icon (i-lucide-link) for linkvis visibility
     const linkIcon = treeRow.locator('span.i-lucide-link');
     await expect(linkIcon).toBeVisible();
   });
 
-  test('should show link icon inside unlisted tree view', async ({ page }) => {
+  test('should show link icon inside link-visible tree view', async ({ page }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-inside');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-inside');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
     // Should be inside the tree now - check for link icon in the current directory row
-    const currentDirRow = page.locator('a:has-text("unlisted-inside")').first();
+    const currentDirRow = page.locator('a:has-text("linkvis-inside")').first();
     await expect(currentDirRow).toBeVisible({ timeout: 30000 });
 
-    // Should have link icon for unlisted visibility inside tree view
+    // Should have link icon for linkvis visibility inside tree view
     const linkIcon = currentDirRow.locator('span.i-lucide-link');
     await expect(linkIcon).toBeVisible();
   });
 
-  test('should preserve ?k= param when navigating within unlisted tree', async ({ page }) => {
+  test('should preserve ?k= param when navigating within link-visible tree', async ({ page }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-nav');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-nav');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
@@ -174,18 +174,18 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // URL should still have ?k= param (back at tree root)
     expect(page.url()).toContain(`?k=${kParam}`);
-    expect(page.url()).toContain('unlisted-nav');
+    expect(page.url()).toContain('linkvis-nav');
   });
 
-  test('should include ?k= param when clicking unlisted tree in tree list', async ({ page }) => {
+  test('should include ?k= param when clicking link-visible tree in tree list', async ({ page }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-click');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-click');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
@@ -199,7 +199,7 @@ test.describe('Unlisted Tree Visibility', () => {
 
     // There are two links - one in file-list (already has ?k=) and one in RecentsView (shows "Just now")
     // We want to verify the RecentsView link also has ?k= param
-    const recentsLink = page.locator('a:has-text("unlisted-click"):has-text("Just now")');
+    const recentsLink = page.locator('a:has-text("linkvis-click"):has-text("Just now")');
 
     // Verify the href includes ?k= param BEFORE clicking
     const href = await recentsLink.getAttribute('href');
@@ -212,16 +212,16 @@ test.describe('Unlisted Tree Visibility', () => {
     expect(page.url()).toContain(`?k=${kParam}`);
   });
 
-  test('should create file in unlisted tree and read it back', async ({ page }) => {
+  test('should create file in link-visible tree and read it back', async ({ page }) => {
     test.slow(); // File operations can be slow under parallel load
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-file');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-file');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
@@ -247,7 +247,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(page.locator('pre')).toHaveText('This is secret content!');
   });
 
-  test('should access unlisted tree from fresh browser with link', { timeout: 60000 }, async ({ page, browser }) => {
+  test('should access link-visible tree from fresh browser with link', { timeout: 60000 }, async ({ page, browser }) => {
     test.slow(); // WebRTC and sync operations need time under parallel load
     // Add console logging for page1
     page.on('console', msg => {
@@ -260,10 +260,10 @@ test.describe('Unlisted Tree Visibility', () => {
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-share');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-share');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Wait for tree to be created
@@ -335,7 +335,7 @@ test.describe('Unlisted Tree Visibility', () => {
     await followBtn.click();
     await page.waitForTimeout(500);
 
-    // Page2 follows page1 (owner of the unlisted tree)
+    // Page2 follows page1 (owner of the link-visible tree)
     await page2.goto(`http://localhost:5173/#/${npub}`);
     const followBtn2 = page2.getByRole('button', { name: 'Follow', exact: true });
     await expect(followBtn2).toBeVisible({ timeout: 30000 });
@@ -348,7 +348,7 @@ test.describe('Unlisted Tree Visibility', () => {
     // 3. page2's resolver to subscribe to page1's trees and receive metadata
     await page2.waitForTimeout(5000);
 
-    // Verify page2 can see page1's unlisted tree in the tree list before navigating
+    // Verify page2 can see page1's link-visible tree in the tree list before navigating
     // This confirms the resolver has synced
     const treeLink = page2.getByRole('link', { name: treeName });
     await expect(treeLink).toBeVisible({ timeout: 30000 });
@@ -381,25 +381,25 @@ test.describe('Unlisted Tree Visibility', () => {
     await context2.close();
   });
 
-  test('non-owner sees "Link Required" message when accessing unlisted tree without ?k= param', { timeout: 60000 }, async ({ page, browser }) => {
+  test('non-owner sees "Link Required" message when accessing link-visible tree without ?k= param', { timeout: 60000 }, async ({ page, browser }) => {
 
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-no-key');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-no-key');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Wait for navigation to the new tree (URL should contain tree name)
-    await page.waitForURL(/#\/npub[^/]+\/unlisted-no-key/, { timeout: 30000 });
+    await page.waitForURL(/#\/npub[^/]+\/linkvis-no-key/, { timeout: 30000 });
     await page.waitForTimeout(1000);
 
     // Extract npub and treeName from URL
     const shareUrl = page.url();
-    console.log('Owner URL after creating unlisted tree:', shareUrl);
+    console.log('Owner URL after creating link-visible tree:', shareUrl);
     const urlMatch = shareUrl.match(/#\/(npub[^/]+)\/([^/?]+)/);
     expect(urlMatch).toBeTruthy();
     const [, npub, treeName] = urlMatch!;
@@ -421,15 +421,15 @@ test.describe('Unlisted Tree Visibility', () => {
     await context2.close();
   });
 
-  test('owner can access unlisted tree without ?k= param (via selfEncryptedKey)', async ({ page }) => {
+  test('owner can access link-visible tree without ?k= param (via selfEncryptedKey)', async ({ page }) => {
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-owner');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-owner');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
@@ -449,16 +449,16 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(page.getByText('Empty directory')).toBeVisible({ timeout: 30000 });
   });
 
-  test('should preserve ?k= param after creating file in unlisted tree', async ({ page }) => {
+  test('should preserve ?k= param after creating file in link-visible tree', async ({ page }) => {
     test.slow(); // File operations can be slow under parallel load
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-upload');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-upload');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
@@ -492,16 +492,16 @@ test.describe('Unlisted Tree Visibility', () => {
     expect(urlAfterDone).toContain(`?k=${kParam}`);
   });
 
-  test('should preserve ?k= param after drag-and-drop upload to unlisted tree', async ({ page }) => {
+  test('should preserve ?k= param after drag-and-drop upload to link-visible tree', async ({ page }) => {
     test.slow(); // Upload operations can be slow under parallel load
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-dnd');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-dnd');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
@@ -541,9 +541,9 @@ test.describe('Unlisted Tree Visibility', () => {
     expect(urlAfterDrop).toContain(`?k=${kParam}`);
   });
 
-  test('unlisted tree should remain unlisted after file upload (not become public)', async ({ page }) => {
+  test('link-visible tree should remain linkvis after file upload (not become public)', async ({ page }) => {
     test.slow(); // File operations can be slow under parallel load
-    // This test verifies that uploading files to an unlisted tree doesn't
+    // This test verifies that uploading files to an link-visible tree doesn't
     // accidentally change its visibility to public (regression test for
     // autosaveIfOwn not preserving visibility)
 
@@ -551,10 +551,10 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(300);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-stays-unlisted');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-stays-linkvis');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
@@ -564,8 +564,8 @@ test.describe('Unlisted Tree Visibility', () => {
     const kParam = initialUrl.match(/\?k=([a-f0-9]+)/i)?.[1];
     expect(kParam).toBeTruthy();
 
-    // Verify the tree shows link icon (unlisted)
-    const currentDirRow = page.locator('a:has-text("unlisted-stays-unlisted")').first();
+    // Verify the tree shows link icon (linkvis)
+    const currentDirRow = page.locator('a:has-text("linkvis-stays-linkvis")').first();
     await expect(currentDirRow).toBeVisible({ timeout: 30000 });
     await expect(currentDirRow.locator('span.i-lucide-link')).toBeVisible();
 
@@ -588,11 +588,11 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
-    // CRITICAL: Verify the tree still has link icon (unlisted), NOT globe icon (public)
-    const treeRow = page.getByTestId('file-list').locator('a:has-text("unlisted-stays-unlisted")').first();
+    // CRITICAL: Verify the tree still has link icon (linkvis), NOT globe icon (public)
+    const treeRow = page.getByTestId('file-list').locator('a:has-text("linkvis-stays-linkvis")').first();
     await expect(treeRow).toBeVisible({ timeout: 30000 });
 
-    // Should have link icon (unlisted), not globe icon (public)
+    // Should have link icon (linkvis), not globe icon (public)
     await expect(treeRow.locator('span.i-lucide-link')).toBeVisible();
 
     // Should NOT have globe icon (public)
@@ -622,10 +622,10 @@ test.describe('Unlisted Tree Visibility', () => {
     await page.locator('header a:has-text("Iris")').click();
     await page.waitForTimeout(500);
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-tree');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('link-visible-tree');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
     await page.waitForTimeout(1000);
 
@@ -652,10 +652,10 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(publicRow).toBeVisible({ timeout: 30000 });
     await expect(publicRow.locator('span.i-lucide-globe')).toBeVisible({ timeout: 30000 });
 
-    // Unlisted tree should have link icon
-    const unlistedRow = fileList.locator('a:has-text("unlisted-tree")').first();
-    await expect(unlistedRow).toBeVisible({ timeout: 30000 });
-    await expect(unlistedRow.locator('span.i-lucide-link')).toBeVisible({ timeout: 30000 });
+    // Link-visible tree should have link icon
+    const linkvisRow = fileList.locator('a:has-text("link-visible-tree")').first();
+    await expect(linkvisRow).toBeVisible({ timeout: 30000 });
+    await expect(linkvisRow.locator('span.i-lucide-link')).toBeVisible({ timeout: 30000 });
 
     // Private tree should have lock icon
     const privateRow = fileList.locator('a:has-text("private-tree")').first();
@@ -663,18 +663,18 @@ test.describe('Unlisted Tree Visibility', () => {
     await expect(privateRow.locator('span.i-lucide-lock')).toBeVisible({ timeout: 30000 });
   });
 
-  test('files in unlisted trees should be encrypted (have CHK)', async ({ page }) => {
+  test('files in link-visible trees should be encrypted (have CHK)', async ({ page }) => {
     test.slow(); // File operations can be slow under parallel load
-    // This test verifies that files uploaded to unlisted trees are properly encrypted
+    // This test verifies that files uploaded to link-visible trees are properly encrypted
     // and have CHK (Content Hash Key) in the permalink
 
     // Go to user's tree list
     await page.locator('header a:has-text("Iris")').click();
 
-    // Create an unlisted tree
+    // Create an link-visible tree
     await page.getByRole('button', { name: 'New Folder' }).click();
-    await page.locator('input[placeholder="Folder name..."]').fill('unlisted-encrypted');
-    await page.getByRole('button', { name: /unlisted/i }).click();
+    await page.locator('input[placeholder="Folder name..."]').fill('linkvis-encrypted');
+    await page.getByRole('button', { name: /link-visible/i }).click();
     await page.getByRole('button', { name: 'Create' }).click();
 
     // Wait for tree to be created

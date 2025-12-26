@@ -5,7 +5,7 @@
  *
  * - **Unencrypted**: No CHK, just hash - anyone with hash can read
  * - **Public**: CHK encrypted, ["key", "<hex>"] in event - anyone can decrypt
- * - **Unlisted**: CHK + XOR mask, ["encryptedKey", XOR(key,secret)] - need #k=<secret> URL
+ * - **Link-visible**: CHK + XOR mask, ["encryptedKey", XOR(key,secret)] - need #k=<secret> URL
  * - **Private**: CHK + NIP-44 to self, ["selfEncryptedKey", "..."] - author only
  *
  * Default is Public (CHK encrypted, key in nostr event).
@@ -17,10 +17,10 @@ import { toHex, fromHex } from './types.js';
 /**
  * Tree visibility levels
  */
-export type TreeVisibility = 'public' | 'unlisted' | 'private';
+export type TreeVisibility = 'public' | 'link-visible' | 'private';
 
 /**
- * Generate a random 32-byte link key for unlisted trees
+ * Generate a random 32-byte link key for link-visible trees
  */
 export function generateLinkKey(): Uint8Array {
   return crypto.getRandomValues(new Uint8Array(32));
@@ -77,7 +77,7 @@ async function decryptAesGcm(encryptedKey: Uint8Array, linkKey: Uint8Array): Pro
 }
 
 /**
- * Encrypt a CHK key for unlisted visibility using XOR (one-time pad)
+ * Encrypt a CHK key for link-visible visibility using XOR (one-time pad)
  * @param chkKey - The CHK key to encrypt (32 bytes)
  * @param linkKey - The link decryption key (32 bytes)
  * @returns Encrypted key (32 bytes) - XOR of chkKey and linkKey
@@ -87,7 +87,7 @@ export function encryptKeyForLink(chkKey: Uint8Array, linkKey: Uint8Array): Uint
 }
 
 /**
- * Decrypt a CHK key for unlisted visibility
+ * Decrypt a CHK key for link-visible visibility
  * Supports both new XOR format (32 bytes) and legacy AES-GCM format (60 bytes)
  * @param encryptedKey - Encrypted key (32 bytes for XOR, 60 bytes for AES-GCM)
  * @param linkKey - The link decryption key (32 bytes)
