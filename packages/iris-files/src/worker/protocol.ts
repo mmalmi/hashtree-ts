@@ -159,6 +159,9 @@ export type WorkerResponse =
   | { type: 'peerStats'; id: string; stats: PeerStats[] }
   | { type: 'relayStats'; id: string; stats: RelayStats[] }
 
+  // Blossom notifications
+  | { type: 'blossomUploadError'; hash: string; error: string }
+
   // SocialGraph responses
   | { type: 'socialGraphInit'; id: string; version: number; size: number; error?: string }
   | { type: 'socialGraphVersion'; version: number }

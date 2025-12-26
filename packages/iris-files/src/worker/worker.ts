@@ -27,6 +27,7 @@ import {
 } from './signing';
 import { WebRTCController } from './webrtc';
 import { SocialGraph, type NostrEvent as SocialGraphNostrEvent } from 'nostr-social-graph';
+import { LRUCache } from '../utils/lruCache';
 
 // Kind for WebRTC signaling (ephemeral, gift-wrapped for directed messages)
 const SIGNALING_KIND = 25050;
@@ -392,11 +393,25 @@ async function handleGet(id: string, hash: Uint8Array) {
   // 1. Try local store first
   let data = await store.get(hash);
 
-  // 2. If not found locally, try WebRTC peers
+  // 2. If not found locally, try WebRTC peers with timeout
+  // After timeout, move on to blossom but let WebRTC continue in background
   if (!data && webrtc) {
-    data = await webrtc.get(hash);
+    const WEBRTC_TIMEOUT = 1000;
+    const webrtcPromise = webrtc.get(hash);
+
+    // Race WebRTC against timeout
+    const timeoutPromise = new Promise<null>(resolve => setTimeout(() => resolve(null), WEBRTC_TIMEOUT));
+    data = await Promise.race([webrtcPromise, timeoutPromise]);
+
     if (data) {
       await store.put(hash, data);
+    } else {
+      // WebRTC timed out, let it continue in background and cache if it eventually succeeds
+      webrtcPromise.then(async (lateData) => {
+        if (lateData && store) {
+          await store.put(hash, lateData);
+        }
+      }).catch(() => {});
     }
   }
 
@@ -427,8 +442,12 @@ async function handlePut(id: string, hash: Uint8Array, data: Uint8Array) {
 
   // Fire-and-forget push to blossom (don't await - optimistic upload)
   if (blossomStore && success) {
-    blossomStore.put(hash, data).catch(() => {
-      // Silently ignore blossom errors - local storage succeeded
+    blossomStore.put(hash, data).catch((err) => {
+      // Log blossom errors but don't fail - local storage succeeded
+      const hashHex = Array.from(hash.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join('');
+      console.warn(`[Worker] Blossom upload failed for ${hashHex}...:`, err instanceof Error ? err.message : err);
+      // Notify main thread of upload failure
+      respond({ type: 'blossomUploadError', hash: hashHex, error: err instanceof Error ? err.message : String(err) } as WorkerResponse);
     });
   }
 }
@@ -1183,7 +1202,8 @@ function handleGetSocialGraphSize(id: string) {
 // ============================================================================
 
 // Track latest event per pubkey to avoid processing old events (for social graph)
-const socialGraphLatestByPubkey = new Map<string, number>();
+// Limited to 1000 entries to prevent memory leak from encountering many unique pubkeys
+const socialGraphLatestByPubkey = new LRUCache<string, number>(1000);
 
 /**
  * Handle incoming SocialGraph event (kind:3)

@@ -14,6 +14,7 @@ import type { CID, Store } from '../../../hashtree/src/types';
 import { sha256 } from '../../../hashtree/src/hash';
 import { encode, decode } from '@msgpack/msgpack';
 import type { TreeVisibility } from '../../../hashtree/src/visibility';
+import { LRUCache } from '../utils/lruCache';
 
 // Cached root entry
 interface CachedRoot {
@@ -26,8 +27,9 @@ interface CachedRoot {
   selfEncryptedKey?: string; // For private trees
 }
 
-// In-memory cache for fast lookups
-const memoryCache = new Map<string, CachedRoot>();
+// In-memory LRU cache for fast lookups (limited to 1000 entries to prevent memory leak)
+// Data is backed by persistent store so eviction is safe
+const memoryCache = new LRUCache<string, CachedRoot>(1000);
 
 // Store reference
 let store: Store | null = null;

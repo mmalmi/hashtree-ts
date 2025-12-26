@@ -49,4 +49,18 @@ export class LRUCache<K, V> {
   get size(): number {
     return this.cache.size;
   }
+
+  /**
+   * Iterate over all entries (note: does not update LRU order)
+   */
+  *entries(): IterableIterator<[K, V]> {
+    yield* this.cache.entries();
+  }
+
+  /**
+   * Make the cache iterable
+   */
+  [Symbol.iterator](): IterableIterator<[K, V]> {
+    return this.entries();
+  }
 }
