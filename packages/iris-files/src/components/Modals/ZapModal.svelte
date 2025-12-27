@@ -26,7 +26,7 @@
   import QRCode from 'qrcode';
   import { ndk, nostrStore } from '../../nostr';
   import { createProfileStore } from '../../stores/profile';
-  import { NDKEvent } from '@nostr-dev-kit/ndk';
+  import { NDKEvent } from 'ndk';
   import CopyText from '../CopyText.svelte';
 
   // Decode LNURL (bech32 encoded URL)

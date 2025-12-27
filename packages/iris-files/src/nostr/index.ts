@@ -28,7 +28,6 @@ export {
 
 // Relay management exports
 export {
-  updateNdkRelays,
   updateConnectedRelayCount,
   initRelayTracking,
   normalizeRelayUrl,

@@ -4,7 +4,7 @@
  * Uses htree://npub/reponame style repository addresses
  */
 import { ndk, nostrStore, pubkeyToNpub, npubToPubkey } from './nostr';
-import { NDKEvent, type NDKFilter } from '@nostr-dev-kit/ndk';
+import { NDKEvent, type NDKFilter } from 'ndk';
 import { nip19 } from 'nostr-tools';
 import {
   KIND_REPO_ANNOUNCEMENT,

@@ -2,7 +2,7 @@
  * Tree Publishing and Management
  */
 import { nip19, nip44 } from 'nostr-tools';
-import { NDKEvent } from '@nostr-dev-kit/ndk';
+import { NDKEvent } from 'ndk';
 import {
   toHex,
   fromHex,

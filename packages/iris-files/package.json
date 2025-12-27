@@ -24,8 +24,8 @@
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@msgpack/msgpack": "^3.1.2",
-    "@nostr-dev-kit/ndk": "^3.0.0-beta.66",
-    "@nostr-dev-kit/ndk-cache-dexie": "^2.6.44",
+    "ndk": "workspace:*",
+    "ndk-cache": "workspace:*",
     "@scure/base": "^2.0.0",
     "@scure/bip39": "^2.0.0",
     "@tiptap/core": "^2.26.2",
@@ -49,6 +49,7 @@
     "minidenticons": "^4.2.1",
     "nostr-social-graph": "^1.0.33",
     "nostr-tools": "^2.18.2",
+    "nostr-wasm": "^0.1.0",
     "qrcode": "^1.5.4",
     "wasm-git": "^0.0.13",
     "yjs": "^13.6.27"

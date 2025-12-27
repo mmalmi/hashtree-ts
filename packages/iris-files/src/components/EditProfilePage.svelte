@@ -6,7 +6,7 @@
   import { nostrStore, ndk } from '../nostr';
   import { createProfileStore, invalidateProfile as invalidateProfileFn } from '../stores/profile';
   import { nip19 } from 'nostr-tools';
-  import { NDKEvent } from '@nostr-dev-kit/ndk';
+  import { NDKEvent } from 'ndk';
   import { BackButton } from './ui';
 
   interface Props {

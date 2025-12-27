@@ -9,7 +9,7 @@
   import { nip19 } from 'nostr-tools';
   import { ndk, nostrStore } from '../../nostr';
   import { Avatar, Name } from '../User';
-  import { NDKEvent, type NDKFilter, type NDKSubscription } from '@nostr-dev-kit/ndk';
+  import { NDKEvent, type NDKFilter, type NDKSubscription } from 'ndk';
   import { getFollowDistance } from '../../utils/socialGraph';
   import { subscribeToZaps, insertZapSorted, type Zap } from '../../utils/zaps';
 

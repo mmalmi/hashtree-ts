@@ -1,111 +1,103 @@
-import {NDKEvent, type NDKEventId, type NDKRelay} from "ndk"
-import type debug from "debug"
-import type {Table} from "dexie"
-import type {LRUCache} from "typescript-lru-cache"
-import type NDKCacheAdapterDexie from ".."
-import type {UnpublishedEvent} from "../db"
-import type {CacheHandler} from "../lru-cache"
+import { NDKEvent, type NDKEventId, type NDKRelay } from "ndk";
+import type debug from "debug";
+import type { Table } from "dexie";
+import type { LRUCache } from "typescript-lru-cache";
+import type NDKCacheAdapterDexie from "..";
+import type { UnpublishedEvent } from "../db";
+import type { CacheHandler } from "../lru-cache";
 
 /**
  * The threshold
  */
-const WRITE_STATUS_THRESHOLD = 3
+const WRITE_STATUS_THRESHOLD = 3;
 
 export async function unpublishedEventsWarmUp(
-  cacheHandler: CacheHandler<UnpublishedEvent>,
-  unpublishedEvents: Table<UnpublishedEvent>
+    cacheHandler: CacheHandler<UnpublishedEvent>,
+    unpublishedEvents: Table<UnpublishedEvent>,
 ) {
-  await unpublishedEvents.each((unpublishedEvent) => {
-    cacheHandler.set(unpublishedEvent.event.id!, unpublishedEvent, false)
-  })
+    await unpublishedEvents.each((unpublishedEvent) => {
+        cacheHandler.set(unpublishedEvent.event.id!, unpublishedEvent, false);
+    });
 }
 
-export function unpublishedEventsDump(
-  unpublishedEvents: Table<UnpublishedEvent>,
-  debug: debug.IDebugger
-) {
-  return async (
-    dirtyKeys: Set<string>,
-    cache: LRUCache<NDKEventId, UnpublishedEvent>
-  ) => {
-    const entries: UnpublishedEvent[] = []
+export function unpublishedEventsDump(unpublishedEvents: Table<UnpublishedEvent>, debug: debug.IDebugger) {
+    return async (dirtyKeys: Set<string>, cache: LRUCache<NDKEventId, UnpublishedEvent>) => {
+        const entries: UnpublishedEvent[] = [];
 
-    for (const eventId of dirtyKeys) {
-      const entry = cache.get(eventId)
-      if (entry) {
-        entries.push(entry)
-      }
-    }
+        for (const eventId of dirtyKeys) {
+            const entry = cache.get(eventId);
+            if (entry) {
+                entries.push(entry);
+            }
+        }
 
-    if (entries.length > 0) {
-      debug(`Saving ${entries.length} unpublished events cache entries to database`)
-      await unpublishedEvents.bulkPut(entries)
-    }
+        if (entries.length > 0) {
+            debug(`Saving ${entries.length} unpublished events cache entries to database`);
+            await unpublishedEvents.bulkPut(entries);
+        }
 
-    dirtyKeys.clear()
-  }
+        dirtyKeys.clear();
+    };
 }
 
 export async function discardUnpublishedEvent(
-  unpublishedEvents: Table<UnpublishedEvent>,
-  eventId: NDKEventId
+    unpublishedEvents: Table<UnpublishedEvent>,
+    eventId: NDKEventId,
 ): Promise<void> {
-  await unpublishedEvents.delete(eventId)
+    await unpublishedEvents.delete(eventId);
 }
 
 export async function getUnpublishedEvents(
-  unpublishedEvents: Table<UnpublishedEvent>
-): Promise<{event: NDKEvent; relays: WebSocket["url"][]; lastTryAt?: number}[]> {
-  const events: {event: NDKEvent; relays: WebSocket["url"][]; lastTryAt?: number}[] = []
+    unpublishedEvents: Table<UnpublishedEvent>,
+): Promise<{ event: NDKEvent; relays: WebSocket["url"][]; lastTryAt?: number }[]> {
+    const events: { event: NDKEvent; relays: WebSocket["url"][]; lastTryAt?: number }[] = [];
 
-  await unpublishedEvents.each((unpublishedEvent) => {
-    events.push({
-      event: new NDKEvent(undefined, unpublishedEvent.event),
-      relays: Object.keys(unpublishedEvent.relays),
-      lastTryAt: unpublishedEvent.lastTryAt,
-    })
-  })
+    await unpublishedEvents.each((unpublishedEvent) => {
+        events.push({
+            event: new NDKEvent(undefined, unpublishedEvent.event),
+            relays: Object.keys(unpublishedEvent.relays),
+            lastTryAt: unpublishedEvent.lastTryAt,
+        });
+    });
 
-  return events
+    return events;
 }
 
-export function addUnpublishedEvent(
-  this: NDKCacheAdapterDexie,
-  event: NDKEvent,
-  relays: WebSocket["url"][]
-): void {
-  const r: UnpublishedEvent["relays"] = {}
-  relays.forEach((url) => (r[url] = false))
-  this.unpublishedEvents.set(event.id!, {
-    id: event.id,
-    event: event.rawEvent(),
-    relays: r,
-  })
+export function addUnpublishedEvent(this: NDKCacheAdapterDexie, event: NDKEvent, relays: WebSocket["url"][]): void {
+    const r: UnpublishedEvent["relays"] = {};
+    relays.forEach((url) => (r[url] = false));
+    this.unpublishedEvents.set(event.id!, { id: event.id, event: event.rawEvent(), relays: r });
 
-  const onPublished = (relay: NDKRelay) => {
-    const url = relay.url
+    // Also store in main events table with relay = undefined
+    // so it's queryable by subscriptions
+    this.setEvent(event, [], undefined).catch((e) => {
+        console.error('[addUnpublishedEvent] Failed to store event in main table:', e);
+    });
 
-    const existingEntry = this.unpublishedEvents.get(event.id)
+    const onPublished = (relay: NDKRelay) => {
+        const url = relay.url;
 
-    if (!existingEntry) {
-      event.off("publushed", onPublished)
-      return
-    }
+        const existingEntry = this.unpublishedEvents.get(event.id);
 
-    existingEntry.relays[url] = true
-    this.unpublishedEvents.set(event.id, existingEntry)
+        if (!existingEntry) {
+            event.off("publushed", onPublished);
+            return;
+        }
 
-    const successWrites = Object.values(existingEntry.relays).filter((v) => v).length
-    const unsuccessWrites = Object.values(existingEntry.relays).length - successWrites
+        existingEntry.relays[url] = true;
+        this.unpublishedEvents.set(event.id, existingEntry);
 
-    if (successWrites >= WRITE_STATUS_THRESHOLD || unsuccessWrites === 0) {
-      // this.debug(`Removing ${event.id} from cache`, { successWrites, unsuccessWrites });
-      this.unpublishedEvents.delete(event.id)
-      event.off("published", onPublished)
-      // } else {
-      // this.debug(`Keeping ${event.id} in cache`, { successWrites, unsuccessWrites });
-    }
-  }
+        const successWrites = Object.values(existingEntry.relays).filter((v) => v).length;
+        const unsuccessWrites = Object.values(existingEntry.relays).length - successWrites;
 
-  event.on("published", onPublished)
+        if (successWrites >= WRITE_STATUS_THRESHOLD || unsuccessWrites === 0) {
+            // this.debug(`Removing ${event.id} from cache`, { successWrites, unsuccessWrites });
+            this.unpublishedEvents.delete(event.id);
+            event.off("published", onPublished);
+            // } else {
+            // this.debug(`Keeping ${event.id} in cache`, { successWrites, unsuccessWrites });
+        }
+    };
+
+    event.on("published", onPublished);
 }

@@ -9,7 +9,7 @@
 import type { SignedEvent } from './protocol';
 import type { SignalingMessage } from '../webrtc/types';
 import type { WebRTCController } from './webrtc';
-import { getNostrManager } from './nostr';
+import { subscribe as ndkSubscribe, publish as ndkPublish } from './ndk';
 import { signEvent, giftWrap, giftUnwrap } from './signing';
 
 // Kind for WebRTC signaling (ephemeral, gift-wrapped for directed messages)
@@ -35,7 +35,6 @@ export async function sendWebRTCSignaling(
   recipientPubkey?: string
 ): Promise<void> {
   try {
-    const nostr = getNostrManager();
     console.log(
       '[Worker] sendWebRTCSignaling:',
       msg.type,
@@ -51,7 +50,7 @@ export async function sendWebRTCSignaling(
       };
       const wrappedEvent = await giftWrap(innerEvent, recipientPubkey);
       console.log('[Worker] Publishing wrapped event...');
-      await nostr.publish(wrappedEvent);
+      await ndkPublish(wrappedEvent);
     } else {
       // Hello message - broadcast with #l tag
       const expiration = Math.floor((Date.now() + 5 * 60 * 1000) / 1000); // 5 minutes
@@ -67,7 +66,7 @@ export async function sendWebRTCSignaling(
         content: '',
       });
       console.log('[Worker] Hello event signed, publishing...', event.id?.slice(0, 8));
-      await nostr.publish(event);
+      await ndkPublish(event);
       console.log('[Worker] Hello event published');
     }
   } catch (err) {
@@ -77,15 +76,14 @@ export async function sendWebRTCSignaling(
 
 /**
  * Subscribe to WebRTC signaling events.
- * NOTE: The caller must set up the event handler via NostrManager.setOnEvent
+ * NOTE: The caller must set up the event handler via setOnEvent
  * and route webrtc-* subscriptions to handleWebRTCSignalingEvent.
  */
 export function setupWebRTCSignalingSubscription(myPubkey: string): void {
-  const nostr = getNostrManager();
   const since = Math.floor((Date.now() - 60000) / 1000); // Last minute
 
   // Subscribe to hello messages (broadcast discovery)
-  nostr.subscribe('webrtc-hello', [
+  ndkSubscribe('webrtc-hello', [
     {
       kinds: [SIGNALING_KIND],
       '#l': [HELLO_TAG],
@@ -94,7 +92,7 @@ export function setupWebRTCSignalingSubscription(myPubkey: string): void {
   ]);
 
   // Subscribe to directed signaling (offers/answers to us)
-  nostr.subscribe('webrtc-directed', [
+  ndkSubscribe('webrtc-directed', [
     {
       kinds: [SIGNALING_KIND],
       '#p': [myPubkey],

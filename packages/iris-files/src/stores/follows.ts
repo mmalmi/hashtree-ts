@@ -4,7 +4,7 @@
  */
 import { writable, get } from 'svelte/store';
 import { nip19 } from 'nostr-tools';
-import { NDKEvent } from '@nostr-dev-kit/ndk';
+import { NDKEvent } from 'ndk';
 import { LRUCache } from '../utils/lruCache';
 import { ndk, nostrStore } from '../nostr';
 

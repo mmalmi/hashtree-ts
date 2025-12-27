@@ -4,7 +4,7 @@
 import { SvelteSet } from 'svelte/reactivity';
 import { ndk } from '../nostr';
 import { KIND_ZAP_RECEIPT } from './constants';
-import { NDKEvent, type NDKFilter } from '@nostr-dev-kit/ndk';
+import { NDKEvent, type NDKFilter } from 'ndk';
 
 export interface Zap {
   id: string;

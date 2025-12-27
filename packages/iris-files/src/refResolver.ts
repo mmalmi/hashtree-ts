@@ -5,7 +5,7 @@
  * to merkle root hashes (refs), with subscription support for live updates.
  */
 import { nip19 } from 'nostr-tools';
-import { NDKEvent, type NDKFilter, type NDKSubscriptionOptions, NDKSubscriptionCacheUsage } from '@nostr-dev-kit/ndk';
+import { NDKEvent, type NDKFilter, type NDKSubscriptionOptions, NDKSubscriptionCacheUsage } from 'ndk';
 import { createNostrRefResolver, type RefResolver, type NostrFilter, type NostrEvent } from 'hashtree';
 import { ndk, useNostrStore } from './nostr';
 

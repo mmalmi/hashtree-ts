@@ -14,7 +14,16 @@ import { DexieStore } from '../../../hashtree/src/store/dexie';
 import { BlossomStore } from '../../../hashtree/src/store/blossom';
 import type { WorkerRequest, WorkerResponse, WorkerConfig, SignedEvent, WebRTCCommand } from './protocol';
 import { initTreeRootCache, getCachedRoot, clearMemoryCache } from './treeRootCache';
-import { getNostrManager, closeNostrManager } from './nostr';
+import {
+  initNdk,
+  closeNdk,
+  subscribe as ndkSubscribe,
+  unsubscribe as ndkUnsubscribe,
+  publish as ndkPublish,
+  setOnEvent,
+  setOnEose,
+  getRelayStats as getNdkRelayStats,
+} from './ndk';
 import { initIdentity, setIdentity, clearIdentity } from './identity';
 import {
   setResponseSender,
@@ -279,14 +288,19 @@ async function handleInit(id: string, cfg: WorkerConfig) {
       console.log('[Worker] Initialized BlossomStore with', cfg.blossomServers.length, 'servers');
     }
 
-    // Initialize NostrManager with relays
-    const nostr = getNostrManager();
-    nostr.init(cfg.relays);
-    console.log('[Worker] NostrManager initialized with', cfg.relays.length, 'relays');
+    // Initialize NDK with relays, cache, and nostr-wasm verification
+    await initNdk(cfg.relays, {
+      pubkey: cfg.pubkey,
+      nsec: cfg.nsec,
+    });
+    console.log('[Worker] NDK initialized with', cfg.relays.length, 'relays');
 
     // Set up unified event handler for all subscriptions
-    nostr.setOnEvent((subId, event) => {
-      console.log('[Worker] NostrManager event:', subId, 'kind:', event.kind, 'from:', event.pubkey?.slice(0, 8));
+    setOnEvent((subId, event) => {
+      console.log('[Worker] NDK event:', subId, 'kind:', event.kind, 'from:', event.pubkey?.slice(0, 8));
+
+      // Forward to main thread
+      respond({ type: 'event', subId, event });
 
       // Route to WebRTC handler
       if (subId.startsWith('webrtc-')) {
@@ -297,6 +311,11 @@ async function handleInit(id: string, cfg: WorkerConfig) {
       if (subId === 'socialgraph-contacts' && event.kind === KIND_CONTACTS) {
         handleSocialGraphEvent(event);
       }
+    });
+
+    // Set up EOSE handler
+    setOnEose((subId) => {
+      respond({ type: 'eose', subId });
     });
 
     // Initialize WebRTC controller (RTCPeerConnection runs in main thread proxy)
@@ -383,8 +402,8 @@ function createBlossomSigner() {
 
 async function handleClose(id: string) {
   // NOTE: WebRTC not available in workers
-  // Close Nostr connections
-  closeNostrManager();
+  // Close NDK connections
+  closeNdk();
   // Clear identity
   clearIdentity();
   // Clear caches
@@ -671,9 +690,8 @@ async function handleResolveRoot(id: string, npub: string, path?: string) {
 
 async function handleSubscribe(id: string, filters: import('./protocol').NostrFilter[]) {
   try {
-    const nostr = getNostrManager();
     // Use the request id as the subscription id
-    nostr.subscribe(id, filters);
+    ndkSubscribe(id, filters);
     respond({ type: 'void', id });
   } catch (err) {
     respond({ type: 'void', id, error: err instanceof Error ? err.message : String(err) });
@@ -682,8 +700,7 @@ async function handleSubscribe(id: string, filters: import('./protocol').NostrFi
 
 async function handleUnsubscribe(id: string, subId: string) {
   try {
-    const nostr = getNostrManager();
-    nostr.unsubscribe(subId);
+    ndkUnsubscribe(subId);
     respond({ type: 'void', id });
   } catch (err) {
     respond({ type: 'void', id, error: err instanceof Error ? err.message : String(err) });
@@ -692,8 +709,7 @@ async function handleUnsubscribe(id: string, subId: string) {
 
 async function handlePublish(id: string, event: SignedEvent) {
   try {
-    const nostr = getNostrManager();
-    await nostr.publish(event);
+    await ndkPublish(event);
     respond({ type: 'void', id });
   } catch (err) {
     respond({ type: 'void', id, error: err instanceof Error ? err.message : String(err) });
@@ -728,8 +744,7 @@ async function handleGetPeerStats(id: string) {
 
 async function handleGetRelayStats(id: string) {
   try {
-    const nostr = getNostrManager();
-    const stats = nostr.getRelayStats();
+    const stats = getNdkRelayStats();
     respond({ type: 'relayStats', id, stats });
   } catch {
     respond({ type: 'relayStats', id, stats: [] });
@@ -877,12 +892,10 @@ function setupSocialGraphSubscription(rootPubkey: string): void {
     return;
   }
 
-  const nostr = getNostrManager();
-
   // NOTE: Don't call setOnEvent here - use the unified handler set up in handleInit
 
   // Subscribe to contact lists from root user
-  nostr.subscribe('socialgraph-contacts', [{
+  ndkSubscribe('socialgraph-contacts', [{
     kinds: [KIND_CONTACTS],
     authors: [rootPubkey],
   }]);

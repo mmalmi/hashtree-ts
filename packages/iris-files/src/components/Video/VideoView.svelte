@@ -27,7 +27,7 @@
   import type { CID, LinkType } from 'hashtree';
   import { toHex, nhashEncode } from 'hashtree';
   import { getNpubFileUrl, getNhashFileUrl } from '../../lib/mediaUrl';
-  import { NDKEvent, type NDKFilter } from '@nostr-dev-kit/ndk';
+  import { NDKEvent, type NDKFilter } from 'ndk';
   import { VideoZapButton } from '../Zaps';
 
   let deleting = $state(false);
