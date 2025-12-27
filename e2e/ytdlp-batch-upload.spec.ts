@@ -526,36 +526,53 @@ test.describe('yt-dlp Batch Upload', () => {
     // Wait for app to fully initialize
     await page.waitForTimeout(1000);
 
-    // Create a playlist (channel with 2+ videos) and publish it
+    // Use the actual ImportModal upload utility (same code path as user)
     const result = await page.evaluate(async () => {
       const { getTree } = await import('/src/store.ts');
-      const { nostrStore } = await import('/src/nostr.ts');
-      const { updateLocalRootCacheHex } = await import('/src/treeRootCache.ts');
+      const { nostrStore, saveHashtree } = await import('/src/nostr.ts');
+      const { storeLinkKey } = await import('/src/stores/trees.ts');
       const hashtree = await import('/node_modules/hashtree/dist/index.js');
       const { toHex, videoChunker, cid, LinkType } = hashtree;
 
       const tree = getTree();
-      // Use Svelte 5 store subscription
       let npub: string = '';
       const unsub = nostrStore.subscribe((state: any) => { npub = state.npub; });
       unsub();
 
-      // Create 2 videos for the playlist
+      // Simulate YtDlpVideo data with thumbnails (same structure as ImportModal uses)
+      const channelName = 'E2E Playlist Test';
+      const treeName = `videos/${channelName}`;
+
+      // Create mock video data with thumbnails
       const videos = [
-        { id: 'playlistVid1', title: 'Playlist Video 1' },
-        { id: 'playlistVid2', title: 'Playlist Video 2' },
+        { id: 'vid1', title: 'Video One' },
+        { id: 'vid2', title: 'Video Two' },
       ];
+
+      // Create a simple PNG thumbnail (1x1 red pixel)
+      const pngHeader = new Uint8Array([
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1
+        0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+        0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,
+        0x54, 0x08, 0xD7, 0x63, 0xF8, 0xFF, 0xFF, 0x3F,
+        0x00, 0x05, 0xFE, 0x02, 0xFE, 0xDC, 0xCC, 0x59,
+        0xE7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,
+        0x44, 0xAE, 0x42, 0x60, 0x82
+      ]);
 
       const rootEntries: Array<{ name: string; cid: any; size: number; type: number }> = [];
 
       for (const video of videos) {
         const videoEntries: Array<{ name: string; cid: any; size: number; type: number }> = [];
 
-        // Create video file
+        // Create video file (same as ImportModal)
         const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
         const streamWriter = tree.createStream({ chunker: videoChunker() });
         await streamWriter.append(videoData);
         const videoResult = await streamWriter.finalize();
+        streamWriter.clear();
         videoEntries.push({
           name: 'video.mp4',
           cid: cid(videoResult.hash, videoResult.key),
@@ -563,7 +580,20 @@ test.describe('yt-dlp Batch Upload', () => {
           type: LinkType.File,
         });
 
-        // Create video directory
+        // Create info.json (same as ImportModal)
+        const infoData = JSON.stringify({ title: video.title, id: video.id });
+        const infoResult = await tree.putFile(new TextEncoder().encode(infoData), {});
+        videoEntries.push({ name: 'info.json', cid: infoResult.cid, size: infoResult.size, type: LinkType.File });
+
+        // Create title.txt (same as ImportModal)
+        const titleResult = await tree.putFile(new TextEncoder().encode(video.title), {});
+        videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size, type: LinkType.File });
+
+        // Create thumbnail (same as ImportModal)
+        const thumbResult = await tree.putFile(pngHeader, {});
+        videoEntries.push({ name: 'thumbnail.jpg', cid: thumbResult.cid, size: thumbResult.size, type: LinkType.File });
+
+        // Create video directory (same as ImportModal)
         const videoDirResult = await tree.putDirectory(videoEntries, {});
         rootEntries.push({
           name: video.id,
@@ -573,38 +603,54 @@ test.describe('yt-dlp Batch Upload', () => {
         });
       }
 
-      // Create root playlist directory
+      // Create root playlist directory (same as ImportModal)
       const rootDirResult = await tree.putDirectory(rootEntries, {});
 
-      // Save to local cache (simulating publish)
-      const treeName = 'videos/E2E Test Playlist';
-      updateLocalRootCacheHex(npub, treeName, toHex(rootDirResult.cid.hash), undefined, 'public');
+      // Publish (same as ImportModal)
+      const rootHash = toHex(rootDirResult.cid.hash);
+      const rootKey = rootDirResult.cid.key ? toHex(rootDirResult.cid.key) : undefined;
+      const pubResult = await saveHashtree(treeName, rootHash, rootKey, { visibility: 'public' });
 
-      return { npub, treeName, rootHash: toHex(rootDirResult.cid.hash) };
+      if (pubResult.linkKey && npub) {
+        storeLinkKey(npub, treeName, pubResult.linkKey);
+      }
+
+      return { npub, treeName, rootHash };
     });
 
     // Navigate to profile page
     await page.goto(`/video.html#/${result.npub}`);
 
     // Wait for the profile to load and playlist detection to complete
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
 
-    // Take screenshot
+    // Take screenshot before assertions
     await page.screenshot({ path: 'e2e/screenshots/profile-playlist-test.png' });
 
-    // Check if the playlist name is visible on the page
-    const playlistName = page.getByText('E2E Test Playlist');
+    // Check if the playlist name is visible
+    const playlistName = page.getByText('E2E Playlist Test');
     const isPlaylistVisible = await playlistName.isVisible().catch(() => false);
+    console.log('Playlist name visible:', isPlaylistVisible);
 
-    // Check for Playlists section (may show if detection works)
+    // Check for Playlists section header
     const playlistsHeading = page.locator('h2:has-text("Playlists")');
     const isPlaylistsHeadingVisible = await playlistsHeading.isVisible().catch(() => false);
-
-    console.log('Playlist name visible:', isPlaylistVisible);
     console.log('Playlists heading visible:', isPlaylistsHeadingVisible);
 
-    // The playlist should be shown on the profile page (either as playlist or video card)
+    // Check for playlist card with video count overlay (the "2" count and list icon)
+    const videoCountOverlay = page.locator('.bg-black\\/80:has-text("2")');
+    const hasVideoCountOverlay = await videoCountOverlay.isVisible().catch(() => false);
+    console.log('Video count overlay visible:', hasVideoCountOverlay);
+
+    // Check for thumbnail image (not just gray placeholder)
+    const thumbnailImg = page.locator('img[src*="/htree/"]');
+    const hasThumbnail = await thumbnailImg.first().isVisible().catch(() => false);
+    console.log('Thumbnail image visible:', hasThumbnail);
+
+    // Assertions
     expect(isPlaylistVisible).toBe(true);
+    // Should show as a playlist card with video count, not just a video card
+    expect(hasVideoCountOverlay || isPlaylistsHeadingVisible).toBe(true);
   });
 
   test('playlist video shows playlist sidebar widget', async ({ page }) => {
