@@ -538,6 +538,21 @@ export class NDKEvent extends EventEmitter {
         if (!this.sig) await this.sign(undefined, opts);
         if (!this.ndk) throw new Error("NDKEvent must be associated with an NDK instance to publish");
 
+        // Call transport plugin onPublish hooks (e.g., worker transport)
+        // Fire-and-forget - don't await, don't fail
+        for (const plugin of this.ndk.transportPlugins) {
+            if (plugin.onPublish) {
+                Promise.resolve(plugin.onPublish(this)).catch((err) => {
+                    console.error("[NDK] Transport plugin onPublish error:", err);
+                });
+            }
+        }
+
+        // If no relays configured (worker-only mode), return early - transport plugin handles it
+        if (this.ndk.pool.relays.size === 0) {
+            return new Set<NDKRelay>();
+        }
+
         this.ndk.aiGuardrails?.event?.publishing(this);
 
         if (!relaySet || relaySet.size === 0) {

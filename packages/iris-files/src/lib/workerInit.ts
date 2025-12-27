@@ -11,6 +11,7 @@ import { refreshWebRTCStats } from '../store';
 import { get } from 'svelte/store';
 import { createFollowsStore, getFollowsSync } from '../stores/follows';
 import { setupVersionCallback } from '../utils/socialGraph';
+import { ndk } from '../nostr/ndk';
 // Import worker using Vite's ?worker query - returns a Worker constructor
 import HashtreeWorker from '../workers/hashtree.worker.ts?worker';
 
@@ -134,6 +135,27 @@ export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<
 
     initialized = true;
     console.log('[WorkerInit] Hashtree worker ready');
+
+    // Register worker as transport plugin for NDK publishes
+    const adapter = getWorkerAdapter();
+    if (adapter) {
+      ndk.transportPlugins.push({
+        name: 'worker',
+        onPublish: async (event) => {
+          // Route publish through worker (which has relay connections)
+          await adapter.publish({
+            id: event.id!,
+            pubkey: event.pubkey,
+            kind: event.kind!,
+            content: event.content,
+            tags: event.tags,
+            created_at: event.created_at!,
+            sig: event.sig!,
+          });
+        },
+      });
+      console.log('[WorkerInit] Registered worker transport plugin for NDK');
+    }
 
     // Set up social graph version callback
     setupVersionCallback();

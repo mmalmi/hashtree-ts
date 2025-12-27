@@ -11,6 +11,7 @@
 
 import NDK, { NDKEvent, NDKPrivateKeySigner, type NDKFilter } from 'ndk';
 import NDKCacheAdapterDexie from 'ndk-cache';
+import { verifyEvent } from 'nostr-tools';
 import type { SignedEvent, NostrFilter } from './protocol';
 
 // NDK instance - initialized lazily
@@ -51,7 +52,7 @@ async function loadNostrWasm(): Promise<void> {
 
 /**
  * Custom signature verification function for NDK
- * Uses nostr-wasm if loaded, falls back to JS verification
+ * Uses nostr-wasm if loaded, falls back to nostr-tools
  */
 async function verifySignature(event: NDKEvent): Promise<boolean> {
   if (wasmVerifier) {
@@ -72,8 +73,17 @@ async function verifySignature(event: NDKEvent): Promise<boolean> {
     }
   }
 
-  // Fallback to JS verification until wasm loads
-  return !!event.verifySignature(false);
+  // Fallback to nostr-tools until wasm loads
+  // Don't call event.verifySignature() - that would cause infinite recursion
+  return verifyEvent({
+    id: event.id!,
+    pubkey: event.pubkey,
+    created_at: event.created_at!,
+    kind: event.kind!,
+    tags: event.tags,
+    content: event.content,
+    sig: event.sig!,
+  });
 }
 
 /**

@@ -376,6 +376,15 @@ export class NDK extends EventEmitter<{
     public pools: NDKPool[] = [];
 
     /**
+     * Transport plugins for alternative event distribution (worker, WebRTC, etc).
+     * Plugins with onPublish hooks intercept event.publish() calls.
+     */
+    public transportPlugins: Array<{
+        name?: string;
+        onPublish?: (event: NDKEvent) => void | Promise<void>;
+    }> = [];
+
+    /**
      * Default relay-auth policy that will be used when a relay requests authentication,
      * if no other policy is specified for that relay.
      *
