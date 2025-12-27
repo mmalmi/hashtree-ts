@@ -4,6 +4,7 @@
    * Shows user info and their videos (including playlists)
    */
   import { nip19 } from 'nostr-tools';
+  import { SvelteSet } from 'svelte/reactivity';
   import { nostrStore } from '../../nostr';
   import { createTreesStore, createProfileStore, type TreeEntry } from '../../stores';
   import { followPubkey, unfollowPubkey, getFollowsSync, createFollowsStore } from '../../stores/follows';
@@ -94,7 +95,7 @@
 
   // Detect playlists when trees change - only detect trees we haven't checked yet
   let detectingPlaylists = false;
-  let detectedTreeNames = new Set<string>();
+  let detectedTreeNames = new SvelteSet<string>();
   $effect(() => {
     if (!npub) return;
     const currentVideoTrees = videoTrees;

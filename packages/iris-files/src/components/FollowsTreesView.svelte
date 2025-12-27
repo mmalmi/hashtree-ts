@@ -4,6 +4,7 @@
    * Displays a flat list of trees sorted by created_at (most recent first)
    */
   import { nip19 } from 'nostr-tools';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { nostrStore } from '../nostr';
   import { createFollowsStore } from '../stores/follows';
   import { createTreesStore, type TreeEntry } from '../stores/trees';
@@ -46,7 +47,7 @@
   let sortedTrees: SortedMap<string, TreeWithOwner> | null = null;
 
   // Track which trees each user has (for efficient removal on update)
-  let userTreeKeys = new Map<string, Set<string>>();
+  let userTreeKeys = new SvelteMap<string, SvelteSet<string>>();
 
   // Create tree stores for each followed user
   $effect(() => {
@@ -70,7 +71,7 @@
     sortedTrees = new SortedMap<string, TreeWithOwner>(
       (a, b) => (b[1].createdAt || 0) - (a[1].createdAt || 0)
     );
-    userTreeKeys = new Map();
+    userTreeKeys = new SvelteMap();
     hasRenderedOnce = false;
 
     // Limit to first 50 follows to avoid too many subscriptions
@@ -117,7 +118,7 @@
     }
 
     // Add new trees
-    const newKeys = new Set<string>();
+    const newKeys = new SvelteSet<string>();
     for (const tree of trees) {
       const treeWithOwner: TreeWithOwner = {
         ...tree,
