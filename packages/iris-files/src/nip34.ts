@@ -70,9 +70,29 @@ export function buildRepoAddress(npub: string, repoName: string): string {
 
 /**
  * Build htree:// clone URL for the repository
+ * @param npub - Owner's npub
+ * @param repoName - Repository name
+ * @param options - Optional visibility settings
+ * @param options.visibility - Tree visibility: 'public', 'link-visible', or 'private'
+ * @param options.linkKey - Link key for link-visible trees (hex string)
  */
-export function buildHtreeUrl(npub: string, repoName: string): string {
-  return `htree://${npub}/${repoName}`;
+export function buildHtreeUrl(
+  npub: string,
+  repoName: string,
+  options?: {
+    visibility?: 'public' | 'link-visible' | 'private';
+    linkKey?: string;
+  }
+): string {
+  let url = `htree://${npub}/${repoName}`;
+
+  if (options?.visibility === 'private') {
+    url += '#private';
+  } else if (options?.visibility === 'link-visible' && options.linkKey) {
+    url += `#k=${options.linkKey}`;
+  }
+
+  return url;
 }
 
 /**
