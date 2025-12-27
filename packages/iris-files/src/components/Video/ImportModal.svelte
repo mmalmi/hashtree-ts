@@ -17,7 +17,7 @@
 <script lang="ts">
   import { SvelteSet } from 'svelte/reactivity';
   import { nostrStore, saveHashtree, signEvent } from '../../nostr';
-  import { toHex, videoChunker, cid, BlossomStore } from 'hashtree';
+  import { toHex, videoChunker, cid, BlossomStore, LinkType } from 'hashtree';
   import type { CID, BlossomSigner } from 'hashtree';
   import { getTree } from '../../store';
   import { storeLinkKey } from '../../stores/trees';
@@ -140,7 +140,7 @@
       const tree = getTree();
       const treeName = `videos/${channelName.trim()}`;
 
-      const rootEntries: Array<{ name: string; cid: CID; size: number }> = [];
+      const rootEntries: Array<{ name: string; cid: CID; size: number; type: LinkType }> = [];
 
       for (let i = 0; i < selectedVideos.length; i++) {
         if (abortController.signal.aborted) throw new Error('Cancelled');
@@ -150,7 +150,7 @@
         progress = Math.round(videoProgress);
         progressMessage = `Uploading ${i + 1}/${selectedVideos.length}: ${video.title}`;
 
-        const videoEntries: Array<{ name: string; cid: CID; size: number }> = [];
+        const videoEntries: Array<{ name: string; cid: CID; size: number; type: LinkType }> = [];
 
         // Upload video file
         if (video.videoFile) {
@@ -184,6 +184,7 @@
             name: `video.${ext}`,
             cid: cid(result.hash, result.key),
             size: result.size,
+            type: LinkType.File,
           });
         }
 
@@ -191,7 +192,7 @@
         if (video.infoJson) {
           const data = new Uint8Array(await video.infoJson.arrayBuffer());
           const result = await tree.putFile(data, {});
-          videoEntries.push({ name: 'info.json', cid: result.cid, size: result.size });
+          videoEntries.push({ name: 'info.json', cid: result.cid, size: result.size, type: LinkType.File });
 
           try {
             const jsonText = await video.infoJson.text();
@@ -199,12 +200,12 @@
             if (infoData.description && infoData.description.trim()) {
               const descData = new TextEncoder().encode(infoData.description.trim());
               const descResult = await tree.putFile(descData, {});
-              videoEntries.push({ name: 'description.txt', cid: descResult.cid, size: descResult.size });
+              videoEntries.push({ name: 'description.txt', cid: descResult.cid, size: descResult.size, type: LinkType.File });
             }
             if (infoData.title && infoData.title.trim()) {
               const titleData = new TextEncoder().encode(infoData.title.trim());
               const titleResult = await tree.putFile(titleData, {});
-              videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size });
+              videoEntries.push({ name: 'title.txt', cid: titleResult.cid, size: titleResult.size, type: LinkType.File });
             }
           } catch {
             // Ignore JSON parse errors
@@ -216,7 +217,7 @@
           const data = new Uint8Array(await video.thumbnail.arrayBuffer());
           const result = await tree.putFile(data, {});
           const ext = video.thumbnail.name.split('.').pop()?.toLowerCase() || 'jpg';
-          videoEntries.push({ name: `thumbnail.${ext}`, cid: result.cid, size: result.size });
+          videoEntries.push({ name: `thumbnail.${ext}`, cid: result.cid, size: result.size, type: LinkType.File });
         }
 
         // Create video directory
@@ -226,6 +227,7 @@
           name: video.id,
           cid: videoDirResult.cid,
           size: videoEntries.reduce((sum, e) => sum + (e.size || 0), 0),
+          type: LinkType.Dir,
         });
       }
 
