@@ -18,6 +18,7 @@
   import { getTree } from '../../store';
   import { getLocalRootCache, getLocalRootKey } from '../../treeRootCache';
   import { hasVideoFile, findThumbnailEntry, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
+  import type { CID } from 'hashtree';
 
   interface PlaylistInfo {
     key: string;
@@ -89,20 +90,38 @@
   // Using plain object for better Svelte 5 reactivity (Maps don't track well)
   let playlistInfo = $state<Record<string, { videoCount: number; thumbnailUrl?: string }>>({});
 
+  // Track detection state - use $state so UI can react
+  let detectionComplete = $state(false);
+
   // Detect playlists when trees change
   let detectingPlaylists = false;
   let lastDetectedTrees = '';
   $effect(() => {
     if (!npub) return;
     const currentVideoTrees = videoTrees;
-    if (currentVideoTrees.length === 0) return;
+    if (currentVideoTrees.length === 0) {
+      detectionComplete = true; // No trees to detect
+      return;
+    }
     // Prevent re-running if already detecting or trees haven't changed
     const treesKey = currentVideoTrees.map(t => t.name + ':' + (t.hashHex || '')).join(',');
     if (detectingPlaylists || treesKey === lastDetectedTrees) return;
     lastDetectedTrees = treesKey;
     detectingPlaylists = true;
-    detectPlaylists(currentVideoTrees).finally(() => { detectingPlaylists = false; });
+    detectionComplete = false;
+    detectPlaylists(currentVideoTrees).finally(() => {
+      detectingPlaylists = false;
+      detectionComplete = true;
+    });
   });
+
+  // Helper to add timeout to promises
+  function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+    return Promise.race([
+      promise,
+      new Promise<null>(resolve => setTimeout(() => resolve(null), ms))
+    ]);
+  }
 
   async function detectPlaylists(treesToCheck: typeof videoTrees) {
     const tree = getTree();
@@ -125,7 +144,8 @@
 
         if (!rootCid) return;
 
-        const entries = await tree.listDirectory(rootCid);
+        // Add timeout to prevent hanging
+        const entries = await withTimeout(tree.listDirectory(rootCid), 10000);
         if (!entries || entries.length === 0) return;
 
         let videoCount = 0;
@@ -133,12 +153,8 @@
 
         // Process entries sequentially to avoid spawning too many requests
         for (const entry of entries) {
-          if (videoCount >= MIN_VIDEOS_FOR_STRUCTURE && firstThumbnailUrl) {
-            // Already have enough info, stop early
-            break;
-          }
           try {
-            const subEntries = await tree.listDirectory(entry.cid);
+            const subEntries = await withTimeout(tree.listDirectory(entry.cid), 5000);
             if (subEntries && hasVideoFile(subEntries)) {
               videoCount++;
               if (!firstThumbnailUrl) {
@@ -173,40 +189,44 @@
   // Using Object.keys() ensures Svelte tracks the object
   let playlistTreeNames = $derived(new Set(Object.keys(playlistInfo)));
 
-  // Combined list of videos and playlists
+  // Combined list of videos and playlists (only show after detection completes)
   let videos = $derived(
-    videoTrees
-      .filter(t => !playlistTreeNames.has(t.name)) // Exclude playlists
-      .map(t => ({
-        key: `/${npub}/${t.name}`,
-        title: t.name.slice(7),
-        ownerPubkey: ownerPubkey,
-        ownerNpub: npub,
-        treeName: t.name,
-        visibility: t.visibility,
-        href: `#/${npub}/${encodeTreeNameForUrl(t.name)}${t.linkKey ? `?k=${t.linkKey}` : ''}`,
-        isPlaylist: false,
-      } as VideoItem))
+    detectionComplete
+      ? videoTrees
+          .filter(t => !playlistTreeNames.has(t.name)) // Exclude playlists
+          .map(t => ({
+            key: `/${npub}/${t.name}`,
+            title: t.name.slice(7),
+            ownerPubkey: ownerPubkey,
+            ownerNpub: npub,
+            treeName: t.name,
+            visibility: t.visibility,
+            href: `#/${npub}/${encodeTreeNameForUrl(t.name)}${t.linkKey ? `?k=${t.linkKey}` : ''}`,
+            isPlaylist: false,
+          } as VideoItem))
+      : []
   );
 
   let playlists = $derived(
-    videoTrees
-      .filter(t => playlistTreeNames.has(t.name))
-      .map(t => {
-        const info = playlistInfo[t.name];
-        return {
-          key: `/${npub}/${t.name}`,
-          title: t.name.slice(7),
-          ownerPubkey: ownerPubkey,
-          ownerNpub: npub,
-          treeName: t.name,
-          visibility: t.visibility,
-          href: `#/${npub}/${encodeTreeNameForUrl(t.name)}`,
-          videoCount: info?.videoCount || 0,
-          thumbnailUrl: info?.thumbnailUrl,
-          isPlaylist: true,
-        } as PlaylistInfo;
-      })
+    detectionComplete
+      ? videoTrees
+          .filter(t => playlistTreeNames.has(t.name))
+          .map(t => {
+            const info = playlistInfo[t.name];
+            return {
+              key: `/${npub}/${t.name}`,
+              title: t.name.slice(7),
+              ownerPubkey: ownerPubkey,
+              ownerNpub: npub,
+              treeName: t.name,
+              visibility: t.visibility,
+              href: `#/${npub}/${encodeTreeNameForUrl(t.name)}`,
+              videoCount: info?.videoCount || 0,
+              thumbnailUrl: info?.thumbnailUrl,
+              isPlaylist: true,
+            } as PlaylistInfo;
+          })
+      : []
   );
 
   // Following state
@@ -360,7 +380,11 @@
 
     <!-- Videos grid -->
     <div class="pb-8">
-      {#if videos.length === 0 && playlists.length === 0}
+      {#if !detectionComplete && videoTrees.length > 0}
+        <div class="text-center py-12 text-text-3">
+          <p>Loading videos...</p>
+        </div>
+      {:else if videos.length === 0 && playlists.length === 0}
         <div class="text-center py-12 text-text-3">
           {#if isOwnProfile}
             <p>You haven't uploaded any videos yet.</p>
