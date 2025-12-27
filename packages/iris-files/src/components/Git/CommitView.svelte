@@ -41,7 +41,7 @@
 
   // Build back URL (to code tab) - use repoName which includes full path to git repo
   let backUrl = $derived.by(() => {
-    const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+    const linkKeySuffix = route.params.get('k') ? `?k=${route.params.get('k')}` : '';
     return `#/${npub}/${repoName}${linkKeySuffix}`;
   });
 

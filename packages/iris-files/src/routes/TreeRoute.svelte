@@ -34,7 +34,7 @@
   let isOwnTree = $derived(!viewedNpub || viewedNpub === userNpub);
 
   // Only enable streaming mode on user's own trees
-  let isStreaming = $derived(route.isStreaming && isOwnTree);
+  let isStreaming = $derived(route.params.get('stream') === '1' && isOwnTree);
   // Check if a file is selected (actual check from hashtree, not heuristic)
   let isViewingFile = $derived($isViewingFileStore);
 

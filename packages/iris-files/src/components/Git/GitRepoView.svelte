@@ -78,7 +78,7 @@
 
   // Handle ?branch= URL parameter - automatically switch to specified branch
   $effect(() => {
-    const targetBranch = route.branch;
+    const targetBranch = route.params.get('branch');
     const current = currentBranch;
     const availableBranches = branches;
 
@@ -196,7 +196,7 @@
   // Build query string for entry hrefs
   function buildQueryString(): string {
     const params: string[] = [];
-    if (route.linkKey) params.push(`k=${route.linkKey}`);
+    if (route.params.get('k')) params.push(`k=${route.params.get('k')}`);
     // Propagate gitRoot - if we're at git root (gitRootPath is null), use current path
     // If we're in subdirectory (gitRootPath is set), keep using it
     const effectiveGitRoot = gitRootPath !== null ? gitRootPath : (currentPath.length > 0 ? currentPath.join('/') : '');
@@ -243,7 +243,7 @@
   });
 
   // Get git root path from route (for subdirectory operations)
-  let gitRootPath = $derived(route.gitRoot);
+  let gitRootPath = $derived(route.params.get('g'));
 
   // Full repo path for URLs (treeName + path to git root)
   // e.g., if treeName is "link" and git root is at "link/my-repo", repoPath is "link/my-repo"

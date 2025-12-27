@@ -38,7 +38,7 @@
 
   // Get link key (prefer route, fallback to selectedTree)
   let linkKey = $derived(
-    route.linkKey ?? (selectedTree?.visibility === 'link-visible' && selectedTree?.linkKey ? selectedTree.linkKey : null)
+    route.params.get('k') ?? (selectedTree?.visibility === 'link-visible' && selectedTree?.linkKey ? selectedTree.linkKey : null)
   );
 
   // Build close URL (remove stream param but keep linkKey)

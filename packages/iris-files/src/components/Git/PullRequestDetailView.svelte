@@ -218,7 +218,7 @@
   // Navigate to merge view with PR info for status update
   function goToMerge() {
     if (!pr?.branch || !pr?.targetBranch) return;
-    const linkKeySuffix = route.linkKey ? `&k=${route.linkKey}` : '';
+    const linkKeySuffix = route.params.get('k') ? `&k=${route.params.get('k')}` : '';
     const prParams = `&prId=${encodeURIComponent(eventId)}&prPubkey=${encodeURIComponent(pr.authorPubkey)}`;
     navigate(`/${npub}/${repoName}?merge=1&base=${pr.targetBranch}&head=${pr.branch}${prParams}${linkKeySuffix}`);
   }

@@ -224,7 +224,7 @@
   // Build stream URL - goes to directory with ?stream=1
   let streamUrl = $derived.by(() => {
     const streamQueryParams = [
-      route.linkKey ? `k=${route.linkKey}` : '',
+      route.params.get('k') ? `k=${route.params.get('k')}` : '',
       'stream=1',
     ].filter(Boolean).join('&');
     return route.npub && route.treeName
@@ -243,7 +243,7 @@
         onclick={() => {
           // Share directory URL (without any selected file)
           const base = window.location.origin + window.location.pathname + '#';
-          const dirPath = buildRouteUrl(route.npub, route.treeName, route.path, undefined, route.linkKey);
+          const dirPath = buildRouteUrl(route.npub, route.treeName, route.path, undefined, route.params.get('k'));
           openShareModal(base + dirPath);
         }}
         class="btn-ghost {btnClass}"

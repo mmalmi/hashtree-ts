@@ -218,7 +218,7 @@ export function createTreeRootStore(): Readable<CID | null> {
         return;
       }
 
-      const decryptedKey = await decryptEncryptionKey(visibilityInfo, encryptionKey, route.linkKey);
+      const decryptedKey = await decryptEncryptionKey(visibilityInfo, encryptionKey, route.params.get('k'));
 
       // Cache the decrypted key
       if (decryptedKey) {

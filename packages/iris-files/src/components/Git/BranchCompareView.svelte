@@ -42,7 +42,7 @@
 
   // Build back URL (to code tab) - use repoName which includes full path to git repo
   let backUrl = $derived.by(() => {
-    const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+    const linkKeySuffix = route.params.get('k') ? `?k=${route.params.get('k')}` : '';
     return `#/${npub}/${repoName}${linkKeySuffix}`;
   });
 
@@ -134,7 +134,7 @@
 
   // Navigate to merge view
   function goToMerge() {
-    const linkKeySuffix = route.linkKey ? `&k=${route.linkKey}` : '';
+    const linkKeySuffix = route.params.get('k') ? `&k=${route.params.get('k')}` : '';
     navigate(`/${npub}/${repoName}?merge=1&base=${baseBranch}&head=${headBranch}${linkKeySuffix}`);
   }
 </script>

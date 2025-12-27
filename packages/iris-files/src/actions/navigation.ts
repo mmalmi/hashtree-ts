@@ -17,7 +17,7 @@ export function navigateTo(_hash: Hash, name?: string) {
     const route = parseRoute();
     const currentPath = getCurrentPathFromUrl();
     const newPath = [...currentPath, name];
-    const url = buildRouteUrl(route.npub, route.treeName, newPath, undefined, route.linkKey);
+    const url = buildRouteUrl(route.npub, route.treeName, newPath, undefined, route.params.get('k'));
     navigate(url);
   }
 }
@@ -29,7 +29,7 @@ export function goBack() {
 
   const newPath = currentPath.slice(0, -1);
   const route = parseRoute();
-  const url = buildRouteUrl(route.npub, route.treeName, newPath, undefined, route.linkKey);
+  const url = buildRouteUrl(route.npub, route.treeName, newPath, undefined, route.params.get('k'));
   navigate(url);
 }
 

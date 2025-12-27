@@ -19,19 +19,8 @@ export interface RouteInfo {
   isPermalink: boolean;
   /** All query params from URL - use params.get('k'), params.get('t'), etc. */
   params: URLSearchParams;
-  // Legacy fields - prefer using params.get() directly:
-  /** @deprecated Use params.get('k') */
-  linkKey: string | null;
-  /** @deprecated Use params.get('stream') === '1' */
-  isStreaming: boolean;
-  /** @deprecated Use params.get('g') */
-  gitRoot: string | null;
-  /** @deprecated Use params.get('branch') */
-  branch: string | null;
   /** Branches to compare (from ?compare=base...head or ?merge=1&base=&head=) */
   compareBranches: { base: string; head: string } | null;
-  /** @deprecated Use params.get('merge') === '1' */
-  isMergeView: boolean;
 }
 
 /**
@@ -50,15 +39,11 @@ export function parseRoute(): RouteInfo {
 
   // Parse query params
   const params = new URLSearchParams(queryString || '');
-  const linkKey = params.get('k');
-  const isStreaming = params.get('stream') === '1';
-  const gitRoot = params.get('g');
-  const branch = params.get('branch');
-  const isMergeView = params.get('merge') === '1';
   let compareBranches: { base: string; head: string } | null = null;
   const compare = params.get('compare');
   const mergeBase = params.get('base');
   const mergeHead = params.get('head');
+  const isMergeView = params.get('merge') === '1';
   if (compare?.includes('...')) {
     const [base, head] = compare.split('...');
     if (base && head) compareBranches = { base, head };
@@ -81,12 +66,7 @@ export function parseRoute(): RouteInfo {
         path: parts.slice(1),
         isPermalink: true,
         params,
-        linkKey,
-        isStreaming,
-        gitRoot,
-        branch,
         compareBranches,
-        isMergeView,
       };
     } catch {
       // Fall through if decode fails
@@ -95,7 +75,7 @@ export function parseRoute(): RouteInfo {
 
   // Special routes (no tree context)
   if (['settings', 'wallet'].includes(parts[0])) {
-    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, params: emptyParams, linkKey: null, isStreaming: false, gitRoot: null, branch: null, compareBranches: null, isMergeView: false };
+    return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, params: emptyParams, compareBranches: null };
   }
 
   // User routes
@@ -104,7 +84,7 @@ export function parseRoute(): RouteInfo {
 
     // Special user routes (profile, follows, followers, edit)
     if (['profile', 'follows', 'followers', 'edit'].includes(parts[1])) {
-      return { npub, treeName: null, cid: null, path: [], isPermalink: false, params: emptyParams, linkKey: null, isStreaming: false, gitRoot: null, branch: null, compareBranches: null, isMergeView: false };
+      return { npub, treeName: null, cid: null, path: [], isPermalink: false, params: emptyParams, compareBranches: null };
     }
 
     // Tree route: #/npub/treeName/path...
@@ -116,19 +96,14 @@ export function parseRoute(): RouteInfo {
         path: parts.slice(2),
         isPermalink: false,
         params,
-        linkKey,
-        isStreaming,
-        gitRoot,
-        branch,
         compareBranches,
-        isMergeView,
       };
     }
 
     // User view: #/npub
-    return { npub, treeName: null, cid: null, path: [], isPermalink: false, params: emptyParams, linkKey: null, isStreaming: false, gitRoot: null, branch: null, compareBranches: null, isMergeView: false };
+    return { npub, treeName: null, cid: null, path: [], isPermalink: false, params: emptyParams, compareBranches: null };
   }
 
   // Home route
-  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, params: emptyParams, linkKey: null, isStreaming: false, gitRoot: null, branch: null, compareBranches: null, isMergeView: false };
+  return { npub: null, treeName: null, cid: null, path: [], isPermalink: false, params: emptyParams, compareBranches: null };
 }

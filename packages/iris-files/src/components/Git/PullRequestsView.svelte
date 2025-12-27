@@ -58,7 +58,7 @@
 
   // Build back URL (to code tab at same location)
   let backUrl = $derived.by(() => {
-    const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+    const linkKeySuffix = route.params.get('k') ? `?k=${route.params.get('k')}` : '';
     if (currentPath.length > 0) {
       // In a subdirectory - link to that directory
       return `#/${npub}/${route.treeName}/${currentPath.join('/')}${linkKeySuffix}`;

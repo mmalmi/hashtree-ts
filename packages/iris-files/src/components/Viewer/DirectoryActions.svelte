@@ -48,7 +48,7 @@
   let hasGitDir = $derived(entries.some((e: HashTreeEntry) => e.name === '.git' && e.type === LinkType.Dir));
 
   // Check if we're inside a git repo subdirectory (gitRoot propagated via URL)
-  let gitRootFromUrl = $derived(route.gitRoot);
+  let gitRootFromUrl = $derived(route.params.get('g'));
   let isInGitRepo = $derived(hasGitDir || gitRootFromUrl !== null);
 
   // Resolve git root CID when we're in a subdirectory
@@ -196,7 +196,7 @@
         parts.push(route.npub);
       }
     }
-    const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+    const linkKeySuffix = route.params.get('k') ? `?k=${route.params.get('k')}` : '';
     return '#/' + parts.map(encodeURIComponent).join('/') + linkKeySuffix;
   });
 

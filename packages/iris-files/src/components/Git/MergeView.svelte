@@ -47,7 +47,7 @@
 
   // Build back URL (to compare view) - use repoName which includes full path to git repo
   let backUrl = $derived.by(() => {
-    const linkKeySuffix = route.linkKey ? `&k=${route.linkKey}` : '';
+    const linkKeySuffix = route.params.get('k') ? `&k=${route.params.get('k')}` : '';
     return `#/${npub}/${repoName}?compare=${baseBranch}...${headBranch}${linkKeySuffix}`;
   });
 

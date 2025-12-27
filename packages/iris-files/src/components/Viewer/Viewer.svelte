@@ -127,7 +127,7 @@
     if (route.npub && route.treeName) {
       parts.push(route.npub, route.treeName, ...dirPath, fileName);
     }
-    const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+    const linkKeySuffix = route.params.get('k') ? `?k=${route.params.get('k')}` : '';
     window.location.hash = '/' + parts.map(encodeURIComponent).join('/') + linkKeySuffix;
   }
 
@@ -343,7 +343,7 @@
       if (route.npub && route.treeName) {
         parts.push(route.npub, route.treeName, ...dirPath);
       }
-      const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+      const linkKeySuffix = route.params.get('k') ? `?k=${route.params.get('k')}` : '';
       window.location.hash = '#/' + parts.map(encodeURIComponent).join('/') + linkKeySuffix;
     }
   }
@@ -504,7 +504,7 @@
     if (route.npub && route.treeName) {
       parts.push(route.npub, route.treeName, ...dirPath);
     }
-    const linkKeySuffix = route.linkKey ? `?k=${route.linkKey}` : '';
+    const linkKeySuffix = route.params.get('k') ? `?k=${route.params.get('k')}` : '';
     return '#/' + parts.map(encodeURIComponent).join('/') + linkKeySuffix;
   });
 

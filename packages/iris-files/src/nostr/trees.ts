@@ -252,7 +252,7 @@ export async function publishTreeRoot(treeName: string, rootHash: string, rootKe
   // For link-visible trees, get the linkKey from the URL
   if (visibility === 'link-visible') {
     const route = parseRoute();
-    linkKey = route.linkKey ?? undefined;
+    linkKey = route.params.get('k') ?? undefined;
   }
 
   const result = await saveHashtree(treeName, rootHash, rootKey, {

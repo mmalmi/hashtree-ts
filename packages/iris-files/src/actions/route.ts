@@ -42,7 +42,7 @@ export function getCurrentPathFromUrl(): string[] {
   if (urlPath.length === 0) return [];
 
   // When streaming, the last path segment is the file being created (not a directory)
-  if (route.isStreaming && urlPath.length > 0) {
+  if (route.params.get('stream') === '1' && urlPath.length > 0) {
     return urlPath.slice(0, -1);
   }
 
@@ -55,7 +55,7 @@ export function getCurrentPathFromUrl(): string[] {
 export function updateRoute(fileName?: string, options?: { edit?: boolean }) {
   const route = parseRoute();
   const currentPath = getCurrentPathFromUrl();
-  let url = buildRouteUrl(route.npub, route.treeName, currentPath, fileName, route.linkKey);
+  let url = buildRouteUrl(route.npub, route.treeName, currentPath, fileName, route.params.get('k'));
   if (options?.edit) {
     // Append edit param, preserving existing query string
     url += url.includes('?') ? '&edit=1' : '?edit=1';

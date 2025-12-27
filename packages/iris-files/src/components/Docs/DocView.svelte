@@ -72,7 +72,7 @@
   $effect(() => {
     const npub = route.npub;
     const treeName = route.treeName;
-    const linkKey = route.linkKey;
+    const linkKey = route.params.get('k');
     if (npub && treeName?.startsWith('docs/')) {
       addRecent({
         type: 'tree',

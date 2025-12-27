@@ -74,7 +74,7 @@
         await createDocument(name);
         close();
         const newPath = [...route.path, name].map(encodeURIComponent).join('/');
-        const linkKeyParam = route.linkKey ? `?k=${route.linkKey}` : '';
+        const linkKeyParam = route.params.get('k') ? `?k=${route.params.get('k')}` : '';
         window.location.hash = `/${route.npub}/${route.treeName}/${newPath}${linkKeyParam}`;
       } else {
         // Create new tree as a document (from docs home)

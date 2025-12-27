@@ -88,7 +88,7 @@
   let isViewingFile = $derived($isViewingFileStore);
   let currentPath = $derived(isViewingFile ? urlPath.slice(0, -1) : urlPath);
   let rootHash = $derived(rootCid?.hash ?? null);
-  let linkKey = $derived(route.linkKey);
+  let linkKey = $derived(route.params.get('k'));
 
   let inTreeView = $derived(!!currentTreeName || !!rootHash);
   let viewedNpub = $derived(currentNpub);
@@ -96,7 +96,7 @@
   let canEdit = $derived(isOwnTrees || !isLoggedIn);
 
   // Git root tracking - from URL or detected from .git directory
-  let gitRootFromUrl = $derived(route.gitRoot);
+  let gitRootFromUrl = $derived(route.params.get('g'));
 
   // Check if we're missing the decryption key (either no rootCid yet, or rootCid without key)
   let missingDecryptionKey = $derived(!rootCid?.key);
