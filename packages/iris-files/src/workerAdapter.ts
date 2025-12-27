@@ -26,6 +26,7 @@ import { WebRTCProxy } from './webrtcProxy';
 type PendingRequest = {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
+  timeoutId?: ReturnType<typeof setTimeout>;
 };
 
 type SubscriptionCallback = (event: SignedEvent) => void;
@@ -294,6 +295,7 @@ export class WorkerAdapter {
     const pending = this.pendingRequests.get(id);
     if (pending) {
       this.pendingRequests.delete(id);
+      if (pending.timeoutId) clearTimeout(pending.timeoutId);
       pending.resolve(value);
     }
   }
@@ -302,6 +304,7 @@ export class WorkerAdapter {
     const pending = this.pendingRequests.get(id);
     if (pending) {
       this.pendingRequests.delete(id);
+      if (pending.timeoutId) clearTimeout(pending.timeoutId);
       pending.reject(error);
     }
   }
@@ -309,16 +312,21 @@ export class WorkerAdapter {
   private request<T>(msg: WorkerRequest, transfer?: Transferable[]): Promise<T> {
     return new Promise((resolve, reject) => {
       const id = (msg as { id: string }).id;
-      this.pendingRequests.set(id, { resolve: resolve as (value: unknown) => void, reject });
-      this.postMessage(msg, transfer);
 
       // Timeout after 120 seconds (increased for large tree operations)
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         if (this.pendingRequests.has(id)) {
           this.pendingRequests.delete(id);
           reject(new Error('Request timeout'));
         }
       }, 120000);
+
+      this.pendingRequests.set(id, {
+        resolve: resolve as (value: unknown) => void,
+        reject,
+        timeoutId,
+      });
+      this.postMessage(msg, transfer);
     });
   }
 
