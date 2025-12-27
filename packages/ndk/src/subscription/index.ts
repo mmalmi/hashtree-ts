@@ -819,12 +819,12 @@ export class NDKSubscription extends EventEmitter<{
      * @param fromCache Whether the event was received from the cache
      * @param optimisticPublish Whether this event is coming from an optimistic publish
      */
-    public eventReceived(
+    public async eventReceived(
         event: NDKEvent | NostrEvent,
         relay: NDKRelay | undefined,
         fromCache = false,
         optimisticPublish = false,
-    ) {
+    ): Promise<void> {
         const eventId = event.id! as NDKEventId;
 
         const eventAlreadySeen = this.eventFirstSeen.has(eventId);
@@ -875,8 +875,21 @@ export class NDKSubscription extends EventEmitter<{
                         // Set the relay on the event for async verification
                         ndkEvent.relay = relay;
 
-                        // Attempt verification
-                        if (this.ndk.asyncSigVerification) {
+                        // Use custom async verification function if provided (blocking)
+                        if (this.ndk.signatureVerificationFunction) {
+                            try {
+                                const isValid = await this.ndk.signatureVerificationFunction(ndkEvent);
+                                if (!isValid) {
+                                    this.debug("Event failed signature validation", event);
+                                    this.ndk.reportInvalidSignature(ndkEvent, relay);
+                                    return; // Block invalid events
+                                }
+                                relay.addValidatedEvent();
+                            } catch (err) {
+                                console.error("Signature verification error:", err);
+                                return; // Block on error
+                            }
+                        } else if (this.ndk.asyncSigVerification) {
                             // Async verification - call verifySignature but don't wait for result
                             // The validation stats will be tracked in the async callback
                             ndkEvent.verifySignature(true);
