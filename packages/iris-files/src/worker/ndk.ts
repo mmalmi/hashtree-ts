@@ -167,7 +167,8 @@ export function subscribe(subId: string, filters: NostrFilter[]): void {
     return filter;
   });
 
-  const sub = ndk.subscribe(ndkFilters, { closeOnEose: false });
+  // skipValidation: nostr-wasm verifyEvent handles structure validation
+  const sub = ndk.subscribe(ndkFilters, { closeOnEose: false, skipValidation: true });
 
   sub.on('event', (event: NDKEvent) => {
     const signedEvent: SignedEvent = {

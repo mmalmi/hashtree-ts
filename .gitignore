@@ -13,3 +13,5 @@ packages/hashtree-web/dist-docs/
 packages/iris-files/dist-docs/
 packages/iris-files/src-tauri/target/
 packages/iris-files/src-tauri/gen/
+packages/ndk-bak/
+packages/ndk-cache-bak/
