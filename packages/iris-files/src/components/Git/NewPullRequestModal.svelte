@@ -100,8 +100,13 @@
     isSubmitting = true;
     error = null;
 
+    // Capture target values before async call (handleClose sets target to null)
+    const targetNpub = target.npub;
+    const targetRepoName = target.repoName;
+    const onCreate = target.onCreate;
+
     try {
-      const pr = await createPullRequest(target.npub, target.repoName, title.trim(), description.trim(), {
+      const pr = await createPullRequest(targetNpub, targetRepoName, title.trim(), description.trim(), {
         branch: sourceBranch.trim(),
         targetBranch: targetBranch.trim() || 'main',
         // Include source repo info in clone URL if specified
@@ -109,10 +114,10 @@
       });
 
       if (pr) {
-        target.onCreate?.({ id: pr.id, title: pr.title });
+        onCreate?.({ id: pr.id, title: pr.title });
         handleClose();
         // Navigate to the new PR using query params
-        window.location.hash = `/${target.npub}/${target.repoName}?tab=pulls&id=${pr.id}`;
+        window.location.hash = `/${targetNpub}/${targetRepoName}?tab=pulls&id=${pr.id}`;
       } else {
         error = 'Failed to create pull request';
       }
