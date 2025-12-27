@@ -91,12 +91,18 @@
   let playlistInfo = $state<Record<string, { videoCount: number; thumbnailUrl?: string }>>({});
 
   // Detect playlists when trees change
+  let detectingPlaylists = false;
+  let lastDetectedTrees = '';
   $effect(() => {
     if (!npub) return;
-    // Subscribe to videoTrees changes
     const currentVideoTrees = videoTrees;
     if (currentVideoTrees.length === 0) return;
-    detectPlaylists(currentVideoTrees);
+    // Prevent re-running if already detecting or trees haven't changed
+    const treesKey = currentVideoTrees.map(t => t.name + ':' + (t.hashHex || '')).join(',');
+    if (detectingPlaylists || treesKey === lastDetectedTrees) return;
+    lastDetectedTrees = treesKey;
+    detectingPlaylists = true;
+    detectPlaylists(currentVideoTrees).finally(() => { detectingPlaylists = false; });
   });
 
   async function detectPlaylists(treesToCheck: typeof videoTrees) {
