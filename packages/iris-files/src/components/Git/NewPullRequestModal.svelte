@@ -41,6 +41,11 @@
   // Source (head) - where the changes come from
   let sourceBranch = $state('');
   let sourceRepo = $state(''); // Optional: npub/path or nhash for cross-repo PRs
+
+  // Show source repo field by default if user isn't the repo owner
+  import { nostrStore } from '../../nostr';
+  let userNpub = $derived($nostrStore.npub);
+  let isOwner = $derived(target?.npub === userNpub);
   let showSourceRepo = $state(false);
 
   // Target (base) - where to merge into
@@ -66,7 +71,8 @@
       }
       targetBranch = defaultBranch;
       sourceRepo = '';
-      showSourceRepo = false;
+      // Show source repo by default if user isn't the owner (contributing from fork)
+      showSourceRepo = !isOwner;
     }
   });
 
@@ -172,6 +178,45 @@
           />
         </div>
 
+        <!-- Source selection: this repo or fork -->
+        <div class="flex flex-col gap-3">
+          <div class="text-sm font-medium">Source</div>
+
+          <!-- Source type toggle -->
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onclick={() => showSourceRepo = false}
+              class="flex-1 px-3 py-2 rounded-md text-sm flex items-center justify-center gap-2 b-1 b-solid transition-colors {!showSourceRepo ? 'bg-accent/10 b-accent text-accent' : 'bg-surface-1 b-surface-3 text-text-2 hover:bg-surface-2'}"
+            >
+              <span class="i-lucide-git-branch"></span>
+              This repository
+            </button>
+            <button
+              type="button"
+              onclick={() => showSourceRepo = true}
+              class="flex-1 px-3 py-2 rounded-md text-sm flex items-center justify-center gap-2 b-1 b-solid transition-colors {showSourceRepo ? 'bg-accent/10 b-accent text-accent' : 'bg-surface-1 b-surface-3 text-text-2 hover:bg-surface-2'}"
+            >
+              <span class="i-lucide-git-fork"></span>
+              From fork
+            </button>
+          </div>
+
+          <!-- Source repo input (for cross-repo PRs) -->
+          {#if showSourceRepo}
+            <div class="flex flex-col gap-1.5">
+              <label for="pr-source-repo" class="text-xs text-text-3">Fork URL</label>
+              <input
+                id="pr-source-repo"
+                type="text"
+                bind:value={sourceRepo}
+                placeholder="npub.../repo or htree://..."
+                class="px-3 py-2 bg-surface-1 b-1 b-solid b-surface-3 rounded-md focus:outline-none focus:b-accent text-sm font-mono"
+              />
+            </div>
+          {/if}
+        </div>
+
         <!-- Branch selection -->
         <div class="flex flex-col gap-3">
           <div class="text-sm font-medium">Branches</div>
@@ -179,7 +224,7 @@
           <div class="flex items-center gap-2">
             <!-- Source (head) branch -->
             <div class="flex-1">
-              <div class="text-xs text-text-3 mb-1">From (source)</div>
+              <div class="text-xs text-text-3 mb-1">From</div>
               {#if branches.length > 0}
                 <div class="relative">
                   <button
@@ -273,32 +318,6 @@
             </div>
           </div>
 
-          <!-- Cross-repo toggle -->
-          <button
-            type="button"
-            onclick={() => showSourceRepo = !showSourceRepo}
-            class="text-xs text-text-3 hover:text-accent flex items-center gap-1 self-start b-0 bg-transparent cursor-pointer"
-          >
-            <span class={showSourceRepo ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'}></span>
-            {showSourceRepo ? 'Hide' : 'From different repository (fork)'}
-          </button>
-
-          <!-- Source repo input (for cross-repo PRs) -->
-          {#if showSourceRepo}
-            <div class="flex flex-col gap-1.5 pl-4 b-l-2 b-l-solid b-l-surface-3">
-              <label for="pr-source-repo" class="text-xs text-text-3">Source Repository</label>
-              <input
-                id="pr-source-repo"
-                type="text"
-                bind:value={sourceRepo}
-                placeholder="htree://npub/repo, npub.../repo, or nhash..."
-                class="px-3 py-2 bg-surface-1 b-1 b-solid b-surface-3 rounded-md focus:outline-none focus:b-accent text-sm font-mono"
-              />
-              <p class="text-xs text-text-3">
-                Enter the repository containing your changes (htree://npub/repo, npub/tree/path, or nhash)
-              </p>
-            </div>
-          {/if}
         </div>
 
         <!-- Description -->
