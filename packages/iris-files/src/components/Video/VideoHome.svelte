@@ -82,38 +82,40 @@
     }, 100);
   }
 
+  // Helper to add timeout to promises
+  function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+    return Promise.race([
+      promise,
+      new Promise<null>(resolve => setTimeout(() => resolve(null), ms))
+    ]);
+  }
+
   async function doDetectPlaylists(videos: VideoItem[]) {
     const tree = getTree();
-    const newPlaylistInfo: Record<string, PlaylistInfo> = { ...feedPlaylistInfo };
-    let changed = false;
 
     // Filter to videos that need detection
     const needsAsyncDetection = videos.filter(video =>
-      newPlaylistInfo[video.key] === undefined && video.hashHex && video.ownerNpub
+      feedPlaylistInfo[video.key] === undefined && video.hashHex && video.ownerNpub
     );
 
-    // Process with limited concurrency
-    const CONCURRENCY = 4;
-
-    const detectOne = async (video: VideoItem): Promise<void> => {
+    for (const video of needsAsyncDetection) {
       try {
         const hashBytes = new Uint8Array(video.hashHex!.match(/.{2}/g)!.map(b => parseInt(b, 16)));
         const rootCid: CID = { hash: hashBytes };
 
-        const entries = await tree.listDirectory(rootCid);
+        const entries = await withTimeout(tree.listDirectory(rootCid), 10000);
         if (!entries || entries.length === 0) {
-          newPlaylistInfo[video.key] = { videoCount: 0 };
-          changed = true;
-          return;
+          feedPlaylistInfo = { ...feedPlaylistInfo, [video.key]: { videoCount: 0 } };
+          continue;
         }
 
-        // Check subdirectories in parallel
         let videoCount = 0;
         let firstThumbnailUrl: string | undefined;
 
-        const checkEntry = async (entry: typeof entries[0]): Promise<void> => {
+        // Process entries sequentially to avoid spawning too many requests
+        for (const entry of entries) {
           try {
-            const subEntries = await tree.listDirectory(entry.cid);
+            const subEntries = await withTimeout(tree.listDirectory(entry.cid), 5000);
             if (subEntries && hasVideoFile(subEntries)) {
               videoCount++;
               if (!firstThumbnailUrl) {
@@ -124,38 +126,15 @@
               }
             }
           } catch {
-            // Not a directory
+            // Not a directory or error - skip
           }
-        };
-
-        await Promise.all(entries.map(checkEntry));
-
-        newPlaylistInfo[video.key] = { videoCount, thumbnailUrl: firstThumbnailUrl };
-        changed = true;
-      } catch {
-        // Ignore errors
-      }
-    };
-
-    // Process with limited concurrency
-    const pending: Promise<void>[] = [];
-    for (const video of needsAsyncDetection) {
-      if (pending.length >= CONCURRENCY) {
-        await Promise.race(pending);
-        // Remove completed promises
-        for (let i = pending.length - 1; i >= 0; i--) {
-          const p = pending[i];
-          // Check if promise is settled by racing with resolved promise
-          const settled = await Promise.race([p.then(() => true), Promise.resolve(false)]);
-          if (settled) pending.splice(i, 1);
         }
-      }
-      pending.push(detectOne(video));
-    }
-    await Promise.all(pending);
 
-    if (changed) {
-      feedPlaylistInfo = newPlaylistInfo;
+        feedPlaylistInfo = { ...feedPlaylistInfo, [video.key]: { videoCount, thumbnailUrl: firstThumbnailUrl } };
+      } catch {
+        // Ignore errors - mark as checked with 0 count
+        feedPlaylistInfo = { ...feedPlaylistInfo, [video.key]: { videoCount: 0 } };
+      }
     }
   }
 

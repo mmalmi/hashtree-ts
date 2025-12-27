@@ -93,23 +93,26 @@
   // Track detection state - use $state so UI can react
   let detectionComplete = $state(false);
 
-  // Detect playlists when trees change
+  // Detect playlists when trees change - only detect trees we haven't checked yet
   let detectingPlaylists = false;
-  let lastDetectedTrees = '';
+  let detectedTreeNames = new Set<string>();
   $effect(() => {
     if (!npub) return;
     const currentVideoTrees = videoTrees;
     if (currentVideoTrees.length === 0) {
-      detectionComplete = true; // No trees to detect
+      detectionComplete = true;
       return;
     }
-    // Prevent re-running if already detecting or trees haven't changed
-    const treesKey = currentVideoTrees.map(t => t.name + ':' + (t.hashHex || '')).join(',');
-    if (detectingPlaylists || treesKey === lastDetectedTrees) return;
-    lastDetectedTrees = treesKey;
+    // Find trees we haven't detected yet
+    const newTrees = currentVideoTrees.filter(t => !detectedTreeNames.has(t.name));
+    if (detectingPlaylists || newTrees.length === 0) {
+      // Already detecting or nothing new to detect
+      if (!detectingPlaylists) detectionComplete = true;
+      return;
+    }
     detectingPlaylists = true;
-    detectionComplete = false;
-    detectPlaylists(currentVideoTrees).finally(() => {
+    if (!detectionComplete) detectionComplete = false; // Only show loading on first run
+    detectPlaylists(newTrees).finally(() => {
       detectingPlaylists = false;
       detectionComplete = true;
     });
@@ -125,9 +128,11 @@
 
   async function detectPlaylists(treesToCheck: typeof videoTrees) {
     const tree = getTree();
-    const newPlaylistInfo: Record<string, { videoCount: number; thumbnailUrl?: string }> = {};
 
     const processTree = async (t: typeof treesToCheck[0]): Promise<void> => {
+      // Mark as detected regardless of outcome
+      detectedTreeNames.add(t.name);
+
       try {
         // Get root CID - use hash and encryptionKey from tree entry, or fall back to local cache
         let rootCid: CID | null = null;
@@ -170,7 +175,8 @@
         }
 
         if (videoCount >= MIN_VIDEOS_FOR_STRUCTURE) {
-          newPlaylistInfo[t.name] = { videoCount, thumbnailUrl: firstThumbnailUrl };
+          // Merge into existing playlistInfo
+          playlistInfo = { ...playlistInfo, [t.name]: { videoCount, thumbnailUrl: firstThumbnailUrl } };
         }
       } catch {
         // Ignore errors
@@ -181,8 +187,6 @@
     for (const t of treesToCheck) {
       await processTree(t);
     }
-
-    playlistInfo = newPlaylistInfo;
   }
 
   // Get playlist tree names as a Set for efficient lookup
