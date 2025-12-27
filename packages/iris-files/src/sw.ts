@@ -30,7 +30,8 @@ const NPUB_PATTERN = /^npub1[a-z0-9]{58}$/;
 
 // Timeout for port responses
 // Must be long enough for: tree resolution + WebRTC peer attempts + Blossom fallback
-const PORT_TIMEOUT = 30000;
+// 60s is more realistic for slow networks and peer discovery
+const PORT_TIMEOUT = 60000;
 
 /**
  * Guess MIME type from file path/extension
@@ -165,13 +166,25 @@ async function serveFile(request: FileRequest): Promise<Response> {
   // Streaming response
   let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
+  let streamClosed = false;
+
   const stream = new ReadableStream({
     pull(controller) {
       return new Promise<void>((resolve) => {
+        if (streamClosed) {
+          resolve();
+          return;
+        }
+
         port.onmessage = ({ data: chunk }) => {
+          if (timeoutHandle) {
+            clearTimeout(timeoutHandle);
+            timeoutHandle = null;
+          }
           if (chunk) {
             controller.enqueue(new Uint8Array(chunk));
           } else {
+            streamClosed = true;
             cleanup();
             controller.close();
           }
@@ -184,8 +197,13 @@ async function serveFile(request: FileRequest): Promise<Response> {
         }
 
         // Timeout for inactive streams (Firefox doesn't support cancel)
+        // When timeout fires, close the stream properly so video element knows to stop
         timeoutHandle = setTimeout(() => {
-          cleanup();
+          if (!streamClosed) {
+            streamClosed = true;
+            cleanup();
+            controller.close();
+          }
           resolve();
         }, PORT_TIMEOUT);
 
@@ -194,6 +212,7 @@ async function serveFile(request: FileRequest): Promise<Response> {
       });
     },
     cancel() {
+      streamClosed = true;
       if (timeoutHandle) clearTimeout(timeoutHandle);
       cleanup();
     },

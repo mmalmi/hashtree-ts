@@ -104,6 +104,23 @@ async function updateCurrentDirCid() {
   const tree = getTree();
 
   try {
+    // For permalinks with a single path segment, check if rootCid is a file or directory
+    // - If file: the path segment is just a MIME type hint, use rootCid directly
+    // - If directory: the path segment is a filename to look up in the directory
+    const route = get(routeStore);
+    if (route.isPermalink && urlPath.length === 1) {
+      const isDir = await tree.isDirectory(rootCid);
+      if (!isDir) {
+        // rootCid points to a file - path is just a filename hint for MIME type
+        currentDirCidStore.set(null);
+        isViewingFileStore.set(true);
+        resolvingPathStore.set(false);
+        return;
+      }
+      // rootCid is a directory - path is a file to look up within it
+      // Fall through to resolvePath below
+    }
+
     // Resolve full path first - returns { cid, type } with LinkType
     const result = await tree.resolvePath(rootCid, urlPath);
     if (!result) {
