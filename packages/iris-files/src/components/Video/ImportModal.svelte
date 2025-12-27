@@ -554,7 +554,7 @@
               <span class="i-lucide-upload-cloud text-4xl text-accent animate-pulse block mx-auto mb-4"></span>
               <p class="text-text-1 font-medium">Pushing to file servers...</p>
               <p class="text-text-3 text-sm mt-1">
-                {pushProgress.current} / {pushProgress.total} chunks
+                {pushProgress.current} chunks uploaded{pushProgress.current < pushProgress.total ? '...' : ''}
               </p>
             </div>
             <div class="h-2 bg-surface-2 rounded-full overflow-hidden">
