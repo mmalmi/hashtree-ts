@@ -291,11 +291,11 @@
                 id="pr-source-repo"
                 type="text"
                 bind:value={sourceRepo}
-                placeholder="npub.../repo or nhash..."
+                placeholder="htree://npub/repo, npub.../repo, or nhash..."
                 class="px-3 py-2 bg-surface-1 b-1 b-solid b-surface-3 rounded-md focus:outline-none focus:b-accent text-sm font-mono"
               />
               <p class="text-xs text-text-3">
-                Enter the repository containing your changes (npub/tree/path or nhash permalink)
+                Enter the repository containing your changes (htree://npub/repo, npub/tree/path, or nhash)
               </p>
             </div>
           {/if}

@@ -26,8 +26,13 @@
 
 <script lang="ts">
   import { createGitLogStore, type CommitInfo } from '../../stores/git';
+  import { routeStore } from '../../stores';
   import { nhashEncode } from 'hashtree';
   import { checkoutCommit, getBranches } from '../../utils/git';
+
+  // Get route info for building commit view URLs
+  let route = $derived($routeStore);
+  let repoName = $derived(route.treeName ? route.treeName + (route.path.length > 0 ? '/' + route.path.join('/') : '') : null);
 
   function bytesToHex(bytes: Uint8Array): string {
     return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -286,9 +291,20 @@
                     {/if}
                   </div>
                   <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-3">
-                    <span class="font-mono bg-surface-2 px-1.5 py-0.5 rounded text-xs">
-                      {shortHash(commit.oid)}
-                    </span>
+                    {#if route.npub && repoName}
+                      <a
+                        href="#/{route.npub}/{repoName}?commit={commit.oid}"
+                        onclick={close}
+                        class="font-mono bg-surface-2 px-1.5 py-0.5 rounded text-xs hover:bg-accent hover:text-white transition-colors"
+                        title="View commit diff"
+                      >
+                        {shortHash(commit.oid)}
+                      </a>
+                    {:else}
+                      <span class="font-mono bg-surface-2 px-1.5 py-0.5 rounded text-xs">
+                        {shortHash(commit.oid)}
+                      </span>
+                    {/if}
                     <span class="flex items-center gap-1">
                       <span class="i-lucide-user text-xs"></span>
                       {commit.author}
