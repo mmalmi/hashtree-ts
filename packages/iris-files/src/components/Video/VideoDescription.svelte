@@ -3,6 +3,7 @@
    * VideoDescription - Renders video description with clickable timestamps
    * Timestamps like 00:00, 1:30, 1:30:00 become clickable links that seek the video
    */
+  import { getQueryParams } from '../../lib/router.svelte';
 
   interface Props {
     text: string;
@@ -116,8 +117,9 @@
   /** Handle timestamp click - update URL with ?t= param */
   function handleTimestampClick(seconds: number) {
     const hash = window.location.hash;
-    const [path, queryString] = hash.split('?');
-    const params = new URLSearchParams(queryString || '');
+    const qIdx = hash.indexOf('?');
+    const path = qIdx !== -1 ? hash.slice(0, qIdx) : hash;
+    const params = getQueryParams();
     params.set('t', seconds.toString());
     window.location.hash = `${path}?${params.toString()}`;
   }

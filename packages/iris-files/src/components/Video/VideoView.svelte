@@ -9,7 +9,7 @@
   import { nip19 } from 'nostr-tools';
   import { getTree } from '../../store';
   import { ndk, nostrStore } from '../../nostr';
-  import { treeRootStore, createTreesStore } from '../../stores';
+  import { treeRootStore, createTreesStore, routeStore } from '../../stores';
   import { open as openShareModal } from '../Modals/ShareModal.svelte';
   import { open as openBlossomPushModal } from '../Modals/BlossomPushModal.svelte';
   import { open as openAddToPlaylistModal } from '../Modals/AddToPlaylistModal.svelte';
@@ -94,13 +94,9 @@
   // Full video path for position tracking (includes npub)
   let videoFullPath = $derived(npub && treeName ? `/${npub}/${treeName}` : null);
 
-  // Parse ?t= param from URL hash for timestamp seeking
+  // Get timestamp from route params
   function getTimestampFromUrl(): number | null {
-    const hash = window.location.hash;
-    const qIdx = hash.indexOf('?');
-    if (qIdx === -1) return null;
-    const params = new URLSearchParams(hash.slice(qIdx + 1));
-    const t = params.get('t');
+    const t = $routeStore.params.get('t');
     if (t) {
       const seconds = parseInt(t, 10);
       if (!isNaN(seconds) && seconds >= 0) return seconds;
