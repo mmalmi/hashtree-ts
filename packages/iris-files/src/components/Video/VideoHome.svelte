@@ -10,7 +10,7 @@
   import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
   import { createFollowsStore } from '../../stores';
   import { getTree } from '../../store';
-  import { hasVideoFile, findThumbnailEntry, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
+  import { hasVideoFile, findThumbnailEntry } from '../../utils/playlistDetection';
   import { SortedMap } from '../../utils/SortedMap';
   import type { CID } from 'hashtree';
 
