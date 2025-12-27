@@ -27,6 +27,8 @@ export interface VideoItem {
   videoId?: string;
   /** Root hash (hex) for playlist detection */
   hashHex?: string;
+  /** Encryption key (hex) for playlist detection */
+  keyHex?: string;
   visibility?: string;
   href: string;
   timestamp?: number;

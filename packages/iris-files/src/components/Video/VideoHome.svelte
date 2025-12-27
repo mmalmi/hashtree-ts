@@ -101,7 +101,8 @@
     const detectOne = async (video: VideoItem) => {
       try {
         const hashBytes = new Uint8Array(video.hashHex!.match(/.{2}/g)!.map(b => parseInt(b, 16)));
-        const rootCid: CID = { hash: hashBytes };
+        const keyBytes = video.keyHex ? new Uint8Array(video.keyHex.match(/.{2}/g)!.map(b => parseInt(b, 16))) : undefined;
+        const rootCid: CID = { hash: hashBytes, key: keyBytes };
 
         const entries = await withTimeout(tree.listDirectory(rootCid), 5000);
         if (!entries || entries.length === 0) {
@@ -315,6 +316,7 @@
       const hashTag = event.tags.find(t => t[0] === 'hash')?.[1];
       if (!hashTag) return; // Deleted tree
 
+      const keyTag = event.tags.find(t => t[0] === 'key')?.[1]; // Encryption key for public trees
       const hasEncryptedKey = event.tags.some(t => t[0] === 'encryptedKey');
       const hasSelfEncryptedKey = event.tags.some(t => t[0] === 'selfEncryptedKey');
       const visibility = hasEncryptedKey ? 'link-visible' : (hasSelfEncryptedKey ? 'private' : 'public');
@@ -341,6 +343,7 @@
         ownerNpub,
         treeName: dTag,
         hashHex: hashTag, // Store for playlist detection
+        keyHex: keyTag, // Store encryption key for playlist detection
         visibility,
         href: `#/${ownerNpub}/${encodeTreeNameForUrl(dTag)}`,
         timestamp: event.created_at || 0,
