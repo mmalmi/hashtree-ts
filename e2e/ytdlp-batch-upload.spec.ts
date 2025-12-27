@@ -532,7 +532,7 @@ test.describe('yt-dlp Batch Upload', () => {
       const { nostrStore } = await import('/src/nostr.ts');
       const { updateLocalRootCacheHex } = await import('/src/treeRootCache.ts');
       const hashtree = await import('/node_modules/hashtree/dist/index.js');
-      const { toHex, videoChunker, cid } = hashtree;
+      const { toHex, videoChunker, cid, LinkType } = hashtree;
 
       const tree = getTree();
       // Use Svelte 5 store subscription
@@ -546,10 +546,10 @@ test.describe('yt-dlp Batch Upload', () => {
         { id: 'playlistVid2', title: 'Playlist Video 2' },
       ];
 
-      const rootEntries: Array<{ name: string; cid: any; size: number }> = [];
+      const rootEntries: Array<{ name: string; cid: any; size: number; type: number }> = [];
 
       for (const video of videos) {
-        const videoEntries: Array<{ name: string; cid: any; size: number }> = [];
+        const videoEntries: Array<{ name: string; cid: any; size: number; type: number }> = [];
 
         // Create video file
         const videoData = new Uint8Array([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70]);
@@ -560,6 +560,7 @@ test.describe('yt-dlp Batch Upload', () => {
           name: 'video.mp4',
           cid: cid(videoResult.hash, videoResult.key),
           size: videoResult.size,
+          type: LinkType.File,
         });
 
         // Create video directory
@@ -568,6 +569,7 @@ test.describe('yt-dlp Batch Upload', () => {
           name: video.id,
           cid: videoDirResult.cid,
           size: videoEntries.reduce((sum, e) => sum + e.size, 0),
+          type: LinkType.Dir,
         });
       }
 
