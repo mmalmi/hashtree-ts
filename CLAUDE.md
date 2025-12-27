@@ -37,6 +37,7 @@ pnpm run test:e2e # E2E tests
 - **Queues**: Use `BoundedQueue` from `utils/boundedQueue` with `maxItems`/`maxBytes`
 - **Worker data**: Use transferable: `postMessage({data}, [data.buffer])` for zero-copy
 - **Never**: Unbounded `Map`/`Array` for data that grows with usage
+- **Heap analysis**: `pnpm run test:e2e -- e2e/heap-analysis.spec.ts` - takes snapshots via CDP, checks NDK instances, profile cache size, large objects
 
 ## Verify & Commit
 ```bash
