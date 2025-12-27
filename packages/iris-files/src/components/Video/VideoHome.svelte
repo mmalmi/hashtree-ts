@@ -94,28 +94,28 @@
     const tree = getTree();
 
     // Filter to videos that need detection
-    const needsAsyncDetection = videos.filter(video =>
+    const needsDetection = videos.filter(video =>
       feedPlaylistInfo[video.key] === undefined && video.hashHex && video.ownerNpub
     );
 
-    for (const video of needsAsyncDetection) {
+    const detectOne = async (video: VideoItem) => {
       try {
         const hashBytes = new Uint8Array(video.hashHex!.match(/.{2}/g)!.map(b => parseInt(b, 16)));
         const rootCid: CID = { hash: hashBytes };
 
-        const entries = await withTimeout(tree.listDirectory(rootCid), 10000);
+        const entries = await withTimeout(tree.listDirectory(rootCid), 5000);
         if (!entries || entries.length === 0) {
           feedPlaylistInfo = { ...feedPlaylistInfo, [video.key]: { videoCount: 0 } };
-          continue;
+          return;
         }
 
         let videoCount = 0;
         let firstThumbnailUrl: string | undefined;
 
-        // Process entries sequentially to avoid spawning too many requests
-        for (const entry of entries) {
+        // Check first 10 entries in parallel for speed
+        const checkEntry = async (entry: typeof entries[0]) => {
           try {
-            const subEntries = await withTimeout(tree.listDirectory(entry.cid), 5000);
+            const subEntries = await withTimeout(tree.listDirectory(entry.cid), 3000);
             if (subEntries && hasVideoFile(subEntries)) {
               videoCount++;
               if (!firstThumbnailUrl) {
@@ -125,16 +125,31 @@
                 }
               }
             }
-          } catch {
-            // Not a directory or error - skip
+          } catch { /* skip */ }
+        };
+
+        await Promise.all(entries.slice(0, 10).map(checkEntry));
+
+        // If playlist, count rest
+        if (videoCount >= 1) {
+          for (const entry of entries.slice(10)) {
+            try {
+              const subEntries = await withTimeout(tree.listDirectory(entry.cid), 2000);
+              if (subEntries && hasVideoFile(subEntries)) videoCount++;
+            } catch { /* skip */ }
           }
         }
 
         feedPlaylistInfo = { ...feedPlaylistInfo, [video.key]: { videoCount, thumbnailUrl: firstThumbnailUrl } };
       } catch {
-        // Ignore errors - mark as checked with 0 count
         feedPlaylistInfo = { ...feedPlaylistInfo, [video.key]: { videoCount: 0 } };
       }
+    };
+
+    // Process in parallel batches
+    const CONCURRENCY = 4;
+    for (let i = 0; i < needsDetection.length; i += CONCURRENCY) {
+      await Promise.all(needsDetection.slice(i, i + CONCURRENCY).map(detectOne));
     }
   }
 

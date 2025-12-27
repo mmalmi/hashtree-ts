@@ -134,32 +134,27 @@
       detectedTreeNames.add(t.name);
 
       try {
-        // Get root CID - use hash and encryptionKey from tree entry, or fall back to local cache
         let rootCid: CID | null = null;
-
         if (t.hash) {
           rootCid = { hash: t.hash, key: t.encryptionKey };
         } else {
           const localHash = getLocalRootCache(npub!, t.name);
           if (localHash) {
-            const localKey = getLocalRootKey(npub!, t.name);
-            rootCid = { hash: localHash, key: localKey };
+            rootCid = { hash: localHash, key: getLocalRootKey(npub!, t.name) };
           }
         }
-
         if (!rootCid) return;
 
-        // Add timeout to prevent hanging
-        const entries = await withTimeout(tree.listDirectory(rootCid), 10000);
+        const entries = await withTimeout(tree.listDirectory(rootCid), 5000);
         if (!entries || entries.length === 0) return;
 
         let videoCount = 0;
         let firstThumbnailUrl: string | undefined;
 
-        // Process entries sequentially to avoid spawning too many requests
-        for (const entry of entries) {
+        // Check first few entries in parallel to quickly determine if playlist
+        const checkEntry = async (entry: typeof entries[0]) => {
           try {
-            const subEntries = await withTimeout(tree.listDirectory(entry.cid), 5000);
+            const subEntries = await withTimeout(tree.listDirectory(entry.cid), 3000);
             if (subEntries && hasVideoFile(subEntries)) {
               videoCount++;
               if (!firstThumbnailUrl) {
@@ -169,23 +164,30 @@
                 }
               }
             }
-          } catch {
-            // Not a directory or error - skip
-          }
-        }
+          } catch { /* skip */ }
+        };
 
+        // Check entries in parallel (limit to first 10 for speed, count rest later)
+        await Promise.all(entries.slice(0, 10).map(checkEntry));
+
+        // If it's a playlist, count remaining entries
         if (videoCount >= MIN_VIDEOS_FOR_STRUCTURE) {
-          // Merge into existing playlistInfo
+          // Quick count remaining without fetching thumbnails
+          for (const entry of entries.slice(10)) {
+            try {
+              const subEntries = await withTimeout(tree.listDirectory(entry.cid), 2000);
+              if (subEntries && hasVideoFile(subEntries)) videoCount++;
+            } catch { /* skip */ }
+          }
           playlistInfo = { ...playlistInfo, [t.name]: { videoCount, thumbnailUrl: firstThumbnailUrl } };
         }
-      } catch {
-        // Ignore errors
-      }
+      } catch { /* ignore */ }
     };
 
-    // Process trees sequentially to avoid overwhelming the system
-    for (const t of treesToCheck) {
-      await processTree(t);
+    // Process trees in parallel (limit 4)
+    const CONCURRENCY = 4;
+    for (let i = 0; i < treesToCheck.length; i += CONCURRENCY) {
+      await Promise.all(treesToCheck.slice(i, i + CONCURRENCY).map(processTree));
     }
   }
 
