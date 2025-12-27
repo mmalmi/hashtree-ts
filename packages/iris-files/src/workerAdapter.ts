@@ -312,13 +312,13 @@ export class WorkerAdapter {
       this.pendingRequests.set(id, { resolve: resolve as (value: unknown) => void, reject });
       this.postMessage(msg, transfer);
 
-      // Timeout after 60 seconds
+      // Timeout after 120 seconds (increased for large tree operations)
       setTimeout(() => {
         if (this.pendingRequests.has(id)) {
           this.pendingRequests.delete(id);
           reject(new Error('Request timeout'));
         }
-      }, 60000);
+      }, 120000);
     });
   }
 
