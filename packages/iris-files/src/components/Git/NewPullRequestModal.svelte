@@ -30,6 +30,8 @@
 
 <script lang="ts">
   import { createPullRequest } from '../../nip34';
+  import { getWorkerAdapter } from '../../workerAdapter';
+  import { createGitInfoStore } from '../../stores/git';
 
   // Available branches from the target (destination) repo
   let branches = $derived(target?.branches || []);
@@ -41,6 +43,96 @@
   // Source (head) - where the changes come from
   let sourceBranch = $state('');
   let sourceRepo = $state(''); // Optional: npub/path or nhash for cross-repo PRs
+
+  // Fork state
+  let forkRootCid = $state<string | null>(null);
+  let forkBranches = $state<string[]>([]);
+  let forkLoading = $state(false);
+  let forkError = $state<string | null>(null);
+
+  // Parse fork URL to get npub/repoName
+  function parseForkUrl(url: string): { npub: string; repoName: string } | null {
+    const trimmed = url.trim();
+    if (!trimmed) return null;
+
+    // Handle htree:// URLs
+    if (trimmed.startsWith('htree://')) {
+      const path = trimmed.slice(8);
+      const parts = path.split('/').filter(Boolean);
+      if (parts.length >= 2 && parts[0].startsWith('npub1')) {
+        return { npub: parts[0], repoName: parts.slice(1).join('/') };
+      }
+    }
+
+    // Handle npub/repo format
+    const parts = trimmed.split('/').filter(Boolean);
+    if (parts.length >= 2 && parts[0].startsWith('npub1')) {
+      return { npub: parts[0], repoName: parts.slice(1).join('/') };
+    }
+
+    return null;
+  }
+
+  // Resolve fork root when URL changes
+  $effect(() => {
+    if (!showSourceRepo || !sourceRepo.trim()) {
+      forkRootCid = null;
+      forkBranches = [];
+      forkError = null;
+      return;
+    }
+
+    const parsed = parseForkUrl(sourceRepo);
+    if (!parsed) {
+      forkRootCid = null;
+      forkBranches = [];
+      forkError = null;
+      return;
+    }
+
+    forkLoading = true;
+    forkError = null;
+
+    const adapter = getWorkerAdapter();
+    if (!adapter) {
+      forkError = 'Worker not initialized';
+      forkLoading = false;
+      return;
+    }
+
+    adapter.resolveRoot(parsed.npub, parsed.repoName).then(cid => {
+      forkRootCid = cid;
+      forkLoading = false;
+      if (!cid) {
+        forkError = 'Could not resolve fork';
+      }
+    }).catch(err => {
+      forkError = err instanceof Error ? err.message : 'Failed to resolve fork';
+      forkLoading = false;
+    });
+  });
+
+  // Create git info store for fork when we have its root CID
+  let forkGitStore = $derived(forkRootCid ? createGitInfoStore(forkRootCid) : null);
+
+  // Subscribe to fork git info
+  $effect(() => {
+    if (!forkGitStore) {
+      forkBranches = [];
+      return;
+    }
+    const unsub = forkGitStore.subscribe(info => {
+      forkBranches = info.branches;
+      // Clear source branch if it doesn't exist in new fork branches
+      if (sourceBranch && info.branches.length > 0 && !info.branches.includes(sourceBranch)) {
+        sourceBranch = '';
+      }
+    });
+    return unsub;
+  });
+
+  // Source branches: use fork branches if available, otherwise target repo branches
+  let sourceBranchOptions = $derived(showSourceRepo && forkBranches.length > 0 ? forkBranches : branches);
 
   // Show source repo field by default if user isn't the repo owner
   import { nostrStore } from '../../nostr';
@@ -229,8 +321,17 @@
           <div class="flex items-center gap-2">
             <!-- Source (head) branch -->
             <div class="flex-1">
-              <div class="text-xs text-text-3 mb-1">From</div>
-              {#if branches.length > 0}
+              <div class="text-xs text-text-3 mb-1">From{#if showSourceRepo && sourceRepo.trim()} (fork){/if}</div>
+              {#if showSourceRepo && forkLoading}
+                <div class="w-full px-3 py-2 bg-surface-1 b-1 b-solid b-surface-3 rounded-md text-sm flex items-center gap-2 text-text-3">
+                  <span class="i-lucide-loader-2 animate-spin"></span>
+                  Loading branches...
+                </div>
+              {:else if showSourceRepo && forkError}
+                <div class="w-full px-3 py-2 bg-surface-1 b-1 b-solid b-danger/50 rounded-md text-sm text-danger">
+                  {forkError}
+                </div>
+              {:else if sourceBranchOptions.length > 0}
                 <div class="relative">
                   <button
                     type="button"
@@ -245,7 +346,7 @@
                   </button>
                   {#if sourceBranchDropdownOpen}
                     <div class="absolute top-full left-0 right-0 mt-1 bg-surface-1 b-1 b-solid b-surface-3 rounded-md shadow-lg z-10 max-h-48 overflow-auto">
-                      {#each branches as branch (branch)}
+                      {#each sourceBranchOptions as branch (branch)}
                         <button
                           type="button"
                           onclick={() => selectSourceBranch(branch)}
