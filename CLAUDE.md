@@ -32,6 +32,12 @@ pnpm run test:e2e # E2E tests
 - Buttons: use `btn-ghost` (default) or `btn-primary`/`btn-danger`/`btn-success`
 - Don't add comments that aren't relevant without context
 
+## Memory Safety
+- **Caches**: Use `LRUCache` from `utils/lruCache` with `maxSize`
+- **Queues**: Use `BoundedQueue` from `utils/boundedQueue` with `maxItems`/`maxBytes`
+- **Worker data**: Use transferable: `postMessage({data}, [data.buffer])` for zero-copy
+- **Never**: Unbounded `Map`/`Array` for data that grows with usage
+
 ## Verify & Commit
 ```bash
 pnpm run lint

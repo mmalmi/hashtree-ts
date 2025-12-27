@@ -9,6 +9,7 @@
  */
 
 import type { WebRTCCommand, WebRTCEvent } from 'hashtree';
+import { BoundedQueue } from './utils/boundedQueue';
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -20,7 +21,7 @@ interface PeerConnection {
   dataChannel: RTCDataChannel | null;
   pubkey: string;
   pendingCandidates: RTCIceCandidateInit[];
-  sendQueue: Uint8Array[];
+  sendQueue: BoundedQueue<Uint8Array>;
   sending: boolean;
 }
 
@@ -30,8 +31,23 @@ export class WebRTCProxy {
   private peers = new Map<string, PeerConnection>();
   private onEvent: EventCallback;
 
+  // Queue limits to prevent memory blowup on slow/stalled connections
+  private static readonly MAX_QUEUE_BYTES = 8 * 1024 * 1024;  // 8MB per peer
+  private static readonly MAX_QUEUE_ITEMS = 100;
+
   constructor(onEvent: EventCallback) {
     this.onEvent = onEvent;
+  }
+
+  private createSendQueue(peerId: string): BoundedQueue<Uint8Array> {
+    return new BoundedQueue<Uint8Array>({
+      maxItems: WebRTCProxy.MAX_QUEUE_ITEMS,
+      maxBytes: WebRTCProxy.MAX_QUEUE_BYTES,
+      getBytes: (item) => item.byteLength,
+      onDrop: (item) => {
+        console.warn(`[WebRTCProxy] Queue overflow for ${peerId.slice(0, 8)}, dropped ${item.byteLength}B`);
+      },
+    });
   }
 
   /**
@@ -79,7 +95,7 @@ export class WebRTCProxy {
       dataChannel: null,
       pubkey,
       pendingCandidates: [],
-      sendQueue: [],
+      sendQueue: this.createSendQueue(peerId),
       sending: false,
     };
 
@@ -256,7 +272,7 @@ export class WebRTCProxy {
       return;
     }
 
-    // Queue the data
+    // BoundedQueue handles overflow automatically (drops oldest, logs via onDrop)
     peer.sendQueue.push(data);
 
     // Start draining if not already
@@ -275,19 +291,19 @@ export class WebRTCProxy {
     const dc = peer.dataChannel;
 
     // Send as much as we can without overflowing the buffer
-    while (peer.sendQueue.length > 0 && dc.bufferedAmount < WebRTCProxy.BUFFER_THRESHOLD) {
+    while (!peer.sendQueue.isEmpty && dc.bufferedAmount < WebRTCProxy.BUFFER_THRESHOLD) {
       const data = peer.sendQueue.shift()!;
       try {
         dc.send(data.buffer);
       } catch {
-        // Re-queue on failure and wait for buffer to drain
-        peer.sendQueue.unshift(data);
+        // Drop on failure instead of infinite re-queue (prevents memory blowup)
+        console.warn(`[WebRTCProxy] Send failed for ${peerId.slice(0, 8)}, dropped ${data.byteLength}B`);
         break;
       }
     }
 
     // If there's more to send, wait for buffer to drain
-    if (peer.sendQueue.length > 0) {
+    if (!peer.sendQueue.isEmpty) {
       dc.bufferedAmountLowThreshold = WebRTCProxy.BUFFER_THRESHOLD / 2;
       dc.onbufferedamountlow = () => {
         dc.onbufferedamountlow = null;
@@ -311,7 +327,7 @@ export class WebRTCProxy {
     if (!peer) return;
 
     // Clear send queue
-    peer.sendQueue = [];
+    peer.sendQueue.clear();
     peer.sending = false;
 
     // Close data channel

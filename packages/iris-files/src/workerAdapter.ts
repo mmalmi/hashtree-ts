@@ -267,7 +267,12 @@ export class WorkerAdapter {
     // Create proxy that forwards events to worker
     this.webrtcProxy = new WebRTCProxy((event) => {
       // Forward all WebRTC events to worker
-      this.worker?.postMessage(event);
+      // Use transferable for data messages to avoid memory copy
+      if (event.type === 'rtc:dataChannelMessage' && event.data?.buffer) {
+        this.worker?.postMessage(event, [event.data.buffer]);
+      } else {
+        this.worker?.postMessage(event);
+      }
     });
 
     console.log('[WorkerAdapter] WebRTC proxy initialized');

@@ -8,6 +8,7 @@ import { getCurrentPathFromUrl } from '../../actions/route';
 import { getTreeRootSync } from '../../stores/treeRoot';
 import { markFilesChanged } from '../../stores/recentlyChanged';
 import { patchWebmDuration } from '../../utils/webmDuration';
+import { BoundedQueue } from '../../utils/boundedQueue';
 
 // Generate default stream filename
 export function getDefaultFilename(): string {
@@ -80,7 +81,12 @@ let mediaStream: MediaStream | null = null;
 let mediaRecorder: MediaRecorder | null = null;
 let recordingInterval: number | null = null;
 let publishInterval: number | null = null;
-let recentChunks: Uint8Array[] = [];
+// Bounded queue for non-persist mode: 30 chunks max, ~4MB max (1Mbps * 30s)
+const recentChunks = new BoundedQueue<Uint8Array>({
+  maxItems: 30,
+  maxBytes: 4 * 1024 * 1024,
+  getBytes: (chunk) => chunk.byteLength,
+});
 
 export function getMediaStream(): MediaStream | null {
   return mediaStream;
@@ -130,7 +136,7 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
   }
 
   // Reset state
-  recentChunks = [];
+  recentChunks.clear();
   const tree = getTree();
   const newStreamWriter = tree.createStream();
   setStreamWriter(newStreamWriter);
@@ -154,13 +160,10 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
         }
       } else {
         recentChunks.push(chunk);
-        if (recentChunks.length > 30) {
-          recentChunks.shift();
-        }
         setStreamStats({
           chunks: recentChunks.length,
           buffered: 0,
-          totalSize: recentChunks.reduce((sum, c) => sum + c.length, 0),
+          totalSize: recentChunks.bytes,
         });
       }
     }
@@ -196,8 +199,8 @@ export async function startRecording(videoEl: HTMLVideoElement | null): Promise<
       // StreamWriter returns { hash, size, key? } - use key for encrypted CID
       fileCid = cid(result.hash, result.key);
       fileSize = result.size;
-    } else if (!currentState.persistStream && recentChunks.length > 0) {
-      const combined = concatChunks(recentChunks);
+    } else if (!currentState.persistStream && !recentChunks.isEmpty) {
+      const combined = concatChunks(recentChunks.toArray());
       // Always encrypt files (CHK encryption for deduplication)
       const result = await tree.putFile(combined);
       fileCid = result.cid;
@@ -262,8 +265,8 @@ export async function stopRecording(): Promise<void> {
     // StreamWriter returns { hash, size, key? } - use key for encrypted CID
     fileCid = cid(result.hash, result.key);
     fileSize = result.size;
-  } else if (!currentState.persistStream && recentChunks.length > 0) {
-    const combined = concatChunks(recentChunks);
+  } else if (!currentState.persistStream && !recentChunks.isEmpty) {
+    const combined = concatChunks(recentChunks.toArray());
     // Always encrypt files (CHK encryption for deduplication)
     const result = await tree.putFile(combined);
     fileCid = result.cid;
@@ -293,7 +296,7 @@ export async function stopRecording(): Promise<void> {
   }
 
   setStreamWriter(null);
-  recentChunks = [];
+  recentChunks.clear();
 
   // Close streaming mode by removing ?stream=1 and ?live=1 from URL
   const hash = window.location.hash;
