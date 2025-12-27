@@ -39,6 +39,7 @@ let tree: HashTree | null = null;
 let store: DexieStore | null = null;
 let blossomStore: BlossomStore | null = null;
 let webrtc: WebRTCController | null = null;
+let webrtcStarted = false;
 let _config: WorkerConfig | null = null;
 
 // Follows set for WebRTC peer classification
@@ -145,7 +146,15 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
 
       // WebRTC pool configuration
       case 'setWebRTCPools':
-        webrtc?.setPoolConfig(msg.pools);
+        if (webrtc) {
+          webrtc.setPoolConfig(msg.pools);
+          // Start WebRTC on first pool config (waits for settings to load)
+          if (!webrtcStarted) {
+            webrtc.start();
+            webrtcStarted = true;
+            console.log('[Worker] WebRTC controller started (after pool config)');
+          }
+        }
         respond({ type: 'void', id: msg.id });
         break;
       case 'sendWebRTCHello':
@@ -311,8 +320,8 @@ async function handleInit(id: string, cfg: WorkerConfig) {
     // Subscribe to WebRTC signaling events (kind 25050)
     setupWebRTCSignalingSubscription(cfg.pubkey);
 
-    webrtc.start();
-    console.log('[Worker] WebRTC controller started');
+    // WebRTC starts when pool config is received (waits for settings to load)
+    console.log('[Worker] WebRTC controller ready (waiting for pool config)');
 
     // Initialize SocialGraph with user's pubkey as root
     socialGraph = new SocialGraph(cfg.pubkey);

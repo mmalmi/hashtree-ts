@@ -71,6 +71,8 @@ export interface PeerInfo {
   pubkey: string;
   state: 'connected' | 'disconnected';
   pool: 'follows' | 'others';
+  bytesSent: number;
+  bytesReceived: number;
 }
 
 // Detailed peer stats for getStats()
@@ -325,6 +327,8 @@ export async function refreshWebRTCStats(): Promise<void> {
       pubkey: p.pubkey,
       state: p.connected ? 'connected' : 'disconnected',
       pool: followsSet.has(p.pubkey) ? 'follows' : 'others',
+      bytesSent: p.bytesSent,
+      bytesReceived: p.bytesReceived,
     }));
     appStore.setPeers(peers);
   } catch {

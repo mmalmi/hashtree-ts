@@ -3,11 +3,9 @@
    * SettingsPage - app settings
    * Port of React SettingsPanel
    */
-  import { onMount } from 'svelte';
   import { nip19 } from 'nostr-tools';
   import { nostrStore, type RelayStatus, getNsec } from '../nostr';
   import { appStore, formatBytes, formatBandwidth, updateStorageStats, refreshWebRTCStats, getLifetimeStats, blockPeer, unblockPeer } from '../store';
-  import { getWorkerAdapter, type PeerStats } from '../workerAdapter';
   import { socialGraphStore, getGraphSize, getFollows } from '../utils/socialGraph';
   import { settingsStore, DEFAULT_NETWORK_SETTINGS, DEFAULT_IMGPROXY_SETTINGS } from '../stores/settings';
   import { blossomLogStore } from '../stores/blossomLog';
@@ -197,21 +195,25 @@
   let appState = $derived($appStore);
   let stats = $derived(appState.stats);
 
-  // WebRTC peer stats from worker
-  let workerPeerStats = $state<PeerStats[]>([]);
-  let peerList = $derived(workerPeerStats.map(p => ({
-    peerId: p.peerId,
-    pubkey: p.pubkey,
-    state: p.connected ? 'connected' : 'disconnected',
-  })));
+  // Use appStore.peers for the list (same source as indicator) - only show connected peers
+  let peerList = $derived(appState.peers
+    .filter(p => p.state === 'connected')
+    .map(p => ({
+      peerId: p.peerId,
+      pubkey: p.pubkey,
+      state: p.state,
+      pool: p.pool,
+      bytesSent: p.bytesSent,
+      bytesReceived: p.bytesReceived,
+    })));
   let myPeerId = $state<string | null>(null);
   let webrtcStats = $derived({
-    bytesSent: workerPeerStats.reduce((sum, p) => sum + p.bytesSent, 0),
-    bytesReceived: workerPeerStats.reduce((sum, p) => sum + p.bytesReceived, 0),
+    bytesSent: peerList.reduce((sum, p) => sum + p.bytesSent, 0),
+    bytesReceived: peerList.reduce((sum, p) => sum + p.bytesReceived, 0),
     bytesForwarded: 0,
   });
   let perPeerStats = $derived(new Map(
-    workerPeerStats.map(p => [p.peerId, { bytesSent: p.bytesSent, bytesReceived: p.bytesReceived, bytesForwarded: 0 }])
+    peerList.map(p => [p.peerId, { bytesSent: p.bytesSent, bytesReceived: p.bytesReceived, bytesForwarded: 0 }])
   ));
   let uploadBandwidth = $state(0);
   let downloadBandwidth = $state(0);
@@ -226,29 +228,15 @@
     return getLifetimeStats();
   });
 
-  // Refresh peer stats from worker
-  async function refreshWorkerPeerStats() {
-    const adapter = getWorkerAdapter();
-    if (adapter) {
-      try {
-        workerPeerStats = await adapter.getPeerStats();
-      } catch {
-        // Worker not ready yet
-      }
-    }
-  }
-
   // Load initial data on mount and refresh stats periodically
-  onMount(() => {
+  $effect(() => {
     updateStorageStats();
     refreshSyncedStorage();
     refreshWebRTCStats();
-    refreshWorkerPeerStats();
 
     // Refresh WebRTC stats every second while on settings page
     const statsInterval = setInterval(() => {
       refreshWebRTCStats();
-      refreshWorkerPeerStats();
     }, 1000);
     return () => clearInterval(statsInterval);
   });
