@@ -111,13 +111,12 @@
 
     const processTree = async (t: typeof treesToCheck[0]): Promise<void> => {
       try {
-        // Get root CID - either from Nostr or local cache
+        // Get root CID - use hash and encryptionKey from tree entry, or fall back to local cache
         let rootCid: CID | null = null;
 
-        if (t.hashHex) {
-          const hashBytes = new Uint8Array(t.hashHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
-          const keyBytes = t.linkKey ? new Uint8Array(t.linkKey.match(/.{2}/g)!.map(b => parseInt(b, 16))) : undefined;
-          rootCid = { hash: hashBytes, key: keyBytes };
+        if (t.hash) {
+          // Use the encryption key from the tree entry (already a Uint8Array)
+          rootCid = { hash: t.hash, key: t.encryptionKey };
         } else {
           // Fallback to local cache
           const localHash = getLocalRootCache(npub!, t.name);
