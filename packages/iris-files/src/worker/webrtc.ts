@@ -98,10 +98,10 @@ export class WebRTCController {
   private requestTimeout: number;
   private debug: boolean;
 
-  // Pool configuration - defaults to 0 for others (safe default, production sets via settings)
+  // Pool configuration - reasonable defaults, settings sync will override
   private poolConfig = {
-    follows: { maxConnections: 10, satisfiedConnections: 3 },
-    other: { maxConnections: 0, satisfiedConnections: 0 },
+    follows: { maxConnections: 20, satisfiedConnections: 10 },
+    other: { maxConnections: 16, satisfiedConnections: 8 },
   };
 
   // Hello interval
