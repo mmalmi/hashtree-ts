@@ -18,8 +18,8 @@
   import { updateLocalRootCacheHex } from '../../treeRootCache';
   import { addRecent, updateVideoPosition, getVideoPosition, clearVideoPosition, updateRecentLabel } from '../../stores/recents';
   import { Avatar, Name } from '../User';
-  import { Truncate } from '../ui';
   import VisibilityIcon from '../VisibilityIcon.svelte';
+  import VideoDescription from './VideoDescription.svelte';
   import VideoComments from './VideoComments.svelte';
   import PlaylistSidebar from './PlaylistSidebar.svelte';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
@@ -94,15 +94,55 @@
   // Full video path for position tracking (includes npub)
   let videoFullPath = $derived(npub && treeName ? `/${npub}/${treeName}` : null);
 
-  // Restore position when video loads
+  // Parse ?t= param from URL hash for timestamp seeking
+  function getTimestampFromUrl(): number | null {
+    const hash = window.location.hash;
+    const qIdx = hash.indexOf('?');
+    if (qIdx === -1) return null;
+    const params = new URLSearchParams(hash.slice(qIdx + 1));
+    const t = params.get('t');
+    if (t) {
+      const seconds = parseInt(t, 10);
+      if (!isNaN(seconds) && seconds >= 0) return seconds;
+    }
+    return null;
+  }
+
+  // Restore position when video loads - prioritize URL ?t= param over saved position
   function handleLoadedMetadata() {
     if (!videoRef || !videoFullPath) return;
+
+    // Check for ?t= param first (direct link to timestamp)
+    const urlTimestamp = getTimestampFromUrl();
+    if (urlTimestamp !== null && videoRef.duration > urlTimestamp) {
+      videoRef.currentTime = urlTimestamp;
+      console.log('[VideoView] Seeking to URL timestamp:', urlTimestamp);
+      return;
+    }
+
+    // Fall back to saved position
     const savedPosition = getVideoPosition(videoFullPath);
     if (savedPosition > 0 && videoRef.duration > savedPosition) {
       videoRef.currentTime = savedPosition;
       console.log('[VideoView] Restored position:', savedPosition);
     }
   }
+
+  // Listen for URL changes (timestamp clicks update URL)
+  $effect(() => {
+    if (!videoRef) return;
+
+    function handleHashChange() {
+      const urlTimestamp = getTimestampFromUrl();
+      if (urlTimestamp !== null && videoRef && videoRef.duration > urlTimestamp) {
+        videoRef.currentTime = urlTimestamp;
+        console.log('[VideoView] Seeking to timestamp:', urlTimestamp);
+      }
+    }
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  });
 
   // Save position on timeupdate
   function handleTimeUpdate() {
@@ -893,10 +933,10 @@
           {/if}
         </div>
 
-        <!-- Description -->
+        <!-- Description with clickable timestamps -->
         {#if videoDescription}
           <div class="bg-surface-1 rounded-lg p-4 text-text-2 text-sm">
-            <Truncate text={videoDescription} maxLines={4} maxChars={400} />
+            <VideoDescription text={videoDescription} maxLines={4} maxChars={400} />
           </div>
         {/if}
       {/if}
