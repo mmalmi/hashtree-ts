@@ -61,6 +61,9 @@ interface WorkerPeer {
   stats: PeerStats;
   createdAt: number;
   connectedAt?: number;
+  // Backpressure state
+  bufferPaused: boolean;
+  deferredRequests: DataRequest[];
 }
 
 interface PeerStats {
@@ -354,6 +357,8 @@ export class WebRTCController {
         bytesReceived: 0,
       },
       createdAt: Date.now(),
+      bufferPaused: false,
+      deferredRequests: [],
     };
 
     this.peers.set(peerId, peer);
@@ -435,6 +440,14 @@ export class WebRTCController {
 
       case 'rtc:dataChannelError':
         this.onDataChannelError(event.peerId, event.error);
+        break;
+
+      case 'rtc:bufferHigh':
+        this.onBufferHigh(event.peerId);
+        break;
+
+      case 'rtc:bufferLow':
+        this.onBufferLow(event.peerId);
         break;
     }
   }
@@ -553,6 +566,32 @@ export class WebRTCController {
     this.log(`Data channel error for ${peerId}: ${error}`);
   }
 
+  private onBufferHigh(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    peer.bufferPaused = true;
+    this.log(`Buffer high for ${peerId.slice(0, 20)}, pausing responses`);
+  }
+
+  private onBufferLow(peerId: string): void {
+    const peer = this.peers.get(peerId);
+    if (!peer) return;
+
+    peer.bufferPaused = false;
+    this.log(`Buffer low for ${peerId.slice(0, 20)}, resuming responses`);
+
+    // Process deferred requests
+    this.processDeferredRequests(peer);
+  }
+
+  private async processDeferredRequests(peer: WorkerPeer): Promise<void> {
+    while (!peer.bufferPaused && peer.deferredRequests.length > 0) {
+      const req = peer.deferredRequests.shift()!;
+      await this.processRequest(peer, req);
+    }
+  }
+
   // ============================================================================
   // Data Protocol
   // ============================================================================
@@ -576,6 +615,20 @@ export class WebRTCController {
 
   private async handleRequest(peer: WorkerPeer, req: DataRequest): Promise<void> {
     peer.stats.requestsReceived++;
+
+    // If buffer is full, defer the request for later processing
+    if (peer.bufferPaused) {
+      // Limit deferred requests to prevent memory issues
+      if (peer.deferredRequests.length < 100) {
+        peer.deferredRequests.push(req);
+      }
+      return;
+    }
+
+    await this.processRequest(peer, req);
+  }
+
+  private async processRequest(peer: WorkerPeer, req: DataRequest): Promise<void> {
     const hashKey = hashToKey(req.h);
 
     // Try to get from local store

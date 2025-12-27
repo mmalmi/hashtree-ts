@@ -268,7 +268,11 @@ export type WebRTCEvent =
   | { type: 'rtc:dataChannelOpen'; peerId: string }
   | { type: 'rtc:dataChannelMessage'; peerId: string; data: Uint8Array }
   | { type: 'rtc:dataChannelClose'; peerId: string }
-  | { type: 'rtc:dataChannelError'; peerId: string; error: string };
+  | { type: 'rtc:dataChannelError'; peerId: string; error: string }
+
+  // Backpressure signals (main thread buffer state)
+  | { type: 'rtc:bufferHigh'; peerId: string }
+  | { type: 'rtc:bufferLow'; peerId: string };
 
 // ============================================================================
 // Helper functions

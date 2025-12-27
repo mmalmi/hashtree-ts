@@ -23,6 +23,7 @@ interface PeerConnection {
   pendingCandidates: RTCIceCandidateInit[];
   sendQueue: BoundedQueue<Uint8Array>;
   sending: boolean;
+  bufferHighSignaled: boolean;  // Track if we've signaled high buffer to worker
 }
 
 type EventCallback = (event: WebRTCEvent) => void;
@@ -97,6 +98,7 @@ export class WebRTCProxy {
       pendingCandidates: [],
       sendQueue: this.createSendQueue(peerId),
       sending: false,
+      bufferHighSignaled: false,
     };
 
     // Create data channel (offerer creates, answerer receives via ondatachannel)
@@ -265,6 +267,18 @@ export class WebRTCProxy {
 
   // 256KB threshold - pause sending when buffer exceeds this
   private static readonly BUFFER_THRESHOLD = 256 * 1024;
+  // 4MB threshold for sendQueue - signal worker to pause when exceeded
+  private static readonly QUEUE_HIGH_THRESHOLD = 4 * 1024 * 1024;
+  // 1MB threshold for sendQueue - signal worker to resume when below
+  private static readonly QUEUE_LOW_THRESHOLD = 1 * 1024 * 1024;
+
+  private getQueueSize(peer: PeerConnection): number {
+    let size = 0;
+    for (const data of peer.sendQueue) {
+      size += data.length;
+    }
+    return size;
+  }
 
   private sendData(peerId: string, data: Uint8Array): void {
     const peer = this.peers.get(peerId);
@@ -274,6 +288,13 @@ export class WebRTCProxy {
 
     // BoundedQueue handles overflow automatically (drops oldest, logs via onDrop)
     peer.sendQueue.push(data);
+
+    // Check if queue is getting too large - signal worker to slow down
+    const queueSize = this.getQueueSize(peer);
+    if (!peer.bufferHighSignaled && queueSize > WebRTCProxy.QUEUE_HIGH_THRESHOLD) {
+      peer.bufferHighSignaled = true;
+      this.onEvent({ type: 'rtc:bufferHigh', peerId });
+    }
 
     // Start draining if not already
     if (!peer.sending) {
@@ -299,6 +320,15 @@ export class WebRTCProxy {
         // Drop on failure instead of infinite re-queue (prevents memory blowup)
         console.warn(`[WebRTCProxy] Send failed for ${peerId.slice(0, 8)}, dropped ${data.byteLength}B`);
         break;
+      }
+    }
+
+    // Check if queue has drained enough to signal worker to resume
+    if (peer.bufferHighSignaled) {
+      const queueSize = this.getQueueSize(peer);
+      if (queueSize < WebRTCProxy.QUEUE_LOW_THRESHOLD) {
+        peer.bufferHighSignaled = false;
+        this.onEvent({ type: 'rtc:bufferLow', peerId });
       }
     }
 
