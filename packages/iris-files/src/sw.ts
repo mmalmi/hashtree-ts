@@ -152,9 +152,13 @@ async function serveFile(request: FileRequest): Promise<Response> {
   // Non-streaming response
   if (data.body !== 'STREAM') {
     cleanup();
+    // Add cross-origin headers for embedding in iframes (required when main page has COEP)
+    const headers = new Headers(data.headers);
+    headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+    headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
     return new Response(data.body, {
       status: data.status,
-      headers: data.headers,
+      headers,
     });
   }
 
@@ -195,9 +199,13 @@ async function serveFile(request: FileRequest): Promise<Response> {
     },
   });
 
+  // Add cross-origin headers for embedding in iframes (required when main page has COEP)
+  const headers = new Headers(data.headers);
+  headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+  headers.set('Cross-Origin-Embedder-Policy', 'credentialless');
   return new Response(stream, {
     status: data.status,
-    headers: data.headers,
+    headers,
   });
 }
 
