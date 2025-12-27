@@ -12,7 +12,7 @@
   import { getTree } from '../../store';
   import { hasVideoFile, findThumbnailEntry } from '../../utils/playlistDetection';
   import { SortedMap } from '../../utils/SortedMap';
-  import type { CID } from 'hashtree';
+  import { fromHex, type CID } from 'hashtree';
 
   // Default pubkey to use for fallback content (sirius)
   const DEFAULT_CONTENT_PUBKEY = '4523be58d395b1b196a9b8c82b038b6895cb02b683d0c253a955068dba1facd0';
@@ -95,14 +95,12 @@
 
     // Filter to videos that need detection
     const needsDetection = videos.filter(video =>
-      feedPlaylistInfo[video.key] === undefined && video.hashHex && video.ownerNpub
+      feedPlaylistInfo[video.key] === undefined && video.rootCid && video.ownerNpub
     );
 
     const detectOne = async (video: VideoItem) => {
       try {
-        const hashBytes = new Uint8Array(video.hashHex!.match(/.{2}/g)!.map(b => parseInt(b, 16)));
-        const keyBytes = video.keyHex ? new Uint8Array(video.keyHex.match(/.{2}/g)!.map(b => parseInt(b, 16))) : undefined;
-        const rootCid: CID = { hash: hashBytes, key: keyBytes };
+        const rootCid = video.rootCid!;
 
         const entries = await withTimeout(tree.listDirectory(rootCid), 5000);
         if (!entries || entries.length === 0) {
@@ -342,8 +340,7 @@
         ownerPubkey,
         ownerNpub,
         treeName: dTag,
-        hashHex: hashTag, // Store for playlist detection
-        keyHex: keyTag, // Store encryption key for playlist detection
+        rootCid: { hash: fromHex(hashTag), key: keyTag ? fromHex(keyTag) : undefined },
         visibility,
         href: `#/${ownerNpub}/${encodeTreeNameForUrl(dTag)}`,
         timestamp: event.created_at || 0,

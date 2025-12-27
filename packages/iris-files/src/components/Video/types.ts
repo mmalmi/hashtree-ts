@@ -25,10 +25,8 @@ export interface VideoItem {
   treeName: string;
   /** For playlist videos: the video folder name within the playlist tree */
   videoId?: string;
-  /** Root hash (hex) for playlist detection */
-  hashHex?: string;
-  /** Encryption key (hex) for playlist detection */
-  keyHex?: string;
+  /** Root CID for playlist detection */
+  rootCid?: import('hashtree').CID;
   visibility?: string;
   href: string;
   timestamp?: number;
