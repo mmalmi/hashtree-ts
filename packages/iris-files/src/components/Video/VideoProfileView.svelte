@@ -5,7 +5,7 @@
    */
   import { nip19 } from 'nostr-tools';
   import { nostrStore } from '../../nostr';
-  import { createTreesStore, createProfileStore } from '../../stores';
+  import { createTreesStore, createProfileStore, type TreeEntry } from '../../stores';
   import { followPubkey, unfollowPubkey, getFollowsSync, createFollowsStore } from '../../stores/follows';
   import { open as openShareModal } from '../Modals/ShareModal.svelte';
   import { Avatar, Name } from '../User';
@@ -18,7 +18,6 @@
   import { getTree } from '../../store';
   import { getLocalRootCache, getLocalRootKey } from '../../treeRootCache';
   import { hasVideoFile, findThumbnailEntry, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
-    import type { CID } from 'hashtree';
 
   interface PlaylistInfo {
     key: string;
@@ -73,7 +72,7 @@
 
   // User's trees
   let treesStore = $derived(createTreesStore(npub));
-  let trees = $state<Array<{ name: string; visibility?: string; hashHex?: string; linkKey?: string }>>([]);
+  let trees = $state<TreeEntry[]>([]);
 
   $effect(() => {
     const store = treesStore;
@@ -109,22 +108,14 @@
     const tree = getTree();
     const newPlaylistInfo: Record<string, { videoCount: number; thumbnailUrl?: string }> = {};
 
-    // Process trees concurrently with limited parallelism
-    const CONCURRENCY = 4;
-    let idx = 0;
-    let inFlight = 0;
-    let pending: Promise<void>[] = [];
-
     const processTree = async (t: typeof treesToCheck[0]): Promise<void> => {
       try {
         // Get root CID - use hash and encryptionKey from tree entry, or fall back to local cache
         let rootCid: CID | null = null;
 
         if (t.hash) {
-          // Use the encryption key from the tree entry (already a Uint8Array)
           rootCid = { hash: t.hash, key: t.encryptionKey };
         } else {
-          // Fallback to local cache
           const localHash = getLocalRootCache(npub!, t.name);
           if (localHash) {
             const localKey = getLocalRootKey(npub!, t.name);
@@ -134,15 +125,18 @@
 
         if (!rootCid) return;
 
-        // Detect from tree
         const entries = await tree.listDirectory(rootCid);
         if (!entries || entries.length === 0) return;
 
-        // Check subdirectories in parallel (with limit)
         let videoCount = 0;
         let firstThumbnailUrl: string | undefined;
 
-        const checkEntry = async (entry: typeof entries[0]): Promise<void> => {
+        // Process entries sequentially to avoid spawning too many requests
+        for (const entry of entries) {
+          if (videoCount >= MIN_VIDEOS_FOR_STRUCTURE && firstThumbnailUrl) {
+            // Already have enough info, stop early
+            break;
+          }
           try {
             const subEntries = await tree.listDirectory(entry.cid);
             if (subEntries && hasVideoFile(subEntries)) {
@@ -155,12 +149,9 @@
               }
             }
           } catch {
-            // Not a directory
+            // Not a directory or error - skip
           }
-        };
-
-        // Run entry checks in parallel
-        await Promise.all(entries.map(checkEntry));
+        }
 
         if (videoCount >= MIN_VIDEOS_FOR_STRUCTURE) {
           newPlaylistInfo[t.name] = { videoCount, thumbnailUrl: firstThumbnailUrl };
@@ -170,21 +161,10 @@
       }
     };
 
-    // Process with limited concurrency
-    while (idx < treesToCheck.length) {
-      while (inFlight < CONCURRENCY && idx < treesToCheck.length) {
-        const t = treesToCheck[idx++];
-        inFlight++;
-        pending.push(processTree(t).finally(() => { inFlight--; }));
-      }
-      // Wait for at least one to complete before continuing
-      if (pending.length >= CONCURRENCY) {
-        await Promise.race(pending);
-        pending = pending.filter(p => p !== undefined); // Clean up settled
-      }
+    // Process trees sequentially to avoid overwhelming the system
+    for (const t of treesToCheck) {
+      await processTree(t);
     }
-    // Wait for remaining
-    await Promise.all(pending);
 
     playlistInfo = newPlaylistInfo;
   }
