@@ -12,7 +12,7 @@
   import { getTree } from '../../store';
   import { hasVideoFile, findThumbnailEntry } from '../../utils/playlistDetection';
   import { SortedMap } from '../../utils/SortedMap';
-  import { fromHex, type CID } from 'hashtree';
+  import { fromHex } from 'hashtree';
 
   // Default pubkey to use for fallback content (sirius)
   const DEFAULT_CONTENT_PUBKEY = '4523be58d395b1b196a9b8c82b038b6895cb02b683d0c253a955068dba1facd0';
@@ -354,6 +354,7 @@
     });
 
     return () => {
+      if (updateTimer) clearTimeout(updateTimer);
       sub.stop();
     };
   });
@@ -498,6 +499,7 @@
     });
 
     return () => {
+      if (updateTimer) clearTimeout(updateTimer);
       likesSub.stop();
       commentsSub.stop();
     };

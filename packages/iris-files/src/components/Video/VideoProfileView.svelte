@@ -14,7 +14,6 @@
   import ProxyImg from '../ProxyImg.svelte';
   import type { VideoItem } from './types';
   import { getFollowers, socialGraphStore } from '../../utils/socialGraph';
-  import { UserZaps } from '../Zaps';
   import { getTree } from '../../store';
   import { getLocalRootCache, getLocalRootKey } from '../../treeRootCache';
   import { hasVideoFile, findThumbnailEntry, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
@@ -357,13 +356,6 @@
         {/if}
       </div>
     </div>
-
-    <!-- Zaps received -->
-    {#if ownerPubkey}
-      <div class="mb-6">
-        <UserZaps pubkey={ownerPubkey} collapsible={true} maxItems={20} />
-      </div>
-    {/if}
 
     <!-- Playlists section -->
     {#if playlists.length > 0}

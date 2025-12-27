@@ -5,8 +5,16 @@ import NDK, { NDKEvent, NDKPrivateKeySigner, NDKNip07Signer, type NostrEvent } f
 import NDKCacheAdapterDexie from '@nostr-dev-kit/ndk-cache-dexie';
 import { DEFAULT_NETWORK_SETTINGS } from '../stores/settings';
 
-// NDK instance with Dexie cache
-const cacheAdapter = new NDKCacheAdapterDexie({ dbName: 'hashtree-ndk-cache' });
+// NDK instance with Dexie cache (with size limits to prevent memory bloat)
+const cacheAdapter = new NDKCacheAdapterDexie({
+  dbName: 'hashtree-ndk-cache',
+  // Limit in-memory cache sizes to prevent memory bloat
+  profileCacheSize: 500,
+  eventCacheSize: 2000,
+  eventTagsCacheSize: 5000,
+  nip05CacheSize: 200,
+  zapperCacheSize: 200,
+});
 
 // Block ws:// relays when on HTTPS page (browser blocks mixed content anyway)
 const isSecurePage = typeof window !== 'undefined' && window.location.protocol === 'https:';

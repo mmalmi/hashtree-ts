@@ -18,6 +18,10 @@ const log = (...args: unknown[]) => DEBUG && console.log('[socialGraph]', ...arg
 // Sync Caches (for immediate UI access)
 // ============================================================================
 
+// Cache size limits to prevent memory bloat
+const CACHE_MAX_SIZE = 1000;
+const FOLLOWING_CACHE_MAX_SIZE = 5000; // Larger since it's checked frequently
+
 const followDistanceCache = new Map<string, number>();
 const isFollowingCache = new Map<string, boolean>();
 const followsCache = new Map<string, Set<string>>();
@@ -28,6 +32,13 @@ function clearCaches() {
   isFollowingCache.clear();
   followsCache.clear();
   followersCache.clear();
+}
+
+// Clear cache if it exceeds max size (simple eviction strategy)
+function limitCacheSize<K, V>(cache: Map<K, V>, maxSize: number): void {
+  if (cache.size > maxSize) {
+    cache.clear();
+  }
 }
 
 // ============================================================================
@@ -97,6 +108,7 @@ export function getFollowDistance(pubkey: string | null | undefined): number {
   if (adapter) {
     adapter.getFollowDistance(pubkey)
       .then(d => {
+        limitCacheSize(followDistanceCache, CACHE_MAX_SIZE);
         followDistanceCache.set(pubkey, d);
         socialGraphStore.incrementVersion();
       })
@@ -123,6 +135,7 @@ export function isFollowing(
   if (adapter) {
     adapter.isFollowing(follower, followedUser)
       .then(r => {
+        limitCacheSize(isFollowingCache, FOLLOWING_CACHE_MAX_SIZE);
         isFollowingCache.set(key, r);
         socialGraphStore.incrementVersion();
       })
@@ -145,6 +158,7 @@ export function getFollows(pubkey: string | null | undefined): Set<string> {
   if (adapter) {
     adapter.getFollows(pubkey)
       .then(arr => {
+        limitCacheSize(followsCache, CACHE_MAX_SIZE);
         followsCache.set(pubkey, new Set(arr));
         socialGraphStore.incrementVersion();
       })
@@ -167,6 +181,7 @@ export function getFollowers(pubkey: string | null | undefined): Set<string> {
   if (adapter) {
     adapter.getFollowers(pubkey)
       .then(arr => {
+        limitCacheSize(followersCache, CACHE_MAX_SIZE);
         followersCache.set(pubkey, new Set(arr));
         socialGraphStore.incrementVersion();
       })
@@ -188,6 +203,7 @@ export function getFollowedByFriends(pubkey: string | null | undefined): Set<str
   if (adapter) {
     adapter.getFollowedByFriends(pubkey)
       .then(arr => {
+        limitCacheSize(followersCache, CACHE_MAX_SIZE);
         followersCache.set(pubkey, new Set(arr));
         socialGraphStore.incrementVersion();
       })
