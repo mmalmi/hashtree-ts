@@ -49,7 +49,8 @@ export class WorkerAdapter {
   private pendingRequests = new Map<string, PendingRequest>();
 
   // Nostr subscription callbacks
-  private subscriptions = new Map<string, { callback: SubscriptionCallback; eose?: EoseCallback }>();
+  private subscriptions = new Map<string, { callback?: SubscriptionCallback; eose?: EoseCallback }>();
+  private globalEventCallback: ((event: SignedEvent) => void) | null = null;
 
   // Stream callbacks (for readFileStream)
   private streamCallbacks = new Map<string, (chunk: Uint8Array, done: boolean) => void>();
@@ -349,8 +350,13 @@ export class WorkerAdapter {
   // ============================================================================
 
   private handleNostrEvent(subId: string, event: SignedEvent) {
+    // Call global event callback (for subManager.dispatchEvent pattern)
+    if (this.globalEventCallback) {
+      this.globalEventCallback(event);
+    }
+    // Also call per-subscription callback if set
     const sub = this.subscriptions.get(subId);
-    if (sub) {
+    if (sub?.callback) {
       sub.callback(event);
     }
   }
@@ -577,9 +583,21 @@ export class WorkerAdapter {
   // Public API - Nostr
   // ============================================================================
 
+  /**
+   * Set global event callback - called for ALL events from ALL subscriptions.
+   * Used with ndk.subManager.dispatchEvent pattern.
+   */
+  onEvent(callback: (event: SignedEvent) => void): void {
+    this.globalEventCallback = callback;
+  }
+
+  /**
+   * Subscribe to events matching filters.
+   * If using global onEvent callback, no per-subscription callback needed.
+   */
   subscribe(
     filters: NostrFilter[],
-    callback: SubscriptionCallback,
+    callback?: SubscriptionCallback,
     eose?: EoseCallback
   ): string {
     const subId = generateRequestId();

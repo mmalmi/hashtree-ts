@@ -136,9 +136,15 @@ export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<
     initialized = true;
     console.log('[WorkerInit] Hashtree worker ready');
 
-    // Register worker as transport plugin for NDK publishes
+    // Register worker as transport plugin for NDK publishes and subscriptions
     const adapter = getWorkerAdapter();
     if (adapter) {
+      // Set up event dispatch from worker to NDK subscriptions
+      adapter.onEvent((event) => {
+        // Dispatch to all matching subscriptions via subManager
+        ndk.subManager.dispatchEvent(event as any, undefined, false);
+      });
+
       ndk.transportPlugins.push({
         name: 'worker',
         onPublish: async (event) => {
@@ -151,6 +157,14 @@ export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<
             tags: event.tags,
             created_at: event.created_at!,
             sig: event.sig!,
+          });
+        },
+        onSubscribe: (subscription, filters) => {
+          // Route subscription through worker (which has relay connections)
+          const subId = adapter.subscribe(filters as any);
+          // Clean up when subscription closes
+          subscription.on('close', () => {
+            adapter.unsubscribe(subId);
           });
         },
       });

@@ -377,11 +377,12 @@ export class NDK extends EventEmitter<{
 
     /**
      * Transport plugins for alternative event distribution (worker, WebRTC, etc).
-     * Plugins with onPublish hooks intercept event.publish() calls.
+     * Plugins with onPublish/onSubscribe hooks intercept calls.
      */
     public transportPlugins: Array<{
         name?: string;
         onPublish?: (event: NDKEvent) => void | Promise<void>;
+        onSubscribe?: (subscription: NDKSubscription, filters: NDKFilter[]) => void;
     }> = [];
 
     /**
@@ -901,8 +902,20 @@ export class NDK extends EventEmitter<{
         const subscription = new NDKSubscription(this, filters, finalOpts);
         this.subManager.add(subscription);
 
+        // Notify transport plugins (e.g., worker transport)
+        const filterArray = Array.isArray(filters) ? filters : [filters];
+        for (const plugin of this.transportPlugins) {
+            if (plugin.onSubscribe) {
+                try {
+                    plugin.onSubscribe(subscription, filterArray);
+                } catch (error) {
+                    console.error("[NDK] Transport plugin onSubscribe error:", error);
+                }
+            }
+        }
+
         // Track subscription creation for guardrails
-        this.aiGuardrails?.subscription?.created(Array.isArray(filters) ? filters : [filters], finalOpts);
+        this.aiGuardrails?.subscription?.created(filterArray, finalOpts);
 
         const pool = subscription.pool; // Use the pool determined by the subscription options
 

@@ -47,7 +47,7 @@ function notifyListeners(pubkey: string, profile: Profile) {
   }
 }
 
-async function fetchProfile(pubkey: string): Promise<void> {
+function fetchProfile(pubkey: string): void {
   // Skip if fetch already in progress
   if (pendingFetches.has(pubkey)) {
     return;
@@ -55,27 +55,29 @@ async function fetchProfile(pubkey: string): Promise<void> {
 
   pendingFetches.add(pubkey);
 
-  try {
-    const events = await ndk.fetchEvents({ kinds: [0], authors: [pubkey], limit: 1 });
+  let bestEvent: { created_at: number; content: string; pubkey: string } | null = null;
 
-    if (events.size > 0) {
-      // Get the most recent profile
-      const eventsArray = Array.from(events);
-      const event = eventsArray.sort((a, b) => (b.created_at || 0) - (a.created_at || 0))[0];
-      try {
-        const profile = JSON.parse(event.content) as Profile;
-        profile.pubkey = event.pubkey;
-        profileCache.set(pubkey, profile);
-        notifyListeners(pubkey, profile);
-      } catch (e) {
-        console.error('[profile] JSON parse error', e);
-      }
+  const sub = ndk.subscribe({ kinds: [0], authors: [pubkey], limit: 1 }, { closeOnEose: true });
+
+  sub.on('event', (event) => {
+    // Keep most recent
+    if (!bestEvent || (event.created_at || 0) > bestEvent.created_at) {
+      bestEvent = { created_at: event.created_at || 0, content: event.content, pubkey: event.pubkey };
     }
-  } catch (e) {
-    console.error('[profile] fetch error', e);
-  } finally {
+    // Update immediately with each event
+    try {
+      const profile = JSON.parse(event.content) as Profile;
+      profile.pubkey = event.pubkey;
+      profileCache.set(pubkey, profile);
+      notifyListeners(pubkey, profile);
+    } catch (e) {
+      console.error('[profile] JSON parse error', e);
+    }
+  });
+
+  sub.on('eose', () => {
     pendingFetches.delete(pubkey);
-  }
+  });
 }
 
 /**
