@@ -10,7 +10,6 @@
   import { recentsStore, clearRecentsByPrefix, type RecentItem } from '../../stores/recents';
   import { createFollowsStore } from '../../stores';
   import { getTree } from '../../store';
-  import { getPlaylistCache, setPlaylistCache } from '../../stores/playlistCache';
   import { hasVideoFile, findThumbnailEntry, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
   import { SortedMap } from '../../utils/SortedMap';
   import type { CID } from 'hashtree';
@@ -89,25 +88,9 @@
     let changed = false;
 
     // Filter to videos that need detection
-    const toDetect = videos.filter(video =>
+    const needsAsyncDetection = videos.filter(video =>
       newPlaylistInfo[video.key] === undefined && video.hashHex && video.ownerNpub
     );
-
-    // Check cache first (sync)
-    for (const video of toDetect) {
-      const cached = getPlaylistCache(video.ownerNpub!, video.treeName, video.hashHex!);
-      if (cached) {
-        if (cached.isPlaylist) {
-          newPlaylistInfo[video.key] = { videoCount: cached.videoCount, thumbnailUrl: cached.thumbnailUrl };
-        } else {
-          newPlaylistInfo[video.key] = { videoCount: 0 };
-        }
-        changed = true;
-      }
-    }
-
-    // Get videos that still need async detection
-    const needsAsyncDetection = toDetect.filter(v => newPlaylistInfo[v.key] === undefined);
 
     // Process with limited concurrency
     const CONCURRENCY = 4;
@@ -119,7 +102,6 @@
 
         const entries = await tree.listDirectory(rootCid);
         if (!entries || entries.length === 0) {
-          setPlaylistCache(video.ownerNpub!, video.treeName, video.hashHex!, false, 0);
           newPlaylistInfo[video.key] = { videoCount: 0 };
           changed = true;
           return;
@@ -147,10 +129,6 @@
         };
 
         await Promise.all(entries.map(checkEntry));
-
-        // Cache and store the result
-        const isPlaylist = videoCount >= MIN_VIDEOS_FOR_STRUCTURE;
-        setPlaylistCache(video.ownerNpub!, video.treeName, video.hashHex!, isPlaylist, videoCount, firstThumbnailUrl);
 
         newPlaylistInfo[video.key] = { videoCount, thumbnailUrl: firstThumbnailUrl };
         changed = true;

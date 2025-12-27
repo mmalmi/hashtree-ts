@@ -17,7 +17,6 @@
   import { UserZaps } from '../Zaps';
   import { getTree } from '../../store';
   import { getLocalRootCache, getLocalRootKey } from '../../treeRootCache';
-  import { getPlaylistCache, setPlaylistCache } from '../../stores/playlistCache';
   import { hasVideoFile, findThumbnailEntry, MIN_VIDEOS_FOR_STRUCTURE } from '../../utils/playlistDetection';
     import type { CID } from 'hashtree';
 
@@ -112,12 +111,11 @@
 
     const processTree = async (t: typeof treesToCheck[0]): Promise<void> => {
       try {
-        // Get hash - either from Nostr or local cache
-        let hashHex: string | null = t.hashHex || null;
+        // Get root CID - either from Nostr or local cache
         let rootCid: CID | null = null;
 
-        if (hashHex) {
-          const hashBytes = new Uint8Array(hashHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+        if (t.hashHex) {
+          const hashBytes = new Uint8Array(t.hashHex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
           const keyBytes = t.linkKey ? new Uint8Array(t.linkKey.match(/.{2}/g)!.map(b => parseInt(b, 16))) : undefined;
           rootCid = { hash: hashBytes, key: keyBytes };
         } else {
@@ -126,28 +124,14 @@
           if (localHash) {
             const localKey = getLocalRootKey(npub!, t.name);
             rootCid = { hash: localHash, key: localKey };
-            // Convert to hex for cache lookup
-            hashHex = Array.from(localHash).map(b => b.toString(16).padStart(2, '0')).join('');
           }
         }
 
-        if (!rootCid || !hashHex) return;
+        if (!rootCid) return;
 
-        // Check persistent cache first
-        const cached = getPlaylistCache(npub!, t.name, hashHex);
-        if (cached) {
-          if (cached.isPlaylist) {
-            newPlaylistInfo[t.name] = { videoCount: cached.videoCount, thumbnailUrl: cached.thumbnailUrl };
-          }
-          return;
-        }
-
-        // Not cached - detect from tree
+        // Detect from tree
         const entries = await tree.listDirectory(rootCid);
-        if (!entries || entries.length === 0) {
-          setPlaylistCache(npub!, t.name, hashHex, false, 0);
-          return;
-        }
+        if (!entries || entries.length === 0) return;
 
         // Check subdirectories in parallel (with limit)
         let videoCount = 0;
@@ -173,11 +157,7 @@
         // Run entry checks in parallel
         await Promise.all(entries.map(checkEntry));
 
-        // Cache the result
-        const isPlaylist = videoCount >= MIN_VIDEOS_FOR_STRUCTURE;
-        setPlaylistCache(npub!, t.name, hashHex, isPlaylist, videoCount, firstThumbnailUrl);
-
-        if (isPlaylist) {
+        if (videoCount >= MIN_VIDEOS_FOR_STRUCTURE) {
           newPlaylistInfo[t.name] = { videoCount, thumbnailUrl: firstThumbnailUrl };
         }
       } catch {
