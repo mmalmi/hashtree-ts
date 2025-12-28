@@ -97,7 +97,7 @@ export async function initNdk(
   } = {}
 ): Promise<void> {
   // Create cache adapter
-  const cacheAdapter = new NDKCacheAdapterDexie({ dbName: 'hashtree-ndk-worker' });
+  const cacheAdapter = new NDKCacheAdapterDexie({ dbName: 'hashtree-ndk-worker', eventCacheSize: 5000 });
 
   // Create NDK instance
   ndk = new NDK({
