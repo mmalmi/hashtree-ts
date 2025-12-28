@@ -12,6 +12,7 @@ import { get } from 'svelte/store';
 import { createFollowsStore, getFollowsSync } from '../stores/follows';
 import { setupVersionCallback } from '../utils/socialGraph';
 import { ndk } from '../nostr/ndk';
+import { initRelayTracking } from '../nostr/relays';
 // Import worker using Vite's ?worker query - returns a Worker constructor
 import HashtreeWorker from '../workers/hashtree.worker.ts?worker';
 
@@ -192,9 +193,10 @@ export async function initHashtreeWorker(identity: WorkerInitIdentity): Promise<
     // Set up follows subscription for WebRTC peer classification
     setupFollowsSubscription(identity.pubkey);
 
-    // Start periodic peer stats polling for connectivity indicator
+    // Start periodic stats polling for connectivity indicator
     refreshWebRTCStats();
     setInterval(refreshWebRTCStats, 2000);
+    initRelayTracking();
   } catch (err) {
     console.error('[WorkerInit] Failed to initialize worker:', err);
     // Don't throw - app can still work without worker (fallback to main thread)
