@@ -19,7 +19,7 @@
 
   let { href, displayName, ownerPubkey, ownerNpub, treeName, visibility }: Props = $props();
 
-  // Use SW URL for thumbnail - browser caches this automatically
+  // Use SW URL for thumbnail - SW handles caching with stale-while-revalidate
   let thumbnailUrl = $derived(
     ownerNpub && treeName ? getNpubFileUrl(ownerNpub, treeName, getThumbnailFilename()) : null
   );

@@ -28,12 +28,10 @@
   // Current extension index to try
   let thumbExtIndex = $state(0);
 
-  // Use SW URL for thumbnail - browser caches this automatically
-  // For playlist videos, include videoId in the file path: videoId/thumbnail.{ext}
+  // Use SW URL for thumbnail - SW handles caching with stale-while-revalidate
   let thumbnailUrl = $derived.by(() => {
     if (!ownerNpub || !treeName) return null;
     const ext = THUMB_EXTENSIONS[thumbExtIndex] || 'jpg';
-    // For playlist videos, videoId is a subfolder containing the thumbnail
     const filePath = videoId ? `${videoId}/thumbnail.${ext}` : `thumbnail.${ext}`;
     return getNpubFileUrl(ownerNpub, treeName, filePath);
   });

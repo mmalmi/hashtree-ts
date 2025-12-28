@@ -244,12 +244,21 @@ async function streamFromCid(
   const contentLength = rangeEnd - rangeStart + 1;
 
   // Build response headers
-  // For npub-based requests (mutable content), use short cache or no-cache
-  // For nhash-based requests (content-addressed, immutable), use long cache
+  // For npub-based requests (mutable content):
+  //   - Images: use stale-while-revalidate for instant display on back nav
+  //   - Other: no-cache to ensure fresh content
+  // For nhash-based requests (content-addressed, immutable): cache forever
   const isNpubRequest = !!npub;
-  const cacheControl = isNpubRequest
-    ? 'no-cache, no-store, must-revalidate' // Mutable: always revalidate
-    : 'public, max-age=31536000, immutable'; // Immutable: cache forever
+  const isImage = mimeType.startsWith('image/');
+  let cacheControl: string;
+  if (!isNpubRequest) {
+    cacheControl = 'public, max-age=31536000, immutable'; // Immutable: cache forever
+  } else if (isImage) {
+    // Images (thumbnails): serve stale instantly, revalidate in background
+    cacheControl = 'public, max-age=60, stale-while-revalidate=86400';
+  } else {
+    cacheControl = 'no-cache, no-store, must-revalidate'; // Other mutable: always revalidate
+  }
   const headers: Record<string, string> = {
     'Content-Type': mimeType,
     'Accept-Ranges': 'bytes',
