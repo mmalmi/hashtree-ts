@@ -28,7 +28,8 @@ interface HeapAnalysis {
   memoryByType: Record<string, { count: number; size: number }>;
   ndkInstances: number[];
   ndkCacheInstances: number[];
-  profileStrings: { count: number; totalSize: number };
+  cachedEvents: { count: number; totalSize: number };
+  eventsByKind: Record<number, { count: number; size: number }>;
   largeObjects: Array<{ type: string; name: string; size: number; id: number }>;
 }
 
@@ -71,8 +72,9 @@ function analyzeHeap(snapshot: any): HeapAnalysis {
   const ndkInstances: number[] = [];
   const ndkCacheInstances: number[] = [];
   const largeObjects: Array<{ type: string; name: string; size: number; id: number }> = [];
-  let profileCount = 0;
-  let profileSize = 0;
+  const eventsByKind: Record<number, { count: number; size: number }> = {};
+  let cachedEventCount = 0;
+  let cachedEventSize = 0;
 
   for (let i = 0; i < nodeCount; i++) {
     const offset = i * nodeFieldCount;
@@ -97,10 +99,21 @@ function analyzeHeap(snapshot: any): HeapAnalysis {
       ndkCacheInstances.push(nodeId);
     }
 
-    // Profile strings (kind:0 events)
-    if (nodeType === 'string' && name.startsWith('[0,')) {
-      profileCount++;
-      profileSize += selfSize;
+    // Cached events (serialized as [0,"pubkey",timestamp,kind,tags,content])
+    // All events start with [0," - kind is at position 3
+    if (nodeType === 'string' && name.startsWith('[0,"')) {
+      cachedEventCount++;
+      cachedEventSize += selfSize;
+      // Try to extract kind from serialized event: [0,"pubkey",timestamp,KIND,...]
+      const kindMatch = name.match(/^\[0,"[a-f0-9]+",\d+,(\d+),/);
+      if (kindMatch) {
+        const kind = parseInt(kindMatch[1], 10);
+        if (!eventsByKind[kind]) {
+          eventsByKind[kind] = { count: 0, size: 0 };
+        }
+        eventsByKind[kind].count++;
+        eventsByKind[kind].size += selfSize;
+      }
     }
 
     // Large objects (>100KB)
@@ -114,7 +127,8 @@ function analyzeHeap(snapshot: any): HeapAnalysis {
     memoryByType,
     ndkInstances,
     ndkCacheInstances,
-    profileStrings: { count: profileCount, totalSize: profileSize },
+    cachedEvents: { count: cachedEventCount, totalSize: cachedEventSize },
+    eventsByKind,
     largeObjects: largeObjects.sort((a, b) => b.size - a.size).slice(0, 20),
   };
 }
@@ -123,6 +137,45 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
+
+function printAnalysis(analysis: HeapAnalysis, title: string) {
+  console.log(`\n=== HEAP ANALYSIS: ${title} ===\n`);
+  console.log(`Total nodes: ${analysis.totalNodes.toLocaleString()}`);
+
+  const totalMemory = Object.values(analysis.memoryByType).reduce((sum, t) => sum + t.size, 0);
+  console.log(`Total heap size: ${formatBytes(totalMemory)}`);
+
+  console.log('\n--- Memory by Type ---');
+  const sortedTypes = Object.entries(analysis.memoryByType)
+    .sort((a, b) => b[1].size - a[1].size)
+    .slice(0, 10);
+  for (const [type, { count, size }] of sortedTypes) {
+    console.log(`  ${type.padEnd(25)} count=${count.toString().padStart(8)}  size=${formatBytes(size).padStart(10)}`);
+  }
+
+  console.log('\n--- NDK Instances ---');
+  console.log(`  NDK: ${analysis.ndkInstances.length} instances`);
+  console.log(`  NDKCacheAdapterDexie: ${analysis.ndkCacheInstances.length} instances`);
+  if (analysis.ndkInstances.length > 1) {
+    console.log('  ⚠️  Multiple NDK instances detected! IDs:', analysis.ndkInstances);
+  }
+
+  console.log('\n--- Cached Events ---');
+  console.log(`  Total: ${analysis.cachedEvents.count} events, ${formatBytes(analysis.cachedEvents.totalSize)}`);
+  const sortedKinds = Object.entries(analysis.eventsByKind)
+    .sort((a, b) => b[1].size - a[1].size)
+    .slice(0, 10);
+  for (const [kind, { count, size }] of sortedKinds) {
+    console.log(`  kind ${kind.padStart(5)}: ${count.toString().padStart(6)} events, ${formatBytes(size).padStart(10)}`);
+  }
+
+  if (analysis.largeObjects.length > 0) {
+    console.log('\n--- Large Objects (>100KB) ---');
+    for (const obj of analysis.largeObjects.slice(0, 10)) {
+      console.log(`  ${formatBytes(obj.size).padStart(10)}  ${obj.type}:${obj.name.slice(0, 50)}`);
+    }
+  }
 }
 
 test.describe('Heap Analysis', () => {
@@ -134,42 +187,81 @@ test.describe('Heap Analysis', () => {
     // Wait for app to settle
     await page.waitForTimeout(3000);
 
-    console.log('\n📊 Taking heap snapshot...');
+    console.log('\n📊 Taking heap snapshot (fresh load)...');
     const snapshot = await takeHeapSnapshot(page);
     const analysis = analyzeHeap(snapshot);
 
-    console.log('\n=== HEAP ANALYSIS ===\n');
-    console.log(`Total nodes: ${analysis.totalNodes.toLocaleString()}`);
-
-    console.log('\n--- Memory by Type ---');
-    const sortedTypes = Object.entries(analysis.memoryByType)
-      .sort((a, b) => b[1].size - a[1].size)
-      .slice(0, 10);
-    for (const [type, { count, size }] of sortedTypes) {
-      console.log(`  ${type.padEnd(25)} count=${count.toString().padStart(8)}  size=${formatBytes(size).padStart(10)}`);
-    }
-
-    console.log('\n--- NDK Instances ---');
-    console.log(`  NDK: ${analysis.ndkInstances.length} instances`);
-    console.log(`  NDKCacheAdapterDexie: ${analysis.ndkCacheInstances.length} instances`);
-    if (analysis.ndkInstances.length > 1) {
-      console.log('  ⚠️  Multiple NDK instances detected! IDs:', analysis.ndkInstances);
-    }
-
-    console.log('\n--- Profile Events (kind:0) ---');
-    console.log(`  Count: ${analysis.profileStrings.count}`);
-    console.log(`  Total size: ${formatBytes(analysis.profileStrings.totalSize)}`);
-
-    if (analysis.largeObjects.length > 0) {
-      console.log('\n--- Large Objects (>100KB) ---');
-      for (const obj of analysis.largeObjects.slice(0, 10)) {
-        console.log(`  ${formatBytes(obj.size).padStart(10)}  ${obj.type}:${obj.name.slice(0, 50)}`);
-      }
-    }
+    printAnalysis(analysis, 'FRESH LOAD');
 
     // Assertions for regression testing
     expect(analysis.ndkInstances.length).toBeLessThanOrEqual(1);
     expect(analysis.ndkCacheInstances.length).toBeLessThanOrEqual(1);
+  });
+
+  test('analyze memory after realistic usage @production', async ({ page }) => {
+    test.slow(); // This test takes longer due to real browsing
+
+    // Go directly to production video.iris.to to get real relay traffic
+    console.log('\n🌐 Loading production site (video.iris.to)...');
+    await page.goto('https://video.iris.to/');
+
+    // Wait for app to load
+    await page.waitForTimeout(5000);
+
+    // Navigate around to trigger profile fetches
+    console.log('🎬 Browsing videos...');
+
+    // Scroll to load more content
+    for (let i = 0; i < 3; i++) {
+      await page.evaluate(() => window.scrollBy(0, 500));
+      await page.waitForTimeout(2000);
+    }
+
+    // Click on a video if available
+    try {
+      const videoCard = page.locator('a[href*="videos/"]').first();
+      if (await videoCard.isVisible({ timeout: 3000 }).catch(() => false)) {
+        console.log('📺 Opening a video...');
+        await videoCard.click();
+        await page.waitForTimeout(5000);
+
+        // Go back
+        await page.goBack();
+        await page.waitForTimeout(2000);
+      }
+    } catch { /* video may not exist */ }
+
+    // Wait for more content to load
+    console.log('⏳ Waiting for profiles to cache...');
+    await page.waitForTimeout(10000);
+
+    console.log('\n📊 Taking heap snapshot...');
+    const snapshot = await takeHeapSnapshot(page);
+    const analysis = analyzeHeap(snapshot);
+
+    printAnalysis(analysis, 'PRODUCTION USAGE (video.iris.to)');
+
+    // Check for memory issues
+    const totalMemory = Object.values(analysis.memoryByType).reduce((sum, t) => sum + t.size, 0);
+
+    console.log('\n--- Summary ---');
+    console.log(`Total heap: ${formatBytes(totalMemory)}`);
+    console.log(`NDK instances: ${analysis.ndkInstances.length}`);
+    console.log(`Cached events: ${analysis.cachedEvents.count} events, ${formatBytes(analysis.cachedEvents.totalSize)}`);
+    const kind0 = analysis.eventsByKind[0];
+    if (kind0) {
+      console.log(`  kind:0 profiles: ${kind0.count} events, ${formatBytes(kind0.size)}`);
+    }
+
+    if (analysis.ndkInstances.length > 1) {
+      console.log('⚠️  Multiple NDK instances - possible memory leak!');
+    }
+    if (analysis.cachedEvents.totalSize > 50 * 1024 * 1024) {
+      console.log('⚠️  Event cache exceeds 50MB!');
+    }
+    if (totalMemory > 200 * 1024 * 1024) {
+      console.log('⚠️  Total heap exceeds 200MB!');
+    }
   });
 
   test('analyze memory after navigation', async ({ page }) => {
@@ -198,7 +290,7 @@ test.describe('Heap Analysis', () => {
     console.log('\n=== HEAP ANALYSIS (after navigation) ===\n');
     console.log(`Total nodes: ${analysis.totalNodes.toLocaleString()}`);
     console.log(`NDK instances: ${analysis.ndkInstances.length}`);
-    console.log(`Profile strings: ${analysis.profileStrings.count} (${formatBytes(analysis.profileStrings.totalSize)})`);
+    console.log(`Cached events: ${analysis.cachedEvents.count} (${formatBytes(analysis.cachedEvents.totalSize)})`);
 
     // Check for memory issues
     const totalMemory = Object.values(analysis.memoryByType).reduce((sum, t) => sum + t.size, 0);
@@ -252,8 +344,8 @@ test.describe('Heap Analysis', () => {
     console.log(`  Before: ${beforeAnalysis.ndkInstances.length}`);
     console.log(`  After:  ${afterAnalysis.ndkInstances.length}`);
 
-    console.log('\n--- Profile Strings ---');
-    console.log(`  Before: ${beforeAnalysis.profileStrings.count} (${formatBytes(beforeAnalysis.profileStrings.totalSize)})`);
-    console.log(`  After:  ${afterAnalysis.profileStrings.count} (${formatBytes(afterAnalysis.profileStrings.totalSize)})`);
+    console.log('\n--- Cached Events ---');
+    console.log(`  Before: ${beforeAnalysis.cachedEvents.count} (${formatBytes(beforeAnalysis.cachedEvents.totalSize)})`);
+    console.log(`  After:  ${afterAnalysis.cachedEvents.count} (${formatBytes(afterAnalysis.cachedEvents.totalSize)})`);
   });
 });
