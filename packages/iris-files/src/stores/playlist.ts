@@ -84,6 +84,18 @@ export async function loadPlaylist(
   rootCid: CID,
   currentVideoId?: string
 ): Promise<Playlist | null> {
+  // Check if this playlist is already loaded - just update currentIndex
+  const existing = get(currentPlaylist);
+  if (existing && existing.npub === npub && existing.treeName === treeName) {
+    if (currentVideoId) {
+      const idx = existing.items.findIndex(v => v.id === currentVideoId);
+      if (idx !== -1 && idx !== existing.currentIndex) {
+        currentPlaylist.update(p => p ? { ...p, currentIndex: idx } : null);
+      }
+    }
+    return existing;
+  }
+
   const tree = getTree();
 
   try {
