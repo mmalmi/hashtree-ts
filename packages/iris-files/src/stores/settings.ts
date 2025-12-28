@@ -81,29 +81,6 @@ export const DEFAULT_IMGPROXY_SETTINGS: ImgproxySettings = {
   salt: '5e608e60945dcd2a787e8465d76ba34149894765061d39287609fb9d776caa0c',
 };
 
-// Sync settings for background data synchronization
-export interface SyncSettings {
-  /** Master toggle for background sync */
-  enabled: boolean;
-  /** Storage cap in bytes (default: 2GB) */
-  storageCap: number;
-  /** Percentage reserved for user's own trees (default: 50) */
-  ownQuotaPercent: number;
-  /** Sync public trees from followed users */
-  syncFollowedPublic: boolean;
-  /** Sync link-visible trees when visited via link */
-  syncVisitedLinkVisible: boolean;
-}
-
-// Default sync settings
-export const DEFAULT_SYNC_SETTINGS: SyncSettings = {
-  enabled: true,
-  storageCap: 2 * 1024 * 1024 * 1024, // 2GB
-  ownQuotaPercent: 50,
-  syncFollowedPublic: true,
-  syncVisitedLinkVisible: true,
-};
-
 // Blossom server configuration
 export interface BlossomServerConfig {
   url: string;
@@ -179,9 +156,6 @@ export interface SettingsState {
   // Editor settings
   editor: EditorSettings;
 
-  // Sync settings
-  sync: SyncSettings;
-
   // Network settings
   network: NetworkSettings;
   networkLoaded: boolean;
@@ -212,9 +186,6 @@ function createSettingsStore() {
 
     // Editor settings
     editor: DEFAULT_EDITOR_SETTINGS,
-
-    // Sync settings
-    sync: DEFAULT_SYNC_SETTINGS,
 
     // Network settings
     network: DEFAULT_NETWORK_SETTINGS,
@@ -256,21 +227,6 @@ function createSettingsStore() {
         const updated = { ...state.editor, ...editor };
         db.settings.put({ key: 'editor', value: updated }).catch(console.error);
         return { ...state, editor: updated };
-      });
-    },
-
-    setSyncSettings: (sync: Partial<SyncSettings>) => {
-      update(state => {
-        const updated = { ...state.sync, ...sync };
-        db.settings.put({ key: 'sync', value: updated }).catch(console.error);
-        return { ...state, sync: updated };
-      });
-    },
-
-    resetSyncSettings: () => {
-      update(state => {
-        db.settings.put({ key: 'sync', value: DEFAULT_SYNC_SETTINGS }).catch(console.error);
-        return { ...state, sync: DEFAULT_SYNC_SETTINGS };
       });
     },
 
@@ -343,11 +299,10 @@ export const useSettingsStore = settingsStore;
 // Load settings from Dexie on startup
 async function loadSettings() {
   try {
-    const [poolsRow, uploadRow, editorRow, syncRow, networkRow, imgproxyRow, blockedPeersRow] = await Promise.all([
+    const [poolsRow, uploadRow, editorRow, networkRow, imgproxyRow, blockedPeersRow] = await Promise.all([
       db.settings.get('pools'),
       db.settings.get('upload'),
       db.settings.get('editor'),
-      db.settings.get('sync'),
       db.settings.get('network'),
       db.settings.get('imgproxy'),
       db.settings.get('blockedPeers'),
@@ -378,17 +333,6 @@ async function loadSettings() {
       const editor = editorRow.value as EditorSettings;
       updates.editor = {
         autoSave: editor.autoSave ?? DEFAULT_EDITOR_SETTINGS.autoSave,
-      };
-    }
-
-    if (syncRow?.value) {
-      const sync = syncRow.value as SyncSettings;
-      updates.sync = {
-        enabled: sync.enabled ?? DEFAULT_SYNC_SETTINGS.enabled,
-        storageCap: sync.storageCap ?? DEFAULT_SYNC_SETTINGS.storageCap,
-        ownQuotaPercent: sync.ownQuotaPercent ?? DEFAULT_SYNC_SETTINGS.ownQuotaPercent,
-        syncFollowedPublic: sync.syncFollowedPublic ?? DEFAULT_SYNC_SETTINGS.syncFollowedPublic,
-        syncVisitedLinkVisible: sync.syncVisitedLinkVisible ?? DEFAULT_SYNC_SETTINGS.syncVisitedLinkVisible,
       };
     }
 
