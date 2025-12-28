@@ -45,6 +45,7 @@ When build, lint, and relevant tests pass, commit the changes without asking.
 - Always verify changes with e2e tests
 - Kill dev servers before tests to avoid port conflicts
 - TDD: write failing test first, then fix
+- Debug with Playwright scripts: use console logs, selectors, and screenshots to verify UI state
 
 ### Test Rules
 - NEVER use `waitForTimeout()` - wait for specific conditions
